@@ -290,7 +290,7 @@ show_tier() {
 
 input="" cursor=0 mode="insert" SHOW_HINT=0 UNDO="" EXPLAIN_LINES=0
 clear_hint() { for ((i=0; i<=EXPLAIN_LINES; i++)); do echo -ne "\e[A\e[2K"; done; echo -ne "\r"; }
-hdr() { clear; echo -e "${B}=== Level $1 ===  ${D}[$2/$3]${N}  ${D}TAB=hint  Ctrl+N=skip${N}\n"; }
+hdr() { clear; echo -e "${B}=== Level $1 ===  ${D}[$2/$3]${N}  ${D}Tab=hint Ctrl+n=skip${N}\n"; }
 bar() { printf '['; ((PROG)) && printf '█%.0s' $(seq 1 $PROG); ((TOT>PROG)) && printf '░%.0s' $(seq 1 $((TOT-PROG))); printf ']'; }
 draw() {
   echo -ne "\r\e[K"
@@ -411,7 +411,7 @@ case "${1:-}" in
   r|reset) rm -f "$DATA"/*.json "$DATA/vi_mode" "$DATA/scores"; echo "Reset.";;
   s|stats) stats;;
   v|version|-v|--version) echo "bashgym 1.0.0";;
-  h|help|-h|--help) echo "bashgym [0-9|n|reset|stats|help|version] - CLI trainer. TAB=hint, Ctrl+N=skip";;
+  h|help|-h|--help) echo "bashgym [0-9|n|reset|stats|help|version] - CLI trainer. Tab=hint Ctrl+n=skip";;
   n|new) _tty; LVL=0; save; run "$LVL";;
   "") _tty; load; ((LVL>0)) && { read -rp "Continue Level $LVL? [Y/n] " yn; [[ "$yn" =~ ^[Nn] ]] && { LVL=0; save; }; }; run "$LVL";;
   *) echo "Usage: bashgym [0-9|reset|stats|help|version]"; exit 1;;
