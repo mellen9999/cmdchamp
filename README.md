@@ -14,7 +14,7 @@ CLI command trainer with flashcard-style drills. Learn shell commands through sp
 ## Install
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/bashgym.git
+git clone https://github.com/mellen9999/bashgym.git
 cd bashgym
 ln -s "$(pwd)/bashgym" ~/.local/bin/bashgym
 ```
