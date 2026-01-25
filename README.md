@@ -1,4 +1,4 @@
-# bashgym
+# cmdchamp
 
 Elite CLI command trainer. Master shell, security tools, and cloud through flashcard-style drills with spaced repetition.
 
@@ -17,14 +17,14 @@ Elite CLI command trainer. Master shell, security tools, and cloud through flash
 
 **One-liner:**
 ```bash
-mkdir -p ~/.local/bin && curl -sL https://raw.githubusercontent.com/mellen9999/bashgym/main/bashgym -o ~/.local/bin/bashgym && chmod +x ~/.local/bin/bashgym
+mkdir -p ~/.local/bin && curl -sL https://raw.githubusercontent.com/mellen9999/cmdchamp/main/cmdchamp -o ~/.local/bin/cmdchamp && chmod +x ~/.local/bin/cmdchamp
 ```
 Add `~/.local/bin` to PATH if not already: `echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc`
 
 **Or clone:**
 ```bash
-git clone https://github.com/mellen9999/bashgym.git
-./bashgym/bashgym
+git clone https://github.com/mellen9999/cmdchamp.git
+./cmdchamp/cmdchamp
 ```
 
 Requires: bash 4.3+, coreutils (shuf, md5sum)
@@ -32,11 +32,11 @@ Requires: bash 4.3+, coreutils (shuf, md5sum)
 ## Usage
 
 ```bash
-bashgym         # Resume from last position (level + question)
-bashgym n       # Start fresh from level 0
-bashgym 14      # Start at level 14 (Git)
-bashgym stats   # Show mastery stats
-bashgym reset   # Clear all progress
+cmdchamp         # Resume from last position (level + question)
+cmdchamp n       # Start fresh from level 0
+cmdchamp 14      # Start at level 14 (Git)
+cmdchamp stats   # Show mastery stats
+cmdchamp reset   # Clear all progress
 ```
 
 ## Levels
@@ -81,7 +81,7 @@ Vi mode: `hjkl`, `wb`, `fFtT`, `0$`, `x/X`, `dw/db/dd`, `cw/cb/cc`, `r`, `s/S`, 
 
 ## Data
 
-Progress stored in `~/.local/share/bashgym/` (XDG compliant).
+Progress stored in `~/.local/share/cmdchamp/` (XDG compliant).
 
 ## License
 
