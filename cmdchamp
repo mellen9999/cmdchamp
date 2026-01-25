@@ -1718,38 +1718,32 @@ check() {
 LVL=0 QI=0 HINT=false PROG=0 TOT=0
 load() { [[ -f "$DATA/session.json" ]] && { local t=$(<"$DATA/session.json"); LVL="${t#*\"level\":}"; LVL="${LVL%%[!0-9]*}"; [[ "$t" == *'"qi":'* ]] && { QI="${t#*\"qi\":}"; QI="${QI%%[!0-9]*}"; }; }; LVL=${LVL:-0}; QI=${QI:-0}; }
 save() { printf '{"level":%d,"qi":%d}\n' "$LVL" "$QI" > "$DATA/session.json"; }
-# Score tracking: tier 0=copy, 1=blank, 2=recall (md5 hash keys avoid regex issues)
+# Score tracking: tier 1=blank, 2=recall (md5 hash keys avoid regex issues)
 _hash() { local h; h=$(printf '%s' "$1"|md5sum); echo "${h:0:16}"; }
 
 stats() {
   local -A sc; [[ -f "$DATA/scores" ]] && while IFS='|' read -r k v; do sc[$k]=$v; done < "$DATA/scores"
   echo -e "${B}Mastery Stats${N}"
-  echo -e "${D}Note: Questions are dynamically generated, stats show unique prompts seen${N}\n"
-  local total_seen=0 total_t0=0 total_t1=0 total_t2=0
+  echo -e "${D}Stats show unique prompts seen${N}\n"
+  local total_seen=0 total_t1=0 total_t2=0
   for k in "${!sc[@]}"; do
-    case "${sc[$k]}" in 0) ((++total_t0));; 1) ((++total_t1));; *) ((++total_t2));; esac
+    case "${sc[$k]}" in 1) ((++total_t1));; *) ((++total_t2));; esac
     ((++total_seen))
   done
-  echo -e "Total unique prompts practiced: ${B}${total_seen}${N}"
-  printf "${R}%3d${N} copy (tier 0)   ${Y}%3d${N} blank (tier 1)   ${G}%3d${N} recall (tier 2)\n" "$total_t0" "$total_t1" "$total_t2"
+  echo -e "Total: ${B}${total_seen}${N}  ${Y}${total_t1}${N} learning  ${G}${total_t2}${N} mastered"
   echo
-  echo -e "${B}Level Descriptions:${N}"
-  for lv in {0..17}; do
-    printf "  ${C}%2d${N}: ${LEVEL_DESC[$lv]}\n" "$lv"
-  done
+  for lv in {0..17}; do printf "  ${C}%2d${N} %s\n" "$lv" "${LEVEL_DESC[$lv]}"; done
 }
 
-# Tier display: 0=copy, 1=blank, 2=recall (fixed-width hint to avoid length leak)
+# Tier display: 1=blank (partial), 2=recall (nothing shown)
 show_tier() {
   local tier=$1 ans=$2
-  case $tier in
-    0) echo -e "${C}Type:${N} ${ans}";;
-    1) # Show ~40-60% with random variation to avoid exact length leak
-       local pct=$((40 + RANDOM % 21))
-       local show=$((${#ans} * pct / 100))
-       ((show < 3)) && show=3
-       echo -e "${C}Complete:${N} ${ans:0:show}${D}...${N}";;
-  esac
+  if ((tier == 1)); then
+    # Show ~40-60% with random variation
+    local pct=$((40 + RANDOM % 21)) show=$((${#ans} * pct / 100))
+    ((show < 3)) && show=3
+    echo -e "${C}Complete:${N} ${ans:0:show}${D}...${N}"
+  fi
 }
 
 input="" cursor=0 mode="insert" SHOW_HINT=0 EXPLAIN_LINES=0 _rep=""
@@ -1803,7 +1797,7 @@ run() {
   _stty_saved=$(stty -g 2>/dev/null) || _stty_saved=""
   generate_level "$lv"  # Generate fresh questions for this level
   local -A _sc; [[ -f "$DATA/scores" ]] && while IFS='|' read -r k v; do _sc[$k]=$v; done < "$DATA/scores"
-  _sget() { local h=$(_hash "$1"); echo "${_sc[$h]:-0}"; }
+  _sget() { local h=$(_hash "$1"); echo "${_sc[$h]:-1}"; }  # Default tier 1 (no braindead copy)
   _sset() {
     local h=$(_hash "$1"); _sc[$h]=$2
     # Atomic update with flock to prevent race conditions
@@ -1814,24 +1808,20 @@ run() {
     ) 200>"$DATA/scores.lock"
   }
   TOT=${#CURRENT_QUESTIONS[@]}; PROG=$qi
-  # Prioritize by tier: 0 (copy) > 1 (blank) > 2 (recall)
-  local t0=() t1=() t2=()
+  # Prioritize by tier: 1 (blank) > 2 (recall) - no tier 0 copy mode
+  local t1=() t2=()
   for q in "${CURRENT_QUESTIONS[@]}"; do
-    case "$(_sget "${q%%|*}")" in 0) t0+=("$q");; 1) t1+=("$q");; *) t2+=("$q");; esac
+    case "$(_sget "${q%%|*}")" in 1) t1+=("$q");; *) t2+=("$q");; esac
   done
-  # LC_ALL=C for locale-independent shuffle; interleave tiers for better SRS
-  local _shuf0 _shuf1 _shuf2
-  readarray -t _shuf0 < <(printf '%s\n' "${t0[@]}" | LC_ALL=C shuf)
+  # Shuffle and interleave: tier 1 first, mix in tier 2
+  local _shuf1 _shuf2
   readarray -t _shuf1 < <(printf '%s\n' "${t1[@]}" | LC_ALL=C shuf)
   readarray -t _shuf2 < <(printf '%s\n' "${t2[@]}" | LC_ALL=C shuf)
-  # Interleave: prioritize tier 0, but mix in tier 1/2 every 3rd question for true SRS
   shuf=()
-  local i0=0 i1=0 i2=0 idx=0
-  while ((i0 < ${#_shuf0[@]} || i1 < ${#_shuf1[@]} || i2 < ${#_shuf2[@]})); do
-    if ((i0 < ${#_shuf0[@]})); then shuf+=("${_shuf0[$i0]}"); ((++i0))
-    elif ((idx % 3 == 0 && i1 < ${#_shuf1[@]})); then shuf+=("${_shuf1[$i1]}"); ((++i1))
+  local i1=0 i2=0 idx=0
+  while ((i1 < ${#_shuf1[@]} || i2 < ${#_shuf2[@]})); do
+    if ((i1 < ${#_shuf1[@]})); then shuf+=("${_shuf1[$i1]}"); ((++i1))
     elif ((i2 < ${#_shuf2[@]})); then shuf+=("${_shuf2[$i2]}"); ((++i2))
-    elif ((i1 < ${#_shuf1[@]})); then shuf+=("${_shuf1[$i1]}"); ((++i1))
     fi
     ((++idx))
   done
