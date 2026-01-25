@@ -292,7 +292,7 @@ show_tier() {
 
 input="" cursor=0 mode="insert" SHOW_HINT=0 UNDO="" EXPLAIN_LINES=0 _rep=""
 clear_hint() { for ((i=0;i<=EXPLAIN_LINES;i++)); do printf '\e[A\e[2K'; done; printf '\r'; }
-hdr() { printf '\e[2J\e[H'; echo -e "${B}=== Level $1 ===  ${D}[$2/$3]${N}  ${D}Tab=hint ?=help${N}\n"; }
+hdr() { printf '\e[2J\e[H'; echo -e "${B}=== Level $1 ===  ${D}[$2/$3]${N}  ${D}Tab=hint Ctrl+n=skip${N}\n"; }
 qdisp() { bar; echo -e "\n${D}$1${N}"; show_tier "$2" "$3"; echo; }
 bar() { local f e; printf -v f '%*s' "$PROG" ''; printf -v e '%*s' "$((TOT-PROG))" ''; printf '[%s%s]' "${f// /█}" "${e// /░}"; }
 draw() {
@@ -400,7 +400,6 @@ run() {
             u) [[ -n "$UNDO" ]] && { input="${UNDO%:*}"; cursor="${UNDO#*:}"; UNDO=""; draw; };;  # undo
             n) echo -e "\n${D}[skipped]${N}"; ((++qi)); break 2;;  # skip in normal mode
             q) echo -e "\n${D}[quit]${N}"; exit 0;;  # quit
-            \?) echo -e "\n${D}hjkl${N} move  ${D}wb${N} word  ${D}fFtT${N}+char find  ${D}0\$${N} line"; echo -e "${D}x/X${N} del char  ${D}dw/db/dd${N} del  ${D}cw/cb/cc${N} change  ${D}r${N} replace"; echo -e "${D}s/S${N} subst  ${D}i/a/I/A${N} insert  ${D}u${N} undo  ${D}n${N} skip  ${D}q${N} quit"; echo -e "${D}Tab${N} hint  ${D}Ctrl+n${N} skip  ${D}Ctrl+d${N} quit  ${D}[num]cmd${N} repeat"; read -rsn1; hdr "$lv" "$((qi+1))" "$TOT"; qdisp "$prompt" "$tier" "$ans"; draw;;
             '') echo; break;;
           esac
         fi
