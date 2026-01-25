@@ -69,7 +69,7 @@ declare -a Q0=(
   'Save make stdout+stderr to build.log|make &> build.log|make > build.log 2>&1'
   'Send gcc errors to stdout for piping|gcc main.c 2>&1'
   'Run backup.sh silently (discard all output)|./backup.sh &> /dev/null|./backup.sh > /dev/null 2>&1'
-  'Find files, suppress permission errors|find / -name "*.conf" 2> /dev/null'
+  'Find *.conf files in /, suppress permission errors|find / -name "*.conf" 2> /dev/null'
   'Count lines in data.csv via stdin|wc -l < data.csv'
   'Uppercase "hello" using here string|tr a-z A-Z <<< "hello"'
   # Pipes and logic
