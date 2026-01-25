@@ -1,0 +1,450 @@
+#!/usr/bin/env bash
+# bashgym - CLI command trainer
+set -uo pipefail
+[[ -t 0 ]] || { echo "Error: requires interactive terminal" >&2; exit 1; }
+
+DATA="${XDG_DATA_HOME:-$HOME/.local/share}/bashgym"; mkdir -p "$DATA"
+trap 'echo; exit 0' INT
+R=$'\e[31m' G=$'\e[32m' Y=$'\e[33m' C=$'\e[36m' D=$'\e[2m' B=$'\e[1m' N=$'\e[0m'
+PROMPT_CHAR="${CMD_PROMPT:-$([[ $EUID -eq 0 ]] && echo '# ' || echo '$ ')}"
+
+# Command explanations lookup
+declare -A EXP=(
+  # Commands
+  [echo]="print" [cat]="show file" [ls]="list" [cd]="change dir" [cp]="copy" [mv]="move" [rm]="remove"
+  [mkdir]="make dir" [touch]="create/update" [head]="first lines" [tail]="last lines" [grep]="search"
+  [find]="find files" [wc]="count" [sort]="sort" [uniq]="unique" [cut]="extract cols" [tr]="translate"
+  [diff]="compare" [tar]="archive" [tee]="split output" [xargs]="args from stdin" [chmod]="permissions"
+  [kill]="terminate" [jobs]="list jobs" [fg]="foreground" [bg]="background" [sleep]="wait"
+  [make]="build" [gcc]="compile" [date]="date/time" [du]="disk usage" [ps]="processes"
+  [mount]="mount fs" [dd]="disk dump" [strings]="extract text" [base64]="base64 codec"
+  [rg]="ripgrep" [fd]="find alt" [eza]="ls alt" [bat]="cat alt" [sd]="sed alt" [dust]="du alt"
+  [tree]="show tree" [sed]="stream edit" [xxd]="hex dump" [md5sum]="md5 hash" [sha256sum]="sha256"
+  [nmap]="port scan" [hydra]="brute force" [hashcat]="crack hash" [john]="crack hash"
+  [tshark]="packet capture" [nikto]="web scanner" [sqlmap]="sql injection" [masscan]="fast scanner"
+  [airmon-ng]="monitor mode" [airodump-ng]="capture packets" [aireplay-ng]="inject packets"
+  [aircrack-ng]="crack WPA" [nc]="netcat" [smbclient]="smb client" [lynis]="audit"
+  [binwalk]="firmware analysis" [foremost]="file recovery" [fls]="list fs" [exiftool]="metadata"
+  [readelf]="elf info" [r2]="radare2" [volatility3]="memory forensics" [mactime]="timeline"
+  [feroxbuster]="dir enum" [proxychains]="proxy wrapper" [procs]="ps alt"
+  # Flags/operators
+  ['$$']="shell PID" ['$?']="exit status" ['$!']="bg PID" ['$#']="arg count" ['$@']="all args" ['$0']="script name"
+  ['!!']="last cmd" ['!$']="last arg" ['!^']="first arg" ['!*']="all prev args"
+  ['>']="write to" ['>>']="append to" ['2>']="stderr to" ['&>']="all to" ['2>&1']="stderr→stdout"
+  ['<']="read from" ['<<<']="here string" ['|']="pipe" ['|&']="pipe all" ['&&']="and then" ['||']="or else"
+  ['&']="background" ['-r']="recursive" ['-i']="case insens" ['-v']="invert" ['-l']="long/files"
+  ['-n']="line nums/count" ['-c']="count" ['-q']="quiet" ['-f']="follow/force" ['-p']="parents"
+  ['-e']="extension" ['-t']="type" ['-x']="execute" ['-h']="human" ['-s']="size/silent"
+  ['-a']="all" ['-u']="unique" ['-k']="key/col" ['-d']="delim/dir" ['-o']="output" ['-w']="write"
+  ['-A']="aggressive" ['-O']="OS detect" ['-sV']="version scan" ['-sC']="scripts" ['-sU']="UDP"
+  ['-sn']="ping only" ['-sT']="TCP connect" ['-Pn']="skip ping" ['-F']="fast" ['-p-']="all ports"
+  ['-m']="hash mode" ['-a']="attack mode" ['--show']="show cracked" ['--wordlist']="wordlist"
+  ['-E']="entropy/regex" ['-Y']="display filter" ['-T']="tree/fields"
+  ['{}']="placeholder" ['\;']="exec end" ['-exec']="run cmd" ['-delete']="delete" ['-name']="by name"
+  ['-size']="by size" ['-type']="by type" ['-mmin']="mod mins" ['-path']="by path" ['-not']="negate"
+)
+explain() {
+  local cmd="$1" out="" tok
+  for tok in $cmd; do
+    [[ -n "${EXP[$tok]:-}" ]] && out+="${tok}=${EXP[$tok]}  "
+  done
+  echo -e "${D}${out:-(no breakdown)}${N}"
+}
+
+# Vi mode: env > saved > ask
+VI_PREF="$DATA/vi_mode"
+if [[ -n "${CMD_VI:-}" ]]; then VI_MODE=$CMD_VI
+elif [[ -f "$VI_PREF" ]]; then VI_MODE=$(<"$VI_PREF")
+else read -rp "Enable vi keybindings? [y/N] " yn; [[ "$yn" =~ ^[Yy] ]] && VI_MODE=1 || VI_MODE=0; echo "$VI_MODE" > "$VI_PREF"; fi
+
+# Questions: prompt|answer|alt1|alt2...
+declare -a Q0=(
+  # Redirections
+  'Save ls output to files.txt|ls > files.txt'
+  'Append "done" to log.txt|echo "done" >> log.txt'
+  'Save make errors to errors.log|make 2> errors.log'
+  'Save make stdout+stderr to build.log|make &> build.log|make > build.log 2>&1'
+  'Send gcc errors to stdout for piping|gcc main.c 2>&1'
+  'Run backup.sh silently (discard all output)|./backup.sh &> /dev/null|./backup.sh > /dev/null 2>&1'
+  'Find files, suppress permission errors|find / -name "*.conf" 2> /dev/null'
+  'Count lines in data.csv via stdin|wc -l < data.csv'
+  'Uppercase "hello" using here string|tr a-z A-Z <<< "hello"'
+  # Pipes and logic
+  'Search for errors in log.txt|grep error log.txt|cat log.txt | grep error'
+  'Build and capture all output to build.log|make |& tee build.log'
+  'Create dir and cd into it|mkdir foo && cd foo'
+  'cd to foo, create if missing|mkdir -p foo && cd foo'
+  'True if "error" NOT found in log.txt|! grep -q error log.txt'
+  # Job control
+  'Run sleep 100 in background|sleep 100 &'
+  'List background jobs|jobs'
+  'Bring job 1 to foreground|fg %1'
+  'Send job 1 to background|bg %1'
+  'Kill job 1|kill %1'
+  # Command substitution
+  'Store list of .txt files in variable|files=$(ls *.txt)'
+  'Print today date inline|echo "Today is $(date +%Y-%m-%d)"'
+  # Subshell and grouping
+  'Extract tarball in /tmp without changing dir|(cd /tmp && tar xzf archive.tar.gz)'
+  'Run start/end echo with sleep in current shell|{ echo start; sleep 1; echo end; }'
+  # History
+  'Repeat last command|!!'
+  "Run last command starting with 'git'|!git"
+  'Run command number 42 from history|!42'
+  'Replace foo with bar in last command|^foo^bar'
+  'Reuse last argument of previous command|!$'
+  'Reuse first argument of previous command|!^'
+  'Reuse all arguments of previous command|!*'
+  # Special variables
+  'Print current shell PID|echo $$'
+  'Print exit status of last command|echo $?'
+  'Print PID of last background process|echo $!'
+  'Print number of script arguments|echo $#'
+  'Print all script arguments|echo $@'
+  'Print script name|echo $0'
+  # Brace expansion
+  'Create a.txt b.txt c.txt|touch {a,b,c}.txt'
+  'Create file1 through file5|touch file{1..5}'
+  'Backup config.ini to config.ini.bak|cp config.ini{,.bak}'
+  'Diff file.old vs file.new|diff file.{old,new}'
+  # Process substitution
+  'Diff sorted contents of file1.txt and file2.txt|diff <(sort file1.txt) <(sort file2.txt)'
+)
+declare -a Q1=(
+  "View config.ini with syntax highlighting|cat config.ini|bat config.ini"
+  "List files with size+perms|ls -l|eza -l"
+  "List all files including hidden|ls -la|eza -la"
+  "Show directory tree|tree|eza -T"
+  "Find all .py files|find . -name '*.py'|fd -e py"
+  "First 10 lines of data.txt|head -n 10 data.txt|head -10 data.txt"
+  "Last 20 lines of log.txt|tail -n 20 log.txt|tail -20 log.txt"
+  "Count lines in data.csv|wc -l data.csv"
+  "Show disk usage of current dir|du -sh .|dust"
+  "Copy config.ini to backup.ini|cp config.ini backup.ini"
+)
+declare -a Q2=(
+  "Search for 'error' recursively|grep -r error|rg error"
+  "Case-insensitive search for 'warning'|grep -ri warning|rg -i warning"
+  "Search for TODO with line numbers|grep -rn TODO|rg -n TODO"
+  "Count 'error' matches in log.txt|grep -c error log.txt|rg -c error log.txt"
+  "Search 'panic' with 2 lines context|grep -C 2 panic|rg -C 2 panic"
+  "List only filenames containing 'error'|grep -rl error|rg -l error"
+  "Search 'import' in .py files only|grep -r --include='*.py' import|rg -t py import"
+  "Find phone pattern XXX-XXXX|grep -E '[0-9]{3}-[0-9]{4}'|rg '\\d{3}-\\d{4}'"
+  "Lines without 'error' in log.txt|grep -v error log.txt|rg -v error log.txt"
+  "Literal search 'func()' in app.py|grep -F 'func()' app.py|rg -F 'func()' app.py"
+)
+declare -a Q3=(
+  "Find all .log files|find . -name '*.log'|fd -e log"
+  "Find files larger than 10M|find . -size +10M|fd -S +10M"
+  "Find files modified in last hour|find . -mmin -60|fd --changed-within 1h"
+  "Find directories only|find . -type d|fd -t d"
+  "Find 'config' including hidden files|find . -name '*config*'|fd -H config"
+  "Find all, excluding .git|find . -not -path './.git/*'|fd -E .git"
+  "Find empty files|find . -type f -empty|fd -t f -S 0"
+  "Find executable files|find . -type f -executable|fd -t x"
+  "Find symlinks|find . -type l|fd -t l"
+  "Find files matching path src/*test*|find . -path '*src/*test*'|fd -p src/.*test"
+)
+declare -a Q4=(
+  "List files sorted by size (largest first)|ls -lS|eza -l --sort size -r"
+  "List files sorted by modification time|ls -lt|eza -l --sort modified"
+  "List directories only|ls -d */|eza -D"
+  "List files with git status|eza -l --git"
+  "Show tree 2 levels deep|tree -L 2|eza -T -L 2"
+  "Follow server.log in realtime|tail -f server.log"
+  "Sort and deduplicate dupes.txt|sort -u dupes.txt"
+  "Extract 2nd column from data.csv|cut -d',' -f2 data.csv"
+  "Sort data.txt by column 2|sort -k2 data.txt"
+  "Count unique lines in data.txt|sort data.txt | uniq -c"
+)
+declare -a Q5=(
+  "Run ls -l on each .py file found|find . -name '*.py' -exec ls -l {} \\;|fd -e py -x ls -l {}"
+  "Count lines in each .txt file|find . -name '*.txt' -exec wc -l {} \\;|fd -e txt -x wc -l {}"
+  "Delete all .tmp files|find . -name '*.tmp' -delete|fd -e tmp -x rm {}"
+  "Make all .sh files executable|find . -name '*.sh' -exec chmod +x {} \\;|fd -e sh -x chmod +x {}"
+  "Search 'error' in each .log file|find . -name '*.log' -exec grep error {} \\;|fd -e log -x rg error {}"
+  "Extract and count IPs from log.txt|grep -oE '[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+' log.txt | sort | uniq -c|rg -o '\\d+\\.\\d+\\.\\d+\\.\\d+' log.txt | sort | uniq -c"
+  "Show size of files >100M|find . -size +100M -exec du -h {} \\;|fd -S +100M -x du -h {}"
+  "Replace 'old' with 'new' in config.txt|sed -i 's/old/new/g' config.txt|sd 'old' 'new' config.txt"
+  "Replace 'foo' with 'bar' in all .txt files|find . -name '*.txt' -exec sed -i 's/foo/bar/g' {} \\;|fd -e txt -x sd 'foo' 'bar' {}"
+  "Show process tree|ps auxf|procs --tree"
+)
+declare -a Q6=(
+  "Scan all ports on 10.0.0.1|nmap -p- 10.0.0.1"
+  "Scan top 100 ports on 10.0.0.1|nmap --top-ports 100 10.0.0.1"
+  "Detect service versions on 10.0.0.1|nmap -sV 10.0.0.1"
+  "Detect OS on 10.0.0.1|nmap -O 10.0.0.1"
+  "UDP scan top 20 ports on 10.0.0.1|nmap -sU --top-ports 20 10.0.0.1"
+  "Aggressive scan on 10.0.0.1|nmap -A 10.0.0.1"
+  "Ping sweep 10.0.0.0/24 subnet|nmap -sn 10.0.0.0/24"
+  "Fast scan 10.0.0.1, skip ping|nmap -Pn -F 10.0.0.1"
+  "Scan 10.0.0.1, save greppable to scan.txt|nmap -oG scan.txt 10.0.0.1"
+  "Scan 10.0.0.1 through proxychains|proxychains nmap -sT 10.0.0.1"
+  "Run vuln scripts on 10.0.0.1|nmap --script vuln 10.0.0.1"
+  "Banner grab port 80 on 10.0.0.1|nmap -sV -p 80 --script banner 10.0.0.1"
+  "Enumerate SMB shares on 10.0.0.1|nmap --script smb-enum-shares 10.0.0.1"
+  "Detect web server on 10.0.0.1 ports 80,443|nmap -sV -p 80,443 10.0.0.1"
+  "Full scan 10.0.0.1, all output formats to full_scan|nmap -p- -oA full_scan 10.0.0.1"
+)
+declare -a Q7=(
+  "Crack MD5 hashes in hash.txt using wordlist.txt|hashcat -m 0 hash.txt wordlist.txt"
+  "Crack SHA256 hashes in hash.txt|hashcat -m 1400 hash.txt wordlist.txt"
+  "Crack bcrypt hashes in hash.txt|hashcat -m 3200 hash.txt wordlist.txt"
+  "Brute force 4-digit PIN for hash.txt|hashcat -m 0 -a 3 hash.txt ?d?d?d?d"
+  "Crack hash.txt with best64 rules|hashcat -m 0 -r rules/best64.rule hash.txt wordlist.txt"
+  "Show already cracked from hash.txt|hashcat -m 0 hash.txt --show"
+  "Crack hash.txt with john default|john hash.txt"
+  "Crack hash.txt with john using wordlist.txt|john --wordlist=wordlist.txt hash.txt"
+  "Show cracked hashes from john|john --show hash.txt"
+  "Generate MD5 hash of string 'password'|echo -n 'password' | md5sum"
+  "Brute force HTTP auth on 10.0.0.1 user admin|hydra -l admin -P wordlist.txt 10.0.0.1 http-get /"
+  "Brute force SSH on 10.0.0.1 user root|hydra -l root -P wordlist.txt 10.0.0.1 ssh"
+  "Crack password on archive.zip|john --format=zip archive.zip"
+  "Decode base64 file encoded.txt|base64 -d encoded.txt"
+  "Convert hex file hex.txt to ascii|xxd -r -p hex.txt"
+)
+declare -a Q8=(
+  "Extract strings from binary.exe|strings binary.exe"
+  "Show ELF headers of binary.elf|readelf -h binary.elf"
+  "Analyze binary.exe with radare2|r2 -A binary.exe"
+  "Extract embedded files from firmware.bin|binwalk -e firmware.bin"
+  "Analyze entropy of firmware.bin|binwalk -E firmware.bin"
+  "Get system info from memory.dmp|volatility3 -f memory.dmp windows.info"
+  "List processes from memory.dmp|volatility3 -f memory.dmp windows.pslist"
+  "Extract network connections from memory.dmp|volatility3 -f memory.dmp windows.netscan"
+  "Recover deleted files from disk.img to output/|foremost -i disk.img -o output/"
+  "List filesystem of disk.img recursively|fls -r disk.img"
+  "Extract metadata from photo.jpg|exiftool photo.jpg"
+  "Verify checksums in checksums.txt|sha256sum -c checksums.txt"
+  "Create disk image of /dev/sda to disk.img|dd if=/dev/sda of=disk.img bs=4M"
+  "Mount disk.img readonly at /mnt/evidence|mount -o ro,loop disk.img /mnt/evidence"
+  "Create filesystem timeline from bodyfile.txt|mactime -b bodyfile.txt"
+)
+declare -a Q9=(
+  "Full nmap scan 10.0.0.1 with scripts, all output to 'full'|nmap -sV -sC -p- -oA full 10.0.0.1"
+  "Capture traffic on eth0 to capture.pcap|tshark -i eth0 -w capture.pcap"
+  "Filter HTTP traffic from capture.pcap|tshark -r capture.pcap -Y http"
+  "Extract POST data from capture.pcap|tshark -r capture.pcap -Y 'http.request.method == POST' -T fields -e http.file_data"
+  "Scan http://10.0.0.1 for web vulns with nikto|nikto -h http://10.0.0.1"
+  "Test SQLi on http://10.0.0.1/page?id=1|sqlmap -u 'http://10.0.0.1/page?id=1' --dbs"
+  "Enumerate directories on http://10.0.0.1|feroxbuster -u http://10.0.0.1"
+  "Enable monitor mode on wlan0|airmon-ng start wlan0"
+  "Capture handshake on channel 6 from AA:BB:CC:DD:EE:FF|airodump-ng -c 6 --bssid AA:BB:CC:DD:EE:FF -w capture wlan0mon"
+  "Send 5 deauth packets to AA:BB:CC:DD:EE:FF|aireplay-ng -0 5 -a AA:BB:CC:DD:EE:FF wlan0mon"
+  "Crack WPA handshake in capture.cap|aircrack-ng -w wordlist.txt capture.cap"
+  "Mass scan all ports on 10.0.0.0/24 at 10k rate|masscan -p1-65535 10.0.0.0/24 --rate 10000"
+  "List SMB shares on //10.0.0.1 anonymously|smbclient -L //10.0.0.1 -N"
+  "Start reverse shell listener on port 4444|nc -lvnp 4444"
+  "Run system security audit with lynis|lynis audit system"
+)
+
+# Normalize flags: -la == -al == -a -l
+norm() {
+  local parts flags=() args=() out p
+  read -ra parts <<< "$1"; out="${parts[0]}"
+  for p in "${parts[@]:1}"; do
+    if [[ "$p" == -* ]]; then
+      [[ "$p" =~ ^-[a-zA-Z]+$ && ${#p} -gt 2 ]] && { for ((j=1;j<${#p};j++)); do flags+=("-${p:j:1}"); done; } || flags+=("$p")
+    else args+=("$p"); fi
+  done
+  readarray -t flags < <(printf '%s\n' "${flags[@]}" | sort)
+  printf '%s' "$out"; printf ' %s' "${flags[@]}" "${args[@]}"; echo
+}
+
+check() {
+  local inp=$(echo "$1"|xargs) a b; IFS='|' read -ra opts <<< "$2"
+  for a in "${opts[@]}"; do b=$(echo "$a"|xargs); [[ "$inp" == "$b" || "$(norm "$inp")" == "$(norm "$b")" ]] && return 0; done; return 1
+}
+
+LVL=0 HINT=false PROG=0 TOT=0
+load() { [[ -f "$DATA/session.json" ]] && LVL=$(sed -n 's/.*"level":\([0-9]*\).*/\1/p' "$DATA/session.json"); LVL=${LVL:-0}; }
+save() { printf '{"level":%d}\n' "$LVL" > "$DATA/session.json"; }
+# Score tracking: tier 0=copy, 1=blank, 2=recall
+score_set() { local p="$1" t="$2"; grep -v "^${p}|" "$DATA/scores" > "$DATA/scores.tmp" 2>/dev/null ||:; echo "${p}|${t}" >> "$DATA/scores.tmp"; mv "$DATA/scores.tmp" "$DATA/scores"; }
+score_get() { grep "^${1}|" "$DATA/scores" 2>/dev/null | cut -d'|' -f2 || echo "0"; }
+
+stats() {
+  echo -e "${B}Mastery Stats${N}\n"
+  for lv in {0..9}; do
+    local -n qs="Q$lv"; local t0=0 t1=0 t2=0
+    for q in "${qs[@]}"; do
+      case $(score_get "${q%%|*}") in 0) ((++t0));; 1) ((++t1));; *) ((++t2));; esac
+    done
+    echo -e "Level $lv: ${R}$(printf '%2d' $t0)${N} copy  ${Y}$(printf '%2d' $t1)${N} blank  ${G}$(printf '%2d' $t2)${N} recall"
+  done
+}
+
+# Tier display: 0=copy, 1=blank, 2=recall
+show_tier() {
+  local tier=$1 ans=$2
+  case $tier in
+    0) echo -e "${C}Type:${N} ${ans}";;
+    1) local half=$((${#ans}/2)); echo -e "${C}Complete:${N} ${ans:0:half}${D}...${N}";;
+  esac
+}
+
+demo() {
+  local sb="/tmp/cmd$$"; mkdir -p "$sb"/{logs,src,output,.git}; cd "$sb"
+  # Basic files
+  printf 'host=localhost\nport=8080' > config.ini; printf '%s\n' {1..12} > data.txt
+  printf 'ERROR: connection failed\nINFO: started\nWARN: slow query\nERROR: timeout' > log.txt
+  printf 'a,1\nb,2\nc,3' > data.csv; printf 'x\ny\nx\ny\nz' > dupes.txt
+  touch app.{py,js,sh} file.{txt,log,old,new} server.log
+  printf 'import os\nprint("hello")' > app.py; chmod +x app.sh
+  # Security/forensics files
+  printf 'admin:5f4dcc3b5aa765d61d8327deb882cf99\nroot:098f6bcd4621d373cade4e832627b4f6' > hash.txt
+  printf 'password\n123456\nadmin\nletmein' > wordlist.txt
+  printf 'MZ\x90\x00\x03' > binary.exe; printf '\x7fELF' > binary.elf
+  printf '\x89PNG\r\n\x1a\n' > photo.jpg; printf 'PK\x03\x04' > archive.zip
+  printf '\x00\x00\x00\x00' > firmware.bin; printf '\x00' > disk.img
+  printf 'SGVsbG8gV29ybGQK' > encoded.txt; printf '48656c6c6f' > hex.txt
+  echo -e "\n${D}─ output ─${N}"
+  case "$1" in
+    nmap*) echo -e "PORT   STATE SERVICE\n22/tcp open  ssh\n80/tcp open  http\n443/tcp open  https";;
+    hydra*) echo -e "[22][ssh] host: 10.0.0.1   login: admin   password: letmein\n1 valid password found";;
+    hashcat*) echo -e "5f4dcc3b5aa765d61d8327deb882cf99:password\n\nSession..........: hashcat\nStatus...........: Cracked";;
+    john*) echo -e "password         (admin)\ntest             (root)\n2 password hashes cracked";;
+    aircrack*|airmon*|airodump*|aireplay*) echo -e "CH  6 ][ Elapsed: 12 s\n BSSID              PWR  Beacons\n AA:BB:CC:DD:EE:FF  -45       24";;
+    sqlmap*) echo -e "[*] testing connection\n[+] parameter 'id' is vulnerable\navailable databases:\n[*] information_schema\n[*] webapp";;
+    masscan*) echo -e "Discovered open port 22/tcp on 10.0.0.5\nDiscovered open port 80/tcp on 10.0.0.12";;
+    nc\ *) echo -e "listening on [any] 4444 ...\nconnect to [10.0.0.1] from target [10.0.0.5] 52431";;
+    tshark*) echo -e "1 0.000000 10.0.0.1 → 10.0.0.5 TCP 74 52431 → 80 [SYN]\n2 0.000123 10.0.0.5 → 10.0.0.1 TCP 74 80 → 52431 [SYN, ACK]";;
+    nikto*) echo -e "+ Server: Apache/2.4.41\n+ /admin/: Directory indexing found\n+ /phpinfo.php: PHP info file found";;
+    feroxbuster*) echo -e "200      GET      /index.html\n200      GET      /admin/\n403      GET      /config/";;
+    smbclient*) echo -e "Sharename   Type   Comment\n---------   ----   -------\nprint\$      Disk   Printer Drivers\nIPC\$        IPC    IPC Service";;
+    lynis*) echo -e "[ Lynis 3.0.0 ]\n[+] System fully patched\n[!] SSH root login enabled\nHardening index: 67/100";;
+    volatility3*) echo -e "PID    PPID   ImageFileName\n4      0      System\n308    4      smss.exe\n420    308    csrss.exe";;
+    dd*|mkfs*|mount*) echo -e "1024+0 records in\n1024+0 records out\n1048576 bytes copied";;
+    rm*|mv*) echo "${D}[destructive - not run]${N}";;
+    *) timeout 2s bash -c "$1" 2>&1 | head -10 || true;;
+  esac
+  echo -e "${D}──────────${N}"; cd /; rm -rf "$sb"; sleep 1
+}
+
+input="" cursor=0 mode="insert" SHOW_HINT=0 UNDO=""
+hdr() { clear; echo -e "${B}=== Level $1 ===  ${D}[$2/$3]${N}  ${D}TAB=hint  Ctrl+N=skip${N}\n"; }
+bar() { echo -ne "["; printf '█%.0s' $(seq 1 $PROG 2>/dev/null); printf '░%.0s' $(seq 1 $((TOT-PROG)) 2>/dev/null); echo -ne "]"; }
+draw() {
+  echo -ne "\r\e[K"
+  if ((SHOW_HINT)); then
+    echo -ne "${D}$PROMPT_CHAR${ans}${N}"
+  else
+    ((VI_MODE)) && [[ "$mode" != "insert" ]] && echo -ne "\e[91m$PROMPT_CHAR\e[0m" || echo -ne "\e[97m$PROMPT_CHAR\e[0m"
+    echo -n "$input"
+    ((cursor<${#input})) && echo -ne "\e[$((${#input}-cursor))D"
+  fi
+}
+
+# Vi helpers
+_wfwd() { while ((cursor<${#input})) && [[ "${input:cursor:1}" != " " ]]; do ((++cursor)); done; while ((cursor<${#input})) && [[ "${input:cursor:1}" == " " ]]; do ((++cursor)); done; ((cursor>=${#input}&&${#input}>0)) && cursor=$((${#input}-1)); }
+_wbck() { ((cursor>0)) && ((cursor--)); while ((cursor>0)) && [[ "${input:cursor:1}" == " " ]]; do ((cursor--)); done; while ((cursor>0)) && [[ "${input:cursor-1:1}" != " " ]]; do ((cursor--)); done; }
+_wend() { ((cursor<${#input}-1)) && ((++cursor)); while ((cursor<${#input}-1)) && [[ "${input:cursor:1}" == " " ]]; do ((++cursor)); done; while ((cursor<${#input}-1)) && [[ "${input:cursor+1:1}" != " " ]]; do ((++cursor)); done; }
+_clamp() { ((cursor>=${#input}&&cursor>0)) && cursor=$((${#input}-1)); }
+_del() { # $1=motion
+  local e=$cursor
+  case "$1" in
+    d|c) input="" cursor=0;;
+    w) while ((e<${#input})) && [[ "${input:e:1}" != " " ]]; do ((++e)); done; input="${input:0:cursor}${input:e}";;
+    b) ((e>0)) && ((e--)); while ((e>0)) && [[ "${input:e:1}" == " " ]]; do ((e--)); done; while ((e>0)) && [[ "${input:e-1:1}" != " " ]]; do ((e--)); done; input="${input:0:e}${input:cursor}"; cursor=$e;;
+    \$) input="${input:0:cursor}";;
+    0) input="${input:cursor}"; cursor=0;;
+  esac; _clamp
+}
+
+run() {
+  local lv=$1 shuf=() qi=0 done=0; local -n qs="Q$lv"
+  TOT=${#qs[@]}; PROG=0
+  # Prioritize by tier: 0 (copy) > 1 (blank) > 2 (recall)
+  local t0=() t1=() t2=()
+  for q in "${qs[@]}"; do
+    local t; t=$(score_get "${q%%|*}")
+    case "$t" in 0) t0+=("$q");; 1) t1+=("$q");; *) t2+=("$q");; esac
+  done
+  readarray -t shuf < <({ ((${#t0[@]})) && printf '%s\n' "${t0[@]}" | shuf; ((${#t1[@]})) && printf '%s\n' "${t1[@]}" | shuf; ((${#t2[@]})) && printf '%s\n' "${t2[@]}" | shuf; })
+  hdr "$lv" "$((qi+1))" "$TOT"
+  while ((qi < ${#shuf[@]})); do
+    local prompt="${shuf[$qi]%%|*}" answers="${shuf[$qi]#*|}" ans="${shuf[$qi]#*|}"; ans="${ans%%|*}"
+    local tier; tier=$(score_get "$prompt")
+    HINT=false SHOW_HINT=0
+    bar; echo -e "\n${D}$prompt${N}"; show_tier "$tier" "$ans"; echo
+    while true; do
+      input="" cursor=0 mode="insert" SHOW_HINT=0
+      read -t 0.01 -rsn 1000 ||:
+      draw
+      while IFS= read -rsn1 c; do
+        if [[ "$c" == $'\t' ]]; then
+          # Toggle hint + explanation
+          if ((SHOW_HINT)); then
+            SHOW_HINT=0; echo -ne "\e[A\e[2K\e[A\e[2K\r"
+          else
+            SHOW_HINT=1; HINT=true; draw; echo; explain "$ans"; continue
+          fi
+          draw; continue
+        fi
+        if [[ "$mode" == "insert" ]]; then
+          # Clear hint display if typing
+          if ((SHOW_HINT)) && [[ "$c" != $'\x1b' && "$c" != '' ]]; then
+            SHOW_HINT=0; echo -ne "\e[A\e[2K\e[A\e[2K\r"
+          fi
+          case "$c" in
+            $'\x0e') echo -e "\n${D}[skipped]${N}"; ((++qi)); break 2;;  # Ctrl+N skip
+            $'\x1b') ((VI_MODE)) && { mode="normal"; ((cursor>0)) && ((cursor--)); draw; };;
+            $'\x7f'|$'\b') ((cursor>0)) && { input="${input:0:cursor-1}${input:cursor}"; ((cursor--)); draw; };;
+            '') echo; break;;
+            *) input="${input:0:cursor}${c}${input:cursor}"; ((++cursor)); draw;;
+          esac
+        elif ((VI_MODE)); then
+          # Clear hint display if any vi command
+          if ((SHOW_HINT)); then SHOW_HINT=0; echo -ne "\e[A\e[2K\e[A\e[2K\r"; fi
+          # Save for undo before destructive operations
+          case "$c" in s|S|x|X|D|C|d|c|r) UNDO="$input:$cursor";; esac
+          case "$c" in
+            i) mode="insert"; draw;; a) mode="insert"; ((cursor<${#input})) && ((++cursor)); draw;;
+            A) mode="insert"; cursor=${#input}; draw;; I) mode="insert"; cursor=0; draw;;
+            s) ((${#input}>0)) && input="${input:0:cursor}${input:cursor+1}"; mode="insert"; draw;;
+            S) input="" cursor=0 mode="insert"; draw;;
+            h) ((cursor>0)) && ((cursor--)); draw;; l) ((cursor<${#input}-1)) && ((++cursor)); draw;;
+            0) cursor=0; draw;; \$) cursor=$((${#input}>0?${#input}-1:0)); draw;;
+            w) _wfwd; draw;; b) _wbck; draw;; e) _wend; draw;;
+            x) ((${#input}>0&&cursor<${#input})) && { input="${input:0:cursor}${input:cursor+1}"; _clamp; draw; };;
+            X) ((cursor>0)) && { input="${input:0:cursor-1}${input:cursor}"; ((cursor--)); draw; };;
+            D) input="${input:0:cursor}"; ((cursor>0)) && ((cursor--)); draw;;
+            C) input="${input:0:cursor}"; mode="insert"; draw;;
+            r) IFS= read -rsn1 c2; [[ -n "$c2" && "$c2" != $'\x1b' ]] && { input="${input:0:cursor}${c2}${input:cursor+1}"; draw; };;
+            d) IFS= read -rsn1 c2; _del "$c2"; draw;;
+            c) IFS= read -rsn1 c2; _del "$c2"; mode="insert"; draw;;
+            u) [[ -n "$UNDO" ]] && { input="${UNDO%:*}"; cursor="${UNDO#*:}"; UNDO=""; draw; };;  # undo
+            n) echo -e "\n${D}[skipped]${N}"; ((++qi)); break 2;;  # skip in normal mode
+            '') echo; break;;
+          esac
+        fi
+      done
+      if check "$input" "$answers"; then
+        ((++PROG))
+        if $HINT; then echo -e "${Y}+1${N} ${D}(hint)${N}"; score_set "$prompt" "$tier"  # stay same tier
+        else ((++done)); echo -e "${G}+1${N}"; score_set "$prompt" "$((tier<2?tier+1:2))"; fi  # tier++
+        demo "$ans"; ((++qi)); save; break
+      else
+        ((PROG>0)) && ((PROG--)); echo -e "${R}-1${N}\n${D}answer:${N} ${C}${ans}${N}"
+        score_set "$prompt" "$((tier>0?tier-1:0))"; sleep 2  # tier--
+      fi
+      tier=$(score_get "$prompt"); hdr "$lv" "$((qi+1))" "$TOT"; bar; echo -e "\n${D}$prompt${N}"; show_tier "$tier" "$ans"; echo
+    done
+    hdr "$lv" "$((qi+1))" "$TOT"
+  done
+  if ((done>=TOT)); then
+    echo -e "${G}${B}Level $lv Complete!${N}"
+    ((lv<9)) && { echo "Enter for Level $((lv+1))..."; read -r; LVL=$((lv+1)); save; run "$LVL"; } || echo -e "${G}${B}ALL COMPLETE - CLI MASTER${N}"
+  else echo -e "${Y}Need $((TOT-done)) more without hints${N}"; echo "Enter to retry..."; read -r; run "$lv"; fi
+}
+
+case "${1:-}" in
+  [0-9]) LVL=$1; save; run "$LVL";;
+  r|reset) rm -f "$DATA"/*.json "$DATA/vi_mode" "$DATA/scores"; echo "Reset.";;
+  s|stats) stats;;
+  h|help|-h|--help) echo "bashgym [0-9|n|reset|stats|help] - CLI trainer. TAB=hint, Ctrl+N=skip";;
+  n|new) LVL=0; save; run "$LVL";;
+  "") load; ((LVL>0)) && { read -rp "Continue Level $LVL? [Y/n] " yn; [[ "$yn" =~ ^[Nn] ]] && { LVL=0; save; }; }; run "$LVL";;
+  *) echo "bashgym help"; exit 1;;
+esac
