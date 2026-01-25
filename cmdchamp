@@ -344,18 +344,15 @@ explain() {
   EXPLAIN_LINES=$n
 }
 
-# Vi mode: env > saved > ask
-VI_PREF="$DATA/vi_mode"
-if [[ -n "${CMD_VI:-}" ]]; then VI_MODE=$CMD_VI
-elif [[ -f "$VI_PREF" ]]; then VI_MODE=$(<"$VI_PREF")
-else read -rp "Enable vi keybindings? [y/N] " yn; [[ "$yn" =~ ^[Yy] ]] && VI_MODE=1 || VI_MODE=0; echo "$VI_MODE" > "$VI_PREF"; fi
+# Vi mode: always on (override with CMD_VI=0)
+VI_MODE=${CMD_VI:-1}
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # QUESTION GENERATORS - Dynamic questions with infinite variations
 # ═══════════════════════════════════════════════════════════════════════════════
 
 # Level 0: Shell Fundamentals (redirections, pipes, job control, history, variables, expansion)
-gen_q0() {
+gen_level0() {
   local questions=() log log2 cfg cfg2 txt txt2 csv csv2 dir dir2 ext ext2 script archive bin img pcap hash photo wordlist ip subnet port port2 mac url user host term term2 term3 field field2 key old new size iface proc svc sig branch time n1 n2 n3 col; _ctx
 
   # Redirections - essential shell plumbing
@@ -372,8 +369,8 @@ gen_q0() {
   # Pipes and logic - chaining commands
   questions+=("Search for ${term} in ${log}|grep ${term} ${log}|cat ${log} | grep ${term}")
   questions+=("Build and capture all output to build.log|make |& tee build.log")
-  questions+=("Create ${dir} and cd into it (fail if exists)|mkdir ${dir} && cd ${dir}")
-  questions+=("Create ${dir} and cd into it (create parents if needed)|mkdir -p ${dir} && cd ${dir}")
+  questions+=("Create directory '${dir}' and cd into it (fail if exists)|mkdir ${dir} && cd ${dir}")
+  questions+=("Create directory '${dir}' and cd into it (create parents if needed)|mkdir -p ${dir} && cd ${dir}")
   questions+=("True if '${term}' NOT found in ${log}|! grep -q ${term} ${log}")
   questions+=("Run cmd1, then cmd2 only if cmd1 fails|cmd1 || cmd2")
 
@@ -412,11 +409,11 @@ gen_q0() {
   questions+=("Print script name|echo \$0")
 
   # Brace expansion - time saver
-  questions+=("Create a.txt b.txt c.txt with one command|touch {a,b,c}.txt")
-  questions+=("Create file1 through file10|touch file{1..10}")
+  questions+=("Create files 'a.txt', 'b.txt', 'c.txt' with one command|touch {a,b,c}.txt")
+  questions+=("Create files 'file1' through 'file10'|touch file{1..10}")
   questions+=("Backup ${cfg} to ${cfg}.bak using brace expansion|cp ${cfg}{,.bak}")
   questions+=("Diff ${txt%.txt}.old vs ${txt%.txt}.new|diff ${txt%.txt}.{old,new}")
-  questions+=("Create nested dirs: project/{src,lib,bin}|mkdir -p project/{src,lib,bin}")
+  questions+=("Create nested directories 'project/src', 'project/lib', 'project/bin'|mkdir -p project/{src,lib,bin}")
 
   # Process substitution - advanced piping
   questions+=("Diff sorted contents of ${txt} and ${txt2}|diff <(sort ${txt}) <(sort ${txt2})")
@@ -438,7 +435,7 @@ gen_q0() {
 }
 
 # Level 1: Core File Tools (cat, ls, head, tail, cp, wc, du, tree)
-gen_q1() {
+gen_level1() {
   local questions=() log log2 cfg cfg2 txt txt2 csv csv2 dir dir2 ext ext2 script archive bin img pcap hash photo wordlist ip subnet port port2 mac url user host term term2 term3 field field2 key old new size iface proc svc sig branch time n1 n2 n3 col; _ctx
   local perm1=$((RANDOM % 8))$((RANDOM % 8))$((RANDOM % 8))
 
@@ -498,10 +495,10 @@ gen_q1() {
 
   # Symlinks
   questions+=("Create symlink 'link' pointing to ${cfg}|ln -s ${cfg} link")
-  questions+=("Create symlink with absolute path|ln -s \$(pwd)/${cfg} link")
+  questions+=("Create symlink 'link' to ${cfg} using absolute path|ln -s \$(pwd)/${cfg} link")
   questions+=("$(_phrase "Show" "Display" "Print") where symlink points|readlink link|ls -l link")
   questions+=("Remove symlink (not target)|rm link|unlink link")
-  questions+=("Create hard link|ln ${txt} hardlink")
+  questions+=("Create hard link 'hardlink' pointing to ${txt}|ln ${txt} hardlink")
   questions+=("Follow symlink to find real path|readlink -f link")
 
   # Permissions - dynamic octal modes
@@ -518,8 +515,8 @@ gen_q1() {
   printf '%s\n' "${questions[@]}"
 }
 
-# Level 2: Text Search (grep, rg)
-gen_q2() {
+# Level 3: Text Search (grep, rg)
+gen_level3() {
   local questions=() log log2 cfg cfg2 txt txt2 csv csv2 dir dir2 ext ext2 script archive bin img pcap hash photo wordlist ip subnet port port2 mac url user host term term2 term3 field field2 key old new size iface proc svc sig branch time n1 n2 n3 col; _ctx
   local ctx=$(_rnum 1 10) ctx2=$(_rnum 2 5)
 
@@ -574,8 +571,8 @@ gen_q2() {
   printf '%s\n' "${questions[@]}"
 }
 
-# Level 3: File Finding (find, fd)
-gen_q3() {
+# Level 4: File Finding (find, fd)
+gen_level4() {
   local questions=() log log2 cfg cfg2 txt txt2 csv csv2 dir dir2 ext ext2 script archive bin img pcap hash photo wordlist ip subnet port port2 mac url user host term term2 term3 field field2 key old new size iface proc svc sig branch time n1 n2 n3 col; _ctx
 
   # By name
@@ -617,8 +614,8 @@ gen_q3() {
   printf '%s\n' "${questions[@]}"
 }
 
-# Level 4: Sorting, Cutting, Piping (sort, uniq, cut, awk basics, pipes)
-gen_q4() {
+# Level 5: Data Processing (sort, uniq, cut, awk, ps, ss, ip)
+gen_level5() {
   local questions=() log log2 cfg cfg2 txt txt2 csv csv2 dir dir2 ext ext2 script archive bin img pcap hash photo wordlist ip subnet port port2 mac url user host term term2 term3 field field2 key old new size iface proc svc sig branch time n1 n2 n3 col; _ctx
   local proc2=$(_pick PROCS) col2=$(_rnum 1 5) col3=$((col + 1)) chars=$(_rnum 10 80) thresh=$(_rnum 50 500)
 
@@ -722,8 +719,8 @@ gen_q4() {
   printf '%s\n' "${questions[@]}"
 }
 
-# Level 7: Batch Operations (find -exec, fd -x, sed, xargs)
-gen_q7_batch() {
+# Level 9: Batch Operations (find -exec, xargs, sed, systemctl, journalctl)
+gen_level9() {
   local questions=() log log2 cfg cfg2 txt txt2 csv csv2 dir dir2 ext ext2 script archive bin img pcap hash photo wordlist ip subnet port port2 mac url user host term term2 term3 field field2 key old new size iface proc svc sig branch time n1 n2 n3 col; _ctx
   local svc2=$(_pick SERVICES) parallel=$(_rnum 2 8) linenum=$(_rnum 1 20)
 
@@ -808,8 +805,8 @@ gen_q7_batch() {
   printf '%s\n' "${questions[@]}"
 }
 
-# Level 8: Network Scanning (nmap)
-gen_q8_nmap() {
+# Level 12: Network Scanning (nmap)
+gen_level12() {
   local questions=() log log2 cfg cfg2 txt txt2 csv csv2 dir dir2 ext ext2 script archive bin img pcap hash photo wordlist ip subnet port port2 mac url user host term term2 term3 field field2 key old new size iface proc svc sig branch time n1 n2 n3 col; _ctx
   port2=$((port + 1000))
 
@@ -860,8 +857,8 @@ gen_q8_nmap() {
   printf '%s\n' "${questions[@]}"
 }
 
-# Level 9: Hash Cracking & Encoding (hashcat, john, hydra, encoding)
-gen_q9_hash() {
+# Level 14: Hash Cracking & Encoding (hashcat, john, hydra)
+gen_level14() {
   local questions=() log log2 cfg cfg2 txt txt2 csv csv2 dir dir2 ext ext2 script archive bin img pcap hash photo wordlist ip subnet port port2 mac url user host term term2 term3 field field2 key old new size iface proc svc sig branch time n1 n2 n3 col; _ctx
   local hidx=$((RANDOM % ${#HASHCAT_MODES[@]})) hmode=${HASHCAT_MODES[$hidx]} hname=${HASH_NAMES[$hidx]}
 
@@ -918,8 +915,8 @@ gen_q9_hash() {
   printf '%s\n' "${questions[@]}"
 }
 
-# Level 10: Forensics & Binary Analysis
-gen_q10_forensics() {
+# Level 15: Forensics & Binary Analysis
+gen_level15() {
   local questions=() log log2 cfg cfg2 txt txt2 csv csv2 dir dir2 ext ext2 script archive bin img pcap hash photo wordlist ip subnet port port2 mac url user host term term2 term3 field field2 key old new size iface proc svc sig branch time n1 n2 n3 col; _ctx
 
   # String extraction
@@ -972,7 +969,7 @@ gen_q10_forensics() {
 }
 
 # Level 11: Network Tools (tshark, curl, wget, ssh, openssl, jq)
-gen_q11_network() {
+gen_level11() {
   local questions=() log log2 cfg cfg2 txt txt2 csv csv2 dir dir2 ext ext2 script archive bin img pcap hash photo wordlist ip subnet port port2 mac url user host term term2 term3 field field2 key old new size iface proc svc sig branch time n1 n2 n3 col; _ctx
 
   # tshark - packet capture & analysis
@@ -1035,8 +1032,8 @@ gen_q11_network() {
   printf '%s\n' "${questions[@]}"
 }
 
-# Level 12: Local Network & RF Attack (wifi, smb, netcat, masscan)
-gen_q12_localattack() {
+# Level 13: Local Network & RF (wifi, smb, netcat, masscan)
+gen_level13() {
   local questions=() log log2 cfg cfg2 txt txt2 csv csv2 dir dir2 ext ext2 script archive bin img pcap hash photo wordlist ip subnet port port2 mac url user host term term2 term3 field field2 key old new size iface proc svc sig branch time n1 n2 n3 col; _ctx
 
   # WiFi attacks
@@ -1068,8 +1065,8 @@ gen_q12_localattack() {
   printf '%s\n' "${questions[@]}"
 }
 
-# Level 5: String Manipulation & Arrays
-gen_q5_strings() {
+# Level 6: String Manipulation & Arrays
+gen_level6() {
   local questions=() log log2 cfg cfg2 txt txt2 csv csv2 dir dir2 ext ext2 script archive bin img pcap hash photo wordlist ip subnet port port2 mac url user host term term2 term3 field field2 key old new size iface proc svc sig branch time n1 n2 n3 col; _ctx
 
   # Parameter expansion - removal (practical examples)
@@ -1141,8 +1138,8 @@ gen_q5_strings() {
   printf '%s\n' "${questions[@]}"
 }
 
-# Level 6: Control Flow & Functions
-gen_q6_controlflow() {
+# Level 7: Control Flow & Functions
+gen_level7() {
   local questions=() log log2 cfg cfg2 txt txt2 csv csv2 dir dir2 ext ext2 script archive bin img pcap hash photo wordlist ip subnet port port2 mac url user host term term2 term3 field field2 key old new size iface proc svc sig branch time n1 n2 n3 col; _ctx
 
   # if/else
@@ -1214,14 +1211,14 @@ gen_q6_controlflow() {
   printf '%s\n' "${questions[@]}"
 }
 
-# Level 13: Apocalypse Mode - Hardcore one-liners, recovery, survival
-gen_q13() {
+# Level 17: Apocalypse Mode - Hardcore one-liners, recovery, survival
+gen_level17() {
   local questions=() log log2 cfg cfg2 txt txt2 csv csv2 dir dir2 ext ext2 script archive bin img pcap hash photo wordlist ip subnet port port2 mac url user host term term2 term3 field field2 key old new size iface proc svc sig branch time n1 n2 n3 col; _ctx
 
   # === EMERGENCY RECOVERY ===
   questions+=("Remount root filesystem read-write|mount -o remount,rw /")
   questions+=("Emergency single-user mode|init 1|systemctl rescue")
-  questions+=("Chroot into mounted system|chroot /mnt /bin/bash")
+  questions+=("Chroot into system mounted at /mnt|chroot /mnt /bin/bash")
   questions+=("Regenerate initramfs (Arch)|mkinitcpio -P")
   questions+=("Regenerate GRUB config|grub-mkconfig -o /boot/grub/grub.cfg")
   questions+=("Fix broken sudo (as root)|chmod 4755 /usr/bin/sudo; chown root:root /usr/bin/sudo")
@@ -1312,8 +1309,8 @@ gen_q13() {
   printf '%s\n' "${questions[@]}"
 }
 
-# Level 14: Git Operations
-gen_q14_git() {
+# Level 10: Git Operations
+gen_level10() {
   local questions=() log log2 cfg cfg2 txt txt2 csv csv2 dir dir2 ext ext2 script archive bin img pcap hash photo wordlist ip subnet port port2 mac url user host term term2 term3 field field2 key old new size iface proc svc sig branch time n1 n2 n3 col; _ctx
   local remote=$(_pick REMOTE_HOSTS)
 
@@ -1325,7 +1322,7 @@ gen_q14_git() {
   questions+=("Show current branch|git branch --show-current|git rev-parse --abbrev-ref HEAD")
 
   # Staging & committing
-  questions+=("Stage ${txt} for commit|git add ${txt}")
+  questions+=("Stage file '${txt}' for commit|git add ${txt}")
   questions+=("Stage all changed files|git add -u")
   questions+=("Stage all files including untracked|git add -A|git add --all")
   questions+=("Stage interactively (hunks)|git add -p|git add --patch")
@@ -1336,20 +1333,20 @@ gen_q14_git() {
 
   # Branches
   questions+=("List all branches|git branch -a|git branch --all")
-  questions+=("Create new branch|git branch ${branch}")
-  questions+=("Switch to branch|git checkout ${branch}|git switch ${branch}")
-  questions+=("Create and switch to new branch|git checkout -b ${branch}|git switch -c ${branch}")
-  questions+=("Delete local branch|git branch -d ${branch}")
-  questions+=("Force delete local branch|git branch -D ${branch}")
-  questions+=("Delete remote branch|git push origin --delete ${branch}")
+  questions+=("Create new branch '${branch}'|git branch ${branch}")
+  questions+=("Switch to branch '${branch}'|git checkout ${branch}|git switch ${branch}")
+  questions+=("Create and switch to new branch '${branch}'|git checkout -b ${branch}|git switch -c ${branch}")
+  questions+=("Delete local branch '${branch}'|git branch -d ${branch}")
+  questions+=("Force delete local branch '${branch}'|git branch -D ${branch}")
+  questions+=("Delete remote branch '${branch}'|git push origin --delete ${branch}")
   questions+=("Rename current branch|git branch -m newname")
 
   # Remote operations
   questions+=("Add remote origin|git remote add origin https://github.com/user/repo.git")
   questions+=("List remotes|git remote -v")
   questions+=("Fetch from remote|git fetch origin")
-  questions+=("Pull from remote|git pull origin ${branch}")
-  questions+=("Push to remote|git push origin ${branch}")
+  questions+=("Pull branch '${branch}' from remote|git pull origin ${branch}")
+  questions+=("Push branch '${branch}' to remote|git push origin ${branch}")
   questions+=("Push and set upstream|git push -u origin ${branch}|git push --set-upstream origin ${branch}")
   questions+=("Force push (dangerous)|git push --force origin ${branch}|git push -f origin ${branch}")
 
@@ -1366,8 +1363,8 @@ gen_q14_git() {
   questions+=("Show file at specific commit|git show HEAD~${n}:${txt}")
 
   # Undoing
-  questions+=("Unstage file|git reset HEAD ${txt}|git restore --staged ${txt}")
-  questions+=("Discard changes to file|git checkout -- ${txt}|git restore ${txt}")
+  questions+=("Unstage file '${txt}'|git reset HEAD ${txt}|git restore --staged ${txt}")
+  questions+=("Discard changes to file '${txt}'|git checkout -- ${txt}|git restore ${txt}")
   questions+=("Reset to last commit (keep changes)|git reset --soft HEAD~1")
   questions+=("Reset to last commit (discard changes)|git reset --hard HEAD~1")
   questions+=("Revert a commit (new commit)|git revert HEAD")
@@ -1378,7 +1375,7 @@ gen_q14_git() {
   questions+=("Apply specific stash|git stash apply stash@{${n}}")
 
   # Merging & rebasing
-  questions+=("Merge branch into current|git merge ${branch}")
+  questions+=("Merge branch '${branch}' into current|git merge ${branch}")
   questions+=("Rebase current onto main|git rebase main")
   questions+=("Continue rebase after conflict|git rebase --continue")
   questions+=("Abort rebase|git rebase --abort")
@@ -1409,18 +1406,18 @@ gen_q14_git() {
   printf '%s\n' "${questions[@]}"
 }
 
-# Level 15: tmux & Screen
-gen_q15_tmux() {
+# Level 2: tmux & Screen
+gen_level2() {
   local questions=() log log2 cfg cfg2 txt txt2 csv csv2 dir dir2 ext ext2 script archive bin img pcap hash photo wordlist ip subnet port port2 mac url user host term term2 term3 field field2 key old new size iface proc svc sig branch time n1 n2 n3 col; _ctx
 
   # Session management
   questions+=("Start new tmux session|tmux|tmux new")
-  questions+=("Start named session|tmux new -s mysession|tmux new-session -s mysession")
+  questions+=("Start tmux session named 'mysession'|tmux new -s mysession|tmux new-session -s mysession")
   questions+=("List sessions|tmux ls|tmux list-sessions")
   questions+=("Attach to session|tmux attach|tmux a")
-  questions+=("Attach to named session|tmux attach -t mysession|tmux a -t mysession")
+  questions+=("Attach to tmux session 'mysession'|tmux attach -t mysession|tmux a -t mysession")
   questions+=("Detach from session|Ctrl+b d")
-  questions+=("Kill session|tmux kill-session -t mysession")
+  questions+=("Kill tmux session 'mysession'|tmux kill-session -t mysession")
   questions+=("Kill all sessions|tmux kill-server")
   questions+=("Rename session|Ctrl+b \$|tmux rename-session newname")
   questions+=("Switch sessions|Ctrl+b s")
@@ -1480,7 +1477,7 @@ gen_q15_tmux() {
 
   # Screen (alternative)
   questions+=("Start screen session|screen")
-  questions+=("Start named screen|screen -S mysession")
+  questions+=("Start screen session named 'mysession'|screen -S mysession")
   questions+=("List screen sessions|screen -ls")
   questions+=("Attach to screen|screen -r|screen -r mysession")
   questions+=("Detach from screen|Ctrl+a d")
@@ -1489,13 +1486,13 @@ gen_q15_tmux() {
   questions+=("Split horizontally in screen|Ctrl+a S")
   questions+=("Split vertically in screen|Ctrl+a |")
   questions+=("Switch region in screen|Ctrl+a Tab")
-  questions+=("Kill screen session|screen -X -S mysession quit")
+  questions+=("Kill screen session 'mysession'|screen -X -S mysession quit")
 
   printf '%s\n' "${questions[@]}"
 }
 
 # Level 16: Privilege Escalation
-gen_q16_privesc() {
+gen_level16() {
   local questions=() log log2 cfg cfg2 txt txt2 csv csv2 dir dir2 ext ext2 script archive bin img pcap hash photo wordlist ip subnet port port2 mac url user host term term2 term3 field field2 key old new size iface proc svc sig branch time n1 n2 n3 col; _ctx
 
   # SUID/SGID enumeration
@@ -1585,8 +1582,8 @@ gen_q16_privesc() {
   printf '%s\n' "${questions[@]}"
 }
 
-# Level 17: Advanced Regex & Text Processing
-gen_q17_regex() {
+# Level 8: Advanced Regex & Text Processing
+gen_level8() {
   local questions=() log log2 cfg cfg2 txt txt2 csv csv2 dir dir2 ext ext2 script archive bin img pcap hash photo wordlist ip subnet port port2 mac url user host term term2 term3 field field2 key old new size iface proc svc sig branch time n1 n2 n3 col; _ctx
 
   # Regex lookahead/lookbehind (grep -P for PCRE)
@@ -1702,13 +1699,7 @@ generate_level() {
   local level=$1
   CURRENT_QUESTIONS=()
   local raw
-  case $level in
-    0) raw=$(gen_q0);; 1) raw=$(gen_q1);; 2) raw=$(gen_q15_tmux);; 3) raw=$(gen_q2);;
-    4) raw=$(gen_q3);; 5) raw=$(gen_q4);; 6) raw=$(gen_q5_strings);; 7) raw=$(gen_q6_controlflow);;
-    8) raw=$(gen_q17_regex);; 9) raw=$(gen_q7_batch);; 10) raw=$(gen_q14_git);; 11) raw=$(gen_q11_network);;
-    12) raw=$(gen_q8_nmap);; 13) raw=$(gen_q12_localattack);; 14) raw=$(gen_q9_hash);; 15) raw=$(gen_q10_forensics);;
-    16) raw=$(gen_q16_privesc);; 17) raw=$(gen_q13);;
-  esac
+  raw=$(gen_level${level})
   while IFS= read -r line; do
     [[ -n "$line" ]] && CURRENT_QUESTIONS+=("$line")
   done <<< "$raw"
@@ -1780,10 +1771,9 @@ _last_cmd="" _last_arg=""  # For dot repeat
 clear_hint() { for ((i=0;i<=EXPLAIN_LINES;i++)); do printf '\e[A\e[2K'; done; printf '\r'; }
 hdr() {
   printf '\e[2J\e[H'
-  local fire=""; ((streak>=5)) && fire=" ${R}🔥 FIRE${N}"
+  local fire=""; ((streak>=5)) && fire=" ${R}>>>FIRE<<<${N} ${Y}2x${N}"
   echo -e "${B}=== Level $1 ===${N}  ${D}${LEVEL_DESC[$1]}${N}${fire}"
-  local sk=""; ((streak>0)) && sk="  ${Y}${streak}x${N}"
-  echo -e "${D}[$2/$3]  Tab=hint Ctrl+n=skip${N}${sk}\n"
+  echo -e "${D}[$2/$3]  Tab=hint Ctrl+n=skip${N}\n"
 }
 qdisp() { bar; echo -e "\n${D}$1${N}"; show_tier "$2" "$3"; echo; }
 bar() { local f e; printf -v f '%*s' "$PROG" ''; printf -v e '%*s' "$((TOT-PROG))" ''; printf '[%s%s]' "${f// /█}" "${e// /░}"; }
@@ -1800,8 +1790,8 @@ draw() {
   fi
 }
 
-# Display width for UTF-8 strings (for cursor positioning)
-_dispwidth() { printf '%s' "$1" | wc -m; }
+# Display width (character count, not bytes)
+_dispwidth() { echo ${#1}; }
 
 # Vi helpers (byte-indexed; UTF-8 multi-byte chars may cause cursor drift)
 _wfwd() { while ((cursor<${#input})) && [[ "${input:cursor:1}" != " " ]]; do ((++cursor)); done; while ((cursor<${#input})) && [[ "${input:cursor:1}" == " " ]]; do ((++cursor)); done; ((cursor>=${#input}&&${#input}>0)) && cursor=$((${#input}-1)); }
@@ -1821,6 +1811,7 @@ _del() { # $1=motion
 
 run() {
   local lv=$1 shuf=() qi=${QI:-0} done=0 streak=0
+  local -a HIST=() ; local HIST_IDX=0 HIST_SAVE=""
   # Save terminal state for clean restoration
   _stty_saved=$(stty -g 2>/dev/null) || _stty_saved=""
   generate_level "$lv"  # Generate fresh questions for this level
@@ -1866,7 +1857,7 @@ run() {
     HINT=false SHOW_HINT=0 EXPLAIN_LINES=0
     qdisp "$prompt" "$tier" "$ans"
     while true; do
-      input="" cursor=0 mode="insert" SHOW_HINT=0; UNDO_STACK=()
+      input="" cursor=0 mode="insert" SHOW_HINT=0; UNDO_STACK=(); HIST_IDX=${#HIST[@]}; HIST_SAVE=""
       read -t 0.01 -rsn 1000 ||:
       draw
       while IFS= read -rsn1 c; do
@@ -1887,7 +1878,27 @@ run() {
           case "$c" in
             $'\x0e') echo -e "\n${D}[skipped]${N}"; ((++qi)); break 2;;  # Ctrl+N skip
             $'\x04') echo -e "\n${D}[quit]${N}"; exit 0;;  # Ctrl+D quit
-            $'\x1b') ((VI_MODE)) && { mode="normal"; ((cursor>0)) && ((cursor--)); draw; };;
+            $'\x1b')  # ESC or arrow key
+              local _e1 _e2; read -rsn1 -t 0.01 _e1 || _e1=""
+              if [[ "$_e1" == "[" ]]; then
+                read -rsn1 -t 0.01 _e2 || _e2=""
+                case "$_e2" in
+                  A)  # Up arrow - history back
+                    if ((${#HIST[@]} > 0 && HIST_IDX > 0)); then
+                      ((HIST_IDX == ${#HIST[@]})) && HIST_SAVE="$input"
+                      ((HIST_IDX--)); input="${HIST[$HIST_IDX]}"; cursor=${#input}; draw
+                    fi;;
+                  B)  # Down arrow - history forward
+                    if ((HIST_IDX < ${#HIST[@]})); then
+                      ((++HIST_IDX))
+                      if ((HIST_IDX == ${#HIST[@]})); then input="$HIST_SAVE"; else input="${HIST[$HIST_IDX]}"; fi
+                      cursor=${#input}; draw
+                    fi;;
+                  *) ;;  # Ignore other sequences
+                esac
+              elif [[ -z "$_e1" ]] && ((VI_MODE)); then
+                mode="normal"; ((cursor>0)) && ((cursor--)); draw
+              fi;;
             $'\x7f'|$'\b') ((cursor>0)) && { input="${input:0:cursor-1}${input:cursor}"; ((cursor--)); draw; };;
             '') echo; break;;
             *) input="${input:0:cursor}${c}${input:cursor}"; ((++cursor)); draw;;
@@ -1907,6 +1918,8 @@ run() {
             S) input="" cursor=0 mode="insert"; draw;;
             h) for ((_i=0;_i<_n&&cursor>0;_i++)); do ((cursor--)); done; draw;;
             l) for ((_i=0;_i<_n&&cursor<${#input}-1;_i++)); do ((++cursor)); done; draw;;
+            k) ((${#HIST[@]}>0&&HIST_IDX>0)) && { ((HIST_IDX==${#HIST[@]})) && HIST_SAVE="$input"; ((HIST_IDX--)); input="${HIST[$HIST_IDX]}"; cursor=${#input}; _clamp; draw; };;
+            j) ((HIST_IDX<${#HIST[@]})) && { ((++HIST_IDX)); ((HIST_IDX==${#HIST[@]})) && input="$HIST_SAVE" || input="${HIST[$HIST_IDX]}"; cursor=${#input}; _clamp; draw; };;
             0) cursor=0; draw;; \$) cursor=$((${#input}>0?${#input}-1:0)); draw;;
             w) for ((_i=0;_i<_n;_i++)); do _wfwd; done; draw;;
             b) for ((_i=0;_i<_n;_i++)); do _wbck; done; draw;;
@@ -1927,17 +1940,18 @@ run() {
             G) cursor=$((${#input}>0?${#input}-1:0)); draw;;  # G = end
             n) echo -e "\n${D}[skipped]${N}"; ((++qi)); break 2;;  # skip in normal mode
             q) echo -e "\n${D}[quit]${N}"; exit 0;;  # quit
-            \?) echo -e "\n${D}hjkl${N} move  ${D}wb${N} word  ${D}fFtT${N}+char find  ${D}0\$/gg/G${N} line"; echo -e "${D}x/X${N} del char  ${D}dw/db/dd${N} del  ${D}cw/cb/cc${N} change  ${D}r${N} replace"; echo -e "${D}s/S${N} subst  ${D}i/a/I/A${N} insert  ${D}u${N} undo(stack)  ${D}n${N} skip  ${D}q${N} quit"; echo -e "${D}Tab${N} hint  ${D}Ctrl+n${N} skip  ${D}Ctrl+d${N} quit  ${D}[num]cmd${N} repeat"; read -rsn1; hdr "$lv" "$((qi+1))" "$TOT"; qdisp "$prompt" "$tier" "$ans"; draw;;
+            \?) echo -e "\n${D}hl${N} move  ${D}kj${N}/↑↓ history  ${D}wb${N} word  ${D}fFtT${N}+char find  ${D}0\$/gg/G${N} line"; echo -e "${D}x/X${N} del char  ${D}dw/db/dd${N} del  ${D}cw/cb/cc${N} change  ${D}r${N} replace"; echo -e "${D}s/S${N} subst  ${D}i/a/I/A${N} insert  ${D}u${N} undo(stack)  ${D}n${N} skip  ${D}q${N} quit"; echo -e "${D}Tab${N} hint  ${D}Ctrl+n${N} skip  ${D}Ctrl+d${N} quit  ${D}[num]cmd${N} repeat"; read -rsn1; hdr "$lv" "$((qi+1))" "$TOT"; qdisp "$prompt" "$tier" "$ans"; draw;;
             '') echo; break;;
           esac
         fi
       done
       if check "$input" "$answers"; then
+        [[ -n "$input" ]] && { HIST+=("$input"); HIST_IDX=${#HIST[@]}; HIST_SAVE=""; }
         ((++PROG))
         if $HINT; then
           echo -e "${Y}+1${N} ${D}(hint)${N}"; streak=0; _sset "$prompt" "$tier"  # hint breaks streak
         elif ((streak>=5)); then
-          ((++done)); ((++done)); echo -e "${R}🔥+2${N}"; ((++streak)); _sset "$prompt" "$((tier<2?tier+1:2))"  # fire mode: +2
+          ((++done)); ((++done)); echo -e "${R}>>>+2${N}"; ((++streak)); _sset "$prompt" "$((tier<2?tier+1:2))"  # fire mode: +2
         else
           ((++done)); echo -e "${G}+1${N}"; ((++streak)); _sset "$prompt" "$((tier<2?tier+1:2))"  # tier++
         fi
@@ -1958,7 +1972,8 @@ run() {
 
 case "${1:-}" in
   [0-9]|1[0-7]) _tty; LVL=$1; QI=0; save; run "$LVL";;
-  r|reset) rm -f "$DATA"/*.json "$DATA/vi_mode" "$DATA/scores" "$DATA/scores.lock"; echo "Reset.";;
+  r|reset) rm -f "$DATA"/*.json "$DATA/scores" "$DATA/scores.lock"; echo "Reset.";;
+  c|cleanup) [[ -f "$DATA/scores" ]] && { awk -F'|' '!seen[$1]++' "$DATA/scores" > "$DATA/scores.tmp" && mv "$DATA/scores.tmp" "$DATA/scores"; echo "Deduplicated scores."; } || echo "No scores file.";;
   s|stats) stats;;
   v|version|-v|--version) echo "cmdchamp 0.1";;
   h|help|-h|--help)
@@ -1968,11 +1983,12 @@ case "${1:-}" in
     echo "Usage: cmdchamp [level|command]"
     echo
     echo "Commands:"
-    echo "  0-17     Start specific level"
-    echo "  n|new    Start fresh from level 0"
-    echo "  s|stats  Show mastery statistics"
-    echo "  r|reset  Reset all progress"
-    echo "  h|help   Show this help"
+    echo "  0-17      Start specific level"
+    echo "  n|new     Start fresh from level 0"
+    echo "  s|stats   Show mastery statistics"
+    echo "  r|reset   Reset all progress"
+    echo "  c|cleanup Deduplicate score file"
+    echo "  h|help    Show this help"
     echo
     echo "Controls:"
     echo "  Tab      Toggle hint + explanations"
