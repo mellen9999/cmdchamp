@@ -59,6 +59,7 @@ bashgym help    # Show usage
 |-----|--------|
 | Tab | Toggle hint + explanations |
 | Ctrl+n | Skip question (no penalty) |
+| Ctrl+d | Quit (or `q` in vi normal mode) |
 | Enter | Submit answer |
 
 Vi mode: `hjkl`, `wb`, `e`, `0$`, `fFtT{char}`, `x/X`, `dw/db/dd`, `cw/cb/cc`, `r`, `s/S`, `u`, number prefixes (`3w`, `2db`)

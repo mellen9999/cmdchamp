@@ -4,7 +4,7 @@ set -uo pipefail
 [[ ${BASH_VERSINFO[0]:-0} -lt 4 || (${BASH_VERSINFO[0]} -eq 4 && ${BASH_VERSINFO[1]:-0} -lt 3) ]] && { echo "Requires bash 4.3+"; exit 1; }
 _tty() { [[ -t 0 ]] || { echo "Error: requires interactive terminal" >&2; exit 1; }; }
 
-DATA="${XDG_DATA_HOME:-$HOME/.local/share}/bashgym"; mkdir -p "$DATA"
+DATA="${XDG_DATA_HOME:-$HOME/.local/share}/bashgym"; mkdir -p "$DATA"; touch "$DATA/scores"
 trap 'echo; exit 0' INT
 R=$'\e[31m' G=$'\e[32m' Y=$'\e[33m' C=$'\e[36m' D=$'\e[2m' B=$'\e[1m' N=$'\e[0m'
 PROMPT_CHAR="${CMD_PROMPT:-$([[ $EUID -eq 0 ]] && echo '# ' || echo '$ ')}"
@@ -361,6 +361,7 @@ run() {
           fi
           case "$c" in
             $'\x0e') echo -e "\n${D}[skipped]${N}"; ((++qi)); break 2;;  # Ctrl+N skip
+            $'\x04') echo -e "\n${D}[quit]${N}"; exit 0;;  # Ctrl+D quit
             $'\x1b') ((VI_MODE)) && { mode="normal"; ((cursor>0)) && ((cursor--)); draw; };;
             $'\x7f'|$'\b') ((cursor>0)) && { input="${input:0:cursor-1}${input:cursor}"; ((cursor--)); draw; };;
             '') echo; break;;
@@ -398,6 +399,7 @@ run() {
             c) IFS= read -rsn1 c2; for ((_i=0;_i<_n;_i++)); do _del "$c2"; done; mode="insert"; draw;;
             u) [[ -n "$UNDO" ]] && { input="${UNDO%:*}"; cursor="${UNDO#*:}"; UNDO=""; draw; };;  # undo
             n) echo -e "\n${D}[skipped]${N}"; ((++qi)); break 2;;  # skip in normal mode
+            q) echo -e "\n${D}[quit]${N}"; exit 0;;  # quit
             '') echo; break;;
           esac
         fi
