@@ -1,12 +1,13 @@
 # bashgym
 
-CLI command trainer. Master shell commands through flashcard-style drills and spaced repetition.
+Elite CLI command trainer. Master shell, security tools, and cloud through flashcard-style drills with spaced repetition.
 
-151 questions across 10 levels—from basic shell syntax to security tools like nmap, hashcat, and volatility.
+**1000+ dynamically generated questions across 20 levels**—from shell fundamentals to privilege escalation, Docker, Git, cloud CLIs, and advanced regex mastery.
 
 ## Features
 
 - **Spaced repetition** - Three tiers per question (copy → complete → recall), prioritizes weak spots
+- **Dynamic generation** - Questions use variable pools, every session is different
 - **Mid-level resume** - Quit anytime, continue exactly where you left off
 - **Vi keybindings** - Full vi-style editing with `?` for help
 - **Tab hints** - Show answer + command explanations
@@ -33,8 +34,8 @@ Requires: bash 4.3+, coreutils (shuf, md5sum)
 ```bash
 bashgym         # Resume from last position (level + question)
 bashgym n       # Start fresh from level 0
-bashgym 3       # Start at level 3
-bashgym stats   # Show mastery per level
+bashgym 14      # Start at level 14 (Git)
+bashgym stats   # Show mastery stats
 bashgym reset   # Clear all progress
 ```
 
@@ -42,16 +43,29 @@ bashgym reset   # Clear all progress
 
 | Level | Focus |
 |-------|-------|
-| 0 | Shell fundamentals: `!!`, `!$`, `$$`, brace expansion, process substitution |
-| 1 | Core tools: ls, cat, head, tail, cp |
-| 2 | Text search: grep, rg |
-| 3 | File finding: find, fd |
-| 4 | Sorting, piping, eza |
-| 5 | find -exec, fd -x, sed/sd |
-| 6 | nmap scanning |
-| 7 | hashcat, john, hydra |
-| 8 | Forensics: binwalk, volatility, strings |
-| 9 | Web/WiFi: tshark, sqlmap, aircrack |
+| **Shell Fundamentals** ||
+| 0 | Redirects, pipes, jobs, history, variables, expansion, tests |
+| 1 | Core tools: cat, ls, head, tail, tar, ln, chmod, wc, du |
+| 2 | Text search: grep, ripgrep, regex patterns |
+| 3 | File finding: find, fd, by name/size/time/type |
+| 4 | Data processing: sort, uniq, cut, awk, ps, ss, ip |
+| 5 | String & arrays: parameter expansion, arrays, manipulation |
+| 6 | Control flow: if/else, loops, case, functions, traps |
+| 7 | Batch ops: find -exec, xargs, sed, systemctl, journalctl |
+| **Security Tools** ||
+| 8 | Network scanning: nmap, service detection, scripts |
+| 9 | Hash cracking: hashcat, john, hydra, encoding |
+| 10 | Forensics: strings, binwalk, volatility, disk imaging |
+| 11 | Network tools: tshark, curl, wget, ssh tunnels, openssl |
+| 12 | Web/WiFi attack: nikto, sqlmap, feroxbuster, aircrack, netcat |
+| 13 | Apocalypse mode: one-liners, recovery, hardcore combos |
+| **DevOps & Elite** ||
+| 14 | Git: branches, remotes, rebasing, stashing, bisect |
+| 15 | Docker: images, containers, compose, volumes, networks |
+| 16 | tmux & screen: sessions, windows, panes, copy mode |
+| 17 | Privilege escalation: SUID, GTFOBins, enumeration, escape |
+| 18 | Cloud CLI: AWS, GCloud, kubectl, S3, EC2, pods |
+| 19 | Advanced regex: lookahead, sed mastery, awk kung fu |
 
 ## Controls
 
