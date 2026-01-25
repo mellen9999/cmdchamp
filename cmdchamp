@@ -1673,24 +1673,11 @@ gen_level8() {
 
 # Level descriptions
 declare -A LEVEL_DESC=(
-  [0]="Shell Fundamentals: redirects, pipes, jobs, history, variables, expansion, tests"
-  [1]="Core Tools: cat, ls, head, tail, tar, ln, chmod, wc, du"
-  [2]="tmux & Screen: sessions, windows, panes, copy mode"
-  [3]="Text Search: grep, ripgrep, regex patterns"
-  [4]="File Finding: find, fd, by name/size/time/type"
-  [5]="Data Processing: sort, uniq, cut, awk, ps, ss, ip"
-  [6]="String & Arrays: parameter expansion, arrays, manipulation"
-  [7]="Control Flow: if/else, loops, case, functions, traps"
-  [8]="Advanced Regex: lookahead, sed mastery, awk kung fu"
-  [9]="Batch Ops: find -exec, xargs, sed, systemctl, journalctl"
-  [10]="Git: branches, remotes, rebasing, stashing, bisect"
-  [11]="Network Tools: tshark, curl, wget, ssh tunnels, openssl"
-  [12]="Network Scanning: nmap, service detection, scripts"
-  [13]="Local Network & RF: wifi cracking, smb, netcat, masscan"
-  [14]="Hash Cracking: hashcat, john, hydra, encoding"
-  [15]="Forensics: strings, binwalk, volatility, disk imaging"
-  [16]="Privilege Escalation: SUID, GTFOBins, enumeration, escape"
-  [17]="Apocalypse Mode: one-liners, recovery, hardcore combos"
+  [0]="Shell Fundamentals" [1]="Core Tools" [2]="tmux & Screen" [3]="Text Search"
+  [4]="File Finding" [5]="Data Processing" [6]="String & Arrays" [7]="Control Flow"
+  [8]="Advanced Regex" [9]="Batch Ops" [10]="Git" [11]="Network Tools"
+  [12]="Network Scanning" [13]="Local Network & RF" [14]="Hash Cracking"
+  [15]="Forensics" [16]="Privilege Escalation" [17]="Apocalypse Mode"
 )
 
 # Generate questions for a level (called once per level attempt)
