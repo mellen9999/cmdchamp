@@ -1,10 +1,11 @@
 # bashgym - CLI Command Trainer
 
-Single-file bash script for learning CLI commands through flashcard-style drills.
+Bash script for learning CLI commands through flashcard-style drills.
 
 ## Architecture
 
-- **Single file**: `bashgym` (~450 lines bash 4.0+)
+- **Main**: `bashgym` (~380 lines bash 4.0+)
+- **Explanations**: `explanations.bash` (~140 lines, lazy-loaded on TAB)
 - **Data**: `~/.local/share/bashgym/` (XDG compliant)
   - `session.json` - current level
   - `vi_mode` - saved vi preference (0 or 1)
@@ -59,7 +60,6 @@ Questions prioritized by tier (lowest first) for spaced repetition.
 - `show_tier()` - Display copy/blank hint based on tier
 - `draw()` - Render input line with vi mode colors
 - `hdr()/bar()` - UI header and progress bar
-- `demo()` - Safe sandbox execution of correct answers
 - `run()` - Main game loop with spaced repetition (low tier first)
 - `stats()` - Show mastery counts per level
 
@@ -97,11 +97,10 @@ Questions prioritized by tier (lowest first) for spaced repetition.
 ## Coding Guidelines
 
 - Minimal: audit and refactor ruthlessly - every line must earn its place
-- Keep single-file, no external dependencies except shuf
+- Keep minimal, no external dependencies except shuf
 - Prompts must be unambiguous (include ALL filenames/args)
 - Test with `bash -n bashgym` before committing
 - Both POSIX (grep, find, sed) and modern (rg, fd, sd) answers accepted
-- Dangerous commands skipped in demo (nmap, hydra, dd, rm, etc.)
 
 ## Commands
 
