@@ -57,8 +57,8 @@ bashgym help    # Show usage
 
 | Key | Action |
 |-----|--------|
-| TAB | Toggle hint + explanations |
-| Ctrl+N | Skip question (no penalty) |
+| Tab | Toggle hint + explanations |
+| Ctrl+n | Skip question (no penalty) |
 | Enter | Submit answer |
 
 Vi mode adds full navigation: `h/l/w/b/e/0/$`, delete: `x/X/D/dd/dw`, change: `C/cc/cw`, undo: `u`
