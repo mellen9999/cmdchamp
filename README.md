@@ -61,7 +61,7 @@ bashgym help    # Show usage
 | Ctrl+n | Skip question (no penalty) |
 | Enter | Submit answer |
 
-Vi mode adds full navigation: `h/l/w/b/e/0/$`, delete: `x/X/D/dd/dw`, change: `C/cc/cw`, undo: `u`
+Vi mode: `hjkl`, `wb`, `e`, `0$`, `fFtT{char}`, `x/X`, `dw/db/dd`, `cw/cb/cc`, `r`, `s/S`, `u`, number prefixes (`3w`, `2db`)
 
 ## Data
 
