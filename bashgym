@@ -88,7 +88,7 @@ declare -a Q0=(
   'Store list of .txt files in variable|files=$(ls *.txt)'
   'Print today date inline|echo "Today is $(date +%Y-%m-%d)"'
   # Subshell and grouping
-  'Extract tarball in /tmp without changing dir|(cd /tmp && tar xzf archive.tar.gz)'
+  'Extract archive.tar.gz in /tmp (subshell, keep current dir)|(cd /tmp && tar xzf archive.tar.gz)'
   'Run start/end echo with sleep in current shell|{ echo start; sleep 1; echo end; }'
   # History
   'Repeat last command|!!'
