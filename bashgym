@@ -290,7 +290,7 @@ show_tier() {
   esac
 }
 
-input="" cursor=0 mode="insert" SHOW_HINT=0 UNDO="" EXPLAIN_LINES=0
+input="" cursor=0 mode="insert" SHOW_HINT=0 UNDO="" EXPLAIN_LINES=0 _rep=""
 clear_hint() { for ((i=0;i<=EXPLAIN_LINES;i++)); do printf '\e[A\e[2K'; done; printf '\r'; }
 hdr() { printf '\e[2J\e[H'; echo -e "${B}=== Level $1 ===  ${D}[$2/$3]${N}  ${D}Tab=hint Ctrl+n=skip${N}\n"; }
 qdisp() { bar; echo -e "\n${D}$1${N}"; show_tier "$2" "$3"; echo; }
@@ -369,6 +369,9 @@ run() {
         elif ((VI_MODE)); then
           # Clear hint display if any vi command
           if ((SHOW_HINT)); then SHOW_HINT=0; clear_hint; fi
+          # Number prefix: accumulate digits
+          if [[ "$c" =~ ^[1-9]$ ]] || { [[ "$c" == "0" ]] && [[ -n "$_rep" ]]; }; then _rep+="$c"; continue; fi
+          local _n=${_rep:-1}; _rep=""
           # Save for undo before destructive operations
           case "$c" in s|S|x|X|D|C|d|c|r) UNDO="$input:$cursor";; esac
           case "$c" in
@@ -376,16 +379,23 @@ run() {
             A) mode="insert"; cursor=${#input}; draw;; I) mode="insert"; cursor=0; draw;;
             s) ((${#input}>0)) && input="${input:0:cursor}${input:cursor+1}"; mode="insert"; draw;;
             S) input="" cursor=0 mode="insert"; draw;;
-            h) ((cursor>0)) && ((cursor--)); draw;; l) ((cursor<${#input}-1)) && ((++cursor)); draw;;
+            h) for ((_i=0;_i<_n&&cursor>0;_i++)); do ((cursor--)); done; draw;;
+            l) for ((_i=0;_i<_n&&cursor<${#input}-1;_i++)); do ((++cursor)); done; draw;;
             0) cursor=0; draw;; \$) cursor=$((${#input}>0?${#input}-1:0)); draw;;
-            w) _wfwd; draw;; b) _wbck; draw;; e) _wend; draw;;
-            x) ((${#input}>0&&cursor<${#input})) && { input="${input:0:cursor}${input:cursor+1}"; _clamp; draw; };;
-            X) ((cursor>0)) && { input="${input:0:cursor-1}${input:cursor}"; ((cursor--)); draw; };;
+            w) for ((_i=0;_i<_n;_i++)); do _wfwd; done; draw;;
+            b) for ((_i=0;_i<_n;_i++)); do _wbck; done; draw;;
+            e) for ((_i=0;_i<_n;_i++)); do _wend; done; draw;;
+            f) IFS= read -rsn1 c2; for ((_i=0;_i<_n;_i++)); do for ((p=cursor+1;p<${#input};p++)); do [[ "${input:p:1}" == "$c2" ]] && { cursor=$p; break; }; done; done; draw;;
+            F) IFS= read -rsn1 c2; for ((_i=0;_i<_n;_i++)); do for ((p=cursor-1;p>=0;p--)); do [[ "${input:p:1}" == "$c2" ]] && { cursor=$p; break; }; done; done; draw;;
+            t) IFS= read -rsn1 c2; for ((_i=0;_i<_n;_i++)); do for ((p=cursor+1;p<${#input};p++)); do [[ "${input:p:1}" == "$c2" ]] && { cursor=$((p-1)); break; }; done; done; draw;;
+            T) IFS= read -rsn1 c2; for ((_i=0;_i<_n;_i++)); do for ((p=cursor-1;p>=0;p--)); do [[ "${input:p:1}" == "$c2" ]] && { cursor=$((p+1)); break; }; done; done; draw;;
+            x) for ((_i=0;_i<_n&&${#input}>0&&cursor<${#input};_i++)); do input="${input:0:cursor}${input:cursor+1}"; done; _clamp; draw;;
+            X) for ((_i=0;_i<_n&&cursor>0;_i++)); do input="${input:0:cursor-1}${input:cursor}"; ((cursor--)); done; draw;;
             D) input="${input:0:cursor}"; ((cursor>0)) && ((cursor--)); draw;;
             C) input="${input:0:cursor}"; mode="insert"; draw;;
             r) IFS= read -rsn1 c2; [[ -n "$c2" && "$c2" != $'\x1b' ]] && { input="${input:0:cursor}${c2}${input:cursor+1}"; draw; };;
-            d) IFS= read -rsn1 c2; _del "$c2"; draw;;
-            c) IFS= read -rsn1 c2; _del "$c2"; mode="insert"; draw;;
+            d) IFS= read -rsn1 c2; for ((_i=0;_i<_n;_i++)); do _del "$c2"; done; draw;;
+            c) IFS= read -rsn1 c2; for ((_i=0;_i<_n;_i++)); do _del "$c2"; done; mode="insert"; draw;;
             u) [[ -n "$UNDO" ]] && { input="${UNDO%:*}"; cursor="${UNDO#*:}"; UNDO=""; draw; };;  # undo
             n) echo -e "\n${D}[skipped]${N}"; ((++qi)); break 2;;  # skip in normal mode
             '') echo; break;;
