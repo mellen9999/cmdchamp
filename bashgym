@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # bashgym - CLI command trainer
 set -uo pipefail
+[[ ${BASH_VERSINFO[0]:-0} -lt 4 || (${BASH_VERSINFO[0]} -eq 4 && ${BASH_VERSINFO[1]:-0} -lt 3) ]] && { echo "Requires bash 4.3+"; exit 1; }
 _tty() { [[ -t 0 ]] || { echo "Error: requires interactive terminal" >&2; exit 1; }; }
 
 DATA="${XDG_DATA_HOME:-$HOME/.local/share}/bashgym"; mkdir -p "$DATA"
@@ -8,15 +9,47 @@ trap 'echo; exit 0' INT
 R=$'\e[31m' G=$'\e[32m' Y=$'\e[33m' C=$'\e[36m' D=$'\e[2m' B=$'\e[1m' N=$'\e[0m'
 PROMPT_CHAR="${CMD_PROMPT:-$([[ $EUID -eq 0 ]] && echo '# ' || echo '$ ')}"
 
-# Lazy-load explanations from external file
-SCRIPT_DIR="$(dirname "$(readlink -f "$0")")"
-declare -A EXP=()
-_load_exp() {
-  [[ ${#EXP[@]} -gt 0 ]] && return
-  local f="$SCRIPT_DIR/explanations.bash"; [[ -f "$f" ]] && source "$f"
-}
+# Command explanations (shown on TAB)
+declare -A EXP=(
+  [echo]="print text to stdout" [cat]="concatenate and display file contents" [ls]="list directory contents"
+  [cd]="change directory" [cp]="copy files" [mv]="move/rename files" [rm]="remove files (no undo)"
+  [mkdir]="create directory" [touch]="create file/update timestamp" [head]="first N lines" [tail]="last N lines"
+  [grep]="search text (regex)" [find]="find files by name/size/date" [wc]="count lines/words/bytes"
+  [sort]="sort lines" [uniq]="filter duplicates" [cut]="extract columns" [tr]="translate chars"
+  [diff]="compare files" [tar]="archive tool" [tee]="copy stdin to file AND stdout" [xargs]="build commands from stdin"
+  [chmod]="change permissions" [kill]="signal process" [jobs]="list background jobs" [fg]="foreground job"
+  [bg]="background job" [sleep]="pause N seconds" [make]="build tool" [gcc]="C compiler"
+  [date]="show/set date" [du]="disk usage" [ps]="list processes" [mount]="attach filesystem"
+  [dd]="low-level copy" [strings]="extract text from binary" [base64]="encode/decode base64"
+  [rg]="ripgrep: fast grep" [fd]="fast find" [eza]="modern ls" [bat]="cat with highlighting"
+  [sd]="simple sed" [dust]="visual du" [tree]="directory tree" [sed]="stream editor" [xxd]="hex dump"
+  [md5sum]="MD5 hash (weak)" [sha256sum]="SHA256 hash" [nmap]="port scanner" [hydra]="password cracker"
+  [hashcat]="GPU hash cracker" [john]="John the Ripper" [tshark]="terminal wireshark" [nikto]="web scanner"
+  [sqlmap]="SQL injection" [masscan]="fast port scanner" [airmon-ng]="WiFi monitor mode"
+  [airodump-ng]="capture 802.11" [aireplay-ng]="inject packets" [aircrack-ng]="crack WPA/WEP"
+  [nc]="netcat" [smbclient]="SMB client" [lynis]="security audit" [binwalk]="firmware analysis"
+  [foremost]="file recovery" [fls]="list disk image" [exiftool]="file metadata" [readelf]="ELF info"
+  [r2]="radare2 RE framework" [volatility3]="memory forensics" [mactime]="filesystem timeline"
+  [feroxbuster]="dir enumeration" [proxychains]="proxy traffic" [procs]="modern ps"
+  ['$$']="current shell PID" ['$?']="last exit code" ['$!']="last background PID"
+  ['$#']="argument count" ['$@']="all arguments" ['$0']="script name"
+  ['!!']="repeat last command" ['!$']="last arg of prev cmd" ['!^']="first arg of prev cmd" ['!*']="all args of prev cmd"
+  ['>']="redirect to file" ['>>']="append to file" ['2>']="redirect stderr" ['&>']="redirect all"
+  ['2>&1']="stderr to stdout" ['<']="read from file" ['<<<']="here-string" ['|']="pipe"
+  ['|&']="pipe stdout+stderr" ['&&']="run if success" ['||']="run if fail" ['&']="run in background"
+  ['-r']="recursive" ['-i']="case insensitive" ['-v']="invert/verbose" ['-l']="long/list files"
+  ['-n']="line numbers" ['-c']="count" ['-q']="quiet" ['-f']="follow/force" ['-p']="create parents"
+  ['-e']="extension" ['-t']="type" ['-x']="execute" ['-h']="human readable" ['-s']="size/silent"
+  ['-a']="all/hidden" ['-u']="unique" ['-k']="key/column" ['-d']="delimiter" ['-o']="output" ['-w']="write"
+  ['-A']="aggressive scan" ['-O']="OS detection" ['-sV']="version detection" ['-sC']="default scripts"
+  ['-sU']="UDP scan" ['-sn']="ping scan" ['-sT']="TCP connect" ['-Pn']="skip ping" ['-F']="fast mode"
+  ['-p-']="all ports" ['-m']="hash type" ['--show']="show cracked" ['--wordlist']="dictionary file"
+  ['-E']="entropy/extended regex" ['-Y']="display filter" ['-T']="tree/fields"
+  ['{}']="filename placeholder" ['\;']="end -exec" ['-exec']="run on each" ['-delete']="delete matches"
+  ['-name']="match filename" ['-size']="match size" ['-type']="match type" ['-mmin']="match time" ['-path']="match path" ['-not']="negate"
+)
 explain() {
-  _load_exp; local tok n=0
+  local tok n=0
   for tok in $1; do [[ -n "${EXP[$tok]:-}" ]] && { echo -e "${D}  ${C}${tok}${D} → ${EXP[$tok]}${N}"; ((++n)); }; done
   EXPLAIN_LINES=$n
 }
@@ -230,9 +263,10 @@ check() {
 LVL=0 HINT=false PROG=0 TOT=0
 load() { [[ -f "$DATA/session.json" ]] && LVL=$(sed -n 's/.*"level":\([0-9]*\).*/\1/p' "$DATA/session.json"); LVL=${LVL:-0}; }
 save() { printf '{"level":%d}\n' "$LVL" > "$DATA/session.json"; }
-# Score tracking: tier 0=copy, 1=blank, 2=recall
-score_set() { local p="$1" t="$2"; grep -v "^${p}|" "$DATA/scores" > "$DATA/scores.tmp" 2>/dev/null ||:; echo "${p}|${t}" >> "$DATA/scores.tmp"; mv "$DATA/scores.tmp" "$DATA/scores"; }
-score_get() { local t; t=$(grep "^${1}|" "$DATA/scores" 2>/dev/null | cut -d'|' -f2); echo "${t:-0}"; }
+# Score tracking: tier 0=copy, 1=blank, 2=recall (md5 hash keys avoid regex issues)
+_hash() { printf '%s' "$1" | md5sum | cut -c1-16; }
+score_set() { local k; k=$(_hash "$1"); grep -v "^$k|" "$DATA/scores" 2>/dev/null > "$DATA/scores.tmp" ||:; echo "$k|$2" >> "$DATA/scores.tmp"; mv "$DATA/scores.tmp" "$DATA/scores"; }
+score_get() { local k t; k=$(_hash "$1"); t=$(grep "^$k|" "$DATA/scores" 2>/dev/null | cut -d'|' -f2); echo "${t:-0}"; }
 
 stats() {
   echo -e "${B}Mastery Stats${N}\n"
@@ -380,5 +414,5 @@ case "${1:-}" in
   h|help|-h|--help) echo "bashgym [0-9|n|reset|stats|help|version] - CLI trainer. TAB=hint, Ctrl+N=skip";;
   n|new) _tty; LVL=0; save; run "$LVL";;
   "") _tty; load; ((LVL>0)) && { read -rp "Continue Level $LVL? [Y/n] " yn; [[ "$yn" =~ ^[Nn] ]] && { LVL=0; save; }; }; run "$LVL";;
-  *) echo "bashgym help"; exit 1;;
+  *) echo "Usage: bashgym [0-9|reset|stats|help|version]"; exit 1;;
 esac
