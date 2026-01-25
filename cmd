@@ -386,7 +386,14 @@ run() {
 case "${1:-}" in
   [0-9]) LVL=$1 QN=0; save; run "$LVL";;
   r|reset) rm -f "$DATA"/*.json "$DATA/vi_mode"; echo "Reset.";;
-  h|help|-h|--help) echo "cmd [0-9|reset|help] - CLI trainer. TAB=hint, vi mode optional";;
-  "") load; run "$LVL";;
+  h|help|-h|--help) echo "cmd [0-9|n|reset|help] - CLI trainer. TAB=hint";;
+  n|new) LVL=0 QN=0; save; run "$LVL";;
+  "")
+    load
+    if [[ -f "$DATA/session.json" ]] && ((LVL > 0 || QN > 0)); then
+      echo -n "Continue Level $LVL? [Y/n] "; read -r yn
+      [[ "$yn" =~ ^[Nn] ]] && { LVL=0 QN=0; save; }
+    fi
+    run "$LVL";;
   *) echo "cmd help"; exit 1;;
 esac
