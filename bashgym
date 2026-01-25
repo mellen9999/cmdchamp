@@ -8,47 +8,168 @@ trap 'echo; exit 0' INT
 R=$'\e[31m' G=$'\e[32m' Y=$'\e[33m' C=$'\e[36m' D=$'\e[2m' B=$'\e[1m' N=$'\e[0m'
 PROMPT_CHAR="${CMD_PROMPT:-$([[ $EUID -eq 0 ]] && echo '# ' || echo '$ ')}"
 
-# Command explanations lookup
+# Command explanations lookup - educational descriptions
 declare -A EXP=(
   # Commands
-  [echo]="print" [cat]="show file" [ls]="list" [cd]="change dir" [cp]="copy" [mv]="move" [rm]="remove"
-  [mkdir]="make dir" [touch]="create/update" [head]="first lines" [tail]="last lines" [grep]="search"
-  [find]="find files" [wc]="count" [sort]="sort" [uniq]="unique" [cut]="extract cols" [tr]="translate"
-  [diff]="compare" [tar]="archive" [tee]="split output" [xargs]="args from stdin" [chmod]="permissions"
-  [kill]="terminate" [jobs]="list jobs" [fg]="foreground" [bg]="background" [sleep]="wait"
-  [make]="build" [gcc]="compile" [date]="date/time" [du]="disk usage" [ps]="processes"
-  [mount]="mount fs" [dd]="disk dump" [strings]="extract text" [base64]="base64 codec"
-  [rg]="ripgrep" [fd]="find alt" [eza]="ls alt" [bat]="cat alt" [sd]="sed alt" [dust]="du alt"
-  [tree]="show tree" [sed]="stream edit" [xxd]="hex dump" [md5sum]="md5 hash" [sha256sum]="sha256"
-  [nmap]="port scan" [hydra]="brute force" [hashcat]="crack hash" [john]="crack hash"
-  [tshark]="packet capture" [nikto]="web scanner" [sqlmap]="sql injection" [masscan]="fast scanner"
-  [airmon-ng]="monitor mode" [airodump-ng]="capture packets" [aireplay-ng]="inject packets"
-  [aircrack-ng]="crack WPA" [nc]="netcat" [smbclient]="smb client" [lynis]="audit"
-  [binwalk]="firmware analysis" [foremost]="file recovery" [fls]="list fs" [exiftool]="metadata"
-  [readelf]="elf info" [r2]="radare2" [volatility3]="memory forensics" [mactime]="timeline"
-  [feroxbuster]="dir enum" [proxychains]="proxy wrapper" [procs]="ps alt"
-  # Flags/operators
-  ['$$']="shell PID" ['$?']="exit status" ['$!']="bg PID" ['$#']="arg count" ['$@']="all args" ['$0']="script name"
-  ['!!']="last cmd" ['!$']="last arg" ['!^']="first arg" ['!*']="all prev args"
-  ['>']="write to" ['>>']="append to" ['2>']="stderr to" ['&>']="all to" ['2>&1']="stderr→stdout"
-  ['<']="read from" ['<<<']="here string" ['|']="pipe" ['|&']="pipe all" ['&&']="and then" ['||']="or else"
-  ['&']="background" ['-r']="recursive" ['-i']="case insens" ['-v']="invert" ['-l']="long/files"
-  ['-n']="line nums/count" ['-c']="count" ['-q']="quiet" ['-f']="follow/force" ['-p']="parents"
-  ['-e']="extension" ['-t']="type" ['-x']="execute" ['-h']="human" ['-s']="size/silent"
-  ['-a']="all" ['-u']="unique" ['-k']="key/col" ['-d']="delim/dir" ['-o']="output" ['-w']="write"
-  ['-A']="aggressive" ['-O']="OS detect" ['-sV']="version scan" ['-sC']="scripts" ['-sU']="UDP"
-  ['-sn']="ping only" ['-sT']="TCP connect" ['-Pn']="skip ping" ['-F']="fast" ['-p-']="all ports"
-  ['-m']="hash mode" ['-a']="attack mode" ['--show']="show cracked" ['--wordlist']="wordlist"
-  ['-E']="entropy/regex" ['-Y']="display filter" ['-T']="tree/fields"
-  ['{}']="placeholder" ['\;']="exec end" ['-exec']="run cmd" ['-delete']="delete" ['-name']="by name"
-  ['-size']="by size" ['-type']="by type" ['-mmin']="mod mins" ['-path']="by path" ['-not']="negate"
+  [echo]="print text to stdout (standard output)"
+  [cat]="concatenate and display file contents"
+  [ls]="list directory contents"
+  [cd]="change current working directory"
+  [cp]="copy files or directories"
+  [mv]="move or rename files"
+  [rm]="remove files (dangerous, no undo)"
+  [mkdir]="create new directory"
+  [touch]="create empty file or update timestamp"
+  [head]="show first N lines of file"
+  [tail]="show last N lines of file"
+  [grep]="search text using patterns (regex)"
+  [find]="search for files by name/size/date/type"
+  [wc]="count lines, words, or bytes"
+  [sort]="sort lines alphabetically or numerically"
+  [uniq]="filter out adjacent duplicate lines"
+  [cut]="extract columns from text"
+  [tr]="translate or delete characters"
+  [diff]="compare two files line by line"
+  [tar]="create/extract tape archives (.tar)"
+  [tee]="copy stdin to file AND stdout (T-splitter)"
+  [xargs]="build commands from stdin input"
+  [chmod]="change file permissions (rwx)"
+  [kill]="send signal to process (default: terminate)"
+  [jobs]="list background jobs in current shell"
+  [fg]="bring background job to foreground"
+  [bg]="resume suspended job in background"
+  [sleep]="pause for N seconds"
+  [make]="build tool, runs Makefile recipes"
+  [gcc]="GNU C compiler, converts .c to executable"
+  [date]="display or set system date/time"
+  [du]="show disk usage of files/dirs"
+  [ps]="list running processes"
+  [mount]="attach filesystem to directory"
+  [dd]="low-level copy, byte by byte"
+  [strings]="extract printable text from binary"
+  [base64]="encode/decode base64"
+  # Modern alternatives
+  [rg]="ripgrep: faster grep with sane defaults"
+  [fd]="faster find with intuitive syntax"
+  [eza]="modern ls with colors and git integration"
+  [bat]="cat with syntax highlighting"
+  [sd]="simpler sed for find/replace"
+  [dust]="visual disk usage analyzer"
+  [tree]="show directory structure as tree"
+  [sed]="stream editor for text transformation"
+  [xxd]="hex dump or reverse"
+  [md5sum]="compute MD5 hash (128-bit, weak)"
+  [sha256sum]="compute SHA256 hash (256-bit, strong)"
+  # Security tools
+  [nmap]="network mapper, port scanner"
+  [hydra]="brute force password cracker"
+  [hashcat]="GPU-accelerated hash cracker"
+  [john]="John the Ripper password cracker"
+  [tshark]="terminal Wireshark, packet analyzer"
+  [nikto]="web server vulnerability scanner"
+  [sqlmap]="automatic SQL injection tool"
+  [masscan]="fast mass IP port scanner"
+  [airmon-ng]="enable WiFi monitor mode"
+  [airodump-ng]="capture 802.11 packets"
+  [aireplay-ng]="inject WiFi packets (deauth)"
+  [aircrack-ng]="crack WPA/WEP keys"
+  [nc]="netcat: TCP/UDP swiss army knife"
+  [smbclient]="access Windows/Samba shares"
+  [lynis]="security auditing tool"
+  [binwalk]="analyze/extract firmware images"
+  [foremost]="recover files by headers"
+  [fls]="list files in disk image"
+  [exiftool]="read/write file metadata"
+  [readelf]="display ELF binary info"
+  [r2]="radare2 reverse engineering framework"
+  [volatility3]="memory forensics framework"
+  [mactime]="create filesystem timeline"
+  [feroxbuster]="fast directory/file enumeration"
+  [proxychains]="route traffic through proxies"
+  [procs]="modern ps replacement"
+  # Special variables
+  ['$$']="PID of current shell process"
+  ['$?']="exit code of last command (0=success)"
+  ['$!']="PID of last background process"
+  ['$#']="number of positional arguments"
+  ['$@']="all positional arguments as separate words"
+  ['$0']="name of current script or shell"
+  # History
+  ['!!']="repeat entire last command"
+  ['!$']="last argument of previous command"
+  ['!^']="first argument of previous command"
+  ['!*']="all arguments of previous command"
+  # Redirection - fd 0=stdin, 1=stdout, 2=stderr
+  ['>']="redirect stdout to file (overwrite)"
+  ['>>']="redirect stdout to file (append)"
+  ['2>']="redirect stderr (fd 2) to file"
+  ['&>']="redirect both stdout+stderr to file"
+  ['2>&1']="redirect stderr to same place as stdout"
+  ['<']="read stdin from file"
+  ['<<<']="here-string: pass string as stdin"
+  ['|']="pipe: stdout of left → stdin of right"
+  ['|&']="pipe both stdout and stderr"
+  ['&&']="run right only if left succeeds (AND)"
+  ['||']="run right only if left fails (OR)"
+  ['&']="run command in background"
+  # Common flags
+  ['-r']="recursive (process subdirectories)"
+  ['-i']="case insensitive / interactive"
+  ['-v']="invert match / verbose"
+  ['-l']="long format / list files only"
+  ['-n']="line numbers / numeric / dry-run"
+  ['-c']="count matches"
+  ['-q']="quiet (no output, just exit code)"
+  ['-f']="follow file / force operation"
+  ['-p']="create parent dirs as needed"
+  ['-e']="file extension filter"
+  ['-t']="file type filter"
+  ['-x']="execute permission / exec mode"
+  ['-h']="human readable sizes"
+  ['-s']="size / silent mode"
+  ['-a']="all (include hidden)"
+  ['-u']="unique / update"
+  ['-k']="key/column number for sort"
+  ['-d']="delimiter / directory"
+  ['-o']="output file"
+  ['-w']="write to file"
+  # Nmap flags
+  ['-A']="aggressive: OS, version, scripts, traceroute"
+  ['-O']="OS detection"
+  ['-sV']="probe ports for service versions"
+  ['-sC']="run default NSE scripts"
+  ['-sU']="UDP scan (slower than TCP)"
+  ['-sn']="ping scan only, no port scan"
+  ['-sT']="TCP connect scan (full handshake)"
+  ['-Pn']="skip host discovery, assume up"
+  ['-F']="fast mode, fewer ports"
+  ['-p-']="scan all 65535 ports"
+  # Hashcat flags
+  ['-m']="hash type (0=MD5, 1400=SHA256, etc)"
+  ['--show']="display already cracked hashes"
+  ['--wordlist']="dictionary file for attack"
+  # Other flags
+  ['-E']="entropy analysis / extended regex"
+  ['-Y']="Wireshark display filter"
+  ['-T']="tree view / output fields"
+  # Find syntax
+  ['{}']="placeholder for found filename"
+  ['\;']="end of -exec command"
+  ['-exec']="run command on each found file"
+  ['-delete']="delete matching files"
+  ['-name']="match by filename pattern"
+  ['-size']="match by file size (+10M = >10MB)"
+  ['-type']="match by type (f=file, d=dir, l=link)"
+  ['-mmin']="match by modification time in minutes"
+  ['-path']="match by full path pattern"
+  ['-not']="negate the next test"
 )
 explain() {
-  local cmd="$1" out="" tok
+  local cmd="$1" tok n=0
   for tok in $cmd; do
-    [[ -n "${EXP[$tok]:-}" ]] && out+="${tok}=${EXP[$tok]}  "
+    [[ -n "${EXP[$tok]:-}" ]] && { echo -e "${D}  ${C}${tok}${D} → ${EXP[$tok]}${N}"; ((++n)); }
   done
-  echo -e "${D}${out:-(no breakdown)}${N}"
+  EXPLAIN_LINES=$n
 }
 
 # Vi mode: env > saved > ask
@@ -322,7 +443,8 @@ demo() {
   echo -e "${D}──────────${N}"; cd /; rm -rf "$sb"; sleep 1
 }
 
-input="" cursor=0 mode="insert" SHOW_HINT=0 UNDO=""
+input="" cursor=0 mode="insert" SHOW_HINT=0 UNDO="" EXPLAIN_LINES=0
+clear_hint() { for ((i=0; i<=EXPLAIN_LINES; i++)); do echo -ne "\e[A\e[2K"; done; echo -ne "\r"; }
 hdr() { clear; echo -e "${B}=== Level $1 ===  ${D}[$2/$3]${N}  ${D}TAB=hint  Ctrl+N=skip${N}\n"; }
 bar() { echo -ne "["; printf '█%.0s' $(seq 1 $PROG 2>/dev/null); printf '░%.0s' $(seq 1 $((TOT-PROG)) 2>/dev/null); echo -ne "]"; }
 draw() {
@@ -366,7 +488,7 @@ run() {
   while ((qi < ${#shuf[@]})); do
     local prompt="${shuf[$qi]%%|*}" answers="${shuf[$qi]#*|}" ans="${shuf[$qi]#*|}"; ans="${ans%%|*}"
     local tier; tier=$(score_get "$prompt")
-    HINT=false SHOW_HINT=0
+    HINT=false SHOW_HINT=0 EXPLAIN_LINES=0
     bar; echo -e "\n${D}$prompt${N}"; show_tier "$tier" "$ans"; echo
     while true; do
       input="" cursor=0 mode="insert" SHOW_HINT=0
@@ -376,7 +498,7 @@ run() {
         if [[ "$c" == $'\t' ]]; then
           # Toggle hint + explanation
           if ((SHOW_HINT)); then
-            SHOW_HINT=0; echo -ne "\e[A\e[2K\e[A\e[2K\r"
+            SHOW_HINT=0; clear_hint
           else
             SHOW_HINT=1; HINT=true; draw; echo; explain "$ans"; continue
           fi
@@ -385,7 +507,7 @@ run() {
         if [[ "$mode" == "insert" ]]; then
           # Clear hint display if typing
           if ((SHOW_HINT)) && [[ "$c" != $'\x1b' && "$c" != '' ]]; then
-            SHOW_HINT=0; echo -ne "\e[A\e[2K\e[A\e[2K\r"
+            SHOW_HINT=0; clear_hint
           fi
           case "$c" in
             $'\x0e') echo -e "\n${D}[skipped]${N}"; ((++qi)); break 2;;  # Ctrl+N skip
@@ -396,7 +518,7 @@ run() {
           esac
         elif ((VI_MODE)); then
           # Clear hint display if any vi command
-          if ((SHOW_HINT)); then SHOW_HINT=0; echo -ne "\e[A\e[2K\e[A\e[2K\r"; fi
+          if ((SHOW_HINT)); then SHOW_HINT=0; clear_hint; fi
           # Save for undo before destructive operations
           case "$c" in s|S|x|X|D|C|d|c|r) UNDO="$input:$cursor";; esac
           case "$c" in
