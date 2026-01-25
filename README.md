@@ -13,13 +13,19 @@ CLI command trainer with flashcard-style drills. Learn shell commands through sp
 
 ## Install
 
+**One-liner:**
+```bash
+mkdir -p ~/.local/bin && curl -sL https://raw.githubusercontent.com/mellen9999/bashgym/main/bashgym -o ~/.local/bin/bashgym && chmod +x ~/.local/bin/bashgym
+```
+Add `~/.local/bin` to PATH if not already: `echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc`
+
+**Or clone:**
 ```bash
 git clone https://github.com/mellen9999/bashgym.git
-cd bashgym
-ln -s "$(pwd)/bashgym" ~/.local/bin/bashgym
+./bashgym/bashgym
 ```
 
-Requires: bash 4.0+, shuf (coreutils)
+Requires: bash 4.3+, coreutils (shuf, md5sum)
 
 ## Usage
 
