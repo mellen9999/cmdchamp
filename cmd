@@ -1,853 +1,392 @@
-#!/bin/bash
-# cmd - CLI Command Trainer
-# SNES-hard flashcard game for modern CLI mastery
-# https://github.com/mellen/cmd
+#!/usr/bin/env bash
+# cmd - CLI command trainer (github.com/mellen9999/cmd)
+set -uo pipefail
 
-set -euo pipefail
+[[ -t 0 ]] || { echo "Error: requires interactive terminal" >&2; exit 1; }
 
-# XDG paths
-DATA_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/cmd"
-PROGRESS_FILE="$DATA_DIR/progress.json"
-STATS_FILE="$DATA_DIR/stats.json"
-SESSION_FILE="$DATA_DIR/session.json"
+# Config - XDG compliant, user-agnostic
+DATA="${XDG_DATA_HOME:-$HOME/.local/share}/cmd"
+mkdir -p "$DATA"
 
 # Colors
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-CYAN='\033[0;36m'
-DIM='\033[2m'
-BOLD='\033[1m'
-NC='\033[0m'
+R=$'\e[31m' G=$'\e[32m' Y=$'\e[33m' C=$'\e[36m' D=$'\e[2m' B=$'\e[1m' N=$'\e[0m'
 
-# State
-CURRENT_LEVEL=1
-CURRENT_Q=0
-USED_HINT=false
-PROGRESS=0
-TOTAL_Q=0
+# Prompt char - env override, or $ (# for root)
+PROMPT_CHAR="${CMD_PROMPT:-$([[ $EUID -eq 0 ]] && echo '#' || echo '$')}"
 
-# ============================================================================
-# QUESTIONS - Format: "prompt|canonical_answer"
-# Validator normalizes flags so order doesn't matter
-# ============================================================================
+# Vi mode: saved preference, env override, or ask once
+VI_PREF="$DATA/vi_mode"
+if [[ -n "${CMD_VI:-}" ]]; then
+  VI_MODE=$CMD_VI
+elif [[ -f "$VI_PREF" ]]; then
+  VI_MODE=$(<"$VI_PREF")
+else
+  echo -n "Enable vi keybindings? (ESC for normal mode) [y/N] "
+  read -r yn
+  [[ "$yn" =~ ^[Yy] ]] && VI_MODE=1 || VI_MODE=0
+  echo "$VI_MODE" > "$VI_PREF"
+fi
 
-# Level 1: Core tools - bat, eza, fd, head/tail, basic ops
-declare -a LEVEL1=(
-  "View config.ini with syntax highlighting|bat config.ini"
-  "List files with size and permissions|eza -l"
-  "List all files with details, including hidden|eza -la"
-  "Show files as tree|eza -T"
-  "Find all python files|fd -e py"
+# Questions: prompt|answer|alt1|alt2... (OG primary, modern alternates accepted)
+declare -a Q0=(
+  # Redirections
+  'Redirect stdout to file.txt (overwrite)|cmd > file.txt'
+  'Redirect stdout to file.txt (append)|cmd >> file.txt'
+  'Redirect stderr to errors.log|cmd 2> errors.log'
+  'Redirect both stdout and stderr to out.log|cmd &> out.log|cmd > out.log 2>&1'
+  'Redirect stderr to stdout|cmd 2>&1'
+  'Discard all output|cmd > /dev/null 2>&1|cmd &> /dev/null'
+  'Discard only errors|cmd 2> /dev/null'
+  'Read input from file.txt|cmd < file.txt'
+  'Here string - pass string as stdin|cmd <<< "text"'
+  # Pipes and logic
+  'Pipe stdout to next command|cmd1 | cmd2'
+  'Pipe both stdout and stderr|cmd1 |& cmd2'
+  'Run cmd2 only if cmd1 succeeds|cmd1 && cmd2'
+  'Run cmd2 only if cmd1 fails|cmd1 || cmd2'
+  'Negate exit status|! cmd'
+  # Job control
+  'Run command in background|cmd &'
+  'List background jobs|jobs'
+  'Bring job 1 to foreground|fg %1'
+  'Send job 1 to background|bg %1'
+  'Kill job 1|kill %1'
+  # Command substitution
+  'Store command output in variable|var=$(cmd)'
+  'Use command output inline|echo "Today is $(date)"'
+  # Subshell and grouping
+  'Run commands in subshell|(cd /tmp && pwd)'
+  'Group commands in current shell|{ cmd1; cmd2; }'
+  # History expansion
+  'Repeat last command|!!'
+  "Run last command starting with 'git'|!git"
+  'Run command number 42 from history|!42'
+  '^foo^bar to fix typo in last command|^foo^bar'
+  'Last argument of previous command|!$'
+  'First argument of previous command|!^'
+  'All arguments of previous command|!*'
+  # Special variables
+  'Print current shell PID|echo $$'
+  'Print exit status of last command|echo $?'
+  'Print PID of last background process|echo $!'
+  'Print number of arguments to script|echo $#'
+  'Print all script arguments|echo $@'
+  'Print current script name|echo $0'
+  # Brace expansion
+  'Create files a.txt b.txt c.txt|touch {a,b,c}.txt'
+  'Create file1 through file5|touch file{1..5}'
+  'Backup config.ini to config.ini.bak|cp config.ini{,.bak}'
+  'Diff file.old vs file.new using brace expansion|diff file.{old,new}'
+  # Process substitution
+  'Diff output of two commands|diff <(cmd1) <(cmd2)'
+)
+declare -a Q1=(
+  "View config.ini with syntax highlighting|cat config.ini|bat config.ini"
+  "List files with size+perms|ls -l|eza -l"
+  "List all files including hidden|ls -la|eza -la"
+  "Show directory tree|tree|eza -T"
+  "Find all .py files|find . -name '*.py'|fd -e py"
   "First 10 lines of data.txt|head -10 data.txt"
   "Last 20 lines of log.txt|tail -20 log.txt"
   "Count lines in data.csv|wc -l data.csv"
-  "Disk usage current dir|dust"
+  "Show disk usage of current dir|du -sh .|dust"
   "Copy config.ini to backup.ini|cp config.ini backup.ini"
 )
-
-# Level 2: rg essentials - searching text
-declare -a LEVEL2=(
-  "Search for 'error' in all files|rg error"
-  "Case-insensitive search for 'warning'|rg -i warning"
-  "Show line numbers with matches|rg -n TODO"
-  "Count matches in file|rg -c error log.txt"
-  "Show 2 lines context around match|rg -C 2 panic"
-  "Only show filenames with matches|rg -l error"
-  "Search only in python files|rg -t py import"
-  "Search for regex pattern|rg '\\d{3}-\\d{4}'"
-  "Invert match - lines without error|rg -v error log.txt"
-  "Fixed string search (no regex)|rg -F 'func()' app.py"
+declare -a Q2=(
+  "Search for 'error' recursively|grep -r error|rg error"
+  "Case-insensitive search for 'warning'|grep -ri warning|rg -i warning"
+  "Search for TODO with line numbers|grep -rn TODO|rg -n TODO"
+  "Count 'error' matches in log.txt|grep -c error log.txt|rg -c error log.txt"
+  "Search 'panic' with 2 lines context|grep -C 2 panic|rg -C 2 panic"
+  "List only filenames containing 'error'|grep -rl error|rg -l error"
+  "Search 'import' in .py files only|grep -r --include='*.py' import|rg -t py import"
+  "Find phone pattern XXX-XXXX|grep -E '[0-9]{3}-[0-9]{4}'|rg '\\d{3}-\\d{4}'"
+  "Lines without 'error' in log.txt|grep -v error log.txt|rg -v error log.txt"
+  "Literal search 'func()' in app.py|grep -F 'func()' app.py|rg -F 'func()' app.py"
 )
-
-# Level 3: fd essentials - finding files
-declare -a LEVEL3=(
-  "Find files by extension|fd -e log"
-  "Find files larger than 10M|fd -S +10M"
-  "Find files modified in last hour|fd --changed-within 1h"
-  "Find directories only|fd -t d"
-  "Find and include hidden files|fd -H config"
-  "Find excluding .git|fd -E .git"
-  "Find empty files|fd -t f -S 0"
-  "Find executable files|fd -t x"
-  "Find symlinks|fd -t l"
-  "Find by full path pattern|fd -p src/.*test"
+declare -a Q3=(
+  "Find all .log files|find . -name '*.log'|fd -e log"
+  "Find files larger than 10M|find . -size +10M|fd -S +10M"
+  "Find files modified in last hour|find . -mmin -60|fd --changed-within 1h"
+  "Find directories only|find . -type d|fd -t d"
+  "Find 'config' including hidden files|find . -name '*config*'|fd -H config"
+  "Find all, excluding .git|find . -not -path './.git/*'|fd -E .git"
+  "Find empty files|find . -type f -empty|fd -t f -S 0"
+  "Find executable files|find . -type f -executable|fd -t x"
+  "Find symlinks|find . -type l|fd -t l"
+  "Find files matching path src/*test*|find . -path '*src/*test*'|fd -p src/.*test"
 )
-
-# Level 4: eza advanced + basic piping
-declare -a LEVEL4=(
-  "List sorted by size descending|eza -l --sort size -r"
-  "List sorted by modification time|eza -l --sort modified"
-  "List directories only|eza -D"
-  "List with git status|eza -l --git"
-  "Tree view 2 levels deep|eza -T -L 2"
-  "Follow log file live|tail -f server.log"
-  "Sort and dedupe lines|sort -u dupes.txt"
-  "Extract 2nd CSV column|cut -d',' -f2 data.csv"
-  "Sort by 2nd column|sort -k2 data.txt"
-  "Count unique lines|sort data.txt | uniq -c"
+declare -a Q4=(
+  "List files sorted by size (largest first)|ls -lS|eza -l --sort size -r"
+  "List files sorted by modification time|ls -lt|eza -l --sort modified"
+  "List directories only|ls -d */|eza -D"
+  "List files with git status|eza -l --git"
+  "Show tree 2 levels deep|tree -L 2|eza -T -L 2"
+  "Follow server.log in realtime|tail -f server.log"
+  "Sort and deduplicate dupes.txt|sort -u dupes.txt"
+  "Extract 2nd column from data.csv|cut -d',' -f2 data.csv"
+  "Sort data.txt by column 2|sort -k2 data.txt"
+  "Count unique lines in data.txt|sort data.txt | uniq -c"
 )
-
-# Level 5: fd -x execution + pipes
-declare -a LEVEL5=(
-  "Find and list each file details|fd -e py -x eza -l {}"
-  "Find and count lines in each|fd -e txt -x wc -l {}"
-  "Find and delete temp files|fd -e tmp -x rm {}"
-  "Find and chmod scripts|fd -e sh -x chmod +x {}"
-  "Find and search inside|fd -e log -x rg error {}"
-  "Extract IPs and count|rg -o '\\d+\\.\\d+\\.\\d+\\.\\d+' log.txt | sort | uniq -c"
-  "Find large files show sizes|fd -S +100M -x du -h {}"
-  "Replace text in file|sd 'old' 'new' config.txt"
-  "Replace in multiple files|fd -e txt -x sd 'foo' 'bar' {}"
-  "Process tree view|procs --tree"
+declare -a Q5=(
+  "Run ls -l on each .py file found|find . -name '*.py' -exec ls -l {} \\;|fd -e py -x ls -l {}"
+  "Count lines in each .txt file|find . -name '*.txt' -exec wc -l {} \\;|fd -e txt -x wc -l {}"
+  "Delete all .tmp files|find . -name '*.tmp' -delete|fd -e tmp -x rm {}"
+  "Make all .sh files executable|find . -name '*.sh' -exec chmod +x {} \\;|fd -e sh -x chmod +x {}"
+  "Search 'error' in each .log file|find . -name '*.log' -exec grep error {} \\;|fd -e log -x rg error {}"
+  "Extract and count IPs from log.txt|grep -oE '[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+' log.txt | sort | uniq -c|rg -o '\\d+\\.\\d+\\.\\d+\\.\\d+' log.txt | sort | uniq -c"
+  "Show size of files >100M|find . -size +100M -exec du -h {} \\;|fd -S +100M -x du -h {}"
+  "Replace 'old' with 'new' in config.txt|sed -i 's/old/new/g' config.txt|sd 'old' 'new' config.txt"
+  "Replace 'foo' with 'bar' in all .txt files|find . -name '*.txt' -exec sed -i 's/foo/bar/g' {} \\;|fd -e txt -x sd 'foo' 'bar' {}"
+  "Show process tree|ps auxf|procs --tree"
 )
-
-declare -a LEVEL6=(
-  "Scan host for open ports|nmap -p- 10.0.0.1"
-  "Quick scan common ports|nmap --top-ports 100 10.0.0.1"
-  "Detect service versions|nmap -sV 10.0.0.1"
-  "Scan with OS detection|nmap -O 10.0.0.1"
-  "UDP scan top ports|nmap -sU --top-ports 20 10.0.0.1"
-  "Aggressive scan with scripts|nmap -A 10.0.0.1"
-  "Scan subnet for live hosts|nmap -sn 10.0.0.0/24"
-  "Fast scan skip host discovery|nmap -Pn -F 10.0.0.1"
-  "Output scan to greppable format|nmap -oG scan.txt 10.0.0.1"
-  "Scan through proxy|proxychains nmap -sT 10.0.0.1"
-  "Check for specific vulnerability|nmap --script vuln 10.0.0.1"
-  "Banner grab on port 80|nmap -sV -p 80 --script banner 10.0.0.1"
-  "Scan for SMB shares|nmap --script smb-enum-shares 10.0.0.1"
-  "Detect web server info|nmap -sV -p 80,443 10.0.0.1"
-  "Full port scan save all formats|nmap -p- -oA full_scan 10.0.0.1"
+declare -a Q6=(
+  "Scan all ports on 10.0.0.1|nmap -p- 10.0.0.1"
+  "Scan top 100 ports on 10.0.0.1|nmap --top-ports 100 10.0.0.1"
+  "Detect service versions on 10.0.0.1|nmap -sV 10.0.0.1"
+  "Detect OS on 10.0.0.1|nmap -O 10.0.0.1"
+  "UDP scan top 20 ports on 10.0.0.1|nmap -sU --top-ports 20 10.0.0.1"
+  "Aggressive scan on 10.0.0.1|nmap -A 10.0.0.1"
+  "Ping sweep 10.0.0.0/24 subnet|nmap -sn 10.0.0.0/24"
+  "Fast scan 10.0.0.1, skip ping|nmap -Pn -F 10.0.0.1"
+  "Scan 10.0.0.1, save greppable to scan.txt|nmap -oG scan.txt 10.0.0.1"
+  "Scan 10.0.0.1 through proxychains|proxychains nmap -sT 10.0.0.1"
+  "Run vuln scripts on 10.0.0.1|nmap --script vuln 10.0.0.1"
+  "Banner grab port 80 on 10.0.0.1|nmap -sV -p 80 --script banner 10.0.0.1"
+  "Enumerate SMB shares on 10.0.0.1|nmap --script smb-enum-shares 10.0.0.1"
+  "Detect web server on 10.0.0.1 ports 80,443|nmap -sV -p 80,443 10.0.0.1"
+  "Full scan 10.0.0.1, all output formats to full_scan|nmap -p- -oA full_scan 10.0.0.1"
 )
-
-declare -a LEVEL7=(
-  "Crack MD5 hash with wordlist|hashcat -m 0 hash.txt wordlist.txt"
-  "Crack SHA256 hash|hashcat -m 1400 hash.txt wordlist.txt"
-  "Crack bcrypt hash|hashcat -m 3200 hash.txt wordlist.txt"
-  "Brute force 4 digit PIN|hashcat -m 0 -a 3 hash.txt ?d?d?d?d"
-  "Crack with rules|hashcat -m 0 -r rules/best64.rule hash.txt wordlist.txt"
-  "Show cracked passwords|hashcat -m 0 hash.txt --show"
-  "John the Ripper default crack|john hash.txt"
-  "John with specific wordlist|john --wordlist=wordlist.txt hash.txt"
-  "John show cracked|john --show hash.txt"
-  "Generate hash from password|echo -n 'password' | md5sum"
-  "HTTP brute force with hydra|hydra -l admin -P wordlist.txt 10.0.0.1 http-get /"
-  "SSH brute force|hydra -l root -P wordlist.txt 10.0.0.1 ssh"
-  "Crack zip password|john --format=zip archive.zip"
-  "Base64 decode|base64 -d encoded.txt"
-  "Hex to ascii|xxd -r -p hex.txt"
+declare -a Q7=(
+  "Crack MD5 hashes in hash.txt using wordlist.txt|hashcat -m 0 hash.txt wordlist.txt"
+  "Crack SHA256 hashes in hash.txt|hashcat -m 1400 hash.txt wordlist.txt"
+  "Crack bcrypt hashes in hash.txt|hashcat -m 3200 hash.txt wordlist.txt"
+  "Brute force 4-digit PIN for hash.txt|hashcat -m 0 -a 3 hash.txt ?d?d?d?d"
+  "Crack hash.txt with best64 rules|hashcat -m 0 -r rules/best64.rule hash.txt wordlist.txt"
+  "Show already cracked from hash.txt|hashcat -m 0 hash.txt --show"
+  "Crack hash.txt with john default|john hash.txt"
+  "Crack hash.txt with john using wordlist.txt|john --wordlist=wordlist.txt hash.txt"
+  "Show cracked hashes from john|john --show hash.txt"
+  "Generate MD5 hash of string 'password'|echo -n 'password' | md5sum"
+  "Brute force HTTP auth on 10.0.0.1 user admin|hydra -l admin -P wordlist.txt 10.0.0.1 http-get /"
+  "Brute force SSH on 10.0.0.1 user root|hydra -l root -P wordlist.txt 10.0.0.1 ssh"
+  "Crack password on archive.zip|john --format=zip archive.zip"
+  "Decode base64 file encoded.txt|base64 -d encoded.txt"
+  "Convert hex file hex.txt to ascii|xxd -r -p hex.txt"
 )
-
-declare -a LEVEL8=(
-  "Extract strings from binary|strings binary.exe"
-  "Analyze binary headers|readelf -h binary.elf"
-  "Disassemble with radare2|r2 -A binary.exe"
-  "Extract embedded files|binwalk -e firmware.bin"
-  "Analyze entropy|binwalk -E firmware.bin"
-  "Dump memory from image|volatility3 -f memory.dmp windows.info"
-  "List processes in memory dump|volatility3 -f memory.dmp windows.pslist"
-  "Extract network connections|volatility3 -f memory.dmp windows.netscan"
-  "Recover deleted files|foremost -i disk.img -o output/"
-  "Analyze filesystem|fls -r disk.img"
-  "Extract metadata from image|exiftool photo.jpg"
-  "Verify file integrity|sha256sum -c checksums.txt"
-  "Create disk image|dd if=/dev/sda of=disk.img bs=4M"
-  "Mount forensic image readonly|mount -o ro,loop disk.img /mnt/evidence"
-  "Timeline filesystem|mactime -b bodyfile.txt"
+declare -a Q8=(
+  "Extract strings from binary.exe|strings binary.exe"
+  "Show ELF headers of binary.elf|readelf -h binary.elf"
+  "Analyze binary.exe with radare2|r2 -A binary.exe"
+  "Extract embedded files from firmware.bin|binwalk -e firmware.bin"
+  "Analyze entropy of firmware.bin|binwalk -E firmware.bin"
+  "Get system info from memory.dmp|volatility3 -f memory.dmp windows.info"
+  "List processes from memory.dmp|volatility3 -f memory.dmp windows.pslist"
+  "Extract network connections from memory.dmp|volatility3 -f memory.dmp windows.netscan"
+  "Recover deleted files from disk.img to output/|foremost -i disk.img -o output/"
+  "List filesystem of disk.img recursively|fls -r disk.img"
+  "Extract metadata from photo.jpg|exiftool photo.jpg"
+  "Verify checksums in checksums.txt|sha256sum -c checksums.txt"
+  "Create disk image of /dev/sda to disk.img|dd if=/dev/sda of=disk.img bs=4M"
+  "Mount disk.img readonly at /mnt/evidence|mount -o ro,loop disk.img /mnt/evidence"
+  "Create filesystem timeline from bodyfile.txt|mactime -b bodyfile.txt"
 )
-
-declare -a LEVEL9=(
-  "Full nmap scan with version scripts output all|nmap -sV -sC -p- -oA full 10.0.0.1"
-  "Capture traffic on interface|tshark -i eth0 -w capture.pcap"
-  "Filter HTTP traffic|tshark -r capture.pcap -Y http"
-  "Extract credentials from pcap|tshark -r capture.pcap -Y 'http.request.method == POST' -T fields -e http.file_data"
-  "Scan web app for vulns|nikto -h http://10.0.0.1"
-  "SQL injection test|sqlmap -u 'http://10.0.0.1/page?id=1' --dbs"
-  "Directory enumeration|feroxbuster -u http://10.0.0.1"
-  "WiFi monitor mode|airmon-ng start wlan0"
-  "Capture WiFi handshake|airodump-ng -c 6 --bssid AA:BB:CC:DD:EE:FF -w capture wlan0mon"
-  "Deauth attack for handshake|aireplay-ng -0 5 -a AA:BB:CC:DD:EE:FF wlan0mon"
-  "Crack WPA handshake|aircrack-ng -w wordlist.txt capture.cap"
-  "Mass port scan fast|masscan -p1-65535 10.0.0.0/24 --rate 10000"
-  "Enumerate SMB|smbclient -L //10.0.0.1 -N"
-  "Reverse shell listener|nc -lvnp 4444"
-  "System audit|lynis audit system"
+declare -a Q9=(
+  "Full nmap scan 10.0.0.1 with scripts, all output to 'full'|nmap -sV -sC -p- -oA full 10.0.0.1"
+  "Capture traffic on eth0 to capture.pcap|tshark -i eth0 -w capture.pcap"
+  "Filter HTTP traffic from capture.pcap|tshark -r capture.pcap -Y http"
+  "Extract POST data from capture.pcap|tshark -r capture.pcap -Y 'http.request.method == POST' -T fields -e http.file_data"
+  "Scan http://10.0.0.1 for web vulns with nikto|nikto -h http://10.0.0.1"
+  "Test SQLi on http://10.0.0.1/page?id=1|sqlmap -u 'http://10.0.0.1/page?id=1' --dbs"
+  "Enumerate directories on http://10.0.0.1|feroxbuster -u http://10.0.0.1"
+  "Enable monitor mode on wlan0|airmon-ng start wlan0"
+  "Capture handshake on channel 6 from AA:BB:CC:DD:EE:FF|airodump-ng -c 6 --bssid AA:BB:CC:DD:EE:FF -w capture wlan0mon"
+  "Send 5 deauth packets to AA:BB:CC:DD:EE:FF|aireplay-ng -0 5 -a AA:BB:CC:DD:EE:FF wlan0mon"
+  "Crack WPA handshake in capture.cap|aircrack-ng -w wordlist.txt capture.cap"
+  "Mass scan all ports on 10.0.0.0/24 at 10k rate|masscan -p1-65535 10.0.0.0/24 --rate 10000"
+  "List SMB shares on //10.0.0.1 anonymously|smbclient -L //10.0.0.1 -N"
+  "Start reverse shell listener on port 4444|nc -lvnp 4444"
+  "Run system security audit with lynis|lynis audit system"
 )
+LEVELS=(Q0 Q1 Q2 Q3 Q4 Q5 Q6 Q7 Q8 Q9)
 
-# All levels array
-declare -a LEVELS=("LEVEL1" "LEVEL2" "LEVEL3" "LEVEL4" "LEVEL5" "LEVEL6" "LEVEL7" "LEVEL8" "LEVEL9")
-
-# ============================================================================
-# UTILITY FUNCTIONS
-# ============================================================================
-
-init_data_dir() {
-  mkdir -p "$DATA_DIR"
-  [[ -f "$PROGRESS_FILE" ]] || echo '{"completed":[]}' > "$PROGRESS_FILE"
-  [[ -f "$STATS_FILE" ]] || echo '{}' > "$STATS_FILE"
-  [[ -f "$SESSION_FILE" ]] || echo '{"level":1,"question":0}' > "$SESSION_FILE"
-}
-
-get_terminal_width() {
-  tput cols 2>/dev/null || echo 80
-}
-
-# Normalize command for comparison - sort flags alphabetically
-normalize_cmd() {
-  local cmd="$1"
-  local result=""
-  local -a parts
-  local -a flags=()
-  local -a args=()
-
-  # Split into words
+# Normalize: sort flags so -la == -al == -a -l
+norm() {
+  local cmd="$1" parts flags=() args=()
   read -ra parts <<< "$cmd"
-
-  # First word is always the command
-  result="${parts[0]}"
-
-  # Separate flags from args
+  local out="${parts[0]}"
   for ((i=1; i<${#parts[@]}; i++)); do
-    local part="${parts[$i]}"
-    if [[ "$part" == -* ]]; then
-      # Expand combined short flags: -la -> -a -l (sorted)
-      if [[ "$part" =~ ^-[a-zA-Z]+$ && ${#part} -gt 2 ]]; then
-        local chars="${part:1}"
-        for ((j=0; j<${#chars}; j++)); do
-          flags+=("-${chars:$j:1}")
-        done
-      else
-        flags+=("$part")
-      fi
-    else
-      args+=("$part")
-    fi
+    local p="${parts[$i]}"
+    if [[ "$p" == -* ]]; then
+      if [[ "$p" =~ ^-[a-zA-Z]+$ && ${#p} -gt 2 ]]; then
+        for ((j=1; j<${#p}; j++)); do flags+=("-${p:j:1}"); done
+      else flags+=("$p"); fi
+    else args+=("$p"); fi
   done
-
-  # Sort flags
-  IFS=$'\n' sorted_flags=($(sort <<<"${flags[*]}")); unset IFS
-
-  # Rebuild command
-  for f in "${sorted_flags[@]}"; do
-    result+=" $f"
-  done
-  for a in "${args[@]}"; do
-    result+=" $a"
-  done
-
-  echo "$result"
+  IFS=$'\n' flags=($(sort <<<"${flags[*]}")); unset IFS
+  for f in "${flags[@]}"; do out+=" $f"; done
+  for a in "${args[@]}"; do out+=" $a"; done
+  echo "$out"
 }
 
-# Check if answer matches (with flag order normalization)
-check_answer() {
-  local given="$1"
-  local expected="$2"
-
-  # Trim whitespace
-  given="$(echo "$given" | xargs)"
-  expected="$(echo "$expected" | xargs)"
-
-  # Direct match
-  [[ "$given" == "$expected" ]] && return 0
-
-  # Normalized match
-  local norm_given norm_expected
-  norm_given="$(normalize_cmd "$given")"
-  norm_expected="$(normalize_cmd "$expected")"
-
-  [[ "$norm_given" == "$norm_expected" ]] && return 0
-
+# Check input against one answer (trim, normalize)
+check1() {
+  local a=$(echo "$1" | xargs) b=$(echo "$2" | xargs)
+  [[ "$a" == "$b" ]] || [[ "$(norm "$a")" == "$(norm "$b")" ]]
+}
+# Check input against all answers (pipe-separated)
+check() {
+  local inp="$1" answers="$2" a
+  IFS='|' read -ra opts <<< "$answers"
+  for a in "${opts[@]}"; do check1 "$inp" "$a" && return 0; done
   return 1
 }
 
-# Draw vi-mode input line
-# Uses globals: mode, input, cursor
-# Draw level header with keybinds
-# Autocomplete from prompt/answer words
-autocomplete() {
-  local partial="$1"
-  local words="$2"
-  [[ -z "$partial" ]] && return 1
-  for word in $words; do
-    if [[ "$word" == "$partial"* && "$word" != "$partial" ]]; then
-      echo "$word"
-      return 0
-    fi
-  done
-  return 1
+# State
+LVL=0 QN=0 HINT=false PROG=0 TOT=0
+load() { [[ -f "$DATA/session.json" ]] && { LVL=$(jq -r '.level//.l//0' "$DATA/session.json"); QN=$(jq -r '.question//.q//0' "$DATA/session.json"); }; }
+save() { printf '{"level":%d,"question":%d}\n' "$LVL" "$QN" > "$DATA/session.json"; }
+
+# Minimal sandbox for demos
+demo() {
+  local cmd="$1" sb="/tmp/cmd$$"
+  mkdir -p "$sb"/{logs,src}; cd "$sb"
+  echo -e "host=localhost\nport=8080" > config.ini
+  printf '%s\n' {1..12} > data.txt
+  echo -e "ERROR: fail\nINFO: ok\nWARN: slow" > log.txt
+  echo "a,1\nb,2\nc,3" > data.csv
+  echo -e "x\ny\nx\ny" > dupes.txt
+  touch app.{py,js,sh} file.{txt,log}
+  echo -e "\n${D}─ output ─${N}"
+  case "$cmd" in rm*|mv*|dd*|mkfs*|nmap*|hydra*|hashcat*|john*|aircrack*|sqlmap*|nc\ *|masscan*)
+    echo "${D}[skipped]${N}";; *)
+    timeout 2s bash -c "$cmd" 2>&1 | head -10 || true;; esac
+  echo -e "${D}──────────${N}"
+  cd /; rm -rf "$sb"; sleep 2
 }
 
-draw_header() {
-  local level=$1
-  local left="=== Level $level ==="
-  local right="(?) hint  (TAB) complete"
-  local width=$(tput cols 2>/dev/null || echo 80)
-  local pad=$((width - ${#left} - ${#right}))
-  ((pad < 1)) && pad=1
-  printf "${BOLD}%s${NC}%${pad}s${DIM}%s${NC}\n\n" "$left" "" "$right"
-}
-
-draw_input() {
+# UI helpers
+input="" cursor=0 mode="insert" SHOW_HINT=0
+hdr() { clear; echo -e "${B}=== Level $1 ===${N}  ${D}TAB=hint${N}\n"; }
+bar() { echo -ne "["; printf '█%.0s' $(seq 1 $PROG 2>/dev/null); printf '░%.0s' $(seq 1 $((TOT-PROG)) 2>/dev/null); echo "]"; }
+draw() {
   echo -ne "\r\e[K"
-  if [[ "$mode" == "insert" ]]; then
-    echo -ne "\e[97m\$\e[0m "  # white $ (insert)
-  else
-    echo -ne "\e[91m\$\e[0m "  # red $ (normal)
-  fi
-  echo -n "$input"
-  # Position cursor
-  local back=$((${#input} - cursor))
-  ((back > 0)) && echo -ne "\e[${back}D" || true
+  if ((SHOW_HINT)); then echo -ne "${D}$PROMPT_CHAR ${ans}${N}"
+  elif ((VI_MODE)); then [[ "$mode" == "insert" ]] && echo -ne "\e[97m$PROMPT_CHAR\e[0m " || echo -ne "\e[91m$PROMPT_CHAR\e[0m "; echo -n "$input"
+  else echo -ne "\e[97m$PROMPT_CHAR\e[0m "; echo -n "$input"; fi
+  local b=$((${#input}-cursor)); ((b>0)) && echo -ne "\e[${b}D"
 }
 
-# Explain flags in a command
-explain_flags() {
-  local cmd="$1"
-  local tool="${cmd%% *}"
-  local explanations=""
+run() {
+  local lv=$1; local arr="Q$lv" shuf=() done=0 qi=0
+  local -n qs="$arr"
+  TOT=${#qs[@]}; PROG=0
+  readarray -t shuf < <(printf '%s\n' "${qs[@]}" | shuf)
+  hdr "$lv"
+  while ((qi < ${#shuf[@]})); do
+    local line="${shuf[$qi]}"
+    prompt="${line%%|*}"; answers="${line#*|}"
+    ans="${answers%%|*}"
+    HINT=false; SHOW_HINT=0
+    bar; echo -e "\n${D}$prompt${N}\n"
 
-  case "$tool" in
-    rg)
-      [[ "$cmd" == *" -i "* || "$cmd" == *" -i" ]] && explanations+=" -i=ignore case"
-      [[ "$cmd" == *" -n "* || "$cmd" == *" -n" ]] && explanations+=" -n=line numbers"
-      [[ "$cmd" == *" -c "* || "$cmd" == *" -c" ]] && explanations+=" -c=count only"
-      [[ "$cmd" == *" -l "* || "$cmd" == *" -l" ]] && explanations+=" -l=files only"
-      [[ "$cmd" == *" -v "* || "$cmd" == *" -v" ]] && explanations+=" -v=invert match"
-      [[ "$cmd" == *" -F "* || "$cmd" == *" -F" ]] && explanations+=" -F=literal string"
-      [[ "$cmd" == *" -t "* ]] && explanations+=" -t=file type"
-      [[ "$cmd" == *" -C "* ]] && explanations+=" -C=context lines"
-      [[ "$cmd" == *" -o "* ]] && explanations+=" -o=only matching"
-      ;;
-    fd)
-      [[ "$cmd" == *" -e "* ]] && explanations+=" -e=extension"
-      [[ "$cmd" == *" -t d"* ]] && explanations+=" -t d=directories"
-      [[ "$cmd" == *" -t f"* ]] && explanations+=" -t f=files"
-      [[ "$cmd" == *" -t l"* ]] && explanations+=" -t l=symlinks"
-      [[ "$cmd" == *" -t x"* ]] && explanations+=" -t x=executables"
-      [[ "$cmd" == *" -H"* ]] && explanations+=" -H=include hidden"
-      [[ "$cmd" == *" -E "* ]] && explanations+=" -E=exclude"
-      [[ "$cmd" == *" -S "* ]] && explanations+=" -S=size filter"
-      [[ "$cmd" == *" -x "* ]] && explanations+=" -x=exec per file"
-      [[ "$cmd" == *" -p "* ]] && explanations+=" -p=full path"
-      [[ "$cmd" == *"--changed-within"* ]] && explanations+=" --changed-within=modified recently"
-      ;;
-    eza)
-      [[ "$cmd" == *"-l"* ]] && explanations+=" -l=long format"
-      [[ "$cmd" == *"-a"* ]] && explanations+=" -a=show hidden"
-      [[ "$cmd" == *"-T"* ]] && explanations+=" -T=tree view"
-      [[ "$cmd" == *"-D"* ]] && explanations+=" -D=dirs only"
-      [[ "$cmd" == *"-r"* ]] && explanations+=" -r=reverse"
-      [[ "$cmd" == *"-L "* ]] && explanations+=" -L=tree depth"
-      [[ "$cmd" == *"--sort"* ]] && explanations+=" --sort=order by"
-      [[ "$cmd" == *"--git"* ]] && explanations+=" --git=show status"
-      ;;
-    head) [[ "$cmd" == *"-"* ]] && explanations+=" -N=first N lines" ;;
-    tail)
-      [[ "$cmd" == *" -f"* ]] && explanations+=" -f=follow live"
-      [[ "$cmd" == *"-"[0-9]* ]] && explanations+=" -N=last N lines"
-      ;;
-    wc) [[ "$cmd" == *" -l"* ]] && explanations+=" -l=lines only" ;;
-    sort)
-      [[ "$cmd" == *" -u"* ]] && explanations+=" -u=unique"
-      [[ "$cmd" == *" -k"* ]] && explanations+=" -k=by column"
-      [[ "$cmd" == *" -r"* ]] && explanations+=" -r=reverse"
-      [[ "$cmd" == *" -n"* ]] && explanations+=" -n=numeric"
-      ;;
-    cut) [[ "$cmd" == *" -d"* ]] && explanations+=" -d=delimiter -f=field" ;;
-    nmap)
-      [[ "$cmd" == *" -p-"* ]] && explanations+=" -p-=all ports"
-      [[ "$cmd" == *" -sV"* ]] && explanations+=" -sV=version detect"
-      [[ "$cmd" == *" -sC"* ]] && explanations+=" -sC=default scripts"
-      [[ "$cmd" == *" -O"* ]] && explanations+=" -O=OS detect"
-      [[ "$cmd" == *" -A"* ]] && explanations+=" -A=aggressive"
-      [[ "$cmd" == *" -sn"* ]] && explanations+=" -sn=ping scan"
-      [[ "$cmd" == *" -Pn"* ]] && explanations+=" -Pn=skip ping"
-      [[ "$cmd" == *" -sU"* ]] && explanations+=" -sU=UDP scan"
-      [[ "$cmd" == *" -oG"* ]] && explanations+=" -oG=greppable out"
-      [[ "$cmd" == *" -oA"* ]] && explanations+=" -oA=all formats"
-      ;;
-  esac
-
-  [[ -n "$explanations" ]] && echo "$explanations"
-}
-
-# Draw progress bar
-draw_bar() {
-  local current=$1
-  local total=$2
-  local width=10
-
-  local filled=$((current * width / total))
-  local empty=$((width - filled))
-
-  printf "["
-  for ((i=0; i<filled; i++)); do printf "█"; done
-  for ((i=0; i<empty; i++)); do printf "░"; done
-  echo "]"
-}
-
-
-# Demo command in sandbox
-demo_command() {
-  local cmd="$1"
-  local sandbox="/tmp/cmd_sandbox_$$"
-
-  # Create sandbox with dummy files
-  mkdir -p "$sandbox"/{logs,archive}
-  cd "$sandbox" || return
-
-  # Create dummy files for demos
-  echo -e "# Config file\nhost=localhost\nport=8080\ndebug=true" > config.ini
-  echo -e "line1\nline2\nline3\nline4\nline5\nline6\nline7\nline8\nline9\nline10\nline11\nline12" > data.txt
-  echo -e "ERROR: connection failed\nINFO: starting\nWARN: slow query\nERROR: timeout" > log.txt
-  echo -e "ERROR: disk full\nINFO: backup complete" > sys.log
-  echo -e "name,age,city\nalice,30,NYC\nbob,25,LA\ncharlie,35,Chicago" > data.csv
-  echo -e "alice,30,NYC\nbob,25,LA\nalice,30,NYC\nbob,25,LA" > dupes.txt
-  echo '#!/bin/bash\necho "Hello World"' > script.sh
-  echo "def main():\n    print('hello')" > app.py
-  echo "console.log('test')" > app.js
-  touch file.txt src.txt old.txt huge.log access.log server.log essay.txt file.csv mystery.bin
-  echo "some binary data" > mystery.bin
-
-  echo -e "\n${DIM}─── output ───${NC}"
-
-  # Run command with timeout, skip dangerous ones
-  case "$cmd" in
-    rm*|mv*|dd*|mkfs*|nmap*|hydra*|hashcat*|john*|aircrack*|sqlmap*|nc\ *|masscan*)
-      echo -e "${DIM}[demo skipped]${NC}"
-      ;;
-    *)
-      # Run with color support, timeout 2s
-      timeout 2s bash -c "$cmd" 2>&1 | head -15 || true
-      ;;
-  esac
-
-  echo -e "${DIM}──────────────${NC}\n"
-
-  # Cleanup
-  cd "$HOME" || true
-  rm -rf "$sandbox"
-  sleep 1.5
-}
-
-# Save session state
-save_session() {
-  printf '{"level":%d,"question":%d}\n' "$CURRENT_LEVEL" "$CURRENT_Q" > "$SESSION_FILE"
-}
-
-# Load session state
-load_session() {
-  if [[ -f "$SESSION_FILE" ]]; then
-    CURRENT_LEVEL=$(jq -r '.level // 1' "$SESSION_FILE")
-    CURRENT_Q=$(jq -r '.question // 0' "$SESSION_FILE")
-  fi
-}
-
-# Mark level complete
-mark_complete() {
-  local level=$1
-  local completed
-  completed=$(jq -r '.completed' "$PROGRESS_FILE")
-  if ! echo "$completed" | jq -e "index($level)" > /dev/null 2>&1; then
-    jq ".completed += [$level]" "$PROGRESS_FILE" > "$PROGRESS_FILE.tmp"
-    mv "$PROGRESS_FILE.tmp" "$PROGRESS_FILE"
-  fi
-}
-
-# Check if level is complete
-is_complete() {
-  local level=$1
-  jq -e ".completed | index($level)" "$PROGRESS_FILE" > /dev/null 2>&1
-}
-
-# Update stats
-update_stats() {
-  local level=$1
-  local question=$2
-  local correct=$3
-  local key="L${level}Q${question}"
-
-  local attempts correct_count
-  attempts=$(jq -r ".[\"$key\"].attempts // 0" "$STATS_FILE")
-  correct_count=$(jq -r ".[\"$key\"].correct // 0" "$STATS_FILE")
-
-  ((attempts++)) || true
-  ((correct)) && ((++correct_count)) || true
-
-  jq ".[\"$key\"] = {\"attempts\": $attempts, \"correct\": $correct_count}" "$STATS_FILE" > "$STATS_FILE.tmp"
-  mv "$STATS_FILE.tmp" "$STATS_FILE"
-}
-
-# Show stats
-show_stats() {
-  echo -e "${BOLD}=== Command Training Stats ===${NC}\n"
-
-  # Show completion
-  echo -e "${CYAN}Completed Levels:${NC}"
-  local completed
-  completed=$(jq -r '.completed | sort | .[]' "$PROGRESS_FILE" 2>/dev/null)
-  if [[ -n "$completed" ]]; then
-    echo "$completed" | tr '\n' ' '
-    echo
-  else
-    echo "None yet"
-  fi
-  echo
-
-  # Show weak areas (questions with < 50% accuracy)
-  echo -e "${YELLOW}Weak Areas (need practice):${NC}"
-  jq -r 'to_entries | map(select(.value.attempts > 0 and (.value.correct / .value.attempts) < 0.5)) | .[].key' "$STATS_FILE" 2>/dev/null | head -10
-  echo
-
-  # Overall accuracy
-  local total_attempts total_correct
-  total_attempts=$(jq '[.[].attempts] | add // 0' "$STATS_FILE")
-  total_correct=$(jq '[.[].correct] | add // 0' "$STATS_FILE")
-
-  if ((total_attempts > 0)); then
-    local pct=$((total_correct * 100 / total_attempts))
-    echo -e "${BOLD}Overall Accuracy:${NC} $pct% ($total_correct/$total_attempts)"
-  fi
-}
-
-# ============================================================================
-# MAIN GAME LOOP
-# ============================================================================
-
-run_level() {
-  local level=$1
-  local level_name="LEVEL$level"
-  local -n questions="$level_name"
-
-  # Vi-mode state (used by draw_input)
-  input=""
-  cursor=0
-  mode="insert"
-  local char
-
-  TOTAL_Q=${#questions[@]}
-  PROGRESS=0
-
-  # Shuffle questions
-  local -a shuffled
-  readarray -t shuffled < <(printf '%s\n' "${questions[@]}" | shuf)
-
-  local completed_without_hint=0
-  local q_index=0
-
-  clear
-  draw_header "$level"
-
-  while ((q_index < ${#shuffled[@]})); do
-    local card="${shuffled[$q_index]}"
-    IFS='|' read -r prompt answer <<< "$card"
-
-    USED_HINT=false
-    local correct=false
-
-    # Draw UI
-    draw_bar "$PROGRESS" "$TOTAL_Q"
-    echo -e "\n${DIM}$prompt${NC}\n"
-
-    # Input loop for this question
-    while ! $correct; do
-      # Vi-mode input with PS1 style (white $=insert, red $=normal)
-      input=""
-      cursor=0
-      mode="insert"
-
-      draw_input
-
+    while true; do
+      input="" cursor=0 mode="insert"
+      read -t 0.01 -rsn 1000 ||:  # flush input buffer
+      draw
       while true; do
-        IFS= read -rsn1 char
-
-        # ? - show hint, any key dismisses
-        if [[ "$char" == "?" ]]; then
-          USED_HINT=true
-          local flags=$(explain_flags "$answer")
-          echo -ne "\r\e[K${DIM}\$ ${answer}${NC}"
-          [[ -n "$flags" ]] && echo -e "\n${DIM}  ${flags}${NC}"
-          read -rsn1 -t 0.3 || true  # wait, ignore held key
-          read -t 0 -rsn 1000 || true  # flush buffer
-          read -rsn1  # wait for fresh keypress
-          [[ -n "$flags" ]] && echo -ne "\e[A"
-          echo -ne "\r\e[K"
-          draw_input
-          continue
+        IFS= read -rsn1 c
+        # TAB toggles hint (instant, spammable)
+        if [[ "$c" == $'\t' ]]; then
+          ((SHOW_HINT)) && SHOW_HINT=0 || { SHOW_HINT=1; HINT=true; }
+          draw; continue
         fi
-
         if [[ "$mode" == "insert" ]]; then
-          case "$char" in
-            $'\t')  # TAB - autocomplete from prompt/answer words
-              # Get current word (from last space to cursor)
-              local before="${input:0:cursor}"
-              local partial="${before##* }"
-              # Words from prompt and answer
-              local words="$prompt $answer"
-              local completion=$(autocomplete "$partial" "$words")
-              if [[ -n "$completion" ]]; then
-                # Replace partial with completion
-                local prefix="${before% *}"
-                [[ "$before" == *" "* ]] && prefix+=" " || prefix=""
-                input="${prefix}${completion}${input:cursor}"
-                cursor=$((${#prefix} + ${#completion}))
-                draw_input
-              fi
-              ;;
-            $'\x1b')  # ESC - enter normal mode
-              mode="normal"
-              ((cursor > 0)) && ((cursor--))
-              draw_input
-              ;;
-            $'\x7f'|$'\b')  # Backspace
-              if ((cursor > 0)); then
-                input="${input:0:cursor-1}${input:cursor}"
-                ((cursor--))
-                draw_input
-              fi
-              ;;
-            '')  # Enter
-              echo
-              break
-              ;;
-            *)
-              # Insert char at cursor
-              input="${input:0:cursor}${char}${input:cursor}"
-              ((++cursor))
-              draw_input
-              ;;
+          case "$c" in
+            $'\x1b') ((VI_MODE)) && { mode="normal"; ((cursor>0)) && ((cursor--)); draw; };;
+            $'\x7f'|$'\b') ((cursor>0)) && { input="${input:0:cursor-1}${input:cursor}"; ((cursor--)); SHOW_HINT=0; draw; };;
+            '') echo; break;;
+            *) input="${input:0:cursor}${c}${input:cursor}"; ((++cursor)); SHOW_HINT=0; draw;;
           esac
-        else  # normal mode
-          case "$char" in
-            i)  # Insert at cursor
-              mode="insert"
-              draw_input
-              ;;
-            a)  # Append after cursor
-              mode="insert"
-              ((cursor < ${#input})) && ((++cursor))
-              draw_input
-              ;;
-            A)  # Append at end
-              mode="insert"
-              cursor=${#input}
-              draw_input
-              ;;
-            I)  # Insert at beginning
-              mode="insert"
-              cursor=0
-              draw_input
-              ;;
-            h)  # Left
-              ((cursor > 0)) && ((cursor--))
-              draw_input
-              ;;
-            l)  # Right
-              ((cursor < ${#input} - 1)) && ((++cursor))
-              draw_input
-              ;;
-            0)  # Beginning of line
-              cursor=0
-              draw_input
-              ;;
-            $|^)  # End of line
-              cursor=$((${#input} > 0 ? ${#input} - 1 : 0))
-              draw_input
-              ;;
-            w)  # Word forward
-              while ((cursor < ${#input})) && [[ "${input:cursor:1}" != " " ]]; do ((++cursor)); done
-              while ((cursor < ${#input})) && [[ "${input:cursor:1}" == " " ]]; do ((++cursor)); done
-              ((cursor >= ${#input} && ${#input} > 0)) && cursor=$((${#input} - 1))
-              draw_input
-              ;;
-            b)  # Word backward
-              ((cursor > 0)) && ((cursor--))
-              while ((cursor > 0)) && [[ "${input:cursor:1}" == " " ]]; do ((cursor--)); done
-              while ((cursor > 0)) && [[ "${input:cursor-1:1}" != " " ]]; do ((cursor--)); done
-              draw_input
-              ;;
-            e)  # End of word
-              ((cursor < ${#input} - 1)) && ((++cursor))
-              while ((cursor < ${#input} - 1)) && [[ "${input:cursor:1}" == " " ]]; do ((++cursor)); done
-              while ((cursor < ${#input} - 1)) && [[ "${input:cursor+1:1}" != " " ]]; do ((++cursor)); done
-              draw_input
-              ;;
-            x)  # Delete char at cursor
-              if ((${#input} > 0 && cursor < ${#input})); then
-                input="${input:0:cursor}${input:cursor+1}"
-                ((cursor >= ${#input} && cursor > 0)) && ((cursor--))
-                draw_input
-              fi
-              ;;
-            X)  # Delete char before cursor
-              if ((cursor > 0)); then
-                input="${input:0:cursor-1}${input:cursor}"
-                ((cursor--))
-                draw_input
-              fi
-              ;;
-            d)  # Delete commands
-              IFS= read -rsn1 char
-              case "$char" in
-                d)  # dd - delete whole line
-                  input=""
-                  cursor=0
-                  draw_input
-                  ;;
-                w)  # dw - delete word
-                  local end=$cursor
-                  while ((end < ${#input})) && [[ "${input:end:1}" != " " ]]; do ((++end)); done
-                  while ((end < ${#input})) && [[ "${input:end:1}" == " " ]]; do ((++end)); done
-                  input="${input:0:cursor}${input:end}"
-                  ((cursor >= ${#input} && cursor > 0)) && cursor=$((${#input} - 1))
-                  draw_input
-                  ;;
-                $|0)  # d$ or d0
-                  if [[ "$char" == "$" ]]; then
-                    input="${input:0:cursor}"
-                  else
-                    input="${input:cursor}"
-                    cursor=0
-                  fi
-                  ((cursor >= ${#input} && cursor > 0)) && cursor=$((${#input} - 1))
-                  draw_input
-                  ;;
-              esac
-              ;;
-            c)  # Change commands
-              IFS= read -rsn1 char
-              case "$char" in
-                c)  # cc - change whole line
-                  input=""
-                  cursor=0
-                  mode="insert"
-                  draw_input
-                  ;;
-                w)  # cw - change word
-                  local end=$cursor
-                  while ((end < ${#input})) && [[ "${input:end:1}" != " " ]]; do ((++end)); done
-                  input="${input:0:cursor}${input:end}"
-                  mode="insert"
-                  draw_input
-                  ;;
-              esac
-              ;;
-            '')  # Enter
-              echo
-              break
-              ;;
+        elif ((VI_MODE)); then
+          case "$c" in
+            # Enter insert mode
+            i) mode="insert"; draw;; a) mode="insert"; ((cursor<${#input})) && ((++cursor)); draw;;
+            A) mode="insert"; cursor=${#input}; draw;; I) mode="insert"; cursor=0; draw;;
+            s) ((${#input}>0)) && { input="${input:0:cursor}${input:cursor+1}"; mode="insert"; draw; };;  # substitute char
+            S) input="" cursor=0 mode="insert"; draw;;  # substitute line
+            # Motion
+            h) ((cursor>0)) && ((cursor--)); draw;; l) ((cursor<${#input}-1)) && ((++cursor)); draw;;
+            0) cursor=0; draw;; \$) cursor=$((${#input}>0?${#input}-1:0)); draw;;
+            w) while ((cursor<${#input})) && [[ "${input:cursor:1}" != " " ]]; do ((++cursor)); done
+               while ((cursor<${#input})) && [[ "${input:cursor:1}" == " " ]]; do ((++cursor)); done
+               ((cursor>=${#input}&&${#input}>0)) && cursor=$((${#input}-1)); draw;;
+            b) ((cursor>0)) && ((cursor--))
+               while ((cursor>0)) && [[ "${input:cursor:1}" == " " ]]; do ((cursor--)); done
+               while ((cursor>0)) && [[ "${input:cursor-1:1}" != " " ]]; do ((cursor--)); done; draw;;
+            e) ((cursor<${#input}-1)) && ((++cursor))
+               while ((cursor<${#input}-1)) && [[ "${input:cursor:1}" == " " ]]; do ((++cursor)); done
+               while ((cursor<${#input}-1)) && [[ "${input:cursor+1:1}" != " " ]]; do ((++cursor)); done; draw;;
+            # Delete
+            x) ((${#input}>0&&cursor<${#input})) && { input="${input:0:cursor}${input:cursor+1}"
+               ((cursor>=${#input}&&cursor>0)) && ((cursor--)); draw; };;
+            X) ((cursor>0)) && { input="${input:0:cursor-1}${input:cursor}"; ((cursor--)); draw; };;
+            D) input="${input:0:cursor}"; ((cursor>0)) && ((cursor--)); draw;;  # delete to end
+            r) IFS= read -rsn1 c2; [[ -n "$c2" && "$c2" != $'\x1b' ]] && { input="${input:0:cursor}${c2}${input:cursor+1}"; draw; };;
+            d) IFS= read -rsn1 c2; case "$c2" in
+                 d) input="" cursor=0; draw;;  # dd - delete line
+                 w) e=$cursor; while ((e<${#input})) && [[ "${input:e:1}" != " " ]]; do ((++e)); done
+                    input="${input:0:cursor}${input:e}"; ((cursor>=${#input}&&cursor>0)) && cursor=$((${#input}-1)); draw;;
+                 b) e=$cursor; ((e>0)) && ((e--)); while ((e>0)) && [[ "${input:e:1}" == " " ]]; do ((e--)); done
+                    while ((e>0)) && [[ "${input:e-1:1}" != " " ]]; do ((e--)); done
+                    input="${input:0:e}${input:cursor}"; cursor=$e; draw;;
+                 \$) input="${input:0:cursor}"; ((cursor>0)) && ((cursor--)); draw;;
+                 0) input="${input:cursor}"; cursor=0; draw;;
+               esac;;
+            # Change
+            C) input="${input:0:cursor}"; mode="insert"; draw;;  # change to end
+            c) IFS= read -rsn1 c2; case "$c2" in
+                 c) input="" cursor=0 mode="insert"; draw;;  # cc - change line
+                 w) e=$cursor; while ((e<${#input})) && [[ "${input:e:1}" != " " ]]; do ((++e)); done
+                    input="${input:0:cursor}${input:e}"; mode="insert"; draw;;
+                 b) e=$cursor; ((e>0)) && ((e--)); while ((e>0)) && [[ "${input:e:1}" == " " ]]; do ((e--)); done
+                    while ((e>0)) && [[ "${input:e-1:1}" != " " ]]; do ((e--)); done
+                    input="${input:0:e}${input:cursor}"; cursor=$e; mode="insert"; draw;;
+                 \$) input="${input:0:cursor}"; mode="insert"; draw;;
+                 0) input="${input:cursor}"; cursor=0; mode="insert"; draw;;
+               esac;;
+            '') echo; break;;
           esac
         fi
       done
 
-      # Check answer
-      if check_answer "$input" "$answer"; then
-        correct=true
-        ((++PROGRESS))
-
-        if ! $USED_HINT; then
-          ((++completed_without_hint))
-          update_stats "$level" "$q_index" 1
-          echo -e "${GREEN}+1${NC}"
-        else
-          update_stats "$level" "$q_index" 0
-          echo -e "${YELLOW}+1${NC} ${DIM}(hint used)${NC}"
-        fi
-
-        # Demo the command live
-        demo_command "$answer"
-
-        ((++q_index))
-        save_session
+      if check "$input" "$answers"; then
+        ((++PROG))
+        $HINT && echo -e "${Y}+1${N} ${D}(hint)${N}" || { ((++done)); echo -e "${G}+1${N}"; }
+        demo "$ans"; ((++qi)); save; break
       else
-        update_stats "$level" "$q_index" 0
-        if ((PROGRESS > 0)); then
-          ((PROGRESS--)) || true
-        fi
-        echo -e "${RED}-1${NC}"
-        echo -e "${DIM}answer:${NC} ${CYAN}${answer}${NC}"
-        echo -ne "${DIM}any key to continue${NC}"
-        read -rsn1
-        echo
+        ((PROG>0)) && ((PROG--))
+        echo -e "${R}-1${N}\n${D}answer:${N} ${C}${ans}${N}"
+        sleep 2
       fi
-
-      # Redraw
-      if ! $correct; then
-        sleep 0.3
-        clear
-        draw_header "$level"
-        draw_bar "$PROGRESS" "$TOTAL_Q"
-        echo -e "\n${DIM}$prompt${NC}\n"
-      fi
+      hdr "$lv"; bar; echo -e "\n${D}$prompt${N}\n"
     done
-
-    clear
-    draw_header "$level"
+    hdr "$lv"
   done
 
-  # Level complete
-  if ((completed_without_hint >= TOTAL_Q)); then
-    mark_complete "$level"
-    echo -e "${GREEN}${BOLD}Level $level Complete!${NC}\n"
-    if ((level < 9)); then
-      echo "Press Enter for Level $((level + 1))..."
-      read -r
-      CURRENT_LEVEL=$((level + 1))
-      CURRENT_Q=0
-      save_session
-      run_level "$CURRENT_LEVEL"
-    else
-      echo -e "${GREEN}${BOLD}ALL LEVELS COMPLETE! You are a CLI master.${NC}"
-    fi
+  if ((done>=TOT)); then
+    echo -e "${G}${B}Level $lv Complete!${N}"
+    ((lv<9)) && { echo "Enter for Level $((lv+1))..."; read -r; LVL=$((lv+1)); QN=0; save; run "$LVL"; } \
+             || echo -e "${G}${B}ALL COMPLETE - CLI MASTER${N}"
   else
-    echo -e "${YELLOW}Level $level needs ${BOLD}$((TOTAL_Q - completed_without_hint))${NC}${YELLOW} more without hints${NC}"
-    echo "Press Enter to retry..."
-    read -r
-    run_level "$level"
+    echo -e "${Y}Need $((TOT-done)) more without hints${N}"; echo "Enter to retry..."; read -r; run "$lv"
   fi
 }
 
-# ============================================================================
-# ENTRY POINT
-# ============================================================================
-
-init_data_dir
-
 case "${1:-}" in
-  [1-9])
-    CURRENT_LEVEL=$1
-    CURRENT_Q=0
-    save_session
-    run_level "$CURRENT_LEVEL"
-    ;;
-  stats|s)
-    show_stats
-    ;;
-  reset)
-    rm -f "$PROGRESS_FILE" "$STATS_FILE" "$SESSION_FILE"
-    echo "Progress reset."
-    ;;
-  help|h|--help|-h)
-    echo "cmd - CLI Command Trainer"
-    echo
-    echo "Usage:"
-    echo "  cmd         Resume from last position"
-    echo "  cmd 1-9     Start at specific level"
-    echo "  cmd stats   Show statistics"
-    echo "  cmd reset   Reset all progress"
-    echo
-    echo "In-game:"
-    echo "  ?           Show hint (won't count)"
-    echo "  Enter       Submit answer"
-    echo "  Ctrl+C      Quit (progress saved)"
-    ;;
-  "")
-    load_session
-    run_level "$CURRENT_LEVEL"
-    ;;
-  *)
-    echo "Unknown command: $1"
-    echo "Try: cmd help"
-    exit 1
-    ;;
+  [0-9]) LVL=$1 QN=0; save; run "$LVL";;
+  r|reset) rm -f "$DATA"/*.json "$DATA/vi_mode"; echo "Reset.";;
+  h|help|-h|--help) echo "cmd [0-9|reset|help] - CLI trainer. TAB=hint, vi mode optional";;
+  "") load; run "$LVL";;
+  *) echo "cmd help"; exit 1;;
 esac
