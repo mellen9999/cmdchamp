@@ -327,7 +327,7 @@ run() {
   local -A _sc; [[ -f "$DATA/scores" ]] && while IFS='|' read -r k v; do _sc[$k]=$v; done < "$DATA/scores"
   _sget() { local h=$(_hash "$1"); echo "${_sc[$h]:-0}"; }
   _sset() { local h=$(_hash "$1"); _sc[$h]=$2; sed -i "/^$h|/d" "$DATA/scores" 2>/dev/null; echo "$h|$2">>"$DATA/scores"; }
-  TOT=${#qs[@]}; PROG=0
+  TOT=${#qs[@]}; PROG=$qi
   # Prioritize by tier: 0 (copy) > 1 (blank) > 2 (recall)
   local t0=() t1=() t2=()
   for q in "${qs[@]}"; do
