@@ -105,9 +105,10 @@ Questions prioritized by tier (lowest first) for spaced repetition.
 ## Commands
 
 ```bash
-./bashgym         # Resume from last position
-./bashgym 3       # Start at level 3
-./bashgym stats   # Show mastery stats per level
-./bashgym reset   # Clear all progress + vi preference
-./bashgym help    # Show usage
+./bashgym           # Resume from last position
+./bashgym 3         # Start at level 3
+./bashgym stats     # Show mastery stats per level
+./bashgym reset     # Clear all progress + vi preference
+./bashgym version   # Show version
+./bashgym help      # Show usage
 ```
