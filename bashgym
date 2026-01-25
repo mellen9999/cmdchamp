@@ -261,9 +261,9 @@ check() {
   for a in "${opts[@]}"; do b="${a#"${a%%[![:space:]]*}"}"; b="${b%"${b##*[![:space:]]}"}"; [[ "$inp" == "$b" || "$(norm "$inp")" == "$(norm "$b")" ]] && return 0; done; return 1
 }
 
-LVL=0 HINT=false PROG=0 TOT=0
-load() { [[ -f "$DATA/session.json" ]] && { local t; t=$(<"$DATA/session.json"); t="${t#*\"level\":}"; LVL="${t%%[!0-9]*}"; }; LVL=${LVL:-0}; }
-save() { printf '{"level":%d}\n' "$LVL" > "$DATA/session.json"; }
+LVL=0 QI=0 HINT=false PROG=0 TOT=0
+load() { [[ -f "$DATA/session.json" ]] && { local t; t=$(<"$DATA/session.json"); t="${t#*\"level\":}"; LVL="${t%%[!0-9]*}"; }; LVL=${LVL:-0}; [[ -f "$DATA/session.json" ]] && { local t; t=$(<"$DATA/session.json"); [[ "$t" == *'"qi":'* ]] && { t="${t#*\"qi\":}"; QI="${t%%[!0-9]*}"; }; }; QI=${QI:-0}; }
+save() { printf '{"level":%d,"qi":%d}\n' "$LVL" "$QI" > "$DATA/session.json"; }
 # Score tracking: tier 0=copy, 1=blank, 2=recall (md5 hash keys avoid regex issues)
 _hash() { local h; h=$(printf '%s' "$1"|md5sum); echo "${h:0:16}"; }
 score_set() { local k=$(_hash "$1"); sed -i "/^$k|/d" "$DATA/scores" 2>/dev/null; echo "$k|$2">>"$DATA/scores"; }
@@ -323,7 +323,7 @@ _del() { # $1=motion
 }
 
 run() {
-  local lv=$1 shuf=() qi=0 done=0; local -n qs="Q$lv"
+  local lv=$1 shuf=() qi=${QI:-0} done=0; local -n qs="Q$lv"; QI=0
   local -A _sc; [[ -f "$DATA/scores" ]] && while IFS='|' read -r k v; do _sc[$k]=$v; done < "$DATA/scores"
   _sget() { local h=$(_hash "$1"); echo "${_sc[$h]:-0}"; }
   _sset() { local h=$(_hash "$1"); _sc[$h]=$2; sed -i "/^$h|/d" "$DATA/scores" 2>/dev/null; echo "$h|$2">>"$DATA/scores"; }
@@ -409,7 +409,7 @@ run() {
         ((++PROG))
         if $HINT; then echo -e "${Y}+1${N} ${D}(hint)${N}"; _sset "$prompt" "$tier"  # stay same tier
         else ((++done)); echo -e "${G}+1${N}"; _sset "$prompt" "$((tier<2?tier+1:2))"; fi  # tier++
-        ((++qi)); save; break
+        ((++qi)); QI=$qi; save; break
       else
         ((PROG>0)) && ((PROG--)); echo -e "${R}-1${N}\n${D}answer:${N} ${C}${ans}${N}"
         _sset "$prompt" "$((tier>0?tier-1:0))"; sleep 2  # tier--
@@ -420,17 +420,17 @@ run() {
   done
   if ((done>=TOT)); then
     echo -e "${G}${B}Level $lv Complete!${N}"
-    ((lv<9)) && { echo "Enter for Level $((lv+1))..."; read -r; LVL=$((lv+1)); save; run "$LVL"; } || echo -e "${G}${B}ALL COMPLETE - CLI MASTER${N}"
-  else echo -e "${Y}Need $((TOT-done)) more without hints${N}"; echo "Enter to retry..."; read -r; run "$lv"; fi
+    ((lv<9)) && { echo "Enter for Level $((lv+1))..."; read -r; LVL=$((lv+1)); QI=0; save; run "$LVL"; } || echo -e "${G}${B}ALL COMPLETE - CLI MASTER${N}"
+  else echo -e "${Y}Need $((TOT-done)) more without hints${N}"; echo "Enter to retry..."; read -r; QI=0; save; run "$lv"; fi
 }
 
 case "${1:-}" in
-  [0-9]) _tty; LVL=$1; save; run "$LVL";;
+  [0-9]) _tty; LVL=$1; QI=0; save; run "$LVL";;
   r|reset) rm -f "$DATA"/*.json "$DATA/vi_mode" "$DATA/scores"; echo "Reset.";;
   s|stats) stats;;
   v|version|-v|--version) echo "bashgym 1.0.0";;
   h|help|-h|--help) echo "bashgym [0-9|n|reset|stats|help|version] - CLI trainer. Tab=hint Ctrl+n=skip";;
-  n|new) _tty; LVL=0; save; run "$LVL";;
-  "") _tty; load; ((LVL>0)) && { read -rp "Continue Level $LVL? [Y/n] " yn; [[ "$yn" =~ ^[Nn] ]] && { LVL=0; save; }; }; run "$LVL";;
+  n|new) _tty; LVL=0; QI=0; save; run "$LVL";;
+  "") _tty; load; ((LVL>0||QI>0)) && { read -rp "Continue Level $LVL Q$((QI+1))? [Y/n] " yn; [[ "$yn" =~ ^[Nn] ]] && { LVL=0; QI=0; save; }; }; run "$LVL";;
   *) echo "Usage: bashgym [0-9|reset|stats|help|version]"; exit 1;;
 esac
