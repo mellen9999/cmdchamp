@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # bashgym - CLI command trainer
 set -uo pipefail
-[[ -t 0 ]] || { echo "Error: requires interactive terminal" >&2; exit 1; }
+_tty() { [[ -t 0 ]] || { echo "Error: requires interactive terminal" >&2; exit 1; }; }
 
 DATA="${XDG_DATA_HOME:-$HOME/.local/share}/bashgym"; mkdir -p "$DATA"
 trap 'echo; exit 0' INT
@@ -232,7 +232,7 @@ load() { [[ -f "$DATA/session.json" ]] && LVL=$(sed -n 's/.*"level":\([0-9]*\).*
 save() { printf '{"level":%d}\n' "$LVL" > "$DATA/session.json"; }
 # Score tracking: tier 0=copy, 1=blank, 2=recall
 score_set() { local p="$1" t="$2"; grep -v "^${p}|" "$DATA/scores" > "$DATA/scores.tmp" 2>/dev/null ||:; echo "${p}|${t}" >> "$DATA/scores.tmp"; mv "$DATA/scores.tmp" "$DATA/scores"; }
-score_get() { grep "^${1}|" "$DATA/scores" 2>/dev/null | cut -d'|' -f2 || echo "0"; }
+score_get() { local t; t=$(grep "^${1}|" "$DATA/scores" 2>/dev/null | cut -d'|' -f2); echo "${t:-0}"; }
 
 stats() {
   echo -e "${B}Mastery Stats${N}\n"
@@ -373,11 +373,12 @@ run() {
 }
 
 case "${1:-}" in
-  [0-9]) LVL=$1; save; run "$LVL";;
+  [0-9]) _tty; LVL=$1; save; run "$LVL";;
   r|reset) rm -f "$DATA"/*.json "$DATA/vi_mode" "$DATA/scores"; echo "Reset.";;
   s|stats) stats;;
-  h|help|-h|--help) echo "bashgym [0-9|n|reset|stats|help] - CLI trainer. TAB=hint, Ctrl+N=skip";;
-  n|new) LVL=0; save; run "$LVL";;
-  "") load; ((LVL>0)) && { read -rp "Continue Level $LVL? [Y/n] " yn; [[ "$yn" =~ ^[Nn] ]] && { LVL=0; save; }; }; run "$LVL";;
+  v|version|-v|--version) echo "bashgym 1.0.0";;
+  h|help|-h|--help) echo "bashgym [0-9|n|reset|stats|help|version] - CLI trainer. TAB=hint, Ctrl+N=skip";;
+  n|new) _tty; LVL=0; save; run "$LVL";;
+  "") _tty; load; ((LVL>0)) && { read -rp "Continue Level $LVL? [Y/n] " yn; [[ "$yn" =~ ^[Nn] ]] && { LVL=0; save; }; }; run "$LVL";;
   *) echo "bashgym help"; exit 1;;
 esac
