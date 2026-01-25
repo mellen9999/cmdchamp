@@ -251,31 +251,33 @@ norm() {
       [[ "$p" =~ ^-[a-zA-Z]+$ && ${#p} -gt 2 ]] && { for ((j=1;j<${#p};j++)); do flags+=("-${p:j:1}"); done; } || flags+=("$p")
     else args+=("$p"); fi
   done
-  readarray -t flags < <(printf '%s\n' "${flags[@]}" | sort)
+  readarray -t flags < <(printf '%s\n' "${flags[@]}"|LC_ALL=C sort)
   printf '%s' "$out"; printf ' %s' "${flags[@]}" "${args[@]}"; echo
 }
 
 check() {
-  local inp=$(echo "$1"|xargs) a b; IFS='|' read -ra opts <<< "$2"
-  for a in "${opts[@]}"; do b=$(echo "$a"|xargs); [[ "$inp" == "$b" || "$(norm "$inp")" == "$(norm "$b")" ]] && return 0; done; return 1
+  local inp="${1#"${1%%[![:space:]]*}"}" a b; inp="${inp%"${inp##*[![:space:]]}"}"
+  IFS='|' read -ra opts <<< "$2"
+  for a in "${opts[@]}"; do b="${a#"${a%%[![:space:]]*}"}"; b="${b%"${b##*[![:space:]]}"}"; [[ "$inp" == "$b" || "$(norm "$inp")" == "$(norm "$b")" ]] && return 0; done; return 1
 }
 
 LVL=0 HINT=false PROG=0 TOT=0
-load() { [[ -f "$DATA/session.json" ]] && LVL=$(sed -n 's/.*"level":\([0-9]*\).*/\1/p' "$DATA/session.json"); LVL=${LVL:-0}; }
+load() { [[ -f "$DATA/session.json" ]] && { local t; t=$(<"$DATA/session.json"); t="${t#*\"level\":}"; LVL="${t%%[!0-9]*}"; }; LVL=${LVL:-0}; }
 save() { printf '{"level":%d}\n' "$LVL" > "$DATA/session.json"; }
 # Score tracking: tier 0=copy, 1=blank, 2=recall (md5 hash keys avoid regex issues)
-_hash() { printf '%s' "$1" | md5sum | cut -c1-16; }
-score_set() { local k; k=$(_hash "$1"); grep -v "^$k|" "$DATA/scores" 2>/dev/null > "$DATA/scores.tmp" ||:; echo "$k|$2" >> "$DATA/scores.tmp"; mv "$DATA/scores.tmp" "$DATA/scores"; }
-score_get() { local k t; k=$(_hash "$1"); t=$(grep "^$k|" "$DATA/scores" 2>/dev/null | cut -d'|' -f2); echo "${t:-0}"; }
+_hash() { local h; h=$(printf '%s' "$1"|md5sum); echo "${h:0:16}"; }
+score_set() { local k=$(_hash "$1"); sed -i "/^$k|/d" "$DATA/scores" 2>/dev/null; echo "$k|$2">>"$DATA/scores"; }
+score_get() { local k=$(_hash "$1") t; t=$(grep "^$k|" "$DATA/scores" 2>/dev/null); t="${t##*|}"; echo "${t:-0}"; }
 
 stats() {
+  local -A sc; [[ -f "$DATA/scores" ]] && while IFS='|' read -r k v; do sc[$k]=$v; done < "$DATA/scores"
   echo -e "${B}Mastery Stats${N}\n"
   for lv in {0..9}; do
-    local -n qs="Q$lv"; local t0=0 t1=0 t2=0
+    local -n qs="Q$lv"; local t0=0 t1=0 t2=0 h
     for q in "${qs[@]}"; do
-      case $(score_get "${q%%|*}") in 0) ((++t0));; 1) ((++t1));; *) ((++t2));; esac
+      h=$(_hash "${q%%|*}"); case "${sc[$h]:-0}" in 0) ((++t0));; 1) ((++t1));; *) ((++t2));; esac
     done
-    echo -e "Level $lv: ${R}$(printf '%2d' $t0)${N} copy  ${Y}$(printf '%2d' $t1)${N} blank  ${G}$(printf '%2d' $t2)${N} recall"
+    printf "Level %d: ${R}%2d${N} copy  ${Y}%2d${N} blank  ${G}%2d${N} recall\n" "$lv" "$t0" "$t1" "$t2"
   done
 }
 
@@ -289,15 +291,16 @@ show_tier() {
 }
 
 input="" cursor=0 mode="insert" SHOW_HINT=0 UNDO="" EXPLAIN_LINES=0
-clear_hint() { for ((i=0; i<=EXPLAIN_LINES; i++)); do echo -ne "\e[A\e[2K"; done; echo -ne "\r"; }
-hdr() { clear; echo -e "${B}=== Level $1 ===  ${D}[$2/$3]${N}  ${D}Tab=hint Ctrl+n=skip${N}\n"; }
-bar() { printf '['; ((PROG)) && printf '█%.0s' $(seq 1 $PROG); ((TOT>PROG)) && printf '░%.0s' $(seq 1 $((TOT-PROG))); printf ']'; }
+clear_hint() { for ((i=0;i<=EXPLAIN_LINES;i++)); do printf '\e[A\e[2K'; done; printf '\r'; }
+hdr() { printf '\e[2J\e[H'; echo -e "${B}=== Level $1 ===  ${D}[$2/$3]${N}  ${D}Tab=hint Ctrl+n=skip${N}\n"; }
+qdisp() { bar; echo -e "\n${D}$1${N}"; show_tier "$2" "$3"; echo; }
+bar() { local f e; printf -v f '%*s' "$PROG" ''; printf -v e '%*s' "$((TOT-PROG))" ''; printf '[%s%s]' "${f// /█}" "${e// /░}"; }
 draw() {
   echo -ne "\r\e[K"
   if ((SHOW_HINT)); then
     echo -ne "${D}$PROMPT_CHAR${ans}${N}"
   else
-    ((VI_MODE)) && [[ "$mode" != "insert" ]] && echo -ne "\e[91m$PROMPT_CHAR\e[0m" || echo -ne "\e[97m$PROMPT_CHAR\e[0m"
+    ((VI_MODE)) && [[ $mode != insert ]] && echo -ne "\e[91m$PROMPT_CHAR\e[0m" || echo -ne "\e[97m$PROMPT_CHAR\e[0m"
     echo -n "$input"
     ((cursor<${#input})) && echo -ne "\e[$((${#input}-cursor))D"
   fi
@@ -321,20 +324,22 @@ _del() { # $1=motion
 
 run() {
   local lv=$1 shuf=() qi=0 done=0; local -n qs="Q$lv"
+  local -A _sc; [[ -f "$DATA/scores" ]] && while IFS='|' read -r k v; do _sc[$k]=$v; done < "$DATA/scores"
+  _sget() { local h=$(_hash "$1"); echo "${_sc[$h]:-0}"; }
+  _sset() { local h=$(_hash "$1"); _sc[$h]=$2; sed -i "/^$h|/d" "$DATA/scores" 2>/dev/null; echo "$h|$2">>"$DATA/scores"; }
   TOT=${#qs[@]}; PROG=0
   # Prioritize by tier: 0 (copy) > 1 (blank) > 2 (recall)
   local t0=() t1=() t2=()
   for q in "${qs[@]}"; do
-    local t; t=$(score_get "${q%%|*}")
-    case "$t" in 0) t0+=("$q");; 1) t1+=("$q");; *) t2+=("$q");; esac
+    case "$(_sget "${q%%|*}")" in 0) t0+=("$q");; 1) t1+=("$q");; *) t2+=("$q");; esac
   done
-  readarray -t shuf < <({ ((${#t0[@]})) && printf '%s\n' "${t0[@]}" | shuf; ((${#t1[@]})) && printf '%s\n' "${t1[@]}" | shuf; ((${#t2[@]})) && printf '%s\n' "${t2[@]}" | shuf; })
+  readarray -t shuf < <({ printf '%s\n' "${t0[@]}"|shuf; printf '%s\n' "${t1[@]}"|shuf; printf '%s\n' "${t2[@]}"|shuf; })
   hdr "$lv" "$((qi+1))" "$TOT"
   while ((qi < ${#shuf[@]})); do
-    local prompt="${shuf[$qi]%%|*}" answers="${shuf[$qi]#*|}" ans="${shuf[$qi]#*|}"; ans="${ans%%|*}"
-    local tier; tier=$(score_get "$prompt")
+    local prompt="${shuf[$qi]%%|*}" answers="${shuf[$qi]#*|}"; local ans="${answers%%|*}"
+    local tier; tier=$(_sget "$prompt")
     HINT=false SHOW_HINT=0 EXPLAIN_LINES=0
-    bar; echo -e "\n${D}$prompt${N}"; show_tier "$tier" "$ans"; echo
+    qdisp "$prompt" "$tier" "$ans"
     while true; do
       input="" cursor=0 mode="insert" SHOW_HINT=0
       read -t 0.01 -rsn 1000 ||:
@@ -389,14 +394,14 @@ run() {
       done
       if check "$input" "$answers"; then
         ((++PROG))
-        if $HINT; then echo -e "${Y}+1${N} ${D}(hint)${N}"; score_set "$prompt" "$tier"  # stay same tier
-        else ((++done)); echo -e "${G}+1${N}"; score_set "$prompt" "$((tier<2?tier+1:2))"; fi  # tier++
+        if $HINT; then echo -e "${Y}+1${N} ${D}(hint)${N}"; _sset "$prompt" "$tier"  # stay same tier
+        else ((++done)); echo -e "${G}+1${N}"; _sset "$prompt" "$((tier<2?tier+1:2))"; fi  # tier++
         ((++qi)); save; break
       else
         ((PROG>0)) && ((PROG--)); echo -e "${R}-1${N}\n${D}answer:${N} ${C}${ans}${N}"
-        score_set "$prompt" "$((tier>0?tier-1:0))"; sleep 2  # tier--
+        _sset "$prompt" "$((tier>0?tier-1:0))"; sleep 2  # tier--
       fi
-      tier=$(score_get "$prompt"); hdr "$lv" "$((qi+1))" "$TOT"; bar; echo -e "\n${D}$prompt${N}"; show_tier "$tier" "$ans"; echo
+      tier=$(_sget "$prompt"); hdr "$lv" "$((qi+1))" "$TOT"; qdisp "$prompt" "$tier" "$ans"
     done
     hdr "$lv" "$((qi+1))" "$TOT"
   done
