@@ -1,16 +1,19 @@
 #!/usr/bin/env bash
-# bashchamp - CLI command trainer with dynamic question generation
+# cmdchamp
 set -uo pipefail
 [[ ${BASH_VERSINFO[0]:-0} -lt 4 || (${BASH_VERSINFO[0]} -eq 4 && ${BASH_VERSINFO[1]:-0} -lt 3) ]] && { echo "Requires bash 4.3+"; exit 1; }
 _tty() { [[ -t 0 ]] || { echo "Error: requires interactive terminal" >&2; exit 1; }; }
 
-DATA="${XDG_DATA_HOME:-$HOME/.local/share}/bashchamp"; mkdir -p "$DATA"; touch "$DATA/scores"
-trap 'echo; exit 0' INT
+DATA="${XDG_DATA_HOME:-$HOME/.local/share}/cmdchamp"; mkdir -p "$DATA"; touch "$DATA/scores"
+# Terminal state management
+_stty_saved=""
+_cleanup() { [[ -n "$_stty_saved" ]] && stty "$_stty_saved" 2>/dev/null; echo; }
+trap '_cleanup; exit 0' INT TERM HUP EXIT
 R=$'\e[31m' G=$'\e[32m' Y=$'\e[33m' C=$'\e[36m' D=$'\e[2m' B=$'\e[1m' N=$'\e[0m'
 PROMPT_CHAR="${CMD_PROMPT:-$([[ $EUID -eq 0 ]] && echo '# ' || echo '$ ')}"
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# VARIABLE POOLS - GOD TIER VARIATION - Makes every session truly different
+# VARIABLE POOLS
 # ═══════════════════════════════════════════════════════════════════════════════
 
 # LOGS - 25 options (was 10)
@@ -161,11 +164,25 @@ declare -a BRANCHES=(main master develop feature/auth feature/api fix/login hotf
 # DYNAMIC GENERATION HELPERS - True infinite variation
 # ═══════════════════════════════════════════════════════════════════════════════
 
-# Random selection from array
-_pick() { local -n arr=$1; echo "${arr[$((RANDOM % ${#arr[@]}))]}" ; }
+# Unbiased random selection using rejection sampling
+_pick() {
+  local -n arr=$1
+  local len=${#arr[@]}
+  ((len == 0)) && { echo ""; return; }
+  local max=$((32768 - 32768 % len)) r
+  while r=$RANDOM; ((r >= max)); do :; done
+  echo "${arr[$((r % len))]}"
+}
 
-# Random number in range: _rnum 1 100 -> random 1-100
-_rnum() { echo $(( $1 + RANDOM % ($2 - $1 + 1) )); }
+# Unbiased random number in range: _rnum 1 100 -> random 1-100
+_rnum() {
+  local lo=$1 hi=$2
+  ((lo > hi)) && { local t=$lo; lo=$hi; hi=$t; }  # swap if inverted
+  local range=$((hi - lo + 1))
+  local max=$((32768 - 32768 % range)) r
+  while r=$RANDOM; ((r >= max)); do :; done
+  echo $((lo + r % range))
+}
 
 # Random IP octet variations
 _rip() { echo "$(($RANDOM % 255)).$(($RANDOM % 255)).$(($RANDOM % 255)).$(($RANDOM % 255 + 1))"; }
@@ -196,8 +213,33 @@ _flag_alts() {
   echo "$flags|-$rev"
 }
 
-# Pick one of multiple phrasings
-_phrase() { local -a opts=("$@"); echo "${opts[$((RANDOM % ${#opts[@]}))]}"; }
+# Unbiased pick from phrasings
+_phrase() {
+  local -a opts=("$@")
+  local len=${#opts[@]}
+  ((len == 0)) && { echo ""; return; }
+  local max=$((32768 - 32768 % len)) r
+  while r=$RANDOM; ((r >= max)); do :; done
+  echo "${opts[$((r % len))]}"
+}
+
+# Context helper: sets all common vars in caller's scope (use with: local log cfg txt ... ; _ctx)
+_ctx() {
+  log=$(_pick LOGS); log2=$(_pick LOGS); cfg=$(_pick CONFIGS); cfg2=$(_pick CONFIGS)
+  txt=$(_pick TXTS); txt2=$(_pick TXTS); csv=$(_pick CSVS); csv2=$(_pick CSVS)
+  dir=$(_pick DIRS); dir2=$(_pick DIRS); ext=$(_pick EXTS); ext2=$(_pick EXTS)
+  script=$(_pick SCRIPTS); archive=$(_pick ARCHIVES); bin=$(_pick BINS)
+  img=$(_pick IMGS); pcap=$(_pick PCAPS); hash=$(_pick HASHES); photo=$(_pick PHOTOS)
+  wordlist=$(_pick WORDLISTS); ip=$(_pick IPS); subnet=$(_pick SUBNETS)
+  port=$(_pick PORTS); port2=$(_pick PORTS); mac=$(_pick MACS)
+  url=$(_pick URLS); user=$(_pick USERNAMES); host=$(_pick REMOTE_HOSTS)
+  term=$(_pick SEARCH_TERMS); term2=$(_pick SEARCH_TERMS); term3=$(_pick SEARCH_TERMS)
+  field=$(_pick FIELDS); field2=$(_pick FIELDS); key=$(_pick JSON_KEYS)
+  old=$(_pick REPLACE_OLD); new=$(_pick REPLACE_NEW); size=$(_pick SIZES)
+  iface=$(_pick INTERFACES); proc=$(_pick PROCS); svc=$(_pick SERVICES)
+  sig=$(_pick SIGNALS); branch=$(_pick BRANCHES); time=$(_pick TIMES)
+  n1=$(_rnum 1 20); n2=$(_rnum 5 50); n3=$(_rnum 2 10); col=$(_rnum 1 5)
+}
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # COMMAND EXPLANATIONS (shown on TAB)
@@ -314,10 +356,7 @@ else read -rp "Enable vi keybindings? [y/N] " yn; [[ "$yn" =~ ^[Yy] ]] && VI_MOD
 
 # Level 0: Shell Fundamentals (redirections, pipes, job control, history, variables, expansion)
 gen_q0() {
-  local questions=()
-  local log=$(_pick LOGS) log2=$(_pick LOGS) cfg=$(_pick CONFIGS) script=$(_pick SCRIPTS)
-  local txt=$(_pick TXTS) txt2=$(_pick TXTS) csv=$(_pick CSVS) dir=$(_pick DIRS)
-  local term=$(_pick SEARCH_TERMS) term2=$(_pick SEARCH_TERMS) archive=$(_pick ARCHIVES)
+  local questions=() log log2 cfg cfg2 txt txt2 csv csv2 dir dir2 ext ext2 script archive bin img pcap hash photo wordlist ip subnet port port2 mac url user host term term2 term3 field field2 key old new size iface proc svc sig branch time n1 n2 n3 col; _ctx
 
   # Redirections - essential shell plumbing
   questions+=("Save ls output to files.txt|ls > files.txt")
@@ -400,13 +439,8 @@ gen_q0() {
 
 # Level 1: Core File Tools (cat, ls, head, tail, cp, wc, du, tree)
 gen_q1() {
-  local questions=()
-  local cfg=$(_pick CONFIGS) cfg2=$(_pick CONFIGS) log=$(_pick LOGS) log2=$(_pick LOGS)
-  local txt=$(_pick TXTS) txt2=$(_pick TXTS) csv=$(_pick CSVS)
-  local dir=$(_pick DIRS) dir2=$(_pick DIRS) archive=$(_pick ARCHIVES) script=$(_pick SCRIPTS)
-  # DYNAMIC numbers - truly random each time
-  local n1=$(_rnum 5 50) n2=$(_rnum 10 100) n3=$(_rnum 2 5)
-  local perm1=$((RANDOM % 8))$((RANDOM % 8))$((RANDOM % 8))  # random permission like 644, 755
+  local questions=() log log2 cfg cfg2 txt txt2 csv csv2 dir dir2 ext ext2 script archive bin img pcap hash photo wordlist ip subnet port port2 mac url user host term term2 term3 field field2 key old new size iface proc svc sig branch time n1 n2 n3 col; _ctx
+  local perm1=$((RANDOM % 8))$((RANDOM % 8))$((RANDOM % 8))
 
   # Viewing files - multiple phrasings
   questions+=("$(_phrase "View" "Display" "Show" "Print") ${cfg} contents|cat ${cfg}|bat ${cfg}")
@@ -486,11 +520,7 @@ gen_q1() {
 
 # Level 2: Text Search (grep, rg)
 gen_q2() {
-  local questions=()
-  local log=$(_pick LOGS) log2=$(_pick LOGS) txt=$(_pick TXTS)
-  local term=$(_pick SEARCH_TERMS) term2=$(_pick SEARCH_TERMS) term3=$(_pick SEARCH_TERMS)
-  local ext=$(_pick EXTS) ext2=$(_pick EXTS) dir=$(_pick DIRS)
-  # DYNAMIC context lines - truly random
+  local questions=() log log2 cfg cfg2 txt txt2 csv csv2 dir dir2 ext ext2 script archive bin img pcap hash photo wordlist ip subnet port port2 mac url user host term term2 term3 field field2 key old new size iface proc svc sig branch time n1 n2 n3 col; _ctx
   local ctx=$(_rnum 1 10) ctx2=$(_rnum 2 5)
 
   # Basic grep - with flag order alternatives
@@ -546,9 +576,7 @@ gen_q2() {
 
 # Level 3: File Finding (find, fd)
 gen_q3() {
-  local questions=()
-  local ext=$(_pick EXTS) ext2=$(_pick EXTS) dir=$(_pick DIRS) size=$(_pick SIZES)
-  local time=$(_pick TIMES) term=$(_pick SEARCH_TERMS)
+  local questions=() log log2 cfg cfg2 txt txt2 csv csv2 dir dir2 ext ext2 script archive bin img pcap hash photo wordlist ip subnet port port2 mac url user host term term2 term3 field field2 key old new size iface proc svc sig branch time n1 n2 n3 col; _ctx
 
   # By name
   questions+=("Find all .${ext} files|find . -name '*.${ext}'|fd -e ${ext}")
@@ -591,15 +619,8 @@ gen_q3() {
 
 # Level 4: Sorting, Cutting, Piping (sort, uniq, cut, awk basics, pipes)
 gen_q4() {
-  local questions=()
-  local txt=$(_pick TXTS) txt2=$(_pick TXTS) csv=$(_pick CSVS) csv2=$(_pick CSVS) log=$(_pick LOGS)
-  local field=$(_pick FIELDS) field2=$(_pick FIELDS)
-  local proc=$(_pick PROCS) proc2=$(_pick PROCS)
-  # DYNAMIC values - truly random each session
-  local col=$(_rnum 1 8) col2=$(_rnum 1 5) col3=$((col + 1))
-  local n=$(_rnum 5 50) n2=$(_rnum 10 100) chars=$(_rnum 10 80)
-  local port=$(_pick PORTS) port2=$(_pick PORTS)
-  local thresh=$(_rnum 50 500)
+  local questions=() log log2 cfg cfg2 txt txt2 csv csv2 dir dir2 ext ext2 script archive bin img pcap hash photo wordlist ip subnet port port2 mac url user host term term2 term3 field field2 key old new size iface proc svc sig branch time n1 n2 n3 col; _ctx
+  local proc2=$(_pick PROCS) col2=$(_rnum 1 5) col3=$((col + 1)) chars=$(_rnum 10 80) thresh=$(_rnum 50 500)
 
   # Sorting - with flag order alternatives
   questions+=("$(_phrase "Sort" "Order") ${txt} alphabetically|sort ${txt}")
@@ -703,14 +724,8 @@ gen_q4() {
 
 # Level 7: Batch Operations (find -exec, fd -x, sed, xargs)
 gen_q7_batch() {
-  local questions=()
-  local ext=$(_pick EXTS) ext2=$(_pick EXTS) log=$(_pick LOGS) txt=$(_pick TXTS)
-  local cfg=$(_pick CONFIGS) cfg2=$(_pick CONFIGS) old=$(_pick REPLACE_OLD) new=$(_pick REPLACE_NEW)
-  local term=$(_pick SEARCH_TERMS) size=$(_pick SIZES) dir=$(_pick DIRS)
-  local svc=$(_pick SERVICES) svc2=$(_pick SERVICES)
-  # DYNAMIC values
-  local n=$(_rnum 2 10) n2=$(_rnum 5 50) parallel=$(_rnum 2 8)
-  local linenum=$(_rnum 1 20)
+  local questions=() log log2 cfg cfg2 txt txt2 csv csv2 dir dir2 ext ext2 script archive bin img pcap hash photo wordlist ip subnet port port2 mac url user host term term2 term3 field field2 key old new size iface proc svc sig branch time n1 n2 n3 col; _ctx
+  local svc2=$(_pick SERVICES) parallel=$(_rnum 2 8) linenum=$(_rnum 1 20)
 
   # find -exec - with flag alternatives
   questions+=("Run ls -l on each .${ext} file found|find . -name '*.${ext}' -exec ls -l {} \\;|fd -e ${ext} -x ls -l {}")
@@ -795,8 +810,8 @@ gen_q7_batch() {
 
 # Level 8: Network Scanning (nmap)
 gen_q8_nmap() {
-  local questions=()
-  local ip=$(_pick IPS) subnet=$(_pick SUBNETS) port=$(_pick PORTS) port2=$((port + 1000))
+  local questions=() log log2 cfg cfg2 txt txt2 csv csv2 dir dir2 ext ext2 script archive bin img pcap hash photo wordlist ip subnet port port2 mac url user host term term2 term3 field field2 key old new size iface proc svc sig branch time n1 n2 n3 col; _ctx
+  port2=$((port + 1000))
 
   # Basic scans
   questions+=("Scan all 65535 ports on ${ip}|nmap -p- ${ip}")
@@ -847,11 +862,8 @@ gen_q8_nmap() {
 
 # Level 9: Hash Cracking & Encoding (hashcat, john, hydra, encoding)
 gen_q9_hash() {
-  local questions=()
-  local hash=$(_pick HASHES) wordlist=$(_pick WORDLISTS) ip=$(_pick IPS)
-  local user=$(_pick USERNAMES) url=$(_pick URLS) archive=$(_pick ARCHIVES)
-  local hidx=$((RANDOM % ${#HASHCAT_MODES[@]}))
-  local hmode=${HASHCAT_MODES[$hidx]} hname=${HASH_NAMES[$hidx]}
+  local questions=() log log2 cfg cfg2 txt txt2 csv csv2 dir dir2 ext ext2 script archive bin img pcap hash photo wordlist ip subnet port port2 mac url user host term term2 term3 field field2 key old new size iface proc svc sig branch time n1 n2 n3 col; _ctx
+  local hidx=$((RANDOM % ${#HASHCAT_MODES[@]})) hmode=${HASHCAT_MODES[$hidx]} hname=${HASH_NAMES[$hidx]}
 
   # Hashcat dictionary attacks
   questions+=("Dictionary attack on MD5 (-m 0) hashes in ${hash}|hashcat -m 0 ${hash} ${wordlist}")
@@ -908,9 +920,7 @@ gen_q9_hash() {
 
 # Level 10: Forensics & Binary Analysis
 gen_q10_forensics() {
-  local questions=()
-  local bin=$(_pick BINS) img=$(_pick IMGS) photo=$(_pick PHOTOS)
-  local hash=$(_pick HASHES) txt=$(_pick TXTS)
+  local questions=() log log2 cfg cfg2 txt txt2 csv csv2 dir dir2 ext ext2 script archive bin img pcap hash photo wordlist ip subnet port port2 mac url user host term term2 term3 field field2 key old new size iface proc svc sig branch time n1 n2 n3 col; _ctx
 
   # String extraction
   questions+=("Extract ASCII strings from ${bin}|strings ${bin}")
@@ -963,10 +973,7 @@ gen_q10_forensics() {
 
 # Level 11: Network Tools (tshark, curl, wget, ssh, openssl, jq)
 gen_q11_network() {
-  local questions=()
-  local ip=$(_pick IPS) url=$(_pick URLS) pcap=$(_pick PCAPS)
-  local iface=$(_pick INTERFACES) port=$(_pick PORTS)
-  local user=$(_pick USERNAMES) host=$(_pick REMOTE_HOSTS) key=$(_pick JSON_KEYS)
+  local questions=() log log2 cfg cfg2 txt txt2 csv csv2 dir dir2 ext ext2 script archive bin img pcap hash photo wordlist ip subnet port port2 mac url user host term term2 term3 field field2 key old new size iface proc svc sig branch time n1 n2 n3 col; _ctx
 
   # tshark - packet capture & analysis
   questions+=("Capture traffic on ${iface} to ${pcap}|tshark -i ${iface} -w ${pcap}")
@@ -1030,10 +1037,7 @@ gen_q11_network() {
 
 # Level 12: Local Network & RF Attack (wifi, smb, netcat, masscan)
 gen_q12_localattack() {
-  local questions=()
-  local ip=$(_pick IPS) port=$(_pick PORTS)
-  local iface=$(_pick INTERFACES) mac=$(_pick MACS)
-  local user=$(_pick USERNAMES) wordlist=$(_pick WORDLISTS)
+  local questions=() log log2 cfg cfg2 txt txt2 csv csv2 dir dir2 ext ext2 script archive bin img pcap hash photo wordlist ip subnet port port2 mac url user host term term2 term3 field field2 key old new size iface proc svc sig branch time n1 n2 n3 col; _ctx
 
   # WiFi attacks
   questions+=("Enable monitor mode on ${iface}|airmon-ng start ${iface}")
@@ -1066,9 +1070,7 @@ gen_q12_localattack() {
 
 # Level 5: String Manipulation & Arrays
 gen_q5_strings() {
-  local questions=()
-  local txt=$(_pick TXTS) log=$(_pick LOGS) cfg=$(_pick CONFIGS)
-  local term=$(_pick SEARCH_TERMS) ext=$(_pick EXTS)
+  local questions=() log log2 cfg cfg2 txt txt2 csv csv2 dir dir2 ext ext2 script archive bin img pcap hash photo wordlist ip subnet port port2 mac url user host term term2 term3 field field2 key old new size iface proc svc sig branch time n1 n2 n3 col; _ctx
 
   # Parameter expansion - removal (practical examples)
   questions+=("Extract filename from /path/to/${txt} (stored in \$path)|echo \${path##*/}")
@@ -1141,9 +1143,7 @@ gen_q5_strings() {
 
 # Level 6: Control Flow & Functions
 gen_q6_controlflow() {
-  local questions=()
-  local txt=$(_pick TXTS) log=$(_pick LOGS) cfg=$(_pick CONFIGS)
-  local n=$(_pick NUMBERS) dir=$(_pick DIRS) ext=$(_pick EXTS)
+  local questions=() log log2 cfg cfg2 txt txt2 csv csv2 dir dir2 ext ext2 script archive bin img pcap hash photo wordlist ip subnet port port2 mac url user host term term2 term3 field field2 key old new size iface proc svc sig branch time n1 n2 n3 col; _ctx
 
   # if/else
   questions+=("Basic if statement|if [[ condition ]]; then cmd; fi")
@@ -1216,12 +1216,7 @@ gen_q6_controlflow() {
 
 # Level 13: Apocalypse Mode - Hardcore one-liners, recovery, survival
 gen_q13() {
-  local questions=()
-  local ip=$(_pick IPS) subnet=$(_pick SUBNETS) port=$(_pick PORTS)
-  local log=$(_pick LOGS) txt=$(_pick TXTS) cfg=$(_pick CONFIGS)
-  local dir=$(_pick DIRS) ext=$(_pick EXTS) term=$(_pick SEARCH_TERMS)
-  local user=$(_pick USERNAMES) host=$(_pick REMOTE_HOSTS)
-  local n=$(_pick NUMBERS)
+  local questions=() log log2 cfg cfg2 txt txt2 csv csv2 dir dir2 ext ext2 script archive bin img pcap hash photo wordlist ip subnet port port2 mac url user host term term2 term3 field field2 key old new size iface proc svc sig branch time n1 n2 n3 col; _ctx
 
   # === EMERGENCY RECOVERY ===
   questions+=("Remount root filesystem read-write|mount -o remount,rw /")
@@ -1319,10 +1314,8 @@ gen_q13() {
 
 # Level 14: Git Operations
 gen_q14_git() {
-  local questions=()
-  local branch=$(_pick BRANCHES) remote=$(_pick REMOTE_HOSTS)
-  local txt=$(_pick TXTS) cfg=$(_pick CONFIGS)
-  local n=$(_rnum 1 10)
+  local questions=() log log2 cfg cfg2 txt txt2 csv csv2 dir dir2 ext ext2 script archive bin img pcap hash photo wordlist ip subnet port port2 mac url user host term term2 term3 field field2 key old new size iface proc svc sig branch time n1 n2 n3 col; _ctx
+  local remote=$(_pick REMOTE_HOSTS)
 
   # Basics
   questions+=("Initialize new git repo|git init")
@@ -1418,8 +1411,7 @@ gen_q14_git() {
 
 # Level 15: tmux & Screen
 gen_q15_tmux() {
-  local questions=()
-  local n=$(_rnum 0 5)
+  local questions=() log log2 cfg cfg2 txt txt2 csv csv2 dir dir2 ext ext2 script archive bin img pcap hash photo wordlist ip subnet port port2 mac url user host term term2 term3 field field2 key old new size iface proc svc sig branch time n1 n2 n3 col; _ctx
 
   # Session management
   questions+=("Start new tmux session|tmux|tmux new")
@@ -1504,9 +1496,7 @@ gen_q15_tmux() {
 
 # Level 16: Privilege Escalation
 gen_q16_privesc() {
-  local questions=()
-  local user=$(_pick USERNAMES) dir=$(_pick DIRS)
-  local port=$(_pick PORTS) ip=$(_pick IPS)
+  local questions=() log log2 cfg cfg2 txt txt2 csv csv2 dir dir2 ext ext2 script archive bin img pcap hash photo wordlist ip subnet port port2 mac url user host term term2 term3 field field2 key old new size iface proc svc sig branch time n1 n2 n3 col; _ctx
 
   # SUID/SGID enumeration
   questions+=("Find all SUID binaries|find / -perm -4000 -type f 2>/dev/null")
@@ -1597,9 +1587,7 @@ gen_q16_privesc() {
 
 # Level 17: Advanced Regex & Text Processing
 gen_q17_regex() {
-  local questions=()
-  local log=$(_pick LOGS) txt=$(_pick TXTS) csv=$(_pick CSVS)
-  local n=$(_rnum 2 10)
+  local questions=() log log2 cfg cfg2 txt txt2 csv csv2 dir dir2 ext ext2 script archive bin img pcap hash photo wordlist ip subnet port port2 mac url user host term term2 term3 field field2 key old new size iface proc svc sig branch time n1 n2 n3 col; _ctx
 
   # Regex lookahead/lookbehind (grep -P for PCRE)
   questions+=("Match 'error' followed by number|grep -P 'error(?=\\d)' ${log}")
@@ -1773,18 +1761,30 @@ stats() {
   done
 }
 
-# Tier display: 0=copy, 1=blank, 2=recall
+# Tier display: 0=copy, 1=blank, 2=recall (fixed-width hint to avoid length leak)
 show_tier() {
   local tier=$1 ans=$2
   case $tier in
     0) echo -e "${C}Type:${N} ${ans}";;
-    1) local half=$((${#ans}/2)); echo -e "${C}Complete:${N} ${ans:0:half}${D}...${N}";;
+    1) # Show ~40-60% with random variation to avoid exact length leak
+       local pct=$((40 + RANDOM % 21))
+       local show=$((${#ans} * pct / 100))
+       ((show < 3)) && show=3
+       echo -e "${C}Complete:${N} ${ans:0:show}${D}...${N}";;
   esac
 }
 
-input="" cursor=0 mode="insert" SHOW_HINT=0 UNDO="" EXPLAIN_LINES=0 _rep=""
+input="" cursor=0 mode="insert" SHOW_HINT=0 EXPLAIN_LINES=0 _rep=""
+declare -a UNDO_STACK=()  # Multi-level undo
+_last_cmd="" _last_arg=""  # For dot repeat
 clear_hint() { for ((i=0;i<=EXPLAIN_LINES;i++)); do printf '\e[A\e[2K'; done; printf '\r'; }
-hdr() { printf '\e[2J\e[H'; echo -e "${B}=== Level $1 ===${N}  ${D}${LEVEL_DESC[$1]}${N}"; echo -e "${D}[$2/$3]  Tab=hint Ctrl+n=skip${N}\n"; }
+hdr() {
+  printf '\e[2J\e[H'
+  local fire=""; ((streak>=5)) && fire=" ${R}🔥 FIRE${N}"
+  echo -e "${B}=== Level $1 ===${N}  ${D}${LEVEL_DESC[$1]}${N}${fire}"
+  local sk=""; ((streak>0)) && sk="  ${Y}${streak}x${N}"
+  echo -e "${D}[$2/$3]  Tab=hint Ctrl+n=skip${N}${sk}\n"
+}
 qdisp() { bar; echo -e "\n${D}$1${N}"; show_tier "$2" "$3"; echo; }
 bar() { local f e; printf -v f '%*s' "$PROG" ''; printf -v e '%*s' "$((TOT-PROG))" ''; printf '[%s%s]' "${f// /█}" "${e// /░}"; }
 draw() {
@@ -1794,11 +1794,16 @@ draw() {
   else
     ((VI_MODE)) && [[ $mode != insert ]] && echo -ne "\e[91m$PROMPT_CHAR\e[0m" || echo -ne "\e[97m$PROMPT_CHAR\e[0m"
     echo -n "$input"
-    ((cursor<${#input})) && echo -ne "\e[$((${#input}-cursor))D"
+    # Use display width for UTF-8 correct cursor positioning
+    local disp_len=$(_dispwidth "$input") disp_cur=$(_dispwidth "${input:0:cursor}")
+    ((disp_cur < disp_len)) && echo -ne "\e[$((disp_len - disp_cur))D"
   fi
 }
 
-# Vi helpers
+# Display width for UTF-8 strings (for cursor positioning)
+_dispwidth() { printf '%s' "$1" | wc -m; }
+
+# Vi helpers (byte-indexed; UTF-8 multi-byte chars may cause cursor drift)
 _wfwd() { while ((cursor<${#input})) && [[ "${input:cursor:1}" != " " ]]; do ((++cursor)); done; while ((cursor<${#input})) && [[ "${input:cursor:1}" == " " ]]; do ((++cursor)); done; ((cursor>=${#input}&&${#input}>0)) && cursor=$((${#input}-1)); }
 _wbck() { ((cursor>0)) && ((cursor--)); while ((cursor>0)) && [[ "${input:cursor:1}" == " " ]]; do ((cursor--)); done; while ((cursor>0)) && [[ "${input:cursor-1:1}" != " " ]]; do ((cursor--)); done; }
 _wend() { ((cursor<${#input}-1)) && ((++cursor)); while ((cursor<${#input}-1)) && [[ "${input:cursor:1}" == " " ]]; do ((++cursor)); done; while ((cursor<${#input}-1)) && [[ "${input:cursor+1:1}" != " " ]]; do ((++cursor)); done; }
@@ -1815,26 +1820,53 @@ _del() { # $1=motion
 }
 
 run() {
-  local lv=$1 shuf=() qi=${QI:-0} done=0
+  local lv=$1 shuf=() qi=${QI:-0} done=0 streak=0
+  # Save terminal state for clean restoration
+  _stty_saved=$(stty -g 2>/dev/null) || _stty_saved=""
   generate_level "$lv"  # Generate fresh questions for this level
   local -A _sc; [[ -f "$DATA/scores" ]] && while IFS='|' read -r k v; do _sc[$k]=$v; done < "$DATA/scores"
   _sget() { local h=$(_hash "$1"); echo "${_sc[$h]:-0}"; }
-  _sset() { local h=$(_hash "$1"); _sc[$h]=$2; sed -i "/^$h|/d" "$DATA/scores" 2>/dev/null; echo "$h|$2">>"$DATA/scores"; }
+  _sset() {
+    local h=$(_hash "$1"); _sc[$h]=$2
+    # Atomic update with flock to prevent race conditions
+    (
+      flock -x 200
+      sed -i "/^$h|/d" "$DATA/scores" 2>/dev/null
+      echo "$h|$2">>"$DATA/scores"
+    ) 200>"$DATA/scores.lock"
+  }
   TOT=${#CURRENT_QUESTIONS[@]}; PROG=$qi
   # Prioritize by tier: 0 (copy) > 1 (blank) > 2 (recall)
   local t0=() t1=() t2=()
   for q in "${CURRENT_QUESTIONS[@]}"; do
     case "$(_sget "${q%%|*}")" in 0) t0+=("$q");; 1) t1+=("$q");; *) t2+=("$q");; esac
   done
-  readarray -t shuf < <({ printf '%s\n' "${t0[@]}"|shuf; printf '%s\n' "${t1[@]}"|shuf; printf '%s\n' "${t2[@]}"|shuf; })
+  # LC_ALL=C for locale-independent shuffle; interleave tiers for better SRS
+  local _shuf0 _shuf1 _shuf2
+  readarray -t _shuf0 < <(printf '%s\n' "${t0[@]}" | LC_ALL=C shuf)
+  readarray -t _shuf1 < <(printf '%s\n' "${t1[@]}" | LC_ALL=C shuf)
+  readarray -t _shuf2 < <(printf '%s\n' "${t2[@]}" | LC_ALL=C shuf)
+  # Interleave: prioritize tier 0, but mix in tier 1/2 every 3rd question for true SRS
+  shuf=()
+  local i0=0 i1=0 i2=0 idx=0
+  while ((i0 < ${#_shuf0[@]} || i1 < ${#_shuf1[@]} || i2 < ${#_shuf2[@]})); do
+    if ((i0 < ${#_shuf0[@]})); then shuf+=("${_shuf0[$i0]}"); ((++i0))
+    elif ((idx % 3 == 0 && i1 < ${#_shuf1[@]})); then shuf+=("${_shuf1[$i1]}"); ((++i1))
+    elif ((i2 < ${#_shuf2[@]})); then shuf+=("${_shuf2[$i2]}"); ((++i2))
+    elif ((i1 < ${#_shuf1[@]})); then shuf+=("${_shuf1[$i1]}"); ((++i1))
+    fi
+    ((++idx))
+  done
   hdr "$lv" "$((qi+1))" "$TOT"
   while ((qi < ${#shuf[@]})); do
     local prompt="${shuf[$qi]%%|*}" answers="${shuf[$qi]#*|}"; local ans="${answers%%|*}"
     local tier; tier=$(_sget "$prompt")
+    # Fire mode: force tier 2 (pure recall, no hints)
+    ((streak>=5)) && tier=2
     HINT=false SHOW_HINT=0 EXPLAIN_LINES=0
     qdisp "$prompt" "$tier" "$ans"
     while true; do
-      input="" cursor=0 mode="insert" SHOW_HINT=0
+      input="" cursor=0 mode="insert" SHOW_HINT=0; UNDO_STACK=()
       read -t 0.01 -rsn 1000 ||:
       draw
       while IFS= read -rsn1 c; do
@@ -1866,8 +1898,8 @@ run() {
           # Number prefix: accumulate digits
           if [[ "$c" =~ ^[1-9]$ ]] || { [[ "$c" == "0" ]] && [[ -n "$_rep" ]]; }; then _rep+="$c"; continue; fi
           local _n=${_rep:-1}; _rep=""
-          # Save for undo before destructive operations
-          case "$c" in s|S|x|X|D|C|d|c|r) UNDO="$input:$cursor";; esac
+          # Push to undo stack before destructive operations
+          case "$c" in s|S|x|X|D|C|d|c|r) UNDO_STACK+=("$input:$cursor");; esac
           case "$c" in
             i) mode="insert"; draw;; a) mode="insert"; ((cursor<${#input})) && ((++cursor)); draw;;
             A) mode="insert"; cursor=${#input}; draw;; I) mode="insert"; cursor=0; draw;;
@@ -1890,22 +1922,29 @@ run() {
             r) IFS= read -rsn1 c2; [[ -n "$c2" && "$c2" != $'\x1b' ]] && { input="${input:0:cursor}${c2}${input:cursor+1}"; draw; };;
             d) IFS= read -rsn1 c2; for ((_i=0;_i<_n;_i++)); do _del "$c2"; done; draw;;
             c) IFS= read -rsn1 c2; for ((_i=0;_i<_n;_i++)); do _del "$c2"; done; mode="insert"; draw;;
-            u) [[ -n "$UNDO" ]] && { input="${UNDO%:*}"; cursor="${UNDO#*:}"; UNDO=""; draw; };;  # undo
+            u) ((${#UNDO_STACK[@]}>0)) && { local _u="${UNDO_STACK[-1]}"; unset 'UNDO_STACK[-1]'; input="${_u%:*}"; cursor="${_u#*:}"; draw; };;  # multi-level undo
+            g) IFS= read -rsn1 c2; [[ "$c2" == "g" ]] && { cursor=0; draw; };;  # gg = start
+            G) cursor=$((${#input}>0?${#input}-1:0)); draw;;  # G = end
             n) echo -e "\n${D}[skipped]${N}"; ((++qi)); break 2;;  # skip in normal mode
             q) echo -e "\n${D}[quit]${N}"; exit 0;;  # quit
-            \?) echo -e "\n${D}hjkl${N} move  ${D}wb${N} word  ${D}fFtT${N}+char find  ${D}0\$${N} line"; echo -e "${D}x/X${N} del char  ${D}dw/db/dd${N} del  ${D}cw/cb/cc${N} change  ${D}r${N} replace"; echo -e "${D}s/S${N} subst  ${D}i/a/I/A${N} insert  ${D}u${N} undo  ${D}n${N} skip  ${D}q${N} quit"; echo -e "${D}Tab${N} hint  ${D}Ctrl+n${N} skip  ${D}Ctrl+d${N} quit  ${D}[num]cmd${N} repeat"; read -rsn1; hdr "$lv" "$((qi+1))" "$TOT"; qdisp "$prompt" "$tier" "$ans"; draw;;
+            \?) echo -e "\n${D}hjkl${N} move  ${D}wb${N} word  ${D}fFtT${N}+char find  ${D}0\$/gg/G${N} line"; echo -e "${D}x/X${N} del char  ${D}dw/db/dd${N} del  ${D}cw/cb/cc${N} change  ${D}r${N} replace"; echo -e "${D}s/S${N} subst  ${D}i/a/I/A${N} insert  ${D}u${N} undo(stack)  ${D}n${N} skip  ${D}q${N} quit"; echo -e "${D}Tab${N} hint  ${D}Ctrl+n${N} skip  ${D}Ctrl+d${N} quit  ${D}[num]cmd${N} repeat"; read -rsn1; hdr "$lv" "$((qi+1))" "$TOT"; qdisp "$prompt" "$tier" "$ans"; draw;;
             '') echo; break;;
           esac
         fi
       done
       if check "$input" "$answers"; then
         ((++PROG))
-        if $HINT; then echo -e "${Y}+1${N} ${D}(hint)${N}"; _sset "$prompt" "$tier"  # stay same tier
-        else ((++done)); echo -e "${G}+1${N}"; _sset "$prompt" "$((tier<2?tier+1:2))"; fi  # tier++
+        if $HINT; then
+          echo -e "${Y}+1${N} ${D}(hint)${N}"; streak=0; _sset "$prompt" "$tier"  # hint breaks streak
+        elif ((streak>=5)); then
+          ((++done)); ((++done)); echo -e "${R}🔥+2${N}"; ((++streak)); _sset "$prompt" "$((tier<2?tier+1:2))"  # fire mode: +2
+        else
+          ((++done)); echo -e "${G}+1${N}"; ((++streak)); _sset "$prompt" "$((tier<2?tier+1:2))"  # tier++
+        fi
         ((++qi)); QI=$qi; save; break
       else
         ((PROG>0)) && ((PROG--)); echo -e "${R}-1${N}\n${D}answer:${N} ${C}${ans}${N}"
-        _sset "$prompt" "$((tier>0?tier-1:0))"; sleep 2  # tier--
+        streak=0; _sset "$prompt" "$((tier>0?tier-1:0))"; sleep 2  # wrong breaks streak
       fi
       tier=$(_sget "$prompt"); hdr "$lv" "$((qi+1))" "$TOT"; qdisp "$prompt" "$tier" "$ans"
     done
@@ -1919,14 +1958,14 @@ run() {
 
 case "${1:-}" in
   [0-9]|1[0-7]) _tty; LVL=$1; QI=0; save; run "$LVL";;
-  r|reset) rm -f "$DATA"/*.json "$DATA/vi_mode" "$DATA/scores"; echo "Reset.";;
+  r|reset) rm -f "$DATA"/*.json "$DATA/vi_mode" "$DATA/scores" "$DATA/scores.lock"; echo "Reset.";;
   s|stats) stats;;
-  v|version|-v|--version) echo "bashgym v4.0 - Elite Apocalypse Edition";;
+  v|version|-v|--version) echo "cmdchamp 0.1";;
   h|help|-h|--help)
-    echo -e "${B}bashgym${N} - CLI command trainer with dynamic questions"
-    echo -e "${D}Elite Apocalypse Edition - 18 levels, 1000+ questions, infinite variations${N}"
+    echo -e "${B}cmdchamp${N} - CLI trainer"
+    echo -e "${D}18 levels, spaced repetition${N}"
     echo
-    echo "Usage: bashgym [level|command]"
+    echo "Usage: cmdchamp [level|command]"
     echo
     echo "Commands:"
     echo "  0-17     Start specific level"
@@ -1948,5 +1987,5 @@ case "${1:-}" in
     ;;
   n|new) _tty; LVL=0; QI=0; save; run "$LVL";;
   "") _tty; load; ((LVL>0||QI>0)) && { read -rp "Continue Level $LVL Q$((QI+1))? [Y/n] " yn; [[ "$yn" =~ ^[Nn] ]] && { LVL=0; QI=0; save; }; }; run "$LVL";;
-  *) echo "Usage: bashgym [0-17|reset|stats|help|version]"; exit 1;;
+  *) echo "Usage: cmdchamp [0-17|reset|stats|help|version]"; exit 1;;
 esac
