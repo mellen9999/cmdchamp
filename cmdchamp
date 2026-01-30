@@ -9,7 +9,7 @@ DATA="${XDG_DATA_HOME:-$HOME/.local/share}/cmdchamp"; mkdir -p "$DATA"; touch "$
 _stty_saved=""
 _cleanup() { [[ -n "$_stty_saved" ]] && stty "$_stty_saved" 2>/dev/null; echo; }
 trap '_cleanup; exit 0' INT TERM HUP EXIT
-R=$'\e[31m' G=$'\e[32m' Y=$'\e[33m' C=$'\e[36m' D=$'\e[2m' B=$'\e[1m' N=$'\e[0m'
+R=$'\e[31m' G=$'\e[32m' Y=$'\e[33m' Bl=$'\e[34m' M=$'\e[35m' C=$'\e[36m' W=$'\e[37m' D=$'\e[2m' B=$'\e[1m' N=$'\e[0m'
 PROMPT_CHAR="${CMD_PROMPT:-$([[ $EUID -eq 0 ]] && echo '# ' || echo '$ ')}"
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -1987,9 +1987,9 @@ run() {
         if $HINT; then
           echo -e "${Y}+1${N} ${D}(hint)${N}"; streak=0; _sset "$prompt" "$tier"  # hint breaks streak
         elif ((streak>=5)); then
-          ((++done)); ((++done)); echo -e "${R}>>>+2${N}"; ((++streak)); _sset "$prompt" "$((tier<2?tier+1:2))"  # fire mode: +2
+          ((++done)); ((++done)); echo -e "${R}${B}🔥 ON FIRE!${N} ${Y}+2${N}"; ((++streak)); _sset "$prompt" "$((tier<2?tier+1:2))"; sleep 0.3
         else
-          ((++done)); echo -e "${G}+1${N}"; ((++streak)); _sset "$prompt" "$((tier<2?tier+1:2))"  # tier++
+          ((++done)); echo -e "${G}${B}✓ Correct!${N} ${G}+1${N}"; ((++streak)); _sset "$prompt" "$((tier<2?tier+1:2))"; sleep 0.3
         fi
         ((++qi)); QI=$qi; save; break
       else
