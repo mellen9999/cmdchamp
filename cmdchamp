@@ -442,7 +442,6 @@ gen_level1() {
   # Viewing files - multiple phrasings
   questions+=("$(_phrase "View" "Display" "Show" "Print") ${cfg} contents|cat ${cfg}|bat ${cfg}")
   questions+=("$(_phrase "Display" "Show" "View") ${log} with line numbers|cat -n ${log}|bat -n ${log}")
-  questions+=("Show non-printing characters in ${txt}|cat -A ${txt}")
   questions+=("Concatenate ${txt} and ${txt2} to stdout|cat ${txt} ${txt2}")
 
   # Listing files - with flag alternatives
@@ -630,10 +629,7 @@ gen_level6() {
   questions+=("Sort ${csv} by column ${col} descending|sort -t',' -k${col}rn ${csv}|sort -t',' -rnk${col} ${csv}")
   questions+=("Sort by human-readable sizes (1K, 2M, 3G)|sort -h")
   questions+=("Sort ${txt} case-insensitively|sort -f ${txt}|sort --ignore-case ${txt}")
-  questions+=("Sort ${txt} by month name|sort -M ${txt}")
   questions+=("Sort ${csv} by column ${col} then ${col2}|sort -t',' -k${col},${col} -k${col2},${col2} ${csv}")
-  questions+=("Stable sort preserving original order|sort -s ${txt}")
-  questions+=("Sort and check if already sorted|sort -c ${txt}")
 
   # Uniqueness - more variations
   questions+=("Remove adjacent duplicate lines|uniq ${txt}")
@@ -642,8 +638,6 @@ gen_level6() {
   questions+=("Show only unique lines (appear once)|sort ${txt} | uniq -u")
   questions+=("Count unique lines in ${txt}|sort ${txt} | uniq | wc -l|sort -u ${txt} | wc -l")
   questions+=("Show all duplicates (repeated lines)|sort ${txt} | uniq -D")
-  questions+=("Ignore first ${col} fields for uniqueness|uniq -f ${col} ${txt}")
-  questions+=("Ignore first ${chars} characters for uniqueness|uniq -s ${chars} ${txt}")
 
   # Cutting columns - dynamic
   questions+=("Extract column ${col} from ${csv} (comma-delimited)|cut -d',' -f${col} ${csv}")
@@ -1582,7 +1576,6 @@ gen_level10() {
   questions+=("Match 'error' NOT followed by number|grep -P 'error(?!\\d)' ${log}")
   questions+=("Match number preceded by '$'|grep -P '(?<=\\$)\\d+' ${log}")
   questions+=("Match number NOT preceded by '$'|grep -P '(?<!\\$)\\d+' ${log}")
-  questions+=("Extract value after 'key='|grep -oP 'key=\\K[^\\s]+' ${log}")
 
   # Non-greedy matching
   questions+=("Non-greedy match between quotes|grep -oP '\".*?\"' ${log}")
