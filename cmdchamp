@@ -942,18 +942,9 @@ gen_level15() {
   questions+=("Extract embedded files from ${bin}|binwalk -e ${bin}")
   questions+=("Analyze entropy of ${bin}|binwalk -E ${bin}")
 
-  # Memory forensics (volatility3)
-  questions+=("Get system info from memory dump|volatility3 -f ${img} windows.info")
+  # Memory forensics (volatility3) - most common
   questions+=("List processes from memory dump|volatility3 -f ${img} windows.pslist")
-  questions+=("List network connections|volatility3 -f ${img} windows.netscan")
-  questions+=("Find malware with malfind|volatility3 -f ${img} windows.malfind")
-  questions+=("Extract command history|volatility3 -f ${img} windows.cmdline")
-
-  # Disk forensics
-  questions+=("Recover deleted files from ${img}|foremost -i ${img} -o output/")
-  questions+=("List filesystem entries recursively|fls -r ${img}")
-  questions+=("List deleted files only|fls -d ${img}")
-  questions+=("Create timeline from bodyfile|mactime -b bodyfile.txt")
+  questions+=("List network connections from memory|volatility3 -f ${img} windows.netscan")
 
   # File metadata
   questions+=("Extract all metadata from ${photo}|exiftool ${photo}")
@@ -1667,6 +1658,79 @@ gen_level8() {
   printf '%s\n' "${questions[@]}"
 }
 
+# Level 18: System Admin (daily drivers)
+gen_level18() {
+  local questions=() log log2 cfg cfg2 txt txt2 csv csv2 dir dir2 ext ext2 script archive bin img pcap hash photo wordlist ip subnet port port2 mac url user host term term2 term3 field field2 key old new size iface proc svc sig branch time n1 n2 n3 col; _ctx
+
+  # Network diagnostics
+  questions+=("Ping ${ip} 5 times|ping -c 5 ${ip}")
+  questions+=("Ping ${ip} continuously|ping ${ip}")
+  questions+=("Trace route to ${ip}|traceroute ${ip}|tracepath ${ip}")
+  questions+=("DNS lookup for ${host}|dig ${host}|nslookup ${host}|host ${host}")
+  questions+=("Reverse DNS lookup|dig -x ${ip}|host ${ip}")
+  questions+=("Check if port ${port} is open on ${ip}|nc -zv ${ip} ${port}")
+  questions+=("Show listening ports|ss -tlnp|netstat -tlnp")
+  questions+=("Show all network connections|ss -tunapl|netstat -tunapl")
+  questions+=("Show routing table|ip route|ip r")
+  questions+=("Show network interfaces|ip addr|ip a")
+  questions+=("Show interface ${iface} info|ip addr show ${iface}")
+  questions+=("Bring interface ${iface} up|ip link set ${iface} up")
+  questions+=("Add IP to interface|ip addr add ${ip}/24 dev ${iface}")
+
+  # System monitoring
+  questions+=("Show disk space usage|df -h")
+  questions+=("Show memory usage|free -h")
+  questions+=("Show system uptime|uptime")
+  questions+=("Show system info|uname -a")
+  questions+=("Show CPU info|lscpu|cat /proc/cpuinfo")
+  questions+=("Show kernel messages|dmesg|dmesg -T")
+  questions+=("Follow kernel messages|dmesg -w")
+  questions+=("Interactive process viewer|top|htop|btop")
+  questions+=("Show top 10 memory-hungry processes|ps aux --sort=-%mem | head -11")
+  questions+=("Show top 10 CPU-hungry processes|ps aux --sort=-%cpu | head -11")
+  questions+=("Show process tree|pstree|ps auxf")
+
+  # Service management (systemd)
+  questions+=("Check status of ${svc}|systemctl status ${svc}")
+  questions+=("Start ${svc}|systemctl start ${svc}")
+  questions+=("Stop ${svc}|systemctl stop ${svc}")
+  questions+=("Restart ${svc}|systemctl restart ${svc}")
+  questions+=("Enable ${svc} at boot|systemctl enable ${svc}")
+  questions+=("Disable ${svc} at boot|systemctl disable ${svc}")
+  questions+=("List running services|systemctl list-units --type=service --state=running")
+  questions+=("List failed services|systemctl --failed")
+  questions+=("Reload systemd daemon|systemctl daemon-reload")
+  questions+=("Show ${svc} logs|journalctl -u ${svc}")
+  questions+=("Follow ${svc} logs|journalctl -fu ${svc}")
+  questions+=("Show logs since boot|journalctl -b")
+  questions+=("Show last 100 log lines|journalctl -n 100")
+
+  # User/permission management
+  questions+=("Run command as root|sudo ${script}")
+  questions+=("Switch to root shell|sudo -i|su -")
+  questions+=("Switch to user ${user}|su - ${user}")
+  questions+=("Add user ${user}|useradd -m ${user}|sudo useradd -m ${user}")
+  questions+=("Delete user ${user}|userdel -r ${user}|sudo userdel -r ${user}")
+  questions+=("Change password for ${user}|passwd ${user}|sudo passwd ${user}")
+  questions+=("Add ${user} to group wheel|usermod -aG wheel ${user}")
+  questions+=("List groups for ${user}|groups ${user}|id ${user}")
+  questions+=("Change owner of ${txt} to ${user}|chown ${user} ${txt}")
+  questions+=("Change owner and group|chown ${user}:${user} ${txt}")
+  questions+=("Change owner recursively|chown -R ${user}:${user} ${dir}/")
+  questions+=("Show current user|whoami")
+  questions+=("Show user id info|id")
+
+  # Package management (common patterns)
+  questions+=("Update package lists (Arch)|pacman -Sy|paru -Sy")
+  questions+=("Upgrade all packages (Arch)|pacman -Syu|paru -Syu")
+  questions+=("Search for package|pacman -Ss ${term}|paru -Ss ${term}")
+  questions+=("Show package info|pacman -Qi ${term}|paru -Qi ${term}")
+  questions+=("List installed packages|pacman -Q|paru -Q")
+  questions+=("Which package owns a file|pacman -Qo /usr/bin/${term}|paru -Qo /usr/bin/${term}")
+
+  printf '%s\n' "${questions[@]}"
+}
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # QUESTION SYSTEM - Generate and manage questions per level
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -1678,6 +1742,7 @@ declare -A LEVEL_DESC=(
   [8]="Advanced Regex" [9]="Batch Ops" [10]="Git" [11]="Network Tools"
   [12]="Network Scanning" [13]="Local Network & RF" [14]="Hash Cracking"
   [15]="Forensics" [16]="Privilege Escalation" [17]="Apocalypse Mode"
+  [18]="System Admin"
 )
 
 # Generate questions for a level (called once per level attempt)
@@ -1732,7 +1797,7 @@ stats() {
   done
   echo -e "Total: ${B}${total_seen}${N}  ${Y}${total_t1}${N} learning  ${G}${total_t2}${N} mastered"
   echo
-  for lv in {0..17}; do printf "  ${C}%2d${N} %s\n" "$lv" "${LEVEL_DESC[$lv]}"; done
+  for lv in {0..18}; do printf "  ${C}%2d${N} %s\n" "$lv" "${LEVEL_DESC[$lv]}"; done
 }
 
 # Tier display: 1=blank (partial), 2=recall (nothing shown)
@@ -1974,7 +2039,7 @@ case "${1:-}" in
     echo "  ?        Show vi keybindings (in vi mode)"
     echo
     echo "Levels:"
-    for lv in {0..17}; do
+    for lv in {0..18}; do
       printf "  %2d - %s\n" "$lv" "${LEVEL_DESC[$lv]}"
     done
     ;;
