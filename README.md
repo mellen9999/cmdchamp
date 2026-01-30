@@ -2,7 +2,7 @@
 
 CLI trainer with spaced repetition. Shell, security tools, infrastructure.
 
-1000+ questions across 20 levels — fundamentals to privesc, containers, cloud.
+1000+ questions across 18 levels — fundamentals to privesc.
 
 ## Features
 
@@ -34,7 +34,7 @@ Requires: bash 4.3+, coreutils (shuf, md5sum)
 ```bash
 cmdchamp         # Resume from last position (level + question)
 cmdchamp n       # Start fresh from level 0
-cmdchamp 14      # Start at level 14 (Git)
+cmdchamp 10      # Start at level 10 (Git)
 cmdchamp stats   # Show mastery stats
 cmdchamp reset   # Clear all progress
 ```
@@ -44,28 +44,25 @@ cmdchamp reset   # Clear all progress
 | Level | Focus |
 |-------|-------|
 | **Shell Fundamentals** ||
-| 0 | Redirects, pipes, jobs, history, variables, expansion, tests |
+| 0 | Redirects, pipes, jobs, history, variables, expansion |
 | 1 | Core tools: cat, ls, head, tail, tar, ln, chmod, wc, du |
-| 2 | Text search: grep, ripgrep, regex patterns |
-| 3 | File finding: find, fd, by name/size/time/type |
-| 4 | Data processing: sort, uniq, cut, awk, ps, ss, ip |
-| 5 | String & arrays: parameter expansion, arrays, manipulation |
-| 6 | Control flow: if/else, loops, case, functions, traps |
-| 7 | Batch ops: find -exec, xargs, sed, systemctl, journalctl |
-| **Security Tools** ||
-| 8 | Network scanning: nmap, service detection, scripts |
-| 9 | Hash cracking: hashcat, john, hydra, encoding |
-| 10 | Forensics: strings, binwalk, volatility, disk imaging |
+| 2 | tmux & screen: sessions, windows, panes, copy mode |
+| 3 | Text search: grep, ripgrep, regex |
+| 4 | File finding: find, fd, by name/size/time/type |
+| 5 | Data processing: sort, uniq, cut, awk, ps, ss, ip |
+| 6 | String & arrays: parameter expansion, arrays |
+| 7 | Control flow: if/else, loops, case, functions, traps |
+| 8 | Advanced regex: lookahead, sed, awk |
+| 9 | Batch ops: find -exec, xargs, systemctl, journalctl |
+| **Security & DevOps** ||
+| 10 | Git: branches, remotes, rebasing, stashing, bisect |
 | 11 | Network tools: tshark, curl, wget, ssh tunnels, openssl |
-| 12 | Web/WiFi attack: nikto, sqlmap, feroxbuster, aircrack, netcat |
-| 13 | Survival: one-liners, recovery, offline scenarios |
-| **DevOps & Advanced** ||
-| 14 | Git: branches, remotes, rebasing, stashing, bisect |
-| 15 | Docker: images, containers, compose, volumes, networks |
-| 16 | tmux & screen: sessions, windows, panes, copy mode |
-| 17 | Privilege escalation: SUID, GTFOBins, enumeration, escape |
-| 18 | Cloud CLI: AWS, GCloud, kubectl, S3, EC2, pods |
-| 19 | Advanced regex: lookahead, sed, awk |
+| 12 | Network scanning: nmap, service detection, scripts |
+| 13 | Local network & RF: wifi, smb, netcat, masscan |
+| 14 | Hash cracking: hashcat, john, hydra, encoding |
+| 15 | Forensics: strings, binwalk, volatility, disk imaging |
+| 16 | Privilege escalation: SUID, GTFOBins, enumeration |
+| 17 | Survival: one-liners, recovery, offline scenarios |
 
 ## Controls
 
