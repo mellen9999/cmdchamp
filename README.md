@@ -34,7 +34,7 @@ Requires: bash 4.3+, coreutils (shuf, md5sum)
 ```bash
 cmdchamp         # Resume from last position (level + question)
 cmdchamp n       # Start fresh from level 0
-cmdchamp 10      # Start at level 10 (Git)
+cmdchamp 11      # Start at level 11 (Git)
 cmdchamp stats   # Show mastery stats
 cmdchamp reset   # Clear all progress
 ```
@@ -43,27 +43,27 @@ cmdchamp reset   # Clear all progress
 
 | Level | Focus |
 |-------|-------|
-| **Shell Fundamentals** ||
-| 0 | Redirects, pipes, jobs, history, variables, expansion |
+| **Fundamentals** ||
+| 0 | Shell basics: redirects, pipes, jobs, history, variables |
 | 1 | Core tools: cat, ls, head, tail, tar, ln, chmod, wc, du |
-| 2 | tmux & screen: sessions, windows, panes, copy mode |
-| 3 | Text search: grep, ripgrep, regex |
-| 4 | File finding: find, fd, by name/size/time/type |
-| 5 | Data processing: sort, uniq, cut, awk, ps, ss, ip |
-| 6 | String & arrays: parameter expansion, arrays |
-| 7 | Control flow: if/else, loops, case, functions, traps |
-| 8 | Advanced regex: lookahead, sed, awk |
-| 9 | Batch ops: find -exec, xargs, systemctl, journalctl |
-| **Security & DevOps** ||
-| 10 | Git: branches, remotes, rebasing, stashing, bisect |
-| 11 | Network tools: tshark, curl, wget, ssh tunnels, openssl |
-| 12 | Network scanning: nmap, service detection, scripts |
-| 13 | Local network & RF: wifi, smb, netcat, masscan |
-| 14 | Hash cracking: hashcat, john, hydra, encoding |
-| 15 | Forensics: strings, binwalk, exiftool, dd |
-| 16 | Privilege escalation: SUID, GTFOBins, enumeration |
-| 17 | Survival: one-liners, recovery, offline scenarios |
-| 18 | System admin: ping, df, free, top, systemctl, ip, users |
+| 2 | System admin: ping, df, free, top, systemctl, ip, users |
+| 3 | tmux & screen: sessions, windows, panes, copy mode |
+| 4 | Text search: grep, ripgrep, regex |
+| 5 | File finding: find, fd, by name/size/time/type |
+| 6 | Data processing: sort, uniq, cut, awk, ps, ss |
+| 7 | String & arrays: parameter expansion, arrays |
+| 8 | Control flow: if/else, loops, case, functions, traps |
+| 9 | Batch ops: find -exec, xargs |
+| 10 | Advanced regex: lookahead, sed, awk |
+| **DevOps & Security** ||
+| 11 | Git: branches, remotes, rebasing, stashing, bisect |
+| 12 | Network tools: tshark, curl, wget, ssh tunnels, openssl |
+| 13 | Network scanning: nmap, service detection, scripts |
+| 14 | Local network & RF: wifi, smb, netcat, masscan |
+| 15 | Hash cracking: hashcat, john, hydra, encoding |
+| 16 | Forensics: strings, binwalk, exiftool, dd |
+| 17 | Privilege escalation: SUID, GTFOBins, enumeration |
+| 18 | Survival: one-liners, recovery, offline scenarios |
 
 ## Controls
 
