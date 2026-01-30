@@ -1,8 +1,8 @@
 # cmdchamp
 
-Elite CLI command trainer. Master shell, security tools, and cloud through flashcard-style drills with spaced repetition.
+CLI trainer with spaced repetition. Shell, security tools, infrastructure.
 
-**1000+ dynamically generated questions across 20 levels**—from shell fundamentals to privilege escalation, Docker, Git, cloud CLIs, and advanced regex mastery.
+1000+ questions across 20 levels — fundamentals to privesc, containers, cloud.
 
 ## Features
 
@@ -58,14 +58,14 @@ cmdchamp reset   # Clear all progress
 | 10 | Forensics: strings, binwalk, volatility, disk imaging |
 | 11 | Network tools: tshark, curl, wget, ssh tunnels, openssl |
 | 12 | Web/WiFi attack: nikto, sqlmap, feroxbuster, aircrack, netcat |
-| 13 | Apocalypse mode: one-liners, recovery, hardcore combos |
-| **DevOps & Elite** ||
+| 13 | Survival: one-liners, recovery, offline scenarios |
+| **DevOps & Advanced** ||
 | 14 | Git: branches, remotes, rebasing, stashing, bisect |
 | 15 | Docker: images, containers, compose, volumes, networks |
 | 16 | tmux & screen: sessions, windows, panes, copy mode |
 | 17 | Privilege escalation: SUID, GTFOBins, enumeration, escape |
 | 18 | Cloud CLI: AWS, GCloud, kubectl, S3, EC2, pods |
-| 19 | Advanced regex: lookahead, sed mastery, awk kung fu |
+| 19 | Advanced regex: lookahead, sed, awk |
 
 ## Controls
 
