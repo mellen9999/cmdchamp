@@ -1994,7 +1994,7 @@ run() {
         ((++qi)); QI=$qi; save; break
       else
         ((PROG>0)) && ((PROG--)); echo -e "${R}-1${N}\n${D}answer:${N} ${C}${ans}${N}"
-        streak=0; _sset "$prompt" "$((tier>0?tier-1:0))"; sleep 2  # wrong breaks streak
+        streak=0; _sset "$prompt" "$((tier>0?tier-1:0))"; read -rsp $'\e[2mPress Enter to continue...\e[0m'  # wrong breaks streak
       fi
       tier=$(_sget "$prompt"); hdr "$lv" "$((qi+1))" "$TOT"; qdisp "$prompt" "$tier" "$ans"
     done
