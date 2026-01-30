@@ -1817,7 +1817,7 @@ hdr() {
 qdisp() { bar; echo -e "\n${D}$1${N}"; show_tier "$2" "$3"; echo; }
 bar() { local f e; printf -v f '%*s' "$PROG" ''; printf -v e '%*s' "$((TOT-PROG))" ''; printf '[%s%s]' "${f// /█}" "${e// /░}"; }
 draw() {
-  echo -ne "\r\e[K"
+  echo -ne "\e[?25l\r\e[K"  # hide cursor, clear line
   if ((SHOW_HINT)); then
     echo -ne "${D}$PROMPT_CHAR${ans}${N}"
   else
@@ -1827,6 +1827,7 @@ draw() {
     local disp_len=$(_dispwidth "$input") disp_cur=$(_dispwidth "${input:0:cursor}")
     ((disp_cur < disp_len)) && echo -ne "\e[$((disp_len - disp_cur))D"
   fi
+  echo -ne "\e[?25h"  # show cursor
 }
 
 # Display width (character count, not bytes)
