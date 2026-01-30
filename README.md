@@ -2,7 +2,7 @@
 
 CLI trainer with spaced repetition. Shell, security tools, infrastructure.
 
-1000+ questions across 18 levels — fundamentals to privesc.
+1000+ questions across 19 levels — fundamentals to privesc.
 
 ## Features
 
@@ -60,9 +60,10 @@ cmdchamp reset   # Clear all progress
 | 12 | Network scanning: nmap, service detection, scripts |
 | 13 | Local network & RF: wifi, smb, netcat, masscan |
 | 14 | Hash cracking: hashcat, john, hydra, encoding |
-| 15 | Forensics: strings, binwalk, volatility, disk imaging |
+| 15 | Forensics: strings, binwalk, exiftool, dd |
 | 16 | Privilege escalation: SUID, GTFOBins, enumeration |
 | 17 | Survival: one-liners, recovery, offline scenarios |
+| 18 | System admin: ping, df, free, top, systemctl, ip, users |
 
 ## Controls
 
