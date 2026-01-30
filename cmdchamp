@@ -1797,7 +1797,8 @@ show_tier() {
   local tier=$1 ans=$2
   if ((tier == 1)); then
     # Show ~40-60% with random variation
-    local pct=$((40 + RANDOM % 21)) show=$((${#ans} * pct / 100))
+    local pct=$((40 + RANDOM % 21))
+    local show=$((${#ans} * pct / 100))
     ((show < 3)) && show=3
     echo -e "${C}Complete:${N} ${ans:0:show}${D}...${N}"
   fi
