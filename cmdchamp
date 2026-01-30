@@ -516,7 +516,7 @@ gen_level1() {
 }
 
 # Level 3: Text Search (grep, rg)
-gen_level3() {
+gen_level4() {
   local questions=() log log2 cfg cfg2 txt txt2 csv csv2 dir dir2 ext ext2 script archive bin img pcap hash photo wordlist ip subnet port port2 mac url user host term term2 term3 field field2 key old new size iface proc svc sig branch time n1 n2 n3 col; _ctx
   local ctx=$(_rnum 1 10) ctx2=$(_rnum 2 5)
 
@@ -572,7 +572,7 @@ gen_level3() {
 }
 
 # Level 4: File Finding (find, fd)
-gen_level4() {
+gen_level5() {
   local questions=() log log2 cfg cfg2 txt txt2 csv csv2 dir dir2 ext ext2 script archive bin img pcap hash photo wordlist ip subnet port port2 mac url user host term term2 term3 field field2 key old new size iface proc svc sig branch time n1 n2 n3 col; _ctx
 
   # By name
@@ -615,7 +615,7 @@ gen_level4() {
 }
 
 # Level 5: Data Processing (sort, uniq, cut, awk, ps, ss, ip)
-gen_level5() {
+gen_level6() {
   local questions=() log log2 cfg cfg2 txt txt2 csv csv2 dir dir2 ext ext2 script archive bin img pcap hash photo wordlist ip subnet port port2 mac url user host term term2 term3 field field2 key old new size iface proc svc sig branch time n1 n2 n3 col; _ctx
   local proc2=$(_pick PROCS) col2=$(_rnum 1 5) col3=$((col + 1)) chars=$(_rnum 10 80) thresh=$(_rnum 50 500)
 
@@ -806,7 +806,7 @@ gen_level9() {
 }
 
 # Level 12: Network Scanning (nmap)
-gen_level12() {
+gen_level13() {
   local questions=() log log2 cfg cfg2 txt txt2 csv csv2 dir dir2 ext ext2 script archive bin img pcap hash photo wordlist ip subnet port port2 mac url user host term term2 term3 field field2 key old new size iface proc svc sig branch time n1 n2 n3 col; _ctx
   port2=$((port + 1000))
 
@@ -858,7 +858,7 @@ gen_level12() {
 }
 
 # Level 14: Hash Cracking & Encoding (hashcat, john, hydra)
-gen_level14() {
+gen_level15() {
   local questions=() log log2 cfg cfg2 txt txt2 csv csv2 dir dir2 ext ext2 script archive bin img pcap hash photo wordlist ip subnet port port2 mac url user host term term2 term3 field field2 key old new size iface proc svc sig branch time n1 n2 n3 col; _ctx
   local hidx=$((RANDOM % ${#HASHCAT_MODES[@]})) hmode=${HASHCAT_MODES[$hidx]} hname=${HASH_NAMES[$hidx]}
 
@@ -916,7 +916,7 @@ gen_level14() {
 }
 
 # Level 15: Forensics & Binary Analysis
-gen_level15() {
+gen_level16() {
   local questions=() log log2 cfg cfg2 txt txt2 csv csv2 dir dir2 ext ext2 script archive bin img pcap hash photo wordlist ip subnet port port2 mac url user host term term2 term3 field field2 key old new size iface proc svc sig branch time n1 n2 n3 col; _ctx
 
   # String extraction
@@ -960,7 +960,7 @@ gen_level15() {
 }
 
 # Level 11: Network Tools (tshark, curl, wget, ssh, openssl, jq)
-gen_level11() {
+gen_level12() {
   local questions=() log log2 cfg cfg2 txt txt2 csv csv2 dir dir2 ext ext2 script archive bin img pcap hash photo wordlist ip subnet port port2 mac url user host term term2 term3 field field2 key old new size iface proc svc sig branch time n1 n2 n3 col; _ctx
 
   # tshark - packet capture & analysis
@@ -1024,7 +1024,7 @@ gen_level11() {
 }
 
 # Level 13: Local Network & RF (wifi, smb, netcat, masscan)
-gen_level13() {
+gen_level14() {
   local questions=() log log2 cfg cfg2 txt txt2 csv csv2 dir dir2 ext ext2 script archive bin img pcap hash photo wordlist ip subnet port port2 mac url user host term term2 term3 field field2 key old new size iface proc svc sig branch time n1 n2 n3 col; _ctx
 
   # WiFi attacks
@@ -1057,7 +1057,7 @@ gen_level13() {
 }
 
 # Level 6: String Manipulation & Arrays
-gen_level6() {
+gen_level7() {
   local questions=() log log2 cfg cfg2 txt txt2 csv csv2 dir dir2 ext ext2 script archive bin img pcap hash photo wordlist ip subnet port port2 mac url user host term term2 term3 field field2 key old new size iface proc svc sig branch time n1 n2 n3 col; _ctx
 
   # Parameter expansion - removal (practical examples)
@@ -1130,7 +1130,7 @@ gen_level6() {
 }
 
 # Level 7: Control Flow & Functions
-gen_level7() {
+gen_level8() {
   local questions=() log log2 cfg cfg2 txt txt2 csv csv2 dir dir2 ext ext2 script archive bin img pcap hash photo wordlist ip subnet port port2 mac url user host term term2 term3 field field2 key old new size iface proc svc sig branch time n1 n2 n3 col; _ctx
 
   # if/else
@@ -1203,7 +1203,7 @@ gen_level7() {
 }
 
 # Level 17: Apocalypse Mode - Hardcore one-liners, recovery, survival
-gen_level17() {
+gen_level18() {
   local questions=() log log2 cfg cfg2 txt txt2 csv csv2 dir dir2 ext ext2 script archive bin img pcap hash photo wordlist ip subnet port port2 mac url user host term term2 term3 field field2 key old new size iface proc svc sig branch time n1 n2 n3 col; _ctx
 
   # === EMERGENCY RECOVERY ===
@@ -1301,7 +1301,7 @@ gen_level17() {
 }
 
 # Level 10: Git Operations
-gen_level10() {
+gen_level11() {
   local questions=() log log2 cfg cfg2 txt txt2 csv csv2 dir dir2 ext ext2 script archive bin img pcap hash photo wordlist ip subnet port port2 mac url user host term term2 term3 field field2 key old new size iface proc svc sig branch time n1 n2 n3 col; _ctx
   local remote=$(_pick REMOTE_HOSTS)
 
@@ -1398,7 +1398,7 @@ gen_level10() {
 }
 
 # Level 2: tmux & Screen
-gen_level2() {
+gen_level3() {
   local questions=() log log2 cfg cfg2 txt txt2 csv csv2 dir dir2 ext ext2 script archive bin img pcap hash photo wordlist ip subnet port port2 mac url user host term term2 term3 field field2 key old new size iface proc svc sig branch time n1 n2 n3 col; _ctx
 
   # Session management
@@ -1483,7 +1483,7 @@ gen_level2() {
 }
 
 # Level 16: Privilege Escalation
-gen_level16() {
+gen_level17() {
   local questions=() log log2 cfg cfg2 txt txt2 csv csv2 dir dir2 ext ext2 script archive bin img pcap hash photo wordlist ip subnet port port2 mac url user host term term2 term3 field field2 key old new size iface proc svc sig branch time n1 n2 n3 col; _ctx
 
   # SUID/SGID enumeration
@@ -1574,7 +1574,7 @@ gen_level16() {
 }
 
 # Level 8: Advanced Regex & Text Processing
-gen_level8() {
+gen_level10() {
   local questions=() log log2 cfg cfg2 txt txt2 csv csv2 dir dir2 ext ext2 script archive bin img pcap hash photo wordlist ip subnet port port2 mac url user host term term2 term3 field field2 key old new size iface proc svc sig branch time n1 n2 n3 col; _ctx
 
   # Regex lookahead/lookbehind (grep -P for PCRE)
@@ -1659,7 +1659,7 @@ gen_level8() {
 }
 
 # Level 18: System Admin (daily drivers)
-gen_level18() {
+gen_level2() {
   local questions=() log log2 cfg cfg2 txt txt2 csv csv2 dir dir2 ext ext2 script archive bin img pcap hash photo wordlist ip subnet port port2 mac url user host term term2 term3 field field2 key old new size iface proc svc sig branch time n1 n2 n3 col; _ctx
 
   # Network diagnostics
@@ -1737,12 +1737,11 @@ gen_level18() {
 
 # Level descriptions
 declare -A LEVEL_DESC=(
-  [0]="Shell Fundamentals" [1]="Core Tools" [2]="tmux & Screen" [3]="Text Search"
-  [4]="File Finding" [5]="Data Processing" [6]="String & Arrays" [7]="Control Flow"
-  [8]="Advanced Regex" [9]="Batch Ops" [10]="Git" [11]="Network Tools"
-  [12]="Network Scanning" [13]="Local Network & RF" [14]="Hash Cracking"
-  [15]="Forensics" [16]="Privilege Escalation" [17]="Apocalypse Mode"
-  [18]="System Admin"
+  [0]="Shell Fundamentals" [1]="Core Tools" [2]="System Admin" [3]="tmux & Screen"
+  [4]="Text Search" [5]="File Finding" [6]="Data Processing" [7]="String & Arrays"
+  [8]="Control Flow" [9]="Batch Ops" [10]="Advanced Regex" [11]="Git"
+  [12]="Network Tools" [13]="Network Scanning" [14]="Local Network & RF"
+  [15]="Hash Cracking" [16]="Forensics" [17]="Privilege Escalation" [18]="Survival"
 )
 
 # Generate questions for a level (called once per level attempt)
