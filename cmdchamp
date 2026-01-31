@@ -5,11 +5,404 @@ set -uo pipefail
 _tty() { [[ -t 0 ]] || { echo "Error: requires interactive terminal" >&2; exit 1; }; }
 
 DATA="${XDG_DATA_HOME:-$HOME/.local/share}/cmdchamp"; mkdir -p "$DATA"; touch "$DATA/scores"
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# SANDBOX SYSTEM - Real command execution in isolated environment
+# ═══════════════════════════════════════════════════════════════════════════════
+SANDBOX_MODE=1  # ON by default
+SANDBOX_PRISTINE="$DATA/sandbox.pristine"
+SANDBOX_DIR="$DATA/sandbox"
+
+# Check bwrap dependency
+_check_bwrap() {
+  command -v bwrap &>/dev/null || {
+    echo -e "${R}Error: bubblewrap (bwrap) not installed${N}" >&2
+    echo "Install: paru -S bubblewrap" >&2
+    SANDBOX_MODE=0
+    return 1
+  }
+}
+
+# Generate log file with realistic nginx-style entries
+_gen_log() {
+  local f="$1" lines="${2:-50}"
+  local ips=("192.168.1.100" "10.0.0.5" "172.16.0.50" "192.168.8.1" "10.10.10.10")
+  local codes=("200" "200" "200" "200" "301" "304" "400" "403" "404" "500")
+  local methods=("GET" "GET" "GET" "POST" "PUT" "DELETE")
+  local paths=("/" "/index.html" "/api/users" "/api/data" "/login" "/static/style.css" "/favicon.ico" "/admin" "/search" "/api/v1/status")
+  local agents=("Mozilla/5.0" "curl/7.68" "wget" "Python-requests" "Go-http-client")
+  > "$f"
+  for ((i=0; i<lines; i++)); do
+    local ip="${ips[$((RANDOM % ${#ips[@]}))]}"
+    local code="${codes[$((RANDOM % ${#codes[@]}))]}"
+    local method="${methods[$((RANDOM % ${#methods[@]}))]}"
+    local path="${paths[$((RANDOM % ${#paths[@]}))]}"
+    local agent="${agents[$((RANDOM % ${#agents[@]}))]}"
+    local size=$((RANDOM % 50000 + 100))
+    local ts=$(date -d "-$((RANDOM % 86400)) seconds" "+%d/%b/%Y:%H:%M:%S +0000" 2>/dev/null || date "+%d/%b/%Y:%H:%M:%S +0000")
+    printf '%s - - [%s] "%s %s HTTP/1.1" %s %d "%s"\n' "$ip" "$ts" "$method" "$path" "$code" "$size" "$agent" >> "$f"
+  done
+}
+
+# Generate app log with ERROR/WARN/INFO levels
+_gen_app_log() {
+  local f="$1" lines="${2:-40}"
+  local levels=("INFO" "INFO" "INFO" "INFO" "WARN" "WARN" "ERROR" "DEBUG")
+  local msgs_info=("Request processed" "User logged in" "Cache hit" "Connection established" "Task completed" "Session started")
+  local msgs_warn=("Slow query detected" "Memory usage high" "Rate limit approaching" "Deprecated API used" "Retry attempt")
+  local msgs_error=("Connection refused" "Timeout exceeded" "Invalid request" "Permission denied" "Database error" "Null pointer")
+  > "$f"
+  for ((i=0; i<lines; i++)); do
+    local level="${levels[$((RANDOM % ${#levels[@]}))]}"
+    local ts=$(date -d "-$((RANDOM % 86400)) seconds" "+%Y-%m-%d %H:%M:%S" 2>/dev/null || date "+%Y-%m-%d %H:%M:%S")
+    local msg
+    case "$level" in
+      INFO|DEBUG) msg="${msgs_info[$((RANDOM % ${#msgs_info[@]}))]}";;
+      WARN) msg="${msgs_warn[$((RANDOM % ${#msgs_warn[@]}))]}";;
+      ERROR) msg="${msgs_error[$((RANDOM % ${#msgs_error[@]}))]}";;
+    esac
+    printf '[%s] %s: %s\n' "$ts" "$level" "$msg" >> "$f"
+  done
+}
+
+# Generate CSV with headers and typed data
+_gen_csv() {
+  local f="$1" rows="${2:-30}"
+  local names=("Alice" "Bob" "Charlie" "Diana" "Eve" "Frank" "Grace" "Henry" "Ivy" "Jack")
+  local domains=("example.com" "test.org" "demo.net" "sample.io")
+  local statuses=("active" "active" "active" "inactive" "pending")
+  echo "id,name,email,status,timestamp" > "$f"
+  for ((i=1; i<=rows; i++)); do
+    local name="${names[$((RANDOM % ${#names[@]}))]}"
+    local domain="${domains[$((RANDOM % ${#domains[@]}))]}"
+    local status="${statuses[$((RANDOM % ${#statuses[@]}))]}"
+    local ts=$(date -d "-$((RANDOM % 2592000)) seconds" "+%Y-%m-%d" 2>/dev/null || date "+%Y-%m-%d")
+    printf '%d,%s,%s@%s,%s,%s\n' "$i" "$name" "${name,,}" "$domain" "$status" "$ts" >> "$f"
+  done
+}
+
+# Generate INI config
+_gen_ini() {
+  local f="$1"
+  cat > "$f" <<'EOF'
+[server]
+host = 0.0.0.0
+port = 8080
+workers = 4
+timeout = 30
+
+[database]
+type = postgresql
+host = localhost
+port = 5432
+name = appdb
+user = admin
+
+[logging]
+level = info
+file = /var/log/app.log
+rotate = daily
+
+[cache]
+enabled = true
+ttl = 3600
+backend = redis
+EOF
+}
+
+# Generate YAML config
+_gen_yaml() {
+  local f="$1"
+  cat > "$f" <<'EOF'
+server:
+  host: 0.0.0.0
+  port: 8080
+  workers: 4
+  ssl:
+    enabled: false
+    cert: /etc/ssl/cert.pem
+
+database:
+  primary:
+    host: localhost
+    port: 5432
+    name: appdb
+  replica:
+    host: replica.local
+    port: 5432
+
+logging:
+  level: info
+  outputs:
+    - stdout
+    - file:/var/log/app.log
+
+features:
+  cache: true
+  metrics: true
+  debug: false
+EOF
+}
+
+# Generate plain text notes
+_gen_txt() {
+  local f="$1"
+  cat > "$f" <<'EOF'
+Meeting Notes - Project Review
+==============================
+
+Attendees: Alice, Bob, Charlie
+
+Action Items:
+1. Update documentation
+2. Fix authentication bug
+3. Deploy to staging
+4. Review security patches
+
+Discussion Points:
+- Performance improvements needed
+- New feature requests from users
+- Timeline for next release
+
+TODO: Schedule follow-up meeting
+TODO: Review pull requests
+TODO: Update dependencies
+
+Notes:
+The deployment went smoothly.
+Minor issues with caching fixed.
+Need to monitor error rates.
+
+Completed tasks:
+- Database migration
+- API versioning
+- Load testing
+EOF
+}
+
+# Generate user data CSV
+_gen_users_csv() {
+  local f="$1" rows="${2:-20}"
+  local fnames=("john" "jane" "mike" "sarah" "tom" "lisa" "david" "emma" "alex" "olivia")
+  local lnames=("smith" "jones" "wilson" "brown" "taylor" "davis" "miller" "garcia" "martinez" "lee")
+  local roles=("admin" "user" "user" "user" "moderator" "guest")
+  echo "username,fullname,role,created,logins" > "$f"
+  for ((i=1; i<=rows; i++)); do
+    local fn="${fnames[$((RANDOM % ${#fnames[@]}))]}"
+    local ln="${lnames[$((RANDOM % ${#lnames[@]}))]}"
+    local role="${roles[$((RANDOM % ${#roles[@]}))]}"
+    local logins=$((RANDOM % 500))
+    local ts=$(date -d "-$((RANDOM % 31536000)) seconds" "+%Y-%m-%d" 2>/dev/null || date "+%Y-%m-%d")
+    printf '%s_%s,%s %s,%s,%s,%d\n' "$fn" "$ln" "${fn^}" "${ln^}" "$role" "$ts" "$logins" >> "$f"
+  done
+}
+
+# Generate JSON data
+_gen_json() {
+  local f="$1"
+  cat > "$f" <<'EOF'
+{
+  "version": "1.0.0",
+  "data": [
+    {"id": 1, "name": "Item One", "status": "active", "count": 42},
+    {"id": 2, "name": "Item Two", "status": "pending", "count": 17},
+    {"id": 3, "name": "Item Three", "status": "active", "count": 89},
+    {"id": 4, "name": "Item Four", "status": "inactive", "count": 5}
+  ],
+  "metadata": {
+    "total": 4,
+    "generated": "2024-01-15"
+  }
+}
+EOF
+}
+
+# Generate all sandbox files
+_gen_sandbox_files() {
+  local dir="$1"
+  mkdir -p "$dir"/{src/test,logs,data}
+
+  _gen_log "$dir/server.log" 50
+  _gen_app_log "$dir/app.log" 40
+  _gen_csv "$dir/data.csv" 30
+  _gen_users_csv "$dir/users.csv" 20
+  _gen_ini "$dir/config.ini"
+  _gen_yaml "$dir/settings.yaml"
+  _gen_txt "$dir/notes.txt"
+  _gen_json "$dir/data/export.json"
+
+  # Access/error logs
+  _gen_log "$dir/logs/access.log" 30
+  _gen_app_log "$dir/logs/error.log" 20
+
+  # Safe script (echo only)
+  cat > "$dir/backup.sh" <<'EOF'
+#!/bin/bash
+echo "Backup started at $(date)"
+echo "Backing up files..."
+echo "Backup complete!"
+EOF
+  chmod +x "$dir/backup.sh"
+
+  # Python source files
+  cat > "$dir/main.py" <<'EOF'
+#!/usr/bin/env python3
+"""Main application module."""
+
+def main():
+    print("Hello, World!")
+    return 0
+
+if __name__ == "__main__":
+    main()
+EOF
+
+  cat > "$dir/src/utils.py" <<'EOF'
+"""Utility functions."""
+
+def helper(x):
+    return x * 2
+
+def process(data):
+    return [helper(item) for item in data]
+EOF
+
+  cat > "$dir/src/test/test_utils.py" <<'EOF'
+"""Tests for utils module."""
+import unittest
+
+class TestUtils(unittest.TestCase):
+    def test_helper(self):
+        self.assertEqual(helper(2), 4)
+
+if __name__ == "__main__":
+    unittest.main()
+EOF
+}
+
+# Initialize sandbox (create pristine copy if needed)
+_sandbox_init() {
+  ((SANDBOX_MODE)) || return 0
+  _check_bwrap || return 1
+  if [[ ! -d "$SANDBOX_PRISTINE" ]]; then
+    _gen_sandbox_files "$SANDBOX_PRISTINE"
+  fi
+  _sandbox_reset
+}
+
+# Reset sandbox to pristine state
+_sandbox_reset() {
+  ((SANDBOX_MODE)) || return 0
+  [[ -d "$SANDBOX_PRISTINE" ]] || return 1
+  rm -rf "$SANDBOX_DIR"
+  cp -a "$SANDBOX_PRISTINE" "$SANDBOX_DIR"
+}
+
+# Execute command in sandbox with bwrap isolation
+_sandbox_exec() {
+  local cmd="$1" timeout_sec="${2:-5}"
+  ((SANDBOX_MODE)) || return 1
+
+  # Build bwrap args - bind /lib* only if they exist
+  local -a bwrap_args=(
+    --ro-bind /usr /usr
+    --ro-bind /bin /bin
+    --ro-bind /etc/passwd /etc/passwd
+    --ro-bind /etc/group /etc/group
+    --bind "$SANDBOX_DIR" /sandbox
+    --chdir /sandbox
+    --setenv HOME /sandbox
+    --setenv USER sandbox
+    --unshare-all
+    --die-with-parent
+    --new-session
+  )
+  [[ -e /lib ]] && bwrap_args+=(--ro-bind /lib /lib)
+  [[ -e /lib64 ]] && bwrap_args+=(--ro-bind /lib64 /lib64)
+
+  timeout "$timeout_sec" bwrap "${bwrap_args[@]}" /bin/bash -c "$cmd" 2>&1
+}
+
+# Track if command was destructive (for per-question reset)
+_SANDBOX_DESTRUCTIVE=0
+_is_destructive() {
+  local cmd="$1"
+  [[ "$cmd" =~ (^|[[:space:]])(rm|mv|cp|>|>>|chmod|chown)[[:space:]] ]] && return 0
+  return 1
+}
+
+# Validate command output
+# Returns 0 if output matches expected
+# Expected formats:
+#   exact text - exact match
+#   ~regex     - regex match
+#   @N         - line count match
+#   *          - any output (just check command ran)
+_sandbox_check_output() {
+  local actual="$1" expected="$2"
+  [[ -z "$expected" ]] && return 1
+
+  case "$expected" in
+    \~*)  # Regex match
+      local pattern="${expected:1}"
+      [[ "$actual" =~ $pattern ]] && return 0
+      ;;
+    @*)   # Line count match
+      local count="${expected:1}"
+      local lines=$(echo -n "$actual" | wc -l)
+      ((lines == count)) && return 0
+      ;;
+    \*)   # Any output
+      [[ -n "$actual" ]] && return 0
+      ;;
+    *)    # Exact match (trimmed)
+      actual="${actual#"${actual%%[![:space:]]*}"}"
+      actual="${actual%"${actual##*[![:space:]]}"}"
+      expected="${expected#"${expected%%[![:space:]]*}"}"
+      expected="${expected%"${expected##*[![:space:]]}"}"
+      [[ "$actual" == "$expected" ]] && return 0
+      ;;
+  esac
+  return 1
+}
+
+# Validate file state after command
+# Formats: exists:file, !exists:file, contains:file:pattern, lines:file:N
+_sandbox_check_state() {
+  local checks="$1"
+  IFS=',' read -ra checks_arr <<< "$checks"
+  for check in "${checks_arr[@]}"; do
+    case "$check" in
+      exists:*)
+        local file="${check#exists:}"
+        [[ -e "$SANDBOX_DIR/$file" ]] || return 1
+        ;;
+      !exists:*)
+        local file="${check#!exists:}"
+        [[ ! -e "$SANDBOX_DIR/$file" ]] || return 1
+        ;;
+      contains:*:*)
+        local rest="${check#contains:}"
+        local file="${rest%%:*}"
+        local pattern="${rest#*:}"
+        grep -q "$pattern" "$SANDBOX_DIR/$file" 2>/dev/null || return 1
+        ;;
+      lines:*:*)
+        local rest="${check#lines:}"
+        local file="${rest%%:*}"
+        local count="${rest#*:}"
+        local actual=$(wc -l < "$SANDBOX_DIR/$file" 2>/dev/null)
+        ((actual == count)) || return 1
+        ;;
+    esac
+  done
+  return 0
+}
 # Terminal state management
 _stty_saved=""
 _cleanup() { [[ -n "$_stty_saved" ]] && stty "$_stty_saved" 2>/dev/null; echo; }
 trap '_cleanup; exit 0' INT TERM HUP EXIT
-R=$'\e[31m' G=$'\e[32m' Y=$'\e[33m' Bl=$'\e[34m' M=$'\e[35m' C=$'\e[36m' W=$'\e[37m' D=$'\e[2m' B=$'\e[1m' N=$'\e[0m'
+R=$'\e[31m' G=$'\e[32m' Y=$'\e[33m' Bl=$'\e[34m' M=$'\e[35m' C=$'\e[36m' W=$'\e[97m' D=$'\e[2m' B=$'\e[1m' N=$'\e[0m'
 PROMPT_CHAR="${CMD_PROMPT:-$([[ $EUID -eq 0 ]] && echo '# ' || echo '$ ')}"
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -238,7 +631,7 @@ _ctx() {
   old=$(_pick REPLACE_OLD); new=$(_pick REPLACE_NEW); size=$(_pick SIZES)
   iface=$(_pick INTERFACES); proc=$(_pick PROCS); svc=$(_pick SERVICES)
   sig=$(_pick SIGNALS); branch=$(_pick BRANCHES); time=$(_pick TIMES)
-  n1=$(_rnum 1 20); n2=$(_rnum 5 50); n3=$(_rnum 2 10); col=$(_rnum 1 5)
+  n1=$(_rnum 1 20); n2=$(_rnum 5 50); n3=$(_rnum 2 10); col=$(_rnum 1 5); n=$n1
 }
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -246,12 +639,17 @@ _ctx() {
 # ═══════════════════════════════════════════════════════════════════════════════
 declare -A EXP=(
   [echo]="print text to stdout" [cat]="concatenate and display file contents" [ls]="list directory contents"
-  [cd]="change directory" [cp]="copy files" [mv]="move/rename files" [rm]="remove files (no undo)"
-  [mkdir]="create directory" [touch]="create file/update timestamp" [head]="first N lines" [tail]="last N lines"
-  [grep]="search text (regex)" [find]="find files by name/size/date" [wc]="count lines/words/bytes"
-  [sort]="sort lines" [uniq]="filter duplicates" [cut]="extract columns" [tr]="translate chars"
+  [cd]="change directory" [cp]="copy files" [mv]="move/rename files" [rm]="delete files permanently"
+  [mkdir]="create directory" [touch]="create file/update timestamp"
+  [head]="head -N FILE: first N lines (default 10)"
+  [tail]="tail -N FILE: last N lines (-f to follow)"
+  [grep]="grep PATTERN FILE: search lines matching pattern"
+  [find]="find PATH -name 'x': locate files by name/size/date"
+  [wc]="word count: -l lines, -w words, -c bytes"
+  [sort]="sort lines" [uniq]="filter duplicates" [cut]="extract columns"
+  [tr]="tr FROM TO: map chars (tr a-z A-Z = lowercase→uppercase)"
   [diff]="compare files" [tar]="archive tool" [tee]="copy stdin to file AND stdout" [xargs]="build commands from stdin"
-  [chmod]="change permissions" [kill]="signal process" [jobs]="list background jobs" [fg]="foreground job"
+  [chmod]="change permissions" [kill]="send signal to process (default: terminate)" [jobs]="list background jobs" [fg]="foreground job"
   [bg]="background job" [sleep]="pause N seconds" [make]="build tool" [gcc]="C compiler"
   [date]="show/set date" [du]="disk usage" [ps]="list processes" [mount]="attach filesystem"
   [dd]="low-level copy" [strings]="extract text from binary" [base64]="encode/decode base64"
@@ -276,9 +674,47 @@ declare -A EXP=(
   ['$$']="current shell PID" ['$?']="last exit code" ['$!']="last background PID"
   ['$#']="argument count" ['$@']="all arguments" ['$0']="script name"
   ['!!']="repeat last command" ['!$']="last arg of prev cmd" ['!^']="first arg of prev cmd" ['!*']="all args of prev cmd"
-  ['>']="redirect to file" ['>>']="append to file" ['2>']="redirect stderr" ['&>']="redirect all"
-  ['2>&1']="stderr to stdout" ['<']="read from file" ['<<<']="here-string" ['|']="pipe"
-  ['|&']="pipe stdout+stderr" ['&&']="run if success" ['||']="run if fail" ['&']="run in background"
+  ['>']="write stdout to file (overwrite)"
+  ['>>']="append stdout to file"
+  ['2>']="redirect stderr to file"
+  ['&>']="redirect stdout+stderr to file"
+  ['/dev/null']="black hole: discards anything written to it"
+  ['2>&1']="merge stderr into stdout"
+  ['<']="read file as stdin: cmd < file"
+  ['<<<']="feed string as stdin: cmd <<< 'text'"
+  # Path symbols
+  ['.']="current directory"
+  ['..']="parent directory"
+  ['~']="home directory"
+  ['/']="root directory (or path separator)"
+  ['/nonexistent']="fake path that doesn't exist → triggers an error (for practice)"
+  # Globs/wildcards
+  ['*']="wildcard: matches any characters"
+  ['?']="wildcard: matches single character"
+  ['*.py']="glob: all files ending in .py"
+  ['*.log']="glob: all files ending in .log"
+  ['*.txt']="glob: all files ending in .txt"
+  ['*.sh']="glob: all files ending in .sh"
+  ['*.conf']="glob: all files ending in .conf"
+  # Quoted versions (as they appear in commands)
+  ["'*.py'"]="glob: all .py files (quoted to prevent shell expansion)"
+  ["'*.log'"]="glob: all .log files (quoted to prevent shell expansion)"
+  ["'*.txt'"]="glob: all .txt files (quoted to prevent shell expansion)"
+  ["'*.sh'"]="glob: all .sh files (quoted to prevent shell expansion)"
+  ["'*.conf'"]="glob: all .conf files (quoted to prevent shell expansion)"
+  ["'*'"]="glob: all files (quoted to prevent shell expansion)"
+  # Quoting
+  ["'...'"]="single quotes: literal string, no expansion"
+  ['"..."']="double quotes: allows \$var expansion"
+  ["'hello'"]="literal string 'hello'"
+  ['|']="pipe: cmd1 | cmd2 (stdout→stdin)"
+  ['|&']="pipe stdout+stderr"
+  ['&&']="run next only if previous succeeds"
+  ['||']="run next only if previous fails"
+  ['&']="run in background (returns immediately)"
+  ['a-z']="character range: all lowercase letters"
+  ['A-Z']="character range: all uppercase letters"
+  ['0-9']="character range: all digits"
   # Parameter expansion
   ['${#var}']="string length" ['${var:-}']="default if unset" ['${var:=}']="set if unset"
   ['${var:?}']="error if unset" ['${var:+}']="alt if set" ['${var#}']="remove prefix (short)"
@@ -339,9 +775,70 @@ declare -A EXP=(
   ['-N']="no remote command" ['-f']="background ssh" ['-oN']="normal output" ['-oG']="greppable output" ['-oA']="all output formats"
 )
 explain() {
-  local tok n=0
-  for tok in $1; do [[ -n "${EXP[$tok]:-}" ]] && { echo -e "${D}  ${C}${tok}${D} → ${EXP[$tok]}${N}"; ((++n)); }; done
-  EXPLAIN_LINES=$n
+  local tok n=0 exp label desc tcol
+  echo -e "${D}────────────────────────────────────────${N}"
+  for tok in $1; do
+    exp="${EXP[$tok]:-}"
+    if [[ -n "$exp" ]]; then
+      # Choose token color based on type
+      tcol="${G}"  # default: green for commands
+      case "$tok" in
+        .|..|~|/*) tcol="${Bl}" ;;  # paths = blue
+        '>'|'>>'|'<'|'<<<'|'2>'|'&>'|'2>&1'|'|'|'|&') tcol="${R}" ;;  # redirects/pipes = red
+        '&&'|'||'|';'|'&') tcol="${R}" ;;  # operators = red
+        -*) tcol="${C}" ;;  # flags = cyan
+      esac
+
+      # Split on first colon if present: "label: description"
+      if [[ "$exp" == *:* ]]; then
+        label="${exp%%:*}"
+        desc="${exp#*: }"
+        # If label has spaces, it's an example - use magenta
+        if [[ "$label" == *" "* ]]; then
+          echo -e "  ${tcol}${tok}${N}  ${D}→${N}  ${M}${label}${D}:${N} ${W}${desc}${N}"
+        else
+          echo -e "  ${tcol}${tok}${N}  ${D}→${N}  ${Y}${label}${D}:${N} ${W}${desc}${N}"
+        fi
+      else
+        echo -e "  ${tcol}${tok}${N}  ${D}→${N}  ${W}${exp}${N}"
+      fi
+      ((++n))
+    fi
+  done
+  # Show full answer if no explanations found
+  ((n == 0)) && { echo -e "  ${Y}$1${N}"; ((++n)); }
+  echo -e "${D}────────────────────────────────────────${N}"
+  EXPLAIN_LINES=$((n + 2))
+}
+
+# Parse question - handles both | and § delimiters (§ for answers with ||)
+# Also extracts sandbox markers: #output:, #state:, #text:
+_qoutput="" _qstate="" _qtext=0
+_qparse() {
+  local q=$1
+  _qoutput="" _qstate="" _qtext=0
+
+  # Extract sandbox markers from end
+  if [[ $q == *"#text:"* ]]; then
+    _qtext=1
+    q="${q%%#text:*}"
+  fi
+  if [[ $q == *"#state:"* ]]; then
+    _qstate="${q##*#state:}"
+    q="${q%%#state:*}"
+  fi
+  if [[ $q == *"#output:"* ]]; then
+    _qoutput="${q##*#output:}"
+    _qoutput="${_qoutput%%#*}"  # Remove any trailing markers
+    q="${q%%#output:*}"
+  fi
+
+  # Parse prompt and answers
+  if [[ $q == *§* ]]; then
+    _qprompt="${q%%§*}"; _qanswers="${q#*§}"; _qans="${_qanswers%%§*}"
+  else
+    _qprompt="${q%%|*}"; _qanswers="${q#*|}"; _qans="${_qanswers%%|*}"
+  fi
 }
 
 # Vi mode: always on (override with CMD_VI=0)
@@ -351,91 +848,145 @@ VI_MODE=${CMD_VI:-1}
 # QUESTION GENERATORS - Dynamic questions with infinite variations
 # ═══════════════════════════════════════════════════════════════════════════════
 
-# Level 0: Shell Fundamentals (redirections, pipes, job control, history, variables, expansion)
+# Level 0: First Commands (pwd, ls, echo, cd)
 gen_level0() {
   local questions=() log log2 cfg cfg2 txt txt2 csv csv2 dir dir2 ext ext2 script archive bin img pcap hash photo wordlist ip subnet port port2 mac url user host term term2 term3 field field2 key old new size iface proc svc sig branch time n1 n2 n3 col; _ctx
+  questions+=("Print current directory|pwd|#output:~^/sandbox")
+  questions+=("List files in current directory|ls|#output:~server.log")
+  questions+=("List all files including hidden|ls -a|#output:~\\.")
+  questions+=("List files with details (permissions, size, date)|ls -l|#output:~^[-drwx]")
+  questions+=("Print 'hello world'|echo hello world|echo 'hello world'|echo \"hello world\"|#output:hello world")
+  questions+=("Change to src directory|cd src|#output:*")
+  questions+=("Go to home directory|cd|cd ~|#output:*")
+  questions+=("Go up one directory|cd ..|#output:*")
+  printf '%s\n' "${questions[@]}"
+}
 
-  # Redirections - essential shell plumbing
-  questions+=("Save ls output to files.txt|ls > files.txt")
-  questions+=("Append \"done\" to ${log}|echo \"done\" >> ${log}")
-  questions+=("Save make errors to errors.log|make 2> errors.log")
-  questions+=("Save make stdout+stderr to build.log|make &> build.log|make > build.log 2>&1")
-  questions+=("Send gcc errors to stdout for piping|gcc main.c 2>&1")
-  questions+=("Run ${script} silently (discard all output)|./${script} &> /dev/null|./${script} > /dev/null 2>&1")
-  questions+=("Find *.conf files in /, suppress permission errors|find / -name \"*.conf\" 2> /dev/null")
-  questions+=("Count lines in ${csv} via stdin|wc -l < ${csv}")
-  questions+=("Uppercase \"hello\" using here string|tr a-z A-Z <<< \"hello\"")
+# Level 1: Save Output (>, >>)
+gen_level1() {
+  local questions=() log log2 cfg cfg2 txt txt2 csv csv2 dir dir2 ext ext2 script archive bin img pcap hash photo wordlist ip subnet port port2 mac url user host term term2 term3 field field2 key old new size iface proc svc sig branch time n1 n2 n3 col; _ctx
+  # > = write/overwrite (replaces file), >> = append (adds to end)
+  # ${W}...${C} makes filenames white within cyan prompt
+  questions+=("Write ls output to ${W}files.txt${C} (overwrite)|ls > files.txt|#state:exists:files.txt")
+  questions+=("Echo 'hello' to ${W}notes.txt${C} (overwrite)|echo hello > notes.txt|echo 'hello' > notes.txt|echo \"hello\" > notes.txt|#state:contains:notes.txt:hello")
+  questions+=("Echo 'done' and append to ${W}app.log${C}|echo done >> app.log|echo 'done' >> app.log|echo \"done\" >> app.log|#state:contains:app.log:done")
+  questions+=("Append current date to end of ${W}server.log${C}|date >> server.log|#state:exists:server.log")
+  questions+=("Write directory listing to ${W}notes.txt${C} (overwrite)|ls -l > notes.txt|ls > notes.txt|#state:exists:notes.txt")
+  questions+=("Echo 'log entry' and append to ${W}notes.txt${C}|echo log entry >> notes.txt|echo 'log entry' >> notes.txt|echo \"log entry\" >> notes.txt|#state:contains:notes.txt:log entry")
+  printf '%s\n' "${questions[@]}"
+}
 
-  # Pipes and logic - chaining commands
-  questions+=("Search for ${term} in ${log}|grep ${term} ${log}|cat ${log} | grep ${term}")
-  questions+=("Build and capture all output to build.log|make |& tee build.log")
-  questions+=("Create directory '${dir}' and cd into it (fail if exists)|mkdir ${dir} && cd ${dir}")
-  questions+=("Create directory '${dir}' and cd into it (create parents if needed)|mkdir -p ${dir} && cd ${dir}")
-  questions+=("True if '${term}' NOT found in ${log}|! grep -q ${term} ${log}")
-  questions+=("Run cmd1, then cmd2 only if cmd1 fails|cmd1 || cmd2")
+# Level 2: Read Files (cat, head, tail)
+gen_level2() {
+  local questions=() log log2 cfg cfg2 txt txt2 csv csv2 dir dir2 ext ext2 script archive bin img pcap hash photo wordlist ip subnet port port2 mac url user host term term2 term3 field field2 key old new size iface proc svc sig branch time n1 n2 n3 col; _ctx
+  questions+=("Display contents of ${W}notes.txt${C}|cat notes.txt|#output:~Meeting Notes")
+  questions+=("Show first 10 lines of ${W}server.log${C}|head server.log|head -10 server.log|head -n 10 server.log|#output:@10")
+  questions+=("Show last 10 lines of ${W}config.ini${C}|tail config.ini|tail -10 config.ini|tail -n 10 config.ini|#output:@10")
+  questions+=("Follow ${W}app.log${C} for new lines as they appear|tail -f app.log|#text:")
+  questions+=("Show ${W}notes.txt${C} with line numbers|cat -n notes.txt|#output:~^\\s+1")
+  printf '%s\n' "${questions[@]}"
+}
 
-  # Job control - background processes
+# Level 3: Basic Pipes (|)
+gen_level3() {
+  local questions=() log log2 cfg cfg2 txt txt2 csv csv2 dir dir2 ext ext2 script archive bin img pcap hash photo wordlist ip subnet port port2 mac url user host term term2 term3 field field2 key old new size iface proc svc sig branch time n1 n2 n3 col; _ctx
+  questions+=("List files and count them|ls | wc -l|#output:~^\\s*[0-9]+")
+  questions+=("Pipe ${W}server.log${C} through head to get first 5 lines|cat server.log | head -5|head -5 server.log|head -n 5 server.log|#output:@5")
+  questions+=("Search for ${Y}ERROR${C} in ${W}app.log${C}|grep ERROR app.log|cat app.log | grep ERROR|#output:~ERROR")
+  questions+=("Count matches of ${Y}INFO${C} in ${W}app.log${C}|grep -c INFO app.log|grep INFO app.log | wc -l|#output:~^\\s*[0-9]+")
+  questions+=("Sort ${W}notes.txt${C} alphabetically|sort notes.txt|cat notes.txt | sort|#output:*")
+  questions+=("Sort ${W}notes.txt${C} and remove duplicates|sort notes.txt | uniq|sort -u notes.txt|#output:*")
+  printf '%s\n' "${questions[@]}"
+}
+
+# Level 4: Input Redirection (<, <<<)
+gen_level4() {
+  local questions=() log log2 cfg cfg2 txt txt2 csv csv2 dir dir2 ext ext2 script archive bin img pcap hash photo wordlist ip subnet port port2 mac url user host term term2 term3 field field2 key old new size iface proc svc sig branch time n1 n2 n3 col; _ctx
+  questions+=("Count lines in ${W}data.csv${C} via stdin|wc -l < data.csv|#output:~^\\s*[0-9]+")
+  questions+=("Sort ${W}notes.txt${C} via stdin|sort < notes.txt|#output:*")
+  questions+=("Uppercase ${Y}'hello'${C} using here-string|tr a-z A-Z <<< 'hello'|#output:HELLO")
+  questions+=("Reverse ${Y}'hello'${C} using here-string|rev <<< 'hello'|#output:olleh")
+  printf '%s\n' "${questions[@]}"
+}
+
+# Level 5: Error Redirection (2>, &>, 2>&1)
+gen_level5() {
+  local questions=() log log2 cfg cfg2 txt txt2 csv csv2 dir dir2 ext ext2 script archive bin img pcap hash photo wordlist ip subnet port port2 mac url user host term term2 term3 field field2 key old new size iface proc svc sig branch time n1 n2 n3 col; _ctx
+  # 2> = stderr to file, &> = both to file, 2>&1 = stderr to stdout, /dev/null = discard
+  questions+=("Run ${W}backup.sh${C} and save errors to ${W}errors.log${C}|./backup.sh 2> errors.log")
+  questions+=("Run ${W}backup.sh${C} and save all output (stdout+stderr) to ${W}output.log${C}|./backup.sh &> output.log|./backup.sh > output.log 2>&1")
+  questions+=("List ${W}/nonexistent${C} merging stderr into stdout|ls /nonexistent 2>&1")
+  questions+=("Run ${W}backup.sh${C} silently (discard all output)|./backup.sh &> /dev/null|./backup.sh > /dev/null 2>&1")
+  questions+=("Find ${Y}*.py${C} files, suppressing errors|find . -name '*.py' 2> /dev/null|#output:~\\.py")
+  printf '%s\n' "${questions[@]}"
+}
+
+# Level 6: Logic Operators (&&, ||)
+gen_level6() {
+  local questions=() log log2 cfg cfg2 txt txt2 csv csv2 dir dir2 ext ext2 script archive bin img pcap hash photo wordlist ip subnet port port2 mac url user host term term2 term3 field field2 key old new size iface proc svc sig branch time n1 n2 n3 col; _ctx
+  questions+=("Create ${dir} and cd into it|mkdir ${dir} && cd ${dir}")
+  questions+=("Create parents if needed, then cd|mkdir -p ${dir} && cd ${dir}")
+  questions+=("Run cmd2 only if cmd1 fails§cmd1 || cmd2")
+  questions+=("Backup if file exists|test -f ${cfg} && cp ${cfg} ${cfg}.bak")
+  questions+=("Create ${dir} or warn if exists§mkdir ${dir} || echo 'exists'")
+  printf '%s\n' "${questions[@]}"
+}
+
+# Level 7: Job Control (&, jobs, bg, fg)
+gen_level7() {
+  local questions=() log log2 cfg cfg2 txt txt2 csv csv2 dir dir2 ext ext2 script archive bin img pcap hash photo wordlist ip subnet port port2 mac url user host term term2 term3 field field2 key old new size iface proc svc sig branch time n1 n2 n3 col; _ctx
   questions+=("Run sleep 60 in background|sleep 60 &")
   questions+=("List background jobs|jobs")
   questions+=("Bring job 1 to foreground|fg %1")
   questions+=("Send job 1 to background|bg %1")
   questions+=("Kill job 1|kill %1")
   questions+=("Kill job 2 with SIGKILL|kill -9 %2")
+  printf '%s\n' "${questions[@]}"
+}
 
-  # Command substitution
-  questions+=("Store current date in variable 'now'|now=\$(date)")
-  questions+=("Print today's date inline with text|echo \"Today is \$(date +%Y-%m-%d)\"")
-  questions+=("Store line count of ${txt} in variable|lines=\$(wc -l < ${txt})")
+# Level 8: Variables & Substitution
+gen_level8() {
+  local questions=() log log2 cfg cfg2 txt txt2 csv csv2 dir dir2 ext ext2 script archive bin img pcap hash photo wordlist ip subnet port port2 mac url user host term term2 term3 field field2 key old new size iface proc svc sig branch time n1 n2 n3 col; _ctx
+  questions+=("Store 'hello' in variable msg|msg=hello|msg='hello'")
+  questions+=("Print variable \$msg|echo \$msg")
+  questions+=("Store date output in variable|now=\$(date)")
+  questions+=("Print today's date inline|echo \"Today is \$(date +%Y-%m-%d)\"")
+  questions+=("Store line count in variable|lines=\$(wc -l < ${txt})")
+  questions+=("Create dir named with today's date|mkdir \$(date +%Y-%m-%d)")
+  printf '%s\n' "${questions[@]}"
+}
 
-  # Subshell and grouping
-  questions+=("Extract ${archive} in /tmp without changing current dir|(cd /tmp && tar xzf ${archive})")
-  questions+=("Run multiple commands in current shell (grouped)|{ echo start; sleep 1; echo end; }")
-
-  # History - command recall
-  questions+=("Repeat last command|!!")
-  questions+=("Run last command starting with 'git'|!git")
-  questions+=("Run command number 42 from history|!42")
-  questions+=("Replace foo with bar in last command and run|^foo^bar")
-  questions+=("Reuse last argument of previous command|!\$")
-  questions+=("Reuse first argument of previous command|!^")
-  questions+=("Reuse all arguments of previous command|!*")
-
-  # Special variables - essential for scripting
+# Level 9: Special Variables ($$, $?, $!)
+gen_level9() {
+  local questions=() log log2 cfg cfg2 txt txt2 csv csv2 dir dir2 ext ext2 script archive bin img pcap hash photo wordlist ip subnet port port2 mac url user host term term2 term3 field field2 key old new size iface proc svc sig branch time n1 n2 n3 col; _ctx
   questions+=("Print current shell PID|echo \$\$")
   questions+=("Print exit status of last command|echo \$?")
   questions+=("Print PID of last background process|echo \$!")
   questions+=("Print number of script arguments|echo \$#")
-  questions+=("Print all script arguments (preserves quoting)|echo \"\$@\"")
+  questions+=("Print all script arguments|echo \"\$@\"")
   questions+=("Print script name|echo \$0")
+  printf '%s\n' "${questions[@]}"
+}
 
-  # Brace expansion - time saver
-  questions+=("Create files 'a.txt', 'b.txt', 'c.txt' with one command|touch {a,b,c}.txt")
-  questions+=("Create files 'file1' through 'file10'|touch file{1..10}")
-  questions+=("Backup ${cfg} to ${cfg}.bak using brace expansion|cp ${cfg}{,.bak}")
-  questions+=("Diff ${txt%.txt}.old vs ${txt%.txt}.new|diff ${txt%.txt}.{old,new}")
-  questions+=("Create nested directories 'project/src', 'project/lib', 'project/bin'|mkdir -p project/{src,lib,bin}")
-
-  # Process substitution - advanced piping
-  questions+=("Diff sorted contents of ${txt} and ${txt2}|diff <(sort ${txt}) <(sort ${txt2})")
-
-  # Bash test operators (essential for scripting)
+# Level 10: Test Operators ([[ -f ]], [[ -d ]], etc)
+gen_level10() {
+  local questions=() log log2 cfg cfg2 txt txt2 csv csv2 dir dir2 ext ext2 script archive bin img pcap hash photo wordlist ip subnet port port2 mac url user host term term2 term3 field field2 key old new size iface proc svc sig branch time n1 n2 n3 col; _ctx
   questions+=("Test if ${txt} exists and is a file|[[ -f ${txt} ]]")
   questions+=("Test if ${dir} exists and is a directory|[[ -d ${dir} ]]")
   questions+=("Test if ${txt} is readable|[[ -r ${txt} ]]")
   questions+=("Test if ${script} is executable|[[ -x ${script} ]]")
-  questions+=("Test if variable is empty|[[ -z \"\$var\" ]]")
-  questions+=("Test if variable is NOT empty|[[ -n \"\$var\" ]]")
-  questions+=("Test if two strings are equal|[[ \"\$a\" == \"\$b\" ]]")
-  questions+=("Test if number is greater than 10|[[ \$num -gt 10 ]]")
+  questions+=("Test if \$var is empty|[[ -z \"\$var\" ]]")
+  questions+=("Test if \$var is NOT empty|[[ -n \"\$var\" ]]")
+  questions+=("Test if \$a equals \$b|[[ \"\$a\" == \"\$b\" ]]")
+  questions+=("Test if \$num is greater than 10|[[ \$num -gt 10 ]]")
   questions+=("Test if file1 is newer than file2|[[ file1 -nt file2 ]]")
   questions+=("Combine tests with AND|[[ -f ${txt} && -r ${txt} ]]")
-  questions+=("Combine tests with OR|[[ -f ${txt} || -f ${cfg} ]]")
-
+  questions+=("Combine tests with OR§[[ -f ${txt} || -f ${cfg} ]]")
   printf '%s\n' "${questions[@]}"
 }
 
 # Level 1: Core File Tools (cat, ls, head, tail, cp, wc, du, tree)
-gen_level1() {
+gen_level11() {
   local questions=() log log2 cfg cfg2 txt txt2 csv csv2 dir dir2 ext ext2 script archive bin img pcap hash photo wordlist ip subnet port port2 mac url user host term term2 term3 field field2 key old new size iface proc svc sig branch time n1 n2 n3 col; _ctx
   local perm1=$((RANDOM % 8))$((RANDOM % 8))$((RANDOM % 8))
 
@@ -456,15 +1007,9 @@ gen_level1() {
   questions+=("List files one per line|ls -1")
   questions+=("List ${dir}/ recursively|ls -R ${dir}/|eza -R ${dir}/")
 
-  # Head and tail - dynamic line counts
-  questions+=("First ${n1} lines of ${log}|head -n ${n1} ${log}|head -${n1} ${log}")
-  questions+=("Last ${n2} lines of ${log}|tail -n ${n2} ${log}|tail -${n2} ${log}")
-  questions+=("$(_phrase "Follow" "Watch" "Monitor") ${log} in realtime|tail -f ${log}")
-  questions+=("Last ${n1} lines, then follow for new lines|tail -n ${n1} -f ${log}|tail -${n1} -f ${log}")
-  questions+=("Show all but last ${n1} lines of ${txt}|head -n -${n1} ${txt}")
-  questions+=("Show ${txt} starting from line ${n1}|tail -n +${n1} ${txt}")
-  questions+=("First ${n2} bytes of ${log}|head -c ${n2} ${log}")
-  questions+=("Last ${n1} bytes of ${txt}|tail -c ${n1} ${txt}")
+  # Head and tail with specific counts (basics in Level 2)
+  questions+=("First ${n1} lines of ${W}${log}${C}|head -n ${n1} ${log}|head -${n1} ${log}")
+  questions+=("Last ${n2} lines of ${W}${log}${C}|tail -n ${n2} ${log}|tail -${n2} ${log}")
 
   # File operations
   questions+=("Count lines in ${csv}|wc -l ${csv}|wc -l < ${csv}")
@@ -485,7 +1030,7 @@ gen_level1() {
   questions+=("Show disk free space|df -h")
 
   # Archives (tar) - with flag alternatives
-  questions+=("Extract ${archive}|tar xzf ${archive}|tar xfz ${archive}|tar zxf ${archive}|tar -xzf ${archive}")
+  questions+=("Extract ${archive}|tar xzf ${archive}|tar -xzf ${archive}")
   questions+=("Extract ${archive} to ${dir}/|tar xzf ${archive} -C ${dir}/|tar -xzf ${archive} -C ${dir}/")
   questions+=("Create archive.tar.gz from ${dir}/|tar czf archive.tar.gz ${dir}/|tar -czf archive.tar.gz ${dir}/")
   questions+=("List contents of ${archive} without extracting|tar tzf ${archive}|tar -tzf ${archive}|tar tf ${archive}")
@@ -515,7 +1060,7 @@ gen_level1() {
 }
 
 # Level 3: Text Search (grep, rg)
-gen_level4() {
+gen_level14() {
   local questions=() log log2 cfg cfg2 txt txt2 csv csv2 dir dir2 ext ext2 script archive bin img pcap hash photo wordlist ip subnet port port2 mac url user host term term2 term3 field field2 key old new size iface proc svc sig branch time n1 n2 n3 col; _ctx
   local ctx=$(_rnum 1 10) ctx2=$(_rnum 2 5)
 
@@ -571,7 +1116,7 @@ gen_level4() {
 }
 
 # Level 4: File Finding (find, fd)
-gen_level5() {
+gen_level15() {
   local questions=() log log2 cfg cfg2 txt txt2 csv csv2 dir dir2 ext ext2 script archive bin img pcap hash photo wordlist ip subnet port port2 mac url user host term term2 term3 field field2 key old new size iface proc svc sig branch time n1 n2 n3 col; _ctx
 
   # By name
@@ -614,7 +1159,7 @@ gen_level5() {
 }
 
 # Level 5: Data Processing (sort, uniq, cut, awk, ps, ss, ip)
-gen_level6() {
+gen_level16() {
   local questions=() log log2 cfg cfg2 txt txt2 csv csv2 dir dir2 ext ext2 script archive bin img pcap hash photo wordlist ip subnet port port2 mac url user host term term2 term3 field field2 key old new size iface proc svc sig branch time n1 n2 n3 col; _ctx
   local proc2=$(_pick PROCS) col2=$(_rnum 1 5) col3=$((col + 1)) chars=$(_rnum 10 80) thresh=$(_rnum 50 500)
 
@@ -714,7 +1259,7 @@ gen_level6() {
 }
 
 # Level 9: Batch Operations (find -exec, xargs, sed, systemctl, journalctl)
-gen_level9() {
+gen_level19() {
   local questions=() log log2 cfg cfg2 txt txt2 csv csv2 dir dir2 ext ext2 script archive bin img pcap hash photo wordlist ip subnet port port2 mac url user host term term2 term3 field field2 key old new size iface proc svc sig branch time n1 n2 n3 col; _ctx
   local svc2=$(_pick SERVICES) parallel=$(_rnum 2 8) linenum=$(_rnum 1 20)
 
@@ -800,7 +1345,7 @@ gen_level9() {
 }
 
 # Level 12: Network Scanning (nmap)
-gen_level13() {
+gen_level23() {
   local questions=() log log2 cfg cfg2 txt txt2 csv csv2 dir dir2 ext ext2 script archive bin img pcap hash photo wordlist ip subnet port port2 mac url user host term term2 term3 field field2 key old new size iface proc svc sig branch time n1 n2 n3 col; _ctx
   port2=$((port + 1000))
 
@@ -852,7 +1397,7 @@ gen_level13() {
 }
 
 # Level 14: Hash Cracking & Encoding (hashcat, john, hydra)
-gen_level15() {
+gen_level25() {
   local questions=() log log2 cfg cfg2 txt txt2 csv csv2 dir dir2 ext ext2 script archive bin img pcap hash photo wordlist ip subnet port port2 mac url user host term term2 term3 field field2 key old new size iface proc svc sig branch time n1 n2 n3 col; _ctx
   local hidx=$((RANDOM % ${#HASHCAT_MODES[@]})) hmode=${HASHCAT_MODES[$hidx]} hname=${HASH_NAMES[$hidx]}
 
@@ -910,7 +1455,7 @@ gen_level15() {
 }
 
 # Level 15: Forensics & Binary Analysis
-gen_level16() {
+gen_level26() {
   local questions=() log log2 cfg cfg2 txt txt2 csv csv2 dir dir2 ext ext2 script archive bin img pcap hash photo wordlist ip subnet port port2 mac url user host term term2 term3 field field2 key old new size iface proc svc sig branch time n1 n2 n3 col; _ctx
 
   # String extraction
@@ -954,7 +1499,7 @@ gen_level16() {
 }
 
 # Level 11: Network Tools (tshark, curl, wget, ssh, openssl, jq)
-gen_level12() {
+gen_level22() {
   local questions=() log log2 cfg cfg2 txt txt2 csv csv2 dir dir2 ext ext2 script archive bin img pcap hash photo wordlist ip subnet port port2 mac url user host term term2 term3 field field2 key old new size iface proc svc sig branch time n1 n2 n3 col; _ctx
 
   # tshark - packet capture & analysis
@@ -967,7 +1512,7 @@ gen_level12() {
   questions+=("Extract HTTP POST data|tshark -r ${pcap} -Y 'http.request.method == POST' -T fields -e http.file_data")
   questions+=("Extract all URLs from capture|tshark -r ${pcap} -Y 'http.request' -T fields -e http.host -e http.request.uri")
   questions+=("Show TCP conversations|tshark -r ${pcap} -q -z conv,tcp")
-  questions+=("Extract credentials (FTP, HTTP basic)|tshark -r ${pcap} -Y 'ftp.request.command == PASS || http.authbasic'")
+  questions+=("Extract credentials (FTP, HTTP basic)§tshark -r ${pcap} -Y 'ftp.request.command == PASS || http.authbasic'")
 
   # jq - JSON processing (ESSENTIAL modern skill)
   questions+=("Pretty print JSON file|jq '.' data.json")
@@ -1018,7 +1563,7 @@ gen_level12() {
 }
 
 # Level 13: Local Network & RF (wifi, smb, netcat, masscan)
-gen_level14() {
+gen_level24() {
   local questions=() log log2 cfg cfg2 txt txt2 csv csv2 dir dir2 ext ext2 script archive bin img pcap hash photo wordlist ip subnet port port2 mac url user host term term2 term3 field field2 key old new size iface proc svc sig branch time n1 n2 n3 col; _ctx
 
   # WiFi attacks
@@ -1051,7 +1596,7 @@ gen_level14() {
 }
 
 # Level 6: String Manipulation & Arrays
-gen_level7() {
+gen_level17() {
   local questions=() log log2 cfg cfg2 txt txt2 csv csv2 dir dir2 ext ext2 script archive bin img pcap hash photo wordlist ip subnet port port2 mac url user host term term2 term3 field field2 key old new size iface proc svc sig branch time n1 n2 n3 col; _ctx
 
   # Parameter expansion - removal (practical examples)
@@ -1059,6 +1604,7 @@ gen_level7() {
   questions+=("Get parent directory from \$fullpath|echo \${fullpath%/*}")
   questions+=("Get extension from ${cfg} (stored in \$file)|echo \${file##*.}")
   questions+=("Remove extension from ${log} to get basename|echo \${file%.*}")
+  questions+=("Diff ${txt%.txt}.old vs ${txt%.txt}.new (using param expansion)|diff ${txt%.txt}.{old,new}")
   questions+=("Strip leading 'v' from version string \$ver (e.g., v1.2.3)|echo \${ver#v}")
   questions+=("Remove protocol from URL \$url (e.g., https://)|echo \${url#*://}")
   questions+=("Get domain from URL \$url (remove path)|echo \${url%%/*}")
@@ -1124,7 +1670,7 @@ gen_level7() {
 }
 
 # Level 7: Control Flow & Functions
-gen_level8() {
+gen_level18() {
   local questions=() log log2 cfg cfg2 txt txt2 csv csv2 dir dir2 ext ext2 script archive bin img pcap hash photo wordlist ip subnet port port2 mac url user host term term2 term3 field field2 key old new size iface proc svc sig branch time n1 n2 n3 col; _ctx
 
   # if/else
@@ -1135,7 +1681,7 @@ gen_level8() {
   questions+=("Test if command succeeds|if grep -q error ${log}; then echo found; fi")
   questions+=("Negate condition|if ! [[ -f ${txt} ]]; then echo missing; fi")
   questions+=("Compound AND condition|if [[ -f ${txt} && -r ${txt} ]]; then cat ${txt}; fi")
-  questions+=("Compound OR condition|if [[ -z \"\$var\" || \"\$var\" == \"default\" ]]; then echo empty; fi")
+  questions+=("Compound OR condition§if [[ -z \"\$var\" || \"\$var\" == \"default\" ]]; then echo empty; fi")
 
   # for loops (practical examples)
   questions+=("Process all .${ext} files in current dir|for f in *.${ext}; do echo \"Processing \$f\"; done")
@@ -1185,7 +1731,7 @@ gen_level8() {
   questions+=("Fail on pipe error|set -o pipefail")
   questions+=("Strict mode combo|set -euo pipefail")
   questions+=("Check last command status|\$? -ne 0 && echo failed")
-  questions+=("Run command, ignore failure|cmd || true")
+  questions+=("Run command, ignore failure§cmd || true")
   questions+=("Die function|die() { echo \"\$1\" >&2; exit 1; }")
 
   # debugging
@@ -1197,7 +1743,7 @@ gen_level8() {
 }
 
 # Level 17: Apocalypse Mode - Hardcore one-liners, recovery, survival
-gen_level18() {
+gen_level28() {
   local questions=() log log2 cfg cfg2 txt txt2 csv csv2 dir dir2 ext ext2 script archive bin img pcap hash photo wordlist ip subnet port port2 mac url user host term term2 term3 field field2 key old new size iface proc svc sig branch time n1 n2 n3 col; _ctx
 
   # === EMERGENCY RECOVERY ===
@@ -1283,7 +1829,7 @@ gen_level18() {
   questions+=("Parallel execution with xargs|cat urls.txt | xargs -P 10 -I{} curl -s {}")
   questions+=("Timeout a command|timeout 5 long_running_cmd")
   questions+=("Retry command until success|until cmd; do sleep 1; done")
-  questions+=("Lock file to prevent concurrent runs|exec 200>/tmp/lock; flock -n 200 || exit 1")
+  questions+=("Lock file to prevent concurrent runs§exec 200>/tmp/lock; flock -n 200 || exit 1")
   questions+=("Named pipe (FIFO)|mkfifo /tmp/pipe; cmd1 > /tmp/pipe & cmd2 < /tmp/pipe")
 
   # === OFFLINE/AIR-GAPPED ===
@@ -1295,7 +1841,7 @@ gen_level18() {
 }
 
 # Level 10: Git Operations
-gen_level11() {
+gen_level21() {
   local questions=() log log2 cfg cfg2 txt txt2 csv csv2 dir dir2 ext ext2 script archive bin img pcap hash photo wordlist ip subnet port port2 mac url user host term term2 term3 field field2 key old new size iface proc svc sig branch time n1 n2 n3 col; _ctx
   local remote=$(_pick REMOTE_HOSTS)
 
@@ -1392,7 +1938,7 @@ gen_level11() {
 }
 
 # Level 2: tmux & Screen
-gen_level3() {
+gen_level13() {
   local questions=() log log2 cfg cfg2 txt txt2 csv csv2 dir dir2 ext ext2 script archive bin img pcap hash photo wordlist ip subnet port port2 mac url user host term term2 term3 field field2 key old new size iface proc svc sig branch time n1 n2 n3 col; _ctx
 
   # Session management
@@ -1477,7 +2023,7 @@ gen_level3() {
 }
 
 # Level 16: Privilege Escalation
-gen_level17() {
+gen_level27() {
   local questions=() log log2 cfg cfg2 txt txt2 csv csv2 dir dir2 ext ext2 script archive bin img pcap hash photo wordlist ip subnet port port2 mac url user host term term2 term3 field field2 key old new size iface proc svc sig branch time n1 n2 n3 col; _ctx
 
   # SUID/SGID enumeration
@@ -1568,7 +2114,7 @@ gen_level17() {
 }
 
 # Level 8: Advanced Regex & Text Processing
-gen_level10() {
+gen_level20() {
   local questions=() log log2 cfg cfg2 txt txt2 csv csv2 dir dir2 ext ext2 script archive bin img pcap hash photo wordlist ip subnet port port2 mac url user host term term2 term3 field field2 key old new size iface proc svc sig branch time n1 n2 n3 col; _ctx
 
   # Regex lookahead/lookbehind (grep -P for PCRE)
@@ -1648,11 +2194,16 @@ gen_level10() {
   questions+=("Complex: join lines with comma|paste -sd',' ${txt}")
   questions+=("Complex: transpose columns|awk '{for(i=1;i<=NF;i++) a[NR,i]=\$i} END{for(j=1;j<=NF;j++){for(i=1;i<=NR;i++) printf a[i,j]\" \"; print \"\"}}' ${txt}")
 
+  # Process substitution - advanced piping
+  questions+=("Diff sorted contents of ${txt} and ${txt2}|diff <(sort ${txt}) <(sort ${txt2})")
+  questions+=("Compare output of two commands|diff <(cmd1) <(cmd2)")
+  questions+=("Feed command output as file to program|prog <(grep pattern ${log})")
+
   printf '%s\n' "${questions[@]}"
 }
 
-# Level 18: System Admin (daily drivers)
-gen_level2() {
+# Level 2: System Admin (daily drivers)
+gen_level12() {
   local questions=() log log2 cfg cfg2 txt txt2 csv csv2 dir dir2 ext ext2 script archive bin img pcap hash photo wordlist ip subnet port port2 mac url user host term term2 term3 field field2 key old new size iface proc svc sig branch time n1 n2 n3 col; _ctx
 
   # Network diagnostics
@@ -1730,11 +2281,14 @@ gen_level2() {
 
 # Level descriptions
 declare -A LEVEL_DESC=(
-  [0]="Shell Fundamentals" [1]="Core Tools" [2]="System Admin" [3]="tmux & Screen"
-  [4]="Text Search" [5]="File Finding" [6]="Data Processing" [7]="String & Arrays"
-  [8]="Control Flow" [9]="Batch Ops" [10]="Advanced Regex" [11]="Git"
-  [12]="Network Tools" [13]="Network Scanning" [14]="Local Network & RF"
-  [15]="Hash Cracking" [16]="Forensics" [17]="Privilege Escalation" [18]="Survival"
+  [0]="First Commands" [1]="Save Output" [2]="Read Files" [3]="Basic Pipes"
+  [4]="Input Redirection" [5]="Error Redirection" [6]="Logic Operators" [7]="Job Control"
+  [8]="Variables" [9]="Special Variables" [10]="Test Operators"
+  [11]="Core Tools" [12]="System Admin" [13]="tmux & Screen"
+  [14]="Text Search" [15]="File Finding" [16]="Data Processing" [17]="String & Arrays"
+  [18]="Control Flow" [19]="Batch Ops" [20]="Advanced Regex" [21]="Git"
+  [22]="Network Tools" [23]="Network Scanning" [24]="Local Network & RF"
+  [25]="Hash Cracking" [26]="Forensics" [27]="Privilege Escalation" [28]="Survival"
 )
 
 # Generate questions for a level (called once per level attempt)
@@ -1766,8 +2320,32 @@ norm() {
   printf '%s' "$out"; printf ' %s' "${flags[@]}" "${args[@]}"; echo
 }
 
+_SANDBOX_OUTPUT=""  # Store output for display after check
 check() {
   local inp="${1#"${1%%[![:space:]]*}"}" a b ninp; inp="${inp%"${inp##*[![:space:]]}"}"; ninp=$(norm "$inp")
+  _SANDBOX_OUTPUT=""
+
+  # Sandbox mode: execute command and validate output/state
+  if ((SANDBOX_MODE && !_qtext)); then
+    local output
+    output=$(_sandbox_exec "$inp" 5 2>&1)
+    _SANDBOX_OUTPUT="$output"
+
+    # Track destructive commands for reset
+    _is_destructive "$inp" && _SANDBOX_DESTRUCTIVE=1
+
+    # Validate based on markers
+    if [[ -n "$_qoutput" ]]; then
+      _sandbox_check_output "$output" "$_qoutput" && return 0
+    fi
+    if [[ -n "$_qstate" ]]; then
+      _sandbox_check_state "$_qstate" && return 0
+    fi
+
+    # Fall through to text matching if no markers or sandbox failed
+  fi
+
+  # Text matching fallback
   IFS='|' read -ra opts <<< "$2"
   for a in "${opts[@]}"; do b="${a#"${a%%[![:space:]]*}"}"; b="${b%"${b##*[![:space:]]}"}"; [[ "$inp" == "$b" || "$ninp" == "$(norm "$b")" ]] && return 0; done; return 1
 }
@@ -1789,20 +2367,11 @@ stats() {
   done
   echo -e "Total: ${B}${total_seen}${N}  ${Y}${total_t1}${N} learning  ${G}${total_t2}${N} mastered"
   echo
-  for lv in {0..18}; do printf "  ${C}%2d${N} %s\n" "$lv" "${LEVEL_DESC[$lv]}"; done
+  for lv in {0..28}; do printf "  ${C}%2d${N} %s\n" "$lv" "${LEVEL_DESC[$lv]}"; done
 }
 
-# Tier display: 1=blank (partial), 2=recall (nothing shown)
-show_tier() {
-  local tier=$1 ans=$2
-  if ((tier == 1)); then
-    # Show ~40-60% with random variation
-    local pct=$((40 + RANDOM % 21))
-    local show=$((${#ans} * pct / 100))
-    ((show < 3)) && show=3
-    echo -e "${C}Complete:${N} ${ans:0:show}${D}...${N}"
-  fi
-}
+# Tier display: removed - pure recall, Tab for hints
+show_tier() { :; }
 
 input="" cursor=0 mode="insert" SHOW_HINT=0 EXPLAIN_LINES=0 _rep=""
 declare -a UNDO_STACK=()  # Multi-level undo
@@ -1810,12 +2379,13 @@ _last_cmd="" _last_arg=""  # For dot repeat
 clear_hint() { for ((i=0;i<=EXPLAIN_LINES;i++)); do printf '\e[A\e[2K'; done; printf '\r'; }
 hdr() {
   printf '\e[2J\e[H'
-  local fire=""; ((streak>=5)) && fire=" ${R}>>>FIRE<<<${N} ${Y}2x${N}"
-  echo -e "${B}=== Level $1 ===${N}  ${D}${LEVEL_DESC[$1]}${N}${fire}"
+  local fire=""; ((streak>=5)) && fire="  ${R}🔥${N} ${Y}2x${N}"
+  echo -e "${B}=== Level $1 ===${N}${fire}"
+  echo -e "${M}${LEVEL_DESC[$1]}${N}"
   echo -e "${D}[$2/$3]  Tab=hint Ctrl+n=skip${N}\n"
 }
-qdisp() { bar; echo -e "\n${D}$1${N}"; show_tier "$2" "$3"; echo; }
-bar() { local f e; printf -v f '%*s' "$PROG" ''; printf -v e '%*s' "$((TOT-PROG))" ''; printf '[%s%s]' "${f// /█}" "${e// /░}"; }
+qdisp() { bar; echo -e "\n${C}$1${N}"; show_tier "$2" "$3"; echo; }
+bar() { local f e; printf -v f '%*s' "$PROG" ''; printf -v e '%*s' "$((TOT-PROG))" ''; printf "${G}[${Y}%s${D}%s${G}]${N}" "${f// /█}" "${e// /░}"; }
 draw() {
   echo -ne "\e[?25l\r\e[K"  # hide cursor, clear line
   if ((SHOW_HINT)); then
@@ -1854,6 +2424,10 @@ run() {
   local -a HIST=() ; local HIST_IDX=0 HIST_SAVE=""
   # Save terminal state for clean restoration
   _stty_saved=$(stty -g 2>/dev/null) || _stty_saved=""
+
+  # Initialize sandbox for this level
+  ((SANDBOX_MODE)) && _sandbox_init
+
   generate_level "$lv"  # Generate fresh questions for this level
   local -A _sc; [[ -f "$DATA/scores" ]] && while IFS='|' read -r k v; do _sc[$k]=$v; done < "$DATA/scores"
   _sget() { local h=$(_hash "$1"); echo "${_sc[$h]:-1}"; }  # Default tier 1 (no braindead copy)
@@ -1870,12 +2444,13 @@ run() {
   # Prioritize by tier: 1 (blank) > 2 (recall) - no tier 0 copy mode
   local t1=() t2=()
   for q in "${CURRENT_QUESTIONS[@]}"; do
-    case "$(_sget "${q%%|*}")" in 1) t1+=("$q");; *) t2+=("$q");; esac
+    _qparse "$q"
+    case "$(_sget "$_qprompt")" in 1) t1+=("$q");; *) t2+=("$q");; esac
   done
   # Shuffle and interleave: tier 1 first, mix in tier 2
-  local _shuf1 _shuf2
-  readarray -t _shuf1 < <(printf '%s\n' "${t1[@]}" | LC_ALL=C shuf)
-  readarray -t _shuf2 < <(printf '%s\n' "${t2[@]}" | LC_ALL=C shuf)
+  local _shuf1=() _shuf2=()
+  ((${#t1[@]} > 0)) && readarray -t _shuf1 < <(printf '%s\n' "${t1[@]}" | LC_ALL=C shuf)
+  ((${#t2[@]} > 0)) && readarray -t _shuf2 < <(printf '%s\n' "${t2[@]}" | LC_ALL=C shuf)
   shuf=()
   local i1=0 i2=0 idx=0
   while ((i1 < ${#_shuf1[@]} || i2 < ${#_shuf2[@]})); do
@@ -1884,14 +2459,16 @@ run() {
     fi
     ((++idx))
   done
-  hdr "$lv" "$((qi+1))" "$TOT"
   while ((qi < ${#shuf[@]})); do
-    local prompt="${shuf[$qi]%%|*}" answers="${shuf[$qi]#*|}"; local ans="${answers%%|*}"
+    # Reset sandbox if previous command was destructive
+    ((SANDBOX_MODE && _SANDBOX_DESTRUCTIVE)) && { _sandbox_reset; _SANDBOX_DESTRUCTIVE=0; }
+
+    _qparse "${shuf[$qi]}"; local prompt=$_qprompt ans=$_qans
     local tier; tier=$(_sget "$prompt")
     # Fire mode: force tier 2 (pure recall, no hints)
     ((streak>=5)) && tier=2
     HINT=false SHOW_HINT=0 EXPLAIN_LINES=0
-    qdisp "$prompt" "$tier" "$ans"
+    hdr "$lv" "$((qi+1))" "$TOT"; qdisp "$prompt" "$tier" "$ans"
     while true; do
       input="" cursor=0 mode="insert" SHOW_HINT=0; UNDO_STACK=(); HIST_IDX=${#HIST[@]}; HIST_SAVE=""
       read -t 0.01 -rsn 1000 ||:
@@ -1981,45 +2558,123 @@ run() {
           esac
         fi
       done
-      if check "$input" "$answers"; then
+      if check "$input" "$_qanswers"; then
         [[ -n "$input" ]] && { HIST+=("$input"); HIST_IDX=${#HIST[@]}; HIST_SAVE=""; }
         ((++PROG))
-        if $HINT; then
-          echo -e "${Y}+1${N} ${D}(hint)${N}"; streak=0; _sset "$prompt" "$tier"  # hint breaks streak
-        elif ((streak>=5)); then
-          ((++done)); ((++done)); echo -e "${R}${B}🔥 ON FIRE!${N} ${Y}+2${N}"; ((++streak)); _sset "$prompt" "$((tier<2?tier+1:2))"; sleep 0.3
-        else
-          ((++done)); echo -e "${G}${B}✓ Correct!${N} ${G}+1${N}"; ((++streak)); _sset "$prompt" "$((tier<2?tier+1:2))"; sleep 0.3
+        # Show sandbox output prominently
+        if [[ -n "$_SANDBOX_OUTPUT" ]]; then
+          echo -e "\n${W}${_SANDBOX_OUTPUT}${N}"
         fi
+        if $HINT; then
+          echo -e "\n${Y}+1${N} ${D}(hint)${N}"; streak=0; _sset "$prompt" "$tier"
+        elif ((streak>=5)); then
+          ((++done)); ((++done)); echo -e "\n${R}${B}🔥 ON FIRE!${N} ${Y}+2${N}"; ((++streak)); _sset "$prompt" "$((tier<2?tier+1:2))"
+        else
+          ((++done)); echo -e "\n${G}${B}✓${N}"; ((++streak)); _sset "$prompt" "$((tier<2?tier+1:2))"
+        fi
+        read -rsp $'\e[2mEnter...\e[0m'  # pause to see output
         ((++qi)); QI=$qi; save; break
       else
-        ((PROG>0)) && ((PROG--)); echo -e "${R}-1${N}\n${D}answer:${N} ${C}${ans}${N}"
-        streak=0; _sset "$prompt" "$((tier>0?tier-1:0))"; read -rsp $'\e[2mPress Enter to continue...\e[0m'  # wrong breaks streak
+        # Wrong answer - show expected with full breakdown
+        if [[ -n "$_SANDBOX_OUTPUT" ]]; then
+          echo -e "\n${D}output:${N} ${_SANDBOX_OUTPUT}"
+        fi
+        echo -e "${R}✗${N}  ${D}expected:${N} ${Y}${ans}${N}\n"
+        explain "$ans"  # show full breakdown so they learn
+        streak=0; _sset "$prompt" "$((tier>0?tier-1:0))"; read -rsp $'\e[2mEnter...\e[0m'
       fi
       tier=$(_sget "$prompt"); hdr "$lv" "$((qi+1))" "$TOT"; qdisp "$prompt" "$tier" "$ans"
     done
-    hdr "$lv" "$((qi+1))" "$TOT"
   done
-  if ((done>=TOT)); then
-    echo -e "${G}${B}Level $lv Complete!${N}"
-    ((lv<17)) && { echo "Enter for Level $((lv+1))..."; read -r; LVL=$((lv+1)); QI=0; save; run "$LVL"; } || echo -e "${G}${B}ALL COMPLETE - ELITE APOCALYPSE HACKER SUPREME${N}"
-  else echo -e "${Y}Need $((TOT-done)) more without hints${N}"; echo "Enter to retry..."; read -r; QI=0; save; run "$lv"; fi
+  # === BOSS ROUND ===
+  printf '\e[2J\e[H'
+  echo -e "${R}${B}═══ BOSS ROUND ═══${N}"
+  echo -e "${D}No hints! Prove you learned it.${N}\n"
+  read -rsp $'\e[2mEnter to start...\e[0m'; echo
+
+  # Pick 5 random questions
+  local boss_q=() boss_correct=0 boss_total=5
+  readarray -t boss_q < <(printf '%s\n' "${CURRENT_QUESTIONS[@]}" | shuf | head -$boss_total)
+
+  for ((bi=0; bi<${#boss_q[@]}; bi++)); do
+    _qparse "${boss_q[$bi]}"; local prompt=$_qprompt ans=$_qans
+    printf '\e[2J\e[H'
+    echo -e "${R}${B}═══ BOSS ${bi+1}/${boss_total} ═══${N}\n"
+    echo -e "${C}${prompt}${N}\n"
+
+    input="" cursor=0 mode="insert"
+    draw
+    while IFS= read -rsn1 c; do
+      if [[ "$c" == $'\t' ]]; then
+        echo -e "\n${R}No hints in boss mode!${N}"; sleep 0.5
+        printf '\e[A\e[2K'; draw; continue
+      fi
+      if [[ "$mode" == "insert" ]]; then
+        case "$c" in
+          $'\x1b') ((VI_MODE)) && { mode="normal"; ((cursor>0)) && ((cursor--)); draw; } ;;
+          $'\x7f'|$'\b') ((cursor>0)) && { input="${input:0:cursor-1}${input:cursor}"; ((cursor--)); draw; } ;;
+          '') echo; break ;;
+          *) input="${input:0:cursor}${c}${input:cursor}"; ((++cursor)); draw ;;
+        esac
+      elif ((VI_MODE)); then
+        case "$c" in
+          i) mode="insert"; draw;; a) mode="insert"; ((cursor<${#input})) && ((++cursor)); draw;;
+          h) ((cursor>0)) && ((cursor--)); draw;; l) ((cursor<${#input}-1)) && ((++cursor)); draw;;
+          0) cursor=0; draw;; \$) cursor=$((${#input}>0?${#input}-1:0)); draw;;
+          x) ((${#input}>0)) && { input="${input:0:cursor}${input:cursor+1}"; }; draw;;
+          '') echo; break ;;
+        esac
+      fi
+    done
+
+    if check "$input" "$_qanswers"; then
+      ((++boss_correct))
+      echo -e "${G}${B}✓${N}"
+    else
+      echo -e "${R}✗${N}  ${D}expected:${N} ${Y}${ans}${N}\n"
+      explain "$ans"
+    fi
+    sleep 0.8
+  done
+
+  # Results
+  printf '\e[2J\e[H'
+  if ((boss_correct >= 4)); then
+    echo -e "${G}${B}══ BOSS DEFEATED ══${N}"
+    echo -e "${G}${boss_correct}/${boss_total}${N} correct!\n"
+    ((lv<28)) && { echo -e "Enter for Level $((lv+1))..."; read -r; LVL=$((lv+1)); QI=0; save; run "$LVL"; } || echo -e "${G}${B}ALL COMPLETE - ELITE APOCALYPSE HACKER SUPREME${N}"
+  else
+    echo -e "${R}${B}══ BOSS WINS ══${N}"
+    echo -e "${R}${boss_correct}/${boss_total}${N} - need 4 to pass\n"
+    echo -e "${D}r = retry boss, p = practice level again${N}"
+    read -rsn1 choice
+    case "$choice" in
+      r) QI=0; run "$lv" ;;  # restart triggers boss again
+      *) QI=0; save; run "$lv" ;;  # practice
+    esac
+  fi
 }
 
+# Handle --no-sandbox flag
+[[ "${1:-}" == "--no-sandbox" ]] && { SANDBOX_MODE=0; shift; }
+
 case "${1:-}" in
-  [0-9]|1[0-7]) _tty; LVL=$1; QI=0; save; run "$LVL";;
-  r|reset) rm -f "$DATA"/*.json "$DATA/scores" "$DATA/scores.lock"; echo "Reset.";;
+  [0-9]|1[0-9]|2[0-8]) _tty; LVL=$1; QI=0; save; run "$LVL";;
+  r|reset) rm -f "$DATA"/*.json "$DATA/scores" "$DATA/scores.lock"; rm -rf "$DATA/sandbox" "$DATA/sandbox.pristine" 2>/dev/null; echo "Reset.";;
   c|cleanup) [[ -f "$DATA/scores" ]] && { awk -F'|' '!seen[$1]++' "$DATA/scores" > "$DATA/scores.tmp" && mv "$DATA/scores.tmp" "$DATA/scores"; echo "Deduplicated scores."; } || echo "No scores file.";;
   s|stats) stats;;
-  v|version|-v|--version) echo "cmdchamp 0.1";;
+  v|version|-v|--version) echo "cmdchamp 0.2";;
   h|help|-h|--help)
     echo -e "${B}cmdchamp${N} - CLI trainer"
-    echo -e "${D}18 levels, spaced repetition${N}"
+    echo -e "${D}29 levels, spaced repetition, sandbox execution${N}"
     echo
-    echo "Usage: cmdchamp [level|command]"
+    echo "Usage: cmdchamp [--no-sandbox] [level|command]"
+    echo
+    echo "Options:"
+    echo "  --no-sandbox  Disable sandbox (text-match only)"
     echo
     echo "Commands:"
-    echo "  0-17      Start specific level"
+    echo "  0-28      Start specific level"
     echo "  n|new     Start fresh from level 0"
     echo "  s|stats   Show mastery statistics"
     echo "  r|reset   Reset all progress"
@@ -2033,11 +2688,11 @@ case "${1:-}" in
     echo "  ?        Show vi keybindings (in vi mode)"
     echo
     echo "Levels:"
-    for lv in {0..18}; do
+    for lv in {0..28}; do
       printf "  %2d - %s\n" "$lv" "${LEVEL_DESC[$lv]}"
     done
     ;;
   n|new) _tty; LVL=0; QI=0; save; run "$LVL";;
   "") _tty; load; ((LVL>0||QI>0)) && { read -rp "Continue Level $LVL Q$((QI+1))? [Y/n] " yn; [[ "$yn" =~ ^[Nn] ]] && { LVL=0; QI=0; save; }; }; run "$LVL";;
-  *) echo "Usage: cmdchamp [0-17|reset|stats|help|version]"; exit 1;;
+  *) echo "Usage: cmdchamp [0-28|reset|stats|help|version]"; exit 1;;
 esac
