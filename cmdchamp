@@ -1930,8 +1930,8 @@ gen_level28() {
   questions+=("Parallel compress all logs§find /var/log -name '*.log' | parallel gzip")
   questions+=("Find duplicate files by hash§find . -type f -exec md5sum {} + | sort | uniq -d -w32")
   questions+=("Extract all IPs from logs, count, sort§grep -rohE '[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+' /var/log/* | sort | uniq -c | sort -rn | head")
-  questions+=("Find SUID binaries|find / -perm -4000 -type f 2>/dev/null")
-  questions+=("Find world-writable files|find / -perm -o+w -type f 2>/dev/null")
+  questions+=("Emergency disk space cleanup|find /var/log -name '*.gz' -mtime +7 -delete")
+  questions+=("Find recently modified system files|find /etc -mmin -60 -type f 2>/dev/null")
   questions+=("List all open ports and processes§ss -tlpn | awk 'NR>1 {print \$4, \$6}'")
 
   # === NETWORK SURVIVAL ===
@@ -1971,7 +1971,7 @@ gen_level28() {
   questions+=("Lock user account§passwd -l ${user}§usermod -L ${user}")
 
   # === PROCESS NINJA ===
-  questions+=("List processes by memory usage§ps aux --sort=-%mem | head")
+  questions+=("Watch memory hogs in realtime§watch -n1 'ps aux --sort=-%mem | head -5'")
   questions+=("Find process by open file§lsof ${txt}§fuser ${txt}")
   questions+=("Trace system calls of process|strace -p \$(pgrep -f process)")
   questions+=("Kill all processes by name|pkill -9 -f pattern")
