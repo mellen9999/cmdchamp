@@ -409,6 +409,14 @@ PROMPT_CHAR="${CMD_PROMPT:-$([[ $EUID -eq 0 ]] && echo '# ' || echo '$ ')}"
 # VARIABLE POOLS
 # ═══════════════════════════════════════════════════════════════════════════════
 
+# SANDBOX FILES - files that actually exist in sandbox
+declare -a SANDBOX_LOGS=(server.log app.log logs/access.log logs/error.log)
+declare -a SANDBOX_TXTS=(notes.txt)
+declare -a SANDBOX_CSVS=(data.csv users.csv)
+declare -a SANDBOX_CFGS=(config.ini settings.yaml)
+declare -a SANDBOX_SCRIPTS=(backup.sh)
+declare -a SANDBOX_PY=(main.py src/utils.py src/test/test_utils.py)
+
 # LOGS - 25 options (was 10)
 declare -a LOGS=(server.log app.log system.log auth.log access.log error.log debug.log nginx.log apache.log syslog
   messages kern.log daemon.log mail.log secure dpkg.log pacman.log audit.log boot.log faillog lastlog
@@ -892,13 +900,40 @@ gen_level2() {
 
 # Level 3: Basic Pipes (|)
 gen_level3() {
-  local questions=() log log2 cfg cfg2 txt txt2 csv csv2 dir dir2 ext ext2 script archive bin img pcap hash photo wordlist ip subnet port port2 mac url user host term term2 term3 field field2 key old new size iface proc svc sig branch time n1 n2 n3 col; _ctx
-  questions+=("List files and count them§ls | wc -l§#output:~^\\s*[0-9]+")
-  questions+=("Pipe ${W}server.log${C} through head to get first 5 lines§cat server.log | head -5§head -5 server.log§head -n 5 server.log§#output:@5")
-  questions+=("Search for ${Y}ERROR${C} in ${W}app.log${C}§grep ERROR app.log§cat app.log | grep ERROR§#output:~ERROR")
-  questions+=("Count matches of ${Y}INFO${C} in ${W}app.log${C}§grep -c INFO app.log§grep INFO app.log | wc -l§#output:~^\\s*[0-9]+")
-  questions+=("Sort ${W}notes.txt${C} alphabetically§sort notes.txt§cat notes.txt | sort§#output:*")
-  questions+=("Sort ${W}notes.txt${C} and remove duplicates§sort notes.txt | uniq§sort -u notes.txt§#output:*")
+  local questions=() log log2 cfg cfg2 txt txt2 csv csv2 dir dir2 ext ext2 script archive bin img pcap hash photo wordlist ip subnet port port2 mac url user host term term2 term3 field field2 key old new size iface proc svc sig branch time n1 n2 n3 col n; _ctx
+  # Use sandbox-specific files for this level
+  log=$(_pick SANDBOX_LOGS); txt=$(_pick SANDBOX_TXTS)
+  n=$((RANDOM % 7 + 3))  # 3-9
+
+  # ls | wc (counting)
+  questions+=("$(_phrase "List files and count them" "Count how many files" "How many files in current dir")§ls | wc -l§#output:~^\\s*[0-9]+")
+
+  # cat | head/tail
+  questions+=("$(_phrase "Show" "Display" "Get") first ${n} lines of ${W}${log}${C}§cat ${log} | head -${n}§head -${n} ${log}§head -n ${n} ${log}§#output:@${n}")
+  questions+=("$(_phrase "Show" "Display" "Get") last ${n} lines of ${W}${log}${C}§cat ${log} | tail -${n}§tail -${n} ${log}§tail -n ${n} ${log}§#output:@${n}")
+
+  # grep (search)
+  questions+=("$(_phrase "Search for" "Find" "Look for") ${Y}${term}${C} in ${W}${log}${C}§grep ${term} ${log}§cat ${log} | grep ${term}§#output:~${term}")
+  questions+=("$(_phrase "Search for" "Find" "Look for") ${Y}${term2}${C} in ${W}${txt}${C}§grep ${term2} ${txt}§cat ${txt} | grep ${term2}§#output:*")
+
+  # grep -c (count matches)
+  questions+=("Count ${Y}${term}${C} matches in ${W}${log}${C}§grep -c ${term} ${log}§grep ${term} ${log} | wc -l§#output:~^\\s*[0-9]+")
+  questions+=("How many lines contain ${Y}${term2}${C} in ${W}${txt}${C}§grep -c ${term2} ${txt}§grep ${term2} ${txt} | wc -l§#output:~^\\s*[0-9]+")
+
+  # sort
+  questions+=("$(_phrase "Sort" "Alphabetize") ${W}${txt}${C}§sort ${txt}§cat ${txt} | sort§#output:*")
+  questions+=("Sort ${W}${txt}${C} in reverse§sort -r ${txt}§cat ${txt} | sort -r§#output:*")
+
+  # sort | uniq
+  questions+=("Sort ${W}${txt}${C} and remove duplicates§sort ${txt} | uniq§sort -u ${txt}§#output:*")
+
+  # wc variants
+  questions+=("Count lines in ${W}${txt}${C}§wc -l ${txt}§cat ${txt} | wc -l§#output:~[0-9]+")
+  questions+=("Count words in ${W}${txt}${C}§wc -w ${txt}§cat ${txt} | wc -w§#output:~[0-9]+")
+
+  # head | grep, grep | head
+  questions+=("$(_phrase "Show" "Get") first ${n} ${Y}${term}${C} matches in ${W}${log}${C}§grep ${term} ${log} | head -${n}§#output:*")
+
   printf '%s\n' "${questions[@]}"
 }
 
