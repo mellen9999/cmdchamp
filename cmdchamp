@@ -1504,7 +1504,8 @@ gen_level23() {
 # Level 14: Hash Cracking & Encoding (hashcat, john, hydra)
 gen_level25() {
   local questions=() log log2 cfg cfg2 txt txt2 csv csv2 dir dir2 ext ext2 script archive bin img pcap hash photo wordlist ip subnet port port2 mac url user host term term2 term3 field field2 key old new size iface proc svc sig branch time n1 n2 n3 col; _ctx
-  local hidx=$((RANDOM % ${#HASHCAT_MODES[@]})) hmode=${HASHCAT_MODES[$hidx]} hname=${HASH_NAMES[$hidx]}
+  local hidx=$((RANDOM % ${#HASHCAT_MODES[@]}))
+  local hmode=${HASHCAT_MODES[$hidx]} hname=${HASH_NAMES[$hidx]}
 
   # Hashcat dictionary attacks
   questions+=("Dictionary attack on MD5 (-m 0) hashes in ${hash}|hashcat -m 0 ${hash} ${wordlist}")
@@ -2575,8 +2576,9 @@ run() {
   done
   # Safety check: if no questions to practice, skip to boss (or show error)
   if ((${#shuf[@]} == 0)); then
-    echo -e "${Y}No questions to practice (all mastered?). Straight to boss!${N}"
-    sleep 1
+    echo -e "${Y}DEBUG: CURRENT_QUESTIONS=${#CURRENT_QUESTIONS[@]} t1=${#t1[@]} t2=${#t2[@]}${N}"
+    echo -e "${Y}No questions to practice. Straight to boss!${N}"
+    sleep 2
   fi
   while ((qi < ${#shuf[@]})); do
     # Reset sandbox if previous command was destructive
