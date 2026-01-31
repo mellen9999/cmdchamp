@@ -992,11 +992,11 @@ gen_level5() {
   questions+=("Capture ALL output from ${G}./${script}${C} to ${W}${outfile}${C} (use ${Y}&>${C})|./${script} &> ${outfile}|./${script} > ${outfile} 2>&1")
   questions+=("Run ${G}./${script}${C} completely silently (discard everything)|./${script} &> /dev/null|./${script} > /dev/null 2>&1")
   # 2>&1 = merge stderr into stdout (goal: see errors in pipe)
-  questions+=("Check if ${W}${missing}${C} exists, show error in stdout (use ${Y}2>&1${C})|ls ${missing} 2>&1|~^ls [^ ]+ 2>&1$")
-  questions+=("Grep ${W}${missing}${C} for ERROR, merge stderr so you see if file is missing|grep ERROR ${missing} 2>&1|~^grep [^ ]+ [^ ]+ 2>&1$")
+  questions+=("Check if ${W}${missing}${C} exists, show error on screen (use ${Y}2>&1${C})|ls ${missing} 2>&1|~^ls [^ ]+ 2>&1$")
+  questions+=("Grep ${W}${missing}${C} for ERROR, show 'file not found' if missing|grep ERROR ${missing} 2>&1|~^grep [^ ]+ [^ ]+ 2>&1$")
   # Combinations
   questions+=("Run ${G}./${script}${C} but hide any errors|./${script} 2> /dev/null")
-  questions+=("Separate stdout and stderr: output to ${W}${outfile}${C}, errors to ${W}${errfile}${C}|ls -la > ${outfile} 2> ${errfile}")
+  questions+=("Save output to ${W}${outfile}${C}, errors to ${W}${errfile}${C} (separate files)|ls -la > ${outfile} 2> ${errfile}")
   printf '%s\n' "${questions[@]}"
 }
 
