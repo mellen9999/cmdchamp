@@ -987,20 +987,20 @@ gen_level5() {
   outfile=$(_phrase output.log out.txt all.log combined.out)
   log=$(_pick SANDBOX_LOGS)
 
-  # 2> = stderr to file
-  questions+=("Run ${G}./${script}${C} and send errors to ${W}${errfile}${C} (use ${Y}2>${C})|./${script} 2> ${errfile}")
-  questions+=("Run ${G}cat /nope${C} and send errors to ${W}${errfile}${C} (use ${Y}2>${C})|cat /nope 2> ${errfile}|~^cat [^ ]+ 2> ?${errfile}$")
-  questions+=("Run ${G}find . -name '*.${ext}'${C} hiding errors (use ${Y}2> /dev/null${C})|find . -name '*.${ext}' 2> /dev/null|#output:*")
-  # &> = both stdout+stderr to file
-  questions+=("Run ${G}./${script}${C} and save ALL output to ${W}${outfile}${C} (use ${Y}&>${C})|./${script} &> ${outfile}|./${script} > ${outfile} 2>&1")
-  questions+=("Run ${G}./${script}${C} silently - discard everything (use ${Y}&> /dev/null${C})|./${script} &> /dev/null|./${script} > /dev/null 2>&1")
-  # 2>&1 = merge stderr into stdout
-  questions+=("Run ${G}ls /nope${C} merging stderr into stdout (use ${Y}2>&1${C})|ls /nope 2>&1|~^ls [^ ]+ 2>&1$")
-  questions+=("Run ${G}grep ERROR /nope${C} merging stderr into stdout|grep ERROR /nope 2>&1|~^grep [^ ]+ [^ ]+ 2>&1$")
+  # 2> = stderr to file (goal: capture/hide errors)
+  questions+=("Save errors from ${G}./${script}${C} to ${W}${errfile}${C} (use ${Y}2>${C})|./${script} 2> ${errfile}")
+  questions+=("Log the error from ${G}cat /nope${C} to ${W}${errfile}${C}|cat /nope 2> ${errfile}|~^cat [^ ]+ 2> ?${errfile}$")
+  questions+=("Find ${Y}*.${ext}${C} files, suppressing 'permission denied' errors|find . -name '*.${ext}' 2> /dev/null|#output:*")
+  # &> = both stdout+stderr to file (goal: capture everything)
+  questions+=("Capture ALL output from ${G}./${script}${C} to ${W}${outfile}${C} (use ${Y}&>${C})|./${script} &> ${outfile}|./${script} > ${outfile} 2>&1")
+  questions+=("Run ${G}./${script}${C} completely silently (discard everything)|./${script} &> /dev/null|./${script} > /dev/null 2>&1")
+  # 2>&1 = merge stderr into stdout (goal: see errors in pipe)
+  questions+=("See the error from ${G}ls /nope${C} in stdout (use ${Y}2>&1${C})|ls /nope 2>&1|~^ls [^ ]+ 2>&1$")
+  questions+=("Merge error output so you can pipe it to grep|grep ERROR /nope 2>&1|~^grep [^ ]+ [^ ]+ 2>&1$")
   # Combinations
-  questions+=("Run ${G}./${script}${C} discarding only errors|./${script} 2> /dev/null")
-  questions+=("Save ${G}ls -la${C} output to ${W}${outfile}${C}, errors to ${W}${errfile}${C}|ls -la > ${outfile} 2> ${errfile}")
-  questions+=("Merge stderr then pipe to ${G}head${C}§ls /nope 2>&1 | head§~^ls [^ ]+ 2>&1 \\| head§#text:")
+  questions+=("Run ${G}./${script}${C} but hide any errors|./${script} 2> /dev/null")
+  questions+=("Separate stdout and stderr: output to ${W}${outfile}${C}, errors to ${W}${errfile}${C}|ls -la > ${outfile} 2> ${errfile}")
+  questions+=("Merge errors into output, then show first few lines§ls /nope 2>&1 | head§~^ls [^ ]+ 2>&1 \\| head§#text:")
   printf '%s\n' "${questions[@]}"
 }
 
