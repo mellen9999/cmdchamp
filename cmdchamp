@@ -828,7 +828,7 @@ declare -A EXP=(
   [mount]="attach filesystem" [umount]="detach filesystem" [showmount]="list NFS exports"
   [lxc]="LXD container tool" [searchsploit]="exploit database search"
   ['-r']="recursive" ['-i']="case insensitive" ['-v']="invert/verbose" ['-l']="lines (wc) / long (ls) / login (hydra)"
-  ['-n']="no newline (echo) / line numbers (cat/grep)" ['-c']="count (grep) / bytes (wc)" ['-q']="quiet" ['-f']="follow (tail) / force (rm)" ['-p']="create parents"
+  ['-n']="no newline (echo) / line numbers (cat/grep)" ['-c']="command (python) / count (grep) / bytes (wc)" ['-q']="quiet" ['-f']="follow (tail) / force (rm)" ['-p']="create parents"
   ['-e']="extension" ['-t']="type" ['-x']="execute" ['-h']="human readable" ['-s']="size/silent"
   ['-a']="all/hidden" ['-u']="unique" ['-k']="key/column" ['-d']="delimiter" ['-o']="output" ['-w']="words (wc) / width"
   ['-A']="aggressive scan" ['-O']="OS detection" ['-sV']="version detection" ['-sC']="default scripts"
@@ -1623,9 +1623,6 @@ gen_level25() {
   questions+=("Hex dump of binary with addresses|xxd ${bin}")
   questions+=("Hex dump binary (no addresses)|xxd -p ${bin}")
 
-  # URL encoding (useful for web testing)
-  questions+=("URL encode a string|python3 -c \"import urllib.parse; print(urllib.parse.quote('test string'))\"")
-
   printf '%s\n' "${questions[@]}"
 }
 
@@ -1733,6 +1730,9 @@ gen_level22() {
   questions+=("Encrypt file with AES-256|openssl enc -aes-256-cbc -salt -in file.txt -out file.enc")
   questions+=("Decrypt AES-256 file|openssl enc -d -aes-256-cbc -in file.enc -out file.txt")
   questions+=("Generate RSA key pair|openssl genrsa -out key.pem 4096")
+
+  # URL encoding (web testing)
+  questions+=("URL encode a string|python3 -c \"import urllib.parse; print(urllib.parse.quote('test string'))\"")
 
   printf '%s\n' "${questions[@]}"
 }
