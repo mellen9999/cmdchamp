@@ -980,20 +980,26 @@ gen_level4() {
 
 # Level 5: Error Redirection (2>, &>, 2>&1)
 gen_level5() {
-  local questions=() script ext errfile outfile; _ctx
+  local questions=() script ext errfile outfile log; _ctx
   script=$(_pick SANDBOX_SCRIPTS); ext=$(_phrase py sh log txt)
   errfile=$(_phrase errors.log err.txt stderr.log error.out)
   outfile=$(_phrase output.log out.txt all.log combined.out)
+  log=$(_pick SANDBOX_LOGS)
 
-  # 2> = stderr to file, &> = both to file, 2>&1 = stderr to stdout
-  questions+=("Run ${W}${script}${C} and $(_phrase "save" "redirect" "send") errors to ${W}${errfile}${C}|./${script} 2> ${errfile}")
-  questions+=("Run ${W}${script}${C} and save $(_phrase "all output" "stdout+stderr" "everything") to ${W}${outfile}${C}|./${script} &> ${outfile}|./${script} > ${outfile} 2>&1")
-  questions+=("Run ${Y}ls /nope${C} and merge stderr into stdout|ls /nope 2>&1|~^ls [^ ]+ 2>&1$")
-  questions+=("Run ${W}${script}${C} $(_phrase "silently" "quietly") (discard all output)|./${script} &> /dev/null|./${script} > /dev/null 2>&1")
-  questions+=("Find ${Y}*.${ext}${C} files, $(_phrase "suppressing" "hiding" "discarding") errors|find . -name '*.${ext}' 2> /dev/null|#output:*")
-  questions+=("Run ${W}${script}${C} and discard only errors|./${script} 2> /dev/null")
-  questions+=("Run ${Y}cat /nope${C} and redirect stderr to ${W}${errfile}${C}|cat /nope 2> ${errfile}|~^cat [^ ]+ 2> ?${errfile}$")
-  questions+=("Run ${Y}ls /nope${C}, merge stderr, pipe to grep§ls /nope 2>&1 | grep No§~^ls [^ ]+ 2>&1 \\| grep§#text:")
+  # 2> = stderr to file
+  questions+=("Run ${G}./${script}${C} and send errors to ${W}${errfile}${C} (use ${Y}2>${C})|./${script} 2> ${errfile}")
+  questions+=("Run ${G}cat /nope${C} and send errors to ${W}${errfile}${C} (use ${Y}2>${C})|cat /nope 2> ${errfile}|~^cat [^ ]+ 2> ?${errfile}$")
+  questions+=("Run ${G}find . -name '*.${ext}'${C} hiding errors (use ${Y}2> /dev/null${C})|find . -name '*.${ext}' 2> /dev/null|#output:*")
+  # &> = both stdout+stderr to file
+  questions+=("Run ${G}./${script}${C} and save ALL output to ${W}${outfile}${C} (use ${Y}&>${C})|./${script} &> ${outfile}|./${script} > ${outfile} 2>&1")
+  questions+=("Run ${G}./${script}${C} silently - discard everything (use ${Y}&> /dev/null${C})|./${script} &> /dev/null|./${script} > /dev/null 2>&1")
+  # 2>&1 = merge stderr into stdout
+  questions+=("Run ${G}ls /nope${C} merging stderr into stdout (use ${Y}2>&1${C})|ls /nope 2>&1|~^ls [^ ]+ 2>&1$")
+  questions+=("Run ${G}grep ERROR /nope${C} merging stderr into stdout|grep ERROR /nope 2>&1|~^grep [^ ]+ [^ ]+ 2>&1$")
+  # Combinations
+  questions+=("Run ${G}./${script}${C} discarding only errors|./${script} 2> /dev/null")
+  questions+=("Save ${G}ls -la${C} output to ${W}${outfile}${C}, errors to ${W}${errfile}${C}|ls -la > ${outfile} 2> ${errfile}")
+  questions+=("Merge stderr then pipe to ${G}head${C}§ls /nope 2>&1 | head§~^ls [^ ]+ 2>&1 \\| head§#text:")
   printf '%s\n' "${questions[@]}"
 }
 
