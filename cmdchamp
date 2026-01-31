@@ -699,9 +699,6 @@ declare -A EXP=(
   ['..']="parent directory"
   ['~']="home directory"
   ['/']="root directory (or path separator)"
-  ['/nope']="path that doesn't exist (triggers error to practice 2>)"
-  ['/nonexistent']="path that doesn't exist (triggers error to practice 2>)"
-  ['/x']="path that doesn't exist (triggers error to practice 2>)"
   # Globs/wildcards
   ['*']="wildcard: matches any characters"
   ['?']="wildcard: matches single character"
@@ -980,26 +977,27 @@ gen_level4() {
 
 # Level 5: Error Redirection (2>, &>, 2>&1)
 gen_level5() {
-  local questions=() script ext errfile outfile log; _ctx
+  local questions=() script ext errfile outfile log missing; _ctx
   script=$(_pick SANDBOX_SCRIPTS); ext=$(_phrase py sh log txt)
   errfile=$(_phrase errors.log err.txt stderr.log error.out)
   outfile=$(_phrase output.log out.txt all.log combined.out)
   log=$(_pick SANDBOX_LOGS)
+  missing=$(_phrase old.log backup.txt archive.csv deleted.log)
 
   # 2> = stderr to file (goal: capture/hide errors)
   questions+=("Save errors from ${G}./${script}${C} to ${W}${errfile}${C} (use ${Y}2>${C})|./${script} 2> ${errfile}")
-  questions+=("Log the error from ${G}cat /nope${C} to ${W}${errfile}${C}|cat /nope 2> ${errfile}|~^cat [^ ]+ 2> ?${errfile}$")
-  questions+=("Find ${Y}*.${ext}${C} files, suppressing 'permission denied' errors|find . -name '*.${ext}' 2> /dev/null|#output:*")
+  questions+=("Try to read ${W}${missing}${C}, log the 'not found' error to ${W}${errfile}${C}|cat ${missing} 2> ${errfile}|~^cat [^ ]+ 2> ?${errfile}$")
+  questions+=("Find ${Y}*.${ext}${C} files, hide 'permission denied' errors|find . -name '*.${ext}' 2> /dev/null|#output:*")
   # &> = both stdout+stderr to file (goal: capture everything)
   questions+=("Capture ALL output from ${G}./${script}${C} to ${W}${outfile}${C} (use ${Y}&>${C})|./${script} &> ${outfile}|./${script} > ${outfile} 2>&1")
   questions+=("Run ${G}./${script}${C} completely silently (discard everything)|./${script} &> /dev/null|./${script} > /dev/null 2>&1")
   # 2>&1 = merge stderr into stdout (goal: see errors in pipe)
-  questions+=("See the error from ${G}ls /nope${C} in stdout (use ${Y}2>&1${C})|ls /nope 2>&1|~^ls [^ ]+ 2>&1$")
-  questions+=("Merge error output so you can pipe it to grep|grep ERROR /nope 2>&1|~^grep [^ ]+ [^ ]+ 2>&1$")
+  questions+=("Check if ${W}${missing}${C} exists, show error in stdout (use ${Y}2>&1${C})|ls ${missing} 2>&1|~^ls [^ ]+ 2>&1$")
+  questions+=("Grep ${W}${missing}${C} for ERROR, merge stderr so you see if file is missing|grep ERROR ${missing} 2>&1|~^grep [^ ]+ [^ ]+ 2>&1$")
   # Combinations
   questions+=("Run ${G}./${script}${C} but hide any errors|./${script} 2> /dev/null")
   questions+=("Separate stdout and stderr: output to ${W}${outfile}${C}, errors to ${W}${errfile}${C}|ls -la > ${outfile} 2> ${errfile}")
-  questions+=("Merge errors into output, then show first few lines§ls /nope 2>&1 | head§~^ls [^ ]+ 2>&1 \\| head§#text:")
+  questions+=("List ${W}${missing}${C}, merge errors into stdout, pipe to head§ls ${missing} 2>&1 | head§~^ls [^ ]+ 2>&1 \\| head§#text:")
   printf '%s\n' "${questions[@]}"
 }
 
