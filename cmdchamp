@@ -972,8 +972,8 @@ gen_level4() {
   # <<< feeds a string INTO command (no file needed)
   questions+=("Feed ${Y}'${word}'${C} into ${G}tr a-z A-Z${C} (use ${Y}<<<${C})|tr a-z A-Z <<< '${word}'|tr a-z A-Z <<< ${word}|#output:~[A-Z]")
   questions+=("Feed ${Y}'${word}'${C} into ${G}rev${C} (use ${Y}<<<${C})|rev <<< '${word}'|rev <<< ${word}|#output:*")
-  questions+=("Feed ${Y}'${word} ${word}'${C} into ${G}wc -w${C}|wc -w <<< '${word} ${word}'|#output:~2")
-  questions+=("Feed ${Y}'${word}'${C} into ${G}wc -c${C} (counts chars)|wc -c <<< '${word}'|#output:~[0-9]")
+  questions+=("Feed ${Y}'${word} ${word}'${C} into ${G}wc -w${C} (use ${Y}<<<${C})|wc -w <<< '${word} ${word}'|#output:~2")
+  questions+=("Feed ${Y}'${word}'${C} into ${G}wc -c${C} (use ${Y}<<<${C})|wc -c <<< '${word}'|#output:~[0-9]")
   printf '%s\n' "${questions[@]}"
 }
 
