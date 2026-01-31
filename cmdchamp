@@ -1551,8 +1551,8 @@ gen_level25() {
   # Hex operations
   questions+=("Convert 'hello' to hex|echo -n 'hello' | xxd -p")
   questions+=("Convert hex back to ascii|echo '68656c6c6f' | xxd -r -p")
-  questions+=("Hex dump of file with addresses|xxd ${hash}")
-  questions+=("Hex dump plain (no addresses)|xxd -p ${hash}")
+  questions+=("Hex dump of binary with addresses|xxd ${bin}")
+  questions+=("Hex dump binary (no addresses)|xxd -p ${bin}")
 
   # URL encoding (useful for web testing)
   questions+=("URL encode a string|python3 -c \"import urllib.parse; print(urllib.parse.quote('test string'))\"")
