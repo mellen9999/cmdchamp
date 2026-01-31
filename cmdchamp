@@ -770,7 +770,7 @@ declare -A EXP=(
   [useradd]="create user" [usermod]="modify user" [chown]="change owner" [chgrp]="change group"
   [mount]="attach filesystem" [umount]="detach filesystem" [showmount]="list NFS exports"
   [lxc]="LXD container tool" [searchsploit]="exploit database search"
-  ['-r']="recursive" ['-i']="case insensitive" ['-v']="invert/verbose" ['-l']="lines (wc) / long (ls)"
+  ['-r']="recursive" ['-i']="case insensitive" ['-v']="invert/verbose" ['-l']="lines (wc) / long (ls) / login (hydra)"
   ['-n']="no newline (echo) / line numbers (cat/grep)" ['-c']="count (grep) / bytes (wc)" ['-q']="quiet" ['-f']="follow (tail) / force (rm)" ['-p']="create parents"
   ['-e']="extension" ['-t']="type" ['-x']="execute" ['-h']="human readable" ['-s']="size/silent"
   ['-a']="all/hidden" ['-u']="unique" ['-k']="key/column" ['-d']="delimiter" ['-o']="output" ['-w']="words (wc) / width"
@@ -780,10 +780,15 @@ declare -A EXP=(
   ['-E']="entropy/extended regex" ['-Y']="display filter" ['-T']="tree/fields"
   ['{}']="filename placeholder" ['\;']="end -exec" ['-exec']="run on each" ['-delete']="delete matches"
   ['-name']="match filename" ['-size']="match size" ['-type']="match type" ['-mmin']="match time" ['-path']="match path" ['-not']="negate"
-  ['-P']="parallel jobs" ['-0']="null delimiter" ['-I']="replace string" ['NR']="awk line number"
+  ['-P']="password file (hydra) / parallel jobs (xargs)" ['-0']="null delimiter" ['-I']="replace string" ['NR']="awk line number"
   ['NF']="awk field count" ['$1']="first field" ['$NF']="last field" ['FS']="field separator"
   ['-L']="follow symlinks/local forward" ['-R']="remote forward" ['-D']="dynamic SOCKS proxy" ['-J']="jump host"
   ['-N']="no remote command" ['-oN']="normal output" ['-oG']="greppable output" ['-oA']="all output formats"
+  # hydra protocols and flags
+  ['http-post-form']="POST login (hydra): '/path:user=^USER^&pass=^PASS^:fail_text'"
+  ['http-get']="GET auth (hydra)" ['ssh']="SSH brute force" ['ftp']="FTP brute force"
+  ['-L']="username list file (hydra) / follow symlinks"
+  ['-t']="threads (hydra) / type (file)"
 )
 explain() {
   local tok n=0 exp label desc tcol
