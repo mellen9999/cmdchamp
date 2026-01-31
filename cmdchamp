@@ -692,8 +692,8 @@ declare -A EXP=(
   ['&>']="redirect stdout+stderr to file"
   ['/dev/null']="black hole: discards anything written to it"
   ['2>&1']="merge stderr into stdout"
-  ['<']="read file as stdin: cmd < file"
-  ['<<<']="feed string as stdin: cmd <<< 'text'"
+  ['<']="input redirect: feed file contents INTO command (like typing it)"
+  ['<<<']="here-string: feed text INTO command (like typing it)"
   # Path symbols
   ['.']="current directory"
   ['..']="parent directory"
@@ -964,14 +964,16 @@ gen_level4() {
   txt=$(_pick SANDBOX_TXTS); csv=$(_pick SANDBOX_CSVS); log=$(_pick SANDBOX_LOGS)
   word=$(_phrase hello world test bash linux unix pipe data file code)
 
-  questions+=("Count lines in ${W}${csv}${C} via stdin|wc -l < ${csv}|#output:~^\\s*[0-9]+")
-  questions+=("Count lines in ${W}${txt}${C} using input redirect|wc -l < ${txt}|#output:~^\\s*[0-9]+")
-  questions+=("$(_phrase "Sort" "Alphabetize") ${W}${txt}${C} via stdin|sort < ${txt}|#output:*")
-  questions+=("Sort ${W}${log}${C} using input redirect|sort < ${log}|#output:*")
-  questions+=("Uppercase ${Y}'${word}'${C} using here-string|tr a-z A-Z <<< '${word}'|tr a-z A-Z <<< ${word}|#output:~[A-Z]")
-  questions+=("Reverse ${Y}'${word}'${C} using here-string|rev <<< '${word}'|rev <<< ${word}|#output:*")
-  questions+=("Count words in ${Y}'${word} ${word}'${C}|wc -w <<< '${word} ${word}'|#output:~2")
-  questions+=("Count chars in ${Y}'${word}'${C} (with newline)|wc -c <<< '${word}'|#output:~[0-9]")
+  # < feeds file INTO command (instead of command reading file directly)
+  questions+=("Feed ${W}${csv}${C} into wc -l using ${Y}<${C}|wc -l < ${csv}|#output:~^\\s*[0-9]+")
+  questions+=("Feed ${W}${txt}${C} into wc -l using ${Y}<${C}|wc -l < ${txt}|#output:~^\\s*[0-9]+")
+  questions+=("Feed ${W}${txt}${C} into sort using ${Y}<${C}|sort < ${txt}|#output:*")
+  questions+=("Feed ${W}${log}${C} into sort using ${Y}<${C}|sort < ${log}|#output:*")
+  # <<< feeds a string INTO command (no file needed)
+  questions+=("Feed ${Y}'${word}'${C} into tr to uppercase (use ${Y}<<<${C})|tr a-z A-Z <<< '${word}'|tr a-z A-Z <<< ${word}|#output:~[A-Z]")
+  questions+=("Feed ${Y}'${word}'${C} into rev to reverse (use ${Y}<<<${C})|rev <<< '${word}'|rev <<< ${word}|#output:*")
+  questions+=("Feed ${Y}'${word} ${word}'${C} into wc -w|wc -w <<< '${word} ${word}'|#output:~2")
+  questions+=("Feed ${Y}'${word}'${C} into wc -c (counts chars)|wc -c <<< '${word}'|#output:~[0-9]")
   printf '%s\n' "${questions[@]}"
 }
 
