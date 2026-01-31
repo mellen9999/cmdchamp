@@ -2573,6 +2573,11 @@ run() {
     fi
     ((++idx))
   done
+  # Safety check: if no questions to practice, skip to boss (or show error)
+  if ((${#shuf[@]} == 0)); then
+    echo -e "${Y}No questions to practice (all mastered?). Straight to boss!${N}"
+    sleep 1
+  fi
   while ((qi < ${#shuf[@]})); do
     # Reset sandbox if previous command was destructive
     ((SANDBOX_MODE && _SANDBOX_DESTRUCTIVE)) && { _sandbox_reset; _SANDBOX_DESTRUCTIVE=0; }
@@ -2712,6 +2717,8 @@ run() {
 
   for ((bi=0; bi<${#boss_q[@]}; bi++)); do
     _qparse "${boss_q[$bi]}"; local prompt=$_qprompt ans=$_qans
+    # Skip malformed questions
+    [[ -z "$prompt" ]] && { ((boss_total--)); continue; }
     printf '\e[2J\e[H'
     echo -e "${R}${B}═══ BOSS ${bi+1}/${boss_total} ═══${N}\n"
     echo -e "${C}${prompt}${N}\n"
