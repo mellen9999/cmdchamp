@@ -830,7 +830,7 @@ declare -A EXP=(
   ['-r']="recursive" ['-i']="case insensitive" ['-v']="invert/verbose" ['-l']="lines (wc) / long (ls) / login (hydra)"
   ['-n']="no newline (echo) / line numbers (cat/grep)" ['-c']="command (python) / count (grep) / bytes (wc)" ['-q']="quiet" ['-f']="follow (tail) / force (rm)" ['-p']="create parents"
   ['-e']="extension" ['-t']="type" ['-x']="execute" ['-h']="human readable" ['-s']="size/silent"
-  ['-a']="all/hidden" ['-u']="unique" ['-k']="key/column" ['-d']="delimiter" ['-o']="output" ['-w']="words (wc) / width"
+  ['-a']="all/hidden" ['-u']="unique" ['-k']="key/column" ['-d']="directory itself (ls) / delimiter (cut)" ['-o']="output" ['-w']="words (wc) / width"
   ['-A']="aggressive scan" ['-O']="OS detection" ['-sV']="version detection" ['-sC']="default scripts"
   ['-sU']="UDP scan" ['-sn']="ping scan" ['-sT']="TCP connect" ['-Pn']="skip ping" ['-F']="fast mode"
   ['-p-']="all ports" ['-m']="hash type" ['--show']="show cracked" ['--wordlist']="dictionary file"
@@ -931,220 +931,555 @@ VI_MODE=${CMD_VI:-1}
 
 # Level 0: First Commands (pwd, ls, echo, cd)
 gen_level0() {
-  local questions=() log cfg txt csv dir; _ctx
-  log=$(_pick SANDBOX_LOGS); txt=$(_pick SANDBOX_TXTS); cfg=$(_pick SANDBOX_CFGS)
-  csv=$(_pick SANDBOX_CSVS); dir=$(_phrase src data logs)
+  local questions=() dir dir2 word num; _ctx
+  dir=$(_phrase src data logs); dir2=$(_phrase backup temp config test)
+  word=$(_phrase hello ready done test ping); num=$((RANDOM % 50 + 1))
 
+  # pwd variations
   questions+=("$(_phrase "Print" "Show" "Display") current directory|pwd|#output:~^/sandbox")
+  questions+=("$(_phrase "Where am I" "What directory" "Current path")?|pwd|#output:~^/")
+
+  # ls variations
   questions+=("$(_phrase "List" "Show") files in current directory|ls|#output:~server.log")
   questions+=("List $(_phrase "all files" "files") including hidden|ls -a|#output:~\\.")
-  questions+=("List files with $(_phrase "details" "permissions and size" "long format")|ls -l|#output:~^[-drwx]")
+  questions+=("List files with $(_phrase "details" "permissions" "long format")|ls -l|#output:~^[-drwx]")
   questions+=("List files sorted by time (newest first)|ls -lt|#output:~^[-drwx]")
+  questions+=("List files sorted by size (largest first)|ls -lS|#output:~^[-drwx]")
+  questions+=("List files with human-readable sizes|ls -lh|#output:~^[-drwx]")
+  questions+=("List one file per line|ls -1|#output:~server.log")
+  questions+=("List files in ${W}${dir}${C} directory|ls ${dir}|#output:*")
+  questions+=("List ${W}${dir}${C} with details|ls -l ${dir}|#output:~^[-drwx]")
+
+  # echo variations
   questions+=("Print ${Y}hello world${C}|echo hello world|echo 'hello world'|#output:hello world")
+  questions+=("Print ${Y}${word}${C}|echo ${word}|#output:${word}")
   questions+=("Print your username using ${Y}\$USER${C}|echo \$USER|#output:~.")
-  questions+=("$(_phrase "Change to" "Go to" "Enter") ${dir} directory|cd ${dir}|#output:*")
+  questions+=("Print your home directory using ${Y}\$HOME${C}|echo \$HOME|#output:~home")
+  questions+=("Print current shell using ${Y}\$SHELL${C}|echo \$SHELL|#output:~sh")
+  questions+=("Print the number ${Y}${num}${C}|echo ${num}|#output:${num}")
+  questions+=("Print ${Y}${word}${C} three times|echo ${word} ${word} ${word}|#output:${word} ${word} ${word}")
+
+  # cd variations
+  questions+=("$(_phrase "Change to" "Go to" "Enter") ${W}${dir}${C} directory|cd ${dir}|#output:*")
+  questions+=("$(_phrase "Change to" "Go to") ${W}${dir2}${C}|cd ${dir2}|#output:*")
   questions+=("Go to home directory|cd|cd ~|#output:*")
   questions+=("Go up one directory|cd ..|#output:*")
+  questions+=("Go up two directories|cd ../..|#output:*")
+  questions+=("Go to root directory|cd /|#output:*")
+
   printf '%s\n' "${questions[@]}"
 }
 
 # Level 1: Save Output (>, >>)
 gen_level1() {
-  local questions=() log txt word word2 outfile; _ctx
-  log=$(_pick SANDBOX_LOGS); txt=$(_pick SANDBOX_TXTS)
-  word=$(_phrase hello done ready complete finished saved logged started stopped)
-  word2=$(_phrase entry note line record message update status)
+  local questions=() log log2 txt cfg word word2 word3 outfile outfile2 num; _ctx
+  log=$(_pick SANDBOX_LOGS); log2=$(_pick SANDBOX_LOGS); txt=$(_pick SANDBOX_TXTS); cfg=$(_pick SANDBOX_CFGS)
+  word=$(_phrase hello done ready complete finished saved started stopped)
+  word2=$(_phrase entry note line record message update backup)
+  word3=$(_phrase success error warning info debug trace)
   outfile=$(_phrase output.txt files.txt list.txt result.txt)
+  outfile2=$(_phrase report.txt data.txt dump.txt export.txt)
+  num=$((RANDOM % 100 + 1))
 
-  # > = overwrite, >> = append
+  # > = overwrite
   questions+=("$(_phrase "Write" "Save" "Redirect") ls output to ${W}${outfile}${C}|ls > ${outfile}|#state:contains:${outfile}:server.log")
-  questions+=("$(_phrase "Echo" "Write") '${word}' to ${W}${txt}${C} (overwrite)|echo ${word} > ${txt}|echo '${word}' > ${txt}|#state:contains:${txt}:${word}")
+  questions+=("$(_phrase "Echo" "Write") '${word}' to ${W}${txt}${C}|echo ${word} > ${txt}|echo '${word}' > ${txt}|#state:contains:${txt}:${word}")
+  questions+=("Save pwd output to ${W}${outfile}${C}|pwd > ${outfile}|#state:contains:${outfile}:sandbox")
+  questions+=("Save date to ${W}${outfile2}${C}|date > ${outfile2}|#state:contains:${outfile2}:2026")
+  questions+=("Write '${word2}' to ${W}${cfg}${C}|echo ${word2} > ${cfg}|#state:contains:${cfg}:${word2}")
+  questions+=("$(_phrase "Save" "Write") ls -l to ${W}${txt}${C}|ls -l > ${txt}|#state:contains:${txt}:server.log")
+  questions+=("Save hostname to ${W}${outfile}${C}|hostname > ${outfile}|#state:exists:${outfile}")
+  questions+=("Write number ${num} to ${W}${outfile2}${C}|echo ${num} > ${outfile2}|#state:contains:${outfile2}:${num}")
+
+  # >> = append
   questions+=("$(_phrase "Append" "Add") '${word}' to ${W}${log}${C}|echo ${word} >> ${log}|echo '${word}' >> ${log}|#state:contains:${log}:${word}")
+  questions+=("Append '${word2}' to ${W}${txt}${C}|echo ${word2} >> ${txt}|#state:contains:${txt}:${word2}")
   questions+=("Append current date to ${W}${log}${C}|date >> ${log}|#state:contains:${log}:2026")
-  questions+=("$(_phrase "Save" "Write") directory listing to ${W}${txt}${C}|ls -l > ${txt}|ls > ${txt}|#state:contains:${txt}:server.log")
-  questions+=("Append '${word2}' to ${W}${txt}${C}|echo ${word2} >> ${txt}|echo '${word2}' >> ${txt}|#state:contains:${txt}:${word2}")
-  questions+=("$(_phrase "Overwrite" "Replace") ${W}${txt}${C} with pwd output|pwd > ${txt}|#state:contains:${txt}:sandbox")
+  questions+=("$(_phrase "Append" "Add") '${word3}' to ${W}${log2}${C}|echo ${word3} >> ${log2}|#state:contains:${log2}:${word3}")
+  questions+=("Append pwd to ${W}${txt}${C}|pwd >> ${txt}|#state:contains:${txt}:sandbox")
+  questions+=("Append hostname to ${W}${log}${C}|hostname >> ${log}|#state:exists:${log}")
+  questions+=("Add '${word} ${word2}' to ${W}${cfg}${C}|echo ${word} ${word2} >> ${cfg}|#state:contains:${cfg}:${word}")
+
+  # Create new file
+  questions+=("Create empty file ${W}${outfile}${C}|touch ${outfile}|#state:exists:${outfile}")
+  questions+=("Create ${W}${outfile2}${C} with '${word}'|echo ${word} > ${outfile2}|#state:contains:${outfile2}:${word}")
+
   printf '%s\n' "${questions[@]}"
 }
 
 # Level 2: Read Files (cat, head, tail)
 gen_level2() {
-  local questions=() log txt cfg n n2; _ctx
-  log=$(_pick SANDBOX_LOGS); txt=$(_pick SANDBOX_TXTS); cfg=$(_pick SANDBOX_CFGS)
-  n=$((RANDOM % 6 + 3)); n2=$((RANDOM % 5 + 2))  # different ranges
+  local questions=() log log2 txt txt2 cfg cfg2 n n2 n3; _ctx
+  log=$(_pick SANDBOX_LOGS); log2=$(_pick SANDBOX_LOGS)
+  txt=$(_pick SANDBOX_TXTS); txt2=$(_pick SANDBOX_TXTS)
+  cfg=$(_pick SANDBOX_CFGS); cfg2=$(_pick SANDBOX_CFGS)
+  n=$((RANDOM % 6 + 3)); n2=$((RANDOM % 5 + 2)); n3=$((RANDOM % 8 + 5))
 
-  # Each command pattern appears ONCE
+  # cat - basic viewing
   questions+=("$(_phrase "Display" "Show" "View") contents of ${W}${txt}${C}|cat ${txt}|#output:~.")
-  questions+=("$(_phrase "Show" "Get") first ${n} lines of ${W}${log}${C}|head -${n} ${log}|head -n ${n} ${log}|#output:@${n}")
-  questions+=("Show first 10 lines of ${W}${cfg}${C} (default)|head ${cfg}|#output:@10")
-  questions+=("$(_phrase "Show" "Get") last ${n2} lines of ${W}${txt}${C}|tail -${n2} ${txt}|tail -n ${n2} ${txt}|#output:@${n2}")
-  questions+=("Show last 10 lines of ${W}${log}${C} (default)|tail ${log}|#output:@10")
-  questions+=("$(_phrase "Follow" "Watch" "Monitor") ${W}${log}${C} for new lines|tail -f ${log}|#text:")
+  questions+=("$(_phrase "Read" "Print" "Output") ${W}${cfg}${C}|cat ${cfg}|#output:~.")
+  questions+=("Show ${W}${log}${C} contents|cat ${log}|#output:~.")
+
+  # cat - with flags
   questions+=("Show ${W}${cfg}${C} with line numbers|cat -n ${cfg}|#output:~^\\s+1")
+  questions+=("$(_phrase "Display" "Show") ${W}${txt}${C} with line numbers|cat -n ${txt}|#output:~^\\s+1")
+  questions+=("Show ${W}${log}${C} with non-printing chars visible|cat -v ${log}|#output:~.")
+  questions+=("Show ${W}${txt}${C} with $ at end of each line|cat -E ${txt}|cat -e ${txt}|#output:~\\$$")
+  questions+=("Show line numbers only for non-blank lines in ${W}${txt}${C}|cat -b ${txt}|#output:~^\\s+1")
+
+  # cat - multiple files
   questions+=("Concatenate ${W}${txt}${C} and ${W}${cfg}${C}|cat ${txt} ${cfg}|#output:~.")
+  questions+=("$(_phrase "Combine" "Join" "Merge") ${W}${log}${C} and ${W}${log2}${C}|cat ${log} ${log2}|#output:~.")
+  questions+=("Show ${W}${txt}${C}, ${W}${cfg}${C}, and ${W}${log}${C} together|cat ${txt} ${cfg} ${log}|#output:~.")
+
+  # head - first lines
+  questions+=("$(_phrase "Show" "Get" "Display") first ${n} lines of ${W}${log}${C}|head -${n} ${log}|head -n ${n} ${log}|#output:@${n}")
+  questions+=("First ${n2} lines of ${W}${cfg}${C}|head -${n2} ${cfg}|head -n ${n2} ${cfg}|#output:@${n2}")
+  questions+=("Show first 10 lines of ${W}${cfg}${C} (default)|head ${cfg}|#output:@10")
+  questions+=("$(_phrase "Preview" "Peek at") first ${n3} lines of ${W}${txt}${C}|head -${n3} ${txt}|head -n ${n3} ${txt}|#output:@${n3}")
+  questions+=("First 1 line of ${W}${log}${C}|head -1 ${log}|head -n 1 ${log}|#output:@1")
+
+  # head - bytes
+  questions+=("First 50 bytes of ${W}${txt}${C}|head -c 50 ${txt}|#output:~.")
+  questions+=("First 100 bytes of ${W}${cfg}${C}|head -c 100 ${cfg}|#output:~.")
+
+  # tail - last lines
+  questions+=("$(_phrase "Show" "Get" "Display") last ${n2} lines of ${W}${txt}${C}|tail -${n2} ${txt}|tail -n ${n2} ${txt}|#output:@${n2}")
+  questions+=("Last ${n} lines of ${W}${log}${C}|tail -${n} ${log}|tail -n ${n} ${log}|#output:@${n}")
+  questions+=("Show last 10 lines of ${W}${log}${C} (default)|tail ${log}|#output:@10")
+  questions+=("$(_phrase "View" "See") last ${n3} lines of ${W}${cfg}${C}|tail -${n3} ${cfg}|tail -n ${n3} ${cfg}|#output:@${n3}")
+  questions+=("Last 1 line of ${W}${txt}${C}|tail -1 ${txt}|tail -n 1 ${txt}|#output:@1")
+
+  # tail -f (follow)
+  questions+=("$(_phrase "Follow" "Watch" "Monitor") ${W}${log}${C} for new lines|tail -f ${log}|#text:")
+  questions+=("$(_phrase "Stream" "Watch live") ${W}${log2}${C} updates|tail -f ${log2}|#text:")
+
+  # tail - from line N
+  questions+=("Show ${W}${txt}${C} starting from line ${n}|tail -n +${n} ${txt}|#output:~.")
+  questions+=("Skip first ${n2} lines of ${W}${cfg}${C}|tail -n +$((n2+1)) ${cfg}|#output:~.")
+
   printf '%s\n' "${questions[@]}"
 }
 
 # Level 3: Basic Pipes (|)
 gen_level3() {
-  local questions=() n n2 log txt cfg csv term1 term2; _ctx
-  # Each question uses DIFFERENT files/terms to avoid repetition
-  n=$((RANDOM % 5 + 3)); n2=$((RANDOM % 4 + 2))  # different numbers
-  log=$(_pick SANDBOX_LOGS); txt=$(_pick SANDBOX_TXTS)
-  cfg=$(_pick SANDBOX_CFGS); csv=$(_pick SANDBOX_CSVS)
+  local questions=() n n2 n3 log log2 txt txt2 cfg cfg2 csv term1 term2 term3; _ctx
+  n=$((RANDOM % 5 + 3)); n2=$((RANDOM % 4 + 2)); n3=$((RANDOM % 6 + 5))
+  log=$(_pick SANDBOX_LOGS); log2=$(_pick SANDBOX_LOGS)
+  txt=$(_pick SANDBOX_TXTS); txt2=$(_pick SANDBOX_TXTS)
+  cfg=$(_pick SANDBOX_CFGS); cfg2=$(_pick SANDBOX_CFGS)
+  csv=$(_pick SANDBOX_CSVS)
   term1=$(_phrase ERROR WARN INFO GET POST); term2=$(_phrase debug error warning failed success)
+  term3=$(_phrase active pending completed running started)
 
-  # Each pipe pattern appears ONCE with unique file/term combo
+  # ls | wc variants
   questions+=("Count files in current directory§ls | wc -l§#output:~^\\s*[0-9]+")
+  questions+=("Count items in current directory§ls -1 | wc -l§#output:~^\\s*[0-9]+")
+
+  # head/tail through pipe
   questions+=("$(_phrase "Show" "Get") first ${n} lines of ${W}${log}${C}§head -${n} ${log}§cat ${log} | head -${n}§#output:@${n}")
   questions+=("$(_phrase "Show" "Get") last ${n2} lines of ${W}${cfg}${C}§tail -${n2} ${cfg}§cat ${cfg} | tail -${n2}§#output:@${n2}")
+  questions+=("First ${n3} lines of ${W}${txt}${C}§head -${n3} ${txt}§cat ${txt} | head -${n3}§#output:@${n3}")
+
+  # grep basics
   questions+=("$(_phrase "Search for" "Find") ${Y}${term1}${C} in ${W}${log}${C}§grep ${term1} ${log}§#output:*")
+  questions+=("Find ${Y}${term2}${C} in ${W}${txt}${C}§grep ${term2} ${txt}§#output:*")
+  questions+=("Search ${W}${cfg}${C} for ${Y}${term3}${C}§grep ${term3} ${cfg}§#output:*")
+
+  # grep -c (count)
   questions+=("Count ${Y}${term2}${C} matches in ${W}${txt}${C}§grep -c ${term2} ${txt}§#output:~^\\s*[0-9]+")
+  questions+=("Count ${Y}${term1}${C} occurrences in ${W}${log}${C}§grep -c ${term1} ${log}§#output:~^\\s*[0-9]+")
+
+  # grep -i (case insensitive)
+  questions+=("Find ${Y}${term1}${C} case-insensitive in ${W}${log}${C}§grep -i ${term1} ${log}§#output:*")
+  questions+=("Search ${W}${txt}${C} for ${Y}${term2}${C} ignoring case§grep -i ${term2} ${txt}§#output:*")
+
+  # grep -v (invert)
+  questions+=("Show lines NOT containing ${Y}${term1}${C} in ${W}${log}${C}§grep -v ${term1} ${log}§#output:*")
+  questions+=("Exclude ${Y}${term2}${C} lines from ${W}${txt}${C}§grep -v ${term2} ${txt}§#output:*")
+
+  # sort variants
   questions+=("Sort ${W}${txt}${C} alphabetically§sort ${txt}§#output:*")
   questions+=("Sort ${W}${cfg}${C} in reverse§sort -r ${cfg}§#output:*")
-  questions+=("Sort ${W}${txt}${C} and remove duplicates§sort ${txt} | uniq§sort -u ${txt}§#output:*")
+  questions+=("Sort ${W}${csv}${C} numerically§sort -n ${csv}§#output:*")
+  questions+=("Sort ${W}${txt2}${C} and remove duplicates§sort ${txt2} | uniq§sort -u ${txt2}§#output:*")
+  questions+=("Unique sorted lines from ${W}${txt}${C}§sort -u ${txt}§sort ${txt} | uniq§#output:*")
+
+  # wc variants
   questions+=("Count lines in ${W}${csv}${C}§wc -l ${csv}§#output:~[0-9]+")
   questions+=("Count words in ${W}${txt}${C}§wc -w ${txt}§#output:~[0-9]+")
+  questions+=("Count characters in ${W}${cfg}${C}§wc -c ${cfg}§wc -m ${cfg}§#output:~[0-9]+")
+
+  # Combined pipes
   questions+=("First ${n} ${Y}${term1}${C} matches in ${W}${log}${C}§grep ${term1} ${log} | head -${n}§#output:*")
   questions+=("Last ${n2} lines of ${W}${log}${C} containing ${Y}${term2}${C}§grep ${term2} ${log} | tail -${n2}§#output:*")
-  questions+=("Unique sorted lines from ${W}${txt}${C}§sort -u ${txt}§sort ${txt} | uniq§#output:*")
+  questions+=("Count unique lines in ${W}${txt}${C}§sort ${txt} | uniq | wc -l§sort -u ${txt} | wc -l§#output:~[0-9]+")
+  questions+=("Sort ${W}${log}${C} and show first ${n}§sort ${log} | head -${n}§#output:@${n}")
+  questions+=("Show last ${n2} sorted lines of ${W}${cfg}${C}§sort ${cfg} | tail -${n2}§#output:@${n2}")
+  questions+=("Find ${Y}${term1}${C} lines, then count them§grep ${term1} ${log} | wc -l§grep -c ${term1} ${log}§#output:~[0-9]+")
 
   printf '%s\n' "${questions[@]}"
 }
 
 # Level 4: Input Redirection (<, <<<)
 gen_level4() {
-  local questions=() txt csv log word; _ctx
-  txt=$(_pick SANDBOX_TXTS); csv=$(_pick SANDBOX_CSVS); log=$(_pick SANDBOX_LOGS)
+  local questions=() txt txt2 csv log cfg word word2; _ctx
+  txt=$(_pick SANDBOX_TXTS); txt2=$(_pick SANDBOX_TXTS)
+  csv=$(_pick SANDBOX_CSVS); log=$(_pick SANDBOX_LOGS); cfg=$(_pick SANDBOX_CFGS)
   word=$(_phrase hello world example config backup server admin debug)
+  word2=$(_phrase test data input query search token ready active)
 
-  local n=$((RANDOM % 5 + 3))  # 3-7
+  local n=$((RANDOM % 5 + 3)) n2=$((RANDOM % 4 + 2))
   local num1=$((RANDOM % 50 + 10)) num2=$((RANDOM % 20 + 5))
-  # < reads file as input - describe the GOAL not the syntax
-  questions+=("Count lines in ${W}${csv}${C} using ${Y}<${C} instead of cat|wc -l < ${csv}|#output:~^\\s*[0-9]+")
-  questions+=("Sort ${W}${txt}${C} alphabetically using ${Y}<${C}|sort < ${txt}|#output:*")
+  local num3=$((RANDOM % 100 + 50)) num4=$((RANDOM % 30 + 10))
+
+  # < reads file as input
+  questions+=("Count lines in ${W}${csv}${C} using ${Y}<${C}|wc -l < ${csv}|#output:~^\\s*[0-9]+")
+  questions+=("Sort ${W}${txt}${C} using ${Y}<${C}|sort < ${txt}|#output:*")
   questions+=("Show first ${n} lines of ${W}${log}${C} using ${Y}<${C}|head -${n} < ${log}|#output:@${n}")
-  questions+=("Search for ${Y}GET${C} requests in ${W}${log}${C} using ${Y}<${C}|grep GET < ${log}|#output:~GET")
-  # <<< feeds a string - describe what you're DOING
-  questions+=("Uppercase the word ${Y}'${word}'${C} (use ${Y}<<<${C} to feed it to tr)|tr a-z A-Z <<< '${word}'|tr a-z A-Z <<< ${word}|#output:~[A-Z]")
-  questions+=("Reverse ${Y}'${word}'${C} (use ${Y}<<<${C} to feed it to rev)|rev <<< '${word}'|rev <<< ${word}|#output:*")
-  questions+=("Calculate ${Y}${num1}+${num2}${C} with bc (use ${Y}<<<${C})|bc <<< '${num1}+${num2}'|bc <<< ${num1}+${num2}|#output:~$((num1+num2))")
+  questions+=("Show last ${n2} lines of ${W}${cfg}${C} using ${Y}<${C}|tail -${n2} < ${cfg}|#output:@${n2}")
+  questions+=("Search for ${Y}GET${C} in ${W}${log}${C} using ${Y}<${C}|grep GET < ${log}|#output:~GET")
+  questions+=("Count words in ${W}${txt}${C} using ${Y}<${C}|wc -w < ${txt}|#output:~[0-9]+")
+  questions+=("Reverse sort ${W}${txt2}${C} using ${Y}<${C}|sort -r < ${txt2}|#output:*")
+  questions+=("Search for ${Y}ERROR${C} in ${W}${log}${C} using ${Y}<${C}|grep ERROR < ${log}|#output:*")
+
+  # <<< feeds a string (here-string)
+  questions+=("Uppercase ${Y}'${word}'${C} (use ${Y}<<<${C} with tr)|tr a-z A-Z <<< '${word}'|tr a-z A-Z <<< ${word}|#output:~[A-Z]")
+  questions+=("Lowercase ${Y}'${word2^^}'${C} (use ${Y}<<<${C})|tr A-Z a-z <<< '${word2^^}'|#output:~[a-z]")
+  questions+=("Reverse ${Y}'${word}'${C} (use ${Y}<<<${C} with rev)|rev <<< '${word}'|rev <<< ${word}|#output:*")
+  questions+=("Reverse ${Y}'${word2}'${C}|rev <<< '${word2}'|rev <<< ${word2}|#output:*")
+
+  # bc calculations
+  questions+=("Calculate ${Y}${num1}+${num2}${C} with bc|bc <<< '${num1}+${num2}'|bc <<< ${num1}+${num2}|#output:~$((num1+num2))")
+  questions+=("Calculate ${Y}${num3}-${num4}${C} with bc|bc <<< '${num3}-${num4}'|bc <<< ${num3}-${num4}|#output:~$((num3-num4))")
+  questions+=("Calculate ${Y}${num1}*${num2}${C} with bc|bc <<< '${num1}*${num2}'|bc <<< ${num1}*${num2}|#output:~$((num1*num2))")
+
+  # cut with <<<
   questions+=("Extract home dir from ${Y}'root:x:0:0:root:/root:/bin/bash'${C}|cut -d: -f6 <<< 'root:x:0:0:root:/root:/bin/bash'|#output:~/root")
+  questions+=("Get username from ${Y}'john:x:1000:1000:John:/home/john:/bin/bash'${C}|cut -d: -f1 <<< 'john:x:1000:1000:John:/home/john:/bin/bash'|#output:~john")
+  questions+=("Get shell from ${Y}'user:x:1000:1000:User:/home/user:/bin/zsh'${C}|cut -d: -f7 <<< 'user:x:1000:1000:User:/home/user:/bin/zsh'|#output:~/bin/zsh")
+
+  # wc with <<<
+  questions+=("Count words in ${Y}'${word} ${word2} test'${C}|wc -w <<< '${word} ${word2} test'|#output:~3")
+  questions+=("Count chars in ${Y}'${word}'${C}|wc -c <<< '${word}'|wc -m <<< '${word}'|#output:~[0-9]+")
+
+  # tr transformations
+  questions+=("Replace spaces with underscores in ${Y}'hello world test'${C}|tr ' ' '_' <<< 'hello world test'|#output:~hello_world_test")
+  questions+=("Delete digits from ${Y}'abc123def456'${C}|tr -d '0-9' <<< 'abc123def456'|#output:~abcdef")
+
   printf '%s\n' "${questions[@]}"
 }
 
 # Level 5: Error Redirection (2>, &>, 2>&1)
 gen_level5() {
-  local questions=() script ext errfile outfile log missing; _ctx
-  script=$(_pick SANDBOX_SCRIPTS); ext=$(_phrase py sh log txt)
+  local questions=() script script2 ext ext2 errfile errfile2 outfile outfile2 log missing missing2; _ctx
+  script=$(_pick SANDBOX_SCRIPTS); script2=$(_pick SANDBOX_SCRIPTS)
+  ext=$(_phrase py sh log txt); ext2=$(_phrase conf ini yaml json)
   errfile=$(_phrase errors.log err.txt stderr.log error.out)
+  errfile2=$(_phrase debug.err issue.log problem.txt err2.log)
   outfile=$(_phrase output.log out.txt all.log combined.out)
+  outfile2=$(_phrase result.log full.txt complete.out run.log)
   log=$(_pick SANDBOX_LOGS)
   missing=$(_phrase old.log backup.txt archive.csv deleted.log)
+  missing2=$(_phrase removed.txt gone.log lost.dat missing.cfg)
 
-  # 2> = stderr to file (goal: capture/hide errors)
-  questions+=("Save errors from ${G}./${script}${C} to ${W}${errfile}${C} (use ${Y}2>${C})|./${script} 2> ${errfile}")
+  # 2> = stderr to file
+  questions+=("Save errors from ${G}./${script}${C} to ${W}${errfile}${C}|./${script} 2> ${errfile}")
+  questions+=("Redirect ${G}./${script2}${C} errors to ${W}${errfile2}${C}|./${script2} 2> ${errfile2}")
   questions+=("${G}cat${C} ${W}${missing}${C}, log error to ${W}${errfile}${C}|cat ${missing} 2> ${errfile}|~^cat [^ ]+ 2> ?${errfile}$")
+  questions+=("${G}cat${C} ${W}${missing2}${C}, save error to ${W}${errfile2}${C}|cat ${missing2} 2> ${errfile2}|~^cat [^ ]+ 2> ?${errfile2}$")
+
+  # 2> /dev/null = hide errors
   questions+=("Find ${Y}*.${ext}${C} files, hide 'permission denied' errors|find . -name '*.${ext}' 2> /dev/null|#output:*")
-  # &> = both stdout+stderr to file (goal: capture everything)
-  questions+=("Capture ALL output from ${G}./${script}${C} to ${W}${outfile}${C} (use ${Y}&>${C})|./${script} &> ${outfile}|./${script} > ${outfile} 2>&1")
-  questions+=("Run ${G}./${script}${C} completely silently (discard everything)|./${script} &> /dev/null|./${script} > /dev/null 2>&1")
-  # 2>&1 = merge stderr into stdout (goal: see errors in pipe)
-  questions+=("Run ${G}./${script}${C}, search ALL output (including errors) for 'error'§./${script} 2>&1 | grep -i error§~^\\./[^ ]+ 2>&1 \\| grep")
-  # Combinations
+  questions+=("Find ${Y}*.${ext2}${C} files, suppress errors|find . -name '*.${ext2}' 2> /dev/null|#output:*")
   questions+=("Run ${G}./${script}${C} but hide any errors|./${script} 2> /dev/null")
-  questions+=("Save output to ${W}${outfile}${C}, errors to ${W}${errfile}${C} (separate files)|ls -la > ${outfile} 2> ${errfile}")
+  questions+=("Run ${G}./${script2}${C} and discard stderr|./${script2} 2> /dev/null")
+  questions+=("List /root hiding permission errors|ls /root 2> /dev/null|#output:*")
+
+  # &> = both stdout+stderr
+  questions+=("Capture ALL output from ${G}./${script}${C} to ${W}${outfile}${C}|./${script} &> ${outfile}|./${script} > ${outfile} 2>&1")
+  questions+=("Save everything from ${G}./${script2}${C} to ${W}${outfile2}${C}|./${script2} &> ${outfile2}|./${script2} > ${outfile2} 2>&1")
+  questions+=("Run ${G}./${script}${C} completely silently|./${script} &> /dev/null|./${script} > /dev/null 2>&1")
+  questions+=("Silence all output from ${G}./${script2}${C}|./${script2} &> /dev/null|./${script2} > /dev/null 2>&1")
+
+  # 2>&1 = merge stderr into stdout
+  questions+=("Run ${G}./${script}${C}, search ALL output for 'error'§./${script} 2>&1 | grep -i error§~^\\./[^ ]+ 2>&1 \\| grep")
+  questions+=("Run ${G}./${script2}${C}, pipe all output to ${G}less${C}§./${script2} 2>&1 | less§#text:")
+  questions+=("Run ${G}./${script}${C}, count total lines (stdout+stderr)§./${script} 2>&1 | wc -l§#output:~[0-9]+")
+
+  # Separate files for stdout and stderr
+  questions+=("Save output to ${W}${outfile}${C}, errors to ${W}${errfile}${C}|ls -la > ${outfile} 2> ${errfile}")
+  questions+=("Run ${G}./${script}${C}: stdout to ${W}${outfile}${C}, stderr to ${W}${errfile}${C}|./${script} > ${outfile} 2> ${errfile}")
+  questions+=("Separate ${G}./${script2}${C} output: results to ${W}${outfile2}${C}, errors to ${W}${errfile2}${C}|./${script2} > ${outfile2} 2> ${errfile2}")
+
+  # 1>&2 = stdout to stderr (less common but useful)
+  questions+=("Echo 'failed' to stderr (redirect stdout to stderr)|echo failed 1>&2|echo failed >&2|#text:")
+
   printf '%s\n' "${questions[@]}"
 }
 
 # Level 6: Logic Operators (&&, ||)
 gen_level6() {
-  local questions=() dir cfg txt msg; _ctx
+  local questions=() dir dir2 cfg cfg2 txt txt2 log msg msg2 script; _ctx
   dir=$(_phrase temp backup new test work build output cache)
-  cfg=$(_pick SANDBOX_CFGS); txt=$(_pick SANDBOX_TXTS)
+  dir2=$(_phrase archive old data staging release deploy results)
+  cfg=$(_pick SANDBOX_CFGS); cfg2=$(_pick SANDBOX_CFGS)
+  txt=$(_pick SANDBOX_TXTS); txt2=$(_pick SANDBOX_TXTS)
+  log=$(_pick SANDBOX_LOGS)
   msg=$(_phrase exists failed done error warning success ok)
+  msg2=$(_phrase ready complete skipped finished created started)
+  script=$(_pick SANDBOX_SCRIPTS)
 
+  # && = run second only if first succeeds
   questions+=("Create ${W}${dir}${C} and cd into it|mkdir ${dir} && cd ${dir}")
   questions+=("Create parents if needed, then cd|mkdir -p ${dir}/sub && cd ${dir}/sub")
-  questions+=("Create ${W}${dir}${C} or $(_phrase "warn" "echo") if exists§mkdir ${dir} || echo '${msg}'")
-  questions+=("Backup ${W}${cfg}${C} if it exists|test -f ${cfg} && cp ${cfg} ${cfg}.bak")
-  questions+=("$(_phrase "Copy" "Backup") ${W}${txt}${C} then $(_phrase "echo" "say") done|cp ${txt} ${txt}.bak && echo done")
-  questions+=("${G}cat${C} missing.txt, or ${G}echo${C} '${msg}' if it fails§cat missing.txt || echo '${msg}'")
-  questions+=("Check if ${W}${txt}${C} exists, then ${G}cat${C} it|test -f ${txt} && cat ${txt}")
+  questions+=("Make ${W}${dir2}${C} and cd into it|mkdir ${dir2} && cd ${dir2}")
+  questions+=("$(_phrase "Copy" "Backup") ${W}${txt}${C} then echo done|cp ${txt} ${txt}.bak && echo done")
+  questions+=("Copy ${W}${cfg}${C} then echo '${msg2}'|cp ${cfg} ${cfg}.bak && echo '${msg2}'")
   questions+=("Create ${W}${dir}${C} and create a file inside§mkdir ${dir} && touch ${dir}/file.txt")
+  questions+=("Create ${W}${dir2}${C}/sub and touch ${W}${dir2}${C}/sub/test.txt§mkdir -p ${dir2}/sub && touch ${dir2}/sub/test.txt")
+
+  # && with test
+  questions+=("Backup ${W}${cfg}${C} if it exists|test -f ${cfg} && cp ${cfg} ${cfg}.bak|[[ -f ${cfg} ]] && cp ${cfg} ${cfg}.bak")
+  questions+=("Check if ${W}${txt}${C} exists, then ${G}cat${C} it|test -f ${txt} && cat ${txt}|[[ -f ${txt} ]] && cat ${txt}")
+  questions+=("If ${W}${log}${C} exists, show first 5 lines|test -f ${log} && head -5 ${log}|[[ -f ${log} ]] && head -5 ${log}")
+  questions+=("If ${W}${dir}${C} is a directory, list its contents|test -d ${dir} && ls ${dir}|[[ -d ${dir} ]] && ls ${dir}")
+
+  # || = run second only if first fails
+  questions+=("Create ${W}${dir}${C} or echo '${msg}' if exists§mkdir ${dir} || echo '${msg}'")
+  questions+=("${G}cat${C} missing.txt, or echo '${msg}' if fails§cat missing.txt || echo '${msg}'")
+  questions+=("${G}cat${C} gone.log, or echo '${msg2}' on failure§cat gone.log || echo '${msg2}'")
+  questions+=("Try cd ${W}${dir2}${C}, or echo '${msg}' if fails§cd ${dir2} || echo '${msg}'")
+  questions+=("Copy ${W}${txt2}${C} or warn if fails|cp ${txt2} backup.txt || echo '${msg}'")
+
+  # || with creation fallback
+  questions+=("cd to ${W}${dir}${C}, create it if missing|cd ${dir} || mkdir ${dir}")
+  questions+=("Use existing ${W}${dir2}${C} or create it|test -d ${dir2} || mkdir ${dir2}|[[ -d ${dir2} ]] || mkdir ${dir2}")
+
+  # Combined && and ||
+  questions+=("If ${W}${txt}${C} exists cat it, else echo '${msg}'§test -f ${txt} && cat ${txt} || echo '${msg}'§[[ -f ${txt} ]] && cat ${txt} || echo '${msg}'")
+  questions+=("Copy ${W}${cfg}${C}, say done or failed§cp ${cfg} ${cfg}.bak && echo done || echo failed")
+  questions+=("Run ${G}./${script}${C}, echo success or failed§./${script} && echo success || echo failed")
+
   printf '%s\n' "${questions[@]}"
 }
 
 # Level 7: Job Control (&, jobs, bg, fg)
 gen_level7() {
-  local questions=() n n2 script; _ctx
-  n=$((RANDOM % 90 + 10)); n2=$((RANDOM % 3 + 1))  # 10-99, 1-3
-  script=$(_pick SANDBOX_SCRIPTS)
+  local questions=() n n2 n3 script script2 log outfile; _ctx
+  n=$((RANDOM % 90 + 10)); n2=$((RANDOM % 3 + 1)); n3=$((RANDOM % 60 + 30))
+  script=$(_pick SANDBOX_SCRIPTS); script2=$(_pick SANDBOX_SCRIPTS)
+  log=$(_pick SANDBOX_LOGS)
+  outfile=$(_phrase output.log results.txt run.log process.out)
 
-  questions+=("Run sleep ${n} in $(_phrase "background" "the background")|sleep ${n} &")
-  questions+=("$(_phrase "List" "Show" "View") background jobs|jobs")
-  questions+=("Bring job ${n2} to foreground|fg %${n2}")
-  questions+=("$(_phrase "Send" "Move" "Put") job ${n2} to background|bg %${n2}")
-  questions+=("Kill job ${n2}|kill %${n2}")
-  questions+=("Kill job ${n2} with $(_phrase "SIGKILL" "signal 9" "force")|kill -9 %${n2}|kill -KILL %${n2}")
+  # & = run in background
+  questions+=("Run sleep ${n} in background|sleep ${n} &")
+  questions+=("Run sleep ${n3} in background|sleep ${n3} &")
   questions+=("Run ${W}${script}${C} in background|./${script} &")
+  questions+=("Run ${W}${script2}${C} in background|./${script2} &")
+  questions+=("Run ${G}tail -f${C} ${W}${log}${C} in background|tail -f ${log} &")
+
+  # jobs = list jobs
+  questions+=("$(_phrase "List" "Show" "View") background jobs|jobs")
+  questions+=("Show running background jobs|jobs")
+  questions+=("List all background processes|jobs")
+
+  # fg = foreground
+  questions+=("Bring job ${n2} to foreground|fg %${n2}|fg ${n2}")
+  questions+=("Resume job ${n2} in foreground|fg %${n2}|fg ${n2}")
+  questions+=("Bring most recent job to foreground|fg|fg %")
+
+  # bg = background (resume stopped job)
+  questions+=("$(_phrase "Send" "Move" "Put") job ${n2} to background|bg %${n2}|bg ${n2}")
+  questions+=("Resume job ${n2} in background|bg %${n2}|bg ${n2}")
+  questions+=("Continue stopped job in background|bg")
+
+  # kill jobs
+  questions+=("Kill job ${n2}|kill %${n2}")
+  questions+=("Terminate job ${n2}|kill %${n2}")
+  questions+=("Kill job ${n2} with force (SIGKILL)|kill -9 %${n2}|kill -KILL %${n2}")
+  questions+=("Force kill job ${n2}|kill -9 %${n2}|kill -KILL %${n2}")
+  questions+=("Stop job ${n2} (SIGSTOP)|kill -STOP %${n2}|kill -19 %${n2}")
+
+  # wait
   questions+=("$(_phrase "Wait for" "Wait until") all background jobs finish|wait")
+  questions+=("Wait for all background jobs|wait")
+  questions+=("Wait for job ${n2} specifically|wait %${n2}")
+
+  # Combining
+  questions+=("Run ${W}${script}${C} in background, redirect output to ${W}${outfile}${C}|./${script} > ${outfile} &|./${script} &> ${outfile} &")
+  questions+=("Disown job ${n2} (detach from shell)|disown %${n2}")
+
   printf '%s\n' "${questions[@]}"
 }
 
 # Level 8: Variables & Substitution
 gen_level8() {
-  local questions=() txt var val var2; _ctx
-  txt=$(_pick SANDBOX_TXTS)
+  local questions=() txt txt2 log var var2 var3 val val2; _ctx
+  txt=$(_pick SANDBOX_TXTS); txt2=$(_pick SANDBOX_TXTS)
+  log=$(_pick SANDBOX_LOGS)
   var=$(_phrase msg name data result value output status)
   var2=$(_phrase now time today count num lines)
+  var3=$(_phrase tmp dir file path prefix backup)
   val=$(_phrase hello world test ready done success running active)
+  val2=$(_phrase config debug enabled production staging offline)
 
+  # Basic variable assignment
   questions+=("Store '${val}' in variable ${var}|${var}=${val}|${var}='${val}'")
+  questions+=("Set ${var2} to '${val2}'|${var2}=${val2}|${var2}='${val2}'")
+  questions+=("Assign '${val}' to ${var3}|${var3}=${val}|${var3}='${val}'")
+
+  # echo variables
   questions+=("$(_phrase "Print" "Echo" "Show") variable \$${var}|echo \$${var}")
+  questions+=("Print the value of \$${var2}|echo \$${var2}")
+  questions+=("Display \$${var3}|echo \$${var3}")
+
+  # Command substitution $()
   questions+=("Store date output in variable ${var2}|${var2}=\$(date)")
-  questions+=("Print $(_phrase "today's date" "the date" "current date") inline|echo \"Today is \$(date +%Y-%m-%d)\"")
-  questions+=("Store line count of ${W}${txt}${C} in variable|${var2}=\$(wc -l < ${txt})")
-  questions+=("Create dir named with $(_phrase "today's date" "current date")|mkdir \$(date +%Y-%m-%d)")
   questions+=("Store hostname in variable|${var}=\$(hostname)")
   questions+=("Store current directory in variable|${var}=\$(pwd)")
+  questions+=("Store username in variable|${var}=\$(whoami)")
+  questions+=("Store line count of ${W}${txt}${C} in variable|${var2}=\$(wc -l < ${txt})")
+  questions+=("Store word count of ${W}${txt2}${C} in ${var2}|${var2}=\$(wc -w < ${txt2})")
+  questions+=("Store first line of ${W}${log}${C} in ${var}|${var}=\$(head -1 ${log})")
+
+  # Inline command substitution
+  questions+=("Print today's date inline|echo \"Today is \$(date +%Y-%m-%d)\"")
+  questions+=("Echo 'User is' followed by username|echo \"User is \$(whoami)\"")
+  questions+=("Print 'Host:' and hostname|echo \"Host: \$(hostname)\"")
+  questions+=("Show 'Lines:' with line count of ${W}${txt}${C}§echo \"Lines: \$(wc -l < ${txt})\"")
+
+  # Using variables in commands
+  questions+=("Create dir named with today's date|mkdir \$(date +%Y-%m-%d)")
+  questions+=("Create dir named with hostname|mkdir \$(hostname)")
+  questions+=("Create backup file: ${W}${txt}${C}.\$(date +%Y%m%d)|cp ${txt} ${txt}.\$(date +%Y%m%d)")
+
+  # Variable in strings
+  questions+=("Echo 'Value is \$${var}'|echo \"Value is \$${var}\"")
+  questions+=("Echo path: /home/\$USER|echo \"/home/\$USER\"")
+  questions+=("Echo '\$HOME is' followed by home path|echo \"\$HOME is \$HOME\"")
+
+  # Parameter expansion basics
+  questions+=("Print length of \$${var}|echo \${#${var}}")
+  questions+=("Print \$${var} or 'default' if empty|echo \${${var}:-default}")
+
   printf '%s\n' "${questions[@]}"
 }
 
 # Level 9: Special Variables ($$, $?, $!)
 gen_level9() {
-  local questions=(); _ctx
+  local questions=() n n2; _ctx
+  n=$((RANDOM % 3 + 2)); n2=$((RANDOM % 4 + 3))
 
+  # Process IDs
   questions+=("$(_phrase "Print" "Echo" "Show") current shell PID|echo \$\$")
-  questions+=("$(_phrase "Print" "Show" "Get") exit status of last command|echo \$?")
+  questions+=("Show this shell's process ID|echo \$\$")
   questions+=("$(_phrase "Print" "Show" "Get") PID of last background process|echo \$!")
+  questions+=("Get PID of most recent background job|echo \$!")
+
+  # Exit status
+  questions+=("$(_phrase "Print" "Show" "Get") exit status of last command|echo \$?")
+  questions+=("Check if last command succeeded (exit code)|echo \$?")
+  questions+=("Show return code of previous command|echo \$?")
+
+  # Script arguments
   questions+=("$(_phrase "Print" "Show") number of script arguments|echo \$#")
+  questions+=("Count of arguments passed to script|echo \$#")
   questions+=("$(_phrase "Print" "Show" "Echo") all script arguments|echo \"\$@\"")
+  questions+=("Show all arguments as separate words|echo \"\$@\"")
+  questions+=("Show all arguments as single string|echo \"\$*\"")
   questions+=("Print script $(_phrase "name" "path" "itself")|echo \$0")
+  questions+=("Show name of current script|echo \$0")
   questions+=("Print first argument to script|echo \$1")
+  questions+=("Print argument ${n}|echo \$${n}")
+  questions+=("Print argument ${n2}|echo \$${n2}")
+  questions+=("Print second argument|echo \$2")
+
+  # Environment variables
   questions+=("Print current user|echo \$USER")
+  questions+=("Show logged in username|echo \$USER|echo \$LOGNAME")
   questions+=("Print home directory|echo \$HOME")
+  questions+=("Show user's home path|echo \$HOME")
   questions+=("Print current shell|echo \$SHELL")
+  questions+=("Show default shell path|echo \$SHELL")
+  questions+=("Print current working directory variable|echo \$PWD")
+  questions+=("Show PATH environment variable|echo \$PATH")
+  questions+=("Print hostname via variable|echo \$HOSTNAME")
+  questions+=("Show terminal type|echo \$TERM")
+  questions+=("Print current language setting|echo \$LANG")
+  questions+=("Show editor preference|echo \$EDITOR|echo \$VISUAL")
+
+  # Random
+  questions+=("Print random number (0-32767)|echo \$RANDOM")
+  questions+=("Show a random value|echo \$RANDOM")
+
   printf '%s\n' "${questions[@]}"
 }
 
 # Level 10: Test Operators ([[ -f ]], [[ -d ]], etc)
 gen_level10() {
-  local questions=() txt cfg script dir n; _ctx
-  txt=$(_pick SANDBOX_TXTS); cfg=$(_pick SANDBOX_CFGS); script=$(_pick SANDBOX_SCRIPTS)
-  dir=$(_phrase src data logs backup); n=$((RANDOM % 90 + 10))
+  local questions=() txt txt2 cfg cfg2 log script dir dir2 n n2; _ctx
+  txt=$(_pick SANDBOX_TXTS); txt2=$(_pick SANDBOX_TXTS)
+  cfg=$(_pick SANDBOX_CFGS); cfg2=$(_pick SANDBOX_CFGS)
+  log=$(_pick SANDBOX_LOGS); script=$(_pick SANDBOX_SCRIPTS)
+  dir=$(_phrase src data logs backup); dir2=$(_phrase temp cache build output)
+  n=$((RANDOM % 90 + 10)); n2=$((RANDOM % 50 + 5))
 
+  # File exists tests
   questions+=("Test if ${W}${txt}${C} exists and is a file|[[ -f ${txt} ]]|test -f ${txt}")
+  questions+=("Check if ${W}${cfg}${C} is a regular file|[[ -f ${cfg} ]]|test -f ${cfg}")
+  questions+=("Test if ${W}${log}${C} exists as a file|[[ -f ${log} ]]|test -f ${log}")
+  questions+=("Test if any file exists at ${W}${txt2}${C}|[[ -e ${txt2} ]]|test -e ${txt2}")
+
+  # Directory tests
   questions+=("Test if ${W}${dir}${C} exists and is a directory|[[ -d ${dir} ]]|test -d ${dir}")
+  questions+=("Check if ${W}${dir2}${C} is a directory|[[ -d ${dir2} ]]|test -d ${dir2}")
+
+  # Permission tests
   questions+=("Test if ${W}${txt}${C} is readable|[[ -r ${txt} ]]|test -r ${txt}")
+  questions+=("Check if ${W}${cfg}${C} is readable|[[ -r ${cfg} ]]|test -r ${cfg}")
+  questions+=("Test if ${W}${txt}${C} is writable|[[ -w ${txt} ]]|test -w ${txt}")
+  questions+=("Check if ${W}${cfg2}${C} is writable|[[ -w ${cfg2} ]]|test -w ${cfg2}")
   questions+=("Test if ${W}${script}${C} is executable|[[ -x ${script} ]]|test -x ${script}")
-  questions+=("Test if \$var is $(_phrase "empty" "unset" "blank")|[[ -z \"\$var\" ]]")
+
+  # File size tests
+  questions+=("Test if ${W}${txt}${C} is non-empty|[[ -s ${txt} ]]|test -s ${txt}")
+  questions+=("Check if ${W}${log}${C} has content (size > 0)|[[ -s ${log} ]]|test -s ${log}")
+
+  # String tests
+  questions+=("Test if \$var is empty|[[ -z \"\$var\" ]]")
+  questions+=("Check if \$name is blank|[[ -z \"\$name\" ]]")
   questions+=("Test if \$var is NOT empty|[[ -n \"\$var\" ]]")
-  questions+=("Test if \$a $(_phrase "equals" "matches" "is same as") \$b|[[ \"\$a\" == \"\$b\" ]]")
+  questions+=("Check if \$value has content|[[ -n \"\$value\" ]]")
+
+  # String comparison
+  questions+=("Test if \$a equals \$b|[[ \"\$a\" == \"\$b\" ]]")
+  questions+=("Check if \$name equals \$expected|[[ \"\$name\" == \"\$expected\" ]]")
+  questions+=("Test if \$a does NOT equal \$b|[[ \"\$a\" != \"\$b\" ]]")
+
+  # Numeric comparison
   questions+=("Test if \$num is greater than ${n}|[[ \$num -gt ${n} ]]")
+  questions+=("Check if \$count is greater than ${n2}|[[ \$count -gt ${n2} ]]")
+  questions+=("Test if \$num is less than ${n}|[[ \$num -lt ${n} ]]")
+  questions+=("Check if \$x equals ${n2}|[[ \$x -eq ${n2} ]]")
+  questions+=("Test if \$num is not equal to ${n}|[[ \$num -ne ${n} ]]")
+  questions+=("Check if \$count >= ${n2}|[[ \$count -ge ${n2} ]]")
+  questions+=("Test if \$num <= ${n}|[[ \$num -le ${n} ]]")
+
+  # File comparison
   questions+=("Test if ${W}${txt}${C} is newer than ${W}${cfg}${C}|[[ ${txt} -nt ${cfg} ]]")
+  questions+=("Check if ${W}${log}${C} is older than ${W}${txt}${C}|[[ ${log} -ot ${txt} ]]")
+
+  # Combined tests
   questions+=("Test if ${W}${txt}${C} exists AND is readable|[[ -f ${txt} && -r ${txt} ]]")
+  questions+=("Check if ${W}${cfg}${C} is file AND writable|[[ -f ${cfg} && -w ${cfg} ]]")
   questions+=("Test if ${W}${txt}${C} OR ${W}${cfg}${C} exists§[[ -f ${txt} || -f ${cfg} ]]")
+  questions+=("Check if either ${W}${dir}${C} or ${W}${dir2}${C} is a directory§[[ -d ${dir} || -d ${dir2} ]]")
+
+  # Negation
+  questions+=("Test if ${W}${txt}${C} does NOT exist|[[ ! -f ${txt} ]]|test ! -f ${txt}")
+  questions+=("Check if ${W}${dir}${C} is NOT a directory|[[ ! -d ${dir} ]]|test ! -d ${dir}")
+
   printf '%s\n' "${questions[@]}"
 }
 
