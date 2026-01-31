@@ -2348,8 +2348,9 @@ check() {
     # Fall through to text matching if no markers or sandbox failed
   fi
 
-  # Text matching fallback
-  IFS='|' read -ra opts <<< "$2"
+  # Text matching fallback (§ delimiter for questions with pipes, | for legacy)
+  local delim='|'; [[ "$2" == *§* ]] && delim='§'
+  local -a opts; IFS="$delim" read -ra opts <<< "$2"
   for a in "${opts[@]}"; do b="${a#"${a%%[![:space:]]*}"}"; b="${b%"${b##*[![:space:]]}"}"; [[ "$inp" == "$b" || "$ninp" == "$(norm "$b")" ]] && return 0; done; return 1
 }
 
