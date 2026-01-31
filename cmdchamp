@@ -698,7 +698,8 @@ declare -A EXP=(
   ['..']="parent directory"
   ['~']="home directory"
   ['/']="root directory (or path separator)"
-  ['/nonexistent']="fake path that doesn't exist → triggers an error (for practice)"
+  ['/nonexistent']="any non-existent path (triggers error for 2> practice)"
+  ['/x']="any non-existent path (triggers error for 2> practice)"
   # Globs/wildcards
   ['*']="wildcard: matches any characters"
   ['?']="wildcard: matches single character"
@@ -895,7 +896,7 @@ gen_level1() {
   questions+=("$(_phrase "Save" "Write") directory listing to ${W}${txt}${C}|ls -l > ${txt}|ls > ${txt}|#state:exists:${txt}")
   questions+=("Append '${word2}' to ${W}${txt}${C}|echo ${word2} >> ${txt}|echo '${word2}' >> ${txt}|#state:contains:${txt}:${word2}")
   questions+=("$(_phrase "Overwrite" "Replace") ${W}${txt}${C} with pwd output|pwd > ${txt}|#state:exists:${txt}")
-  questions+=("$(_phrase "Write" "Send") errors to ${W}errors.txt${C}|ls /nonexistent 2> errors.txt|#state:exists:errors.txt")
+  questions+=("Redirect stderr from 'ls /x' to ${W}errors.txt${C}|ls /x 2> errors.txt|ls /nonexistent 2> errors.txt|#state:exists:errors.txt")
   printf '%s\n' "${questions[@]}"
 }
 
@@ -983,12 +984,12 @@ gen_level5() {
   # 2> = stderr to file, &> = both to file, 2>&1 = stderr to stdout
   questions+=("Run ${W}${script}${C} and $(_phrase "save" "redirect" "send") errors to ${W}${errfile}${C}|./${script} 2> ${errfile}")
   questions+=("Run ${W}${script}${C} and save $(_phrase "all output" "stdout+stderr" "everything") to ${W}${outfile}${C}|./${script} &> ${outfile}|./${script} > ${outfile} 2>&1")
-  questions+=("$(_phrase "List" "ls") ${W}/nonexistent${C} merging stderr into stdout|ls /nonexistent 2>&1")
+  questions+=("Run 'ls /x' merging stderr into stdout|ls /x 2>&1|ls /nonexistent 2>&1")
   questions+=("Run ${W}${script}${C} $(_phrase "silently" "quietly") (discard all output)|./${script} &> /dev/null|./${script} > /dev/null 2>&1")
   questions+=("Find ${Y}*.${ext}${C} files, $(_phrase "suppressing" "hiding" "discarding") errors|find . -name '*.${ext}' 2> /dev/null|#output:*")
   questions+=("Run ${W}${script}${C} and discard only errors|./${script} 2> /dev/null")
-  questions+=("Cat nonexistent file, redirect error to ${W}${errfile}${C}|cat /nonexistent 2> ${errfile}")
-  questions+=("Merge stderr to stdout then pipe to grep|ls /nonexistent 2>&1 | grep -i no|#text:")
+  questions+=("Run 'cat /x' and redirect error to ${W}${errfile}${C}|cat /x 2> ${errfile}|cat /nonexistent 2> ${errfile}")
+  questions+=("Merge stderr to stdout then pipe to grep§ls /x 2>&1 | grep -i no§ls /nonexistent 2>&1 | grep -i no§#text:")
   printf '%s\n' "${questions[@]}"
 }
 
@@ -1004,7 +1005,7 @@ gen_level6() {
   questions+=("Create ${W}${dir}${C} or $(_phrase "warn" "echo") if exists§mkdir ${dir} || echo '${msg}'")
   questions+=("Backup ${W}${cfg}${C} if it exists|test -f ${cfg} && cp ${cfg} ${cfg}.bak")
   questions+=("$(_phrase "Copy" "Backup") ${W}${txt}${C} then $(_phrase "echo" "say") done|cp ${txt} ${txt}.bak && echo done")
-  questions+=("Try to cat missing file, or $(_phrase "echo" "print") '${msg}'|cat /nonexistent || echo '${msg}'")
+  questions+=("Try 'cat /x', or $(_phrase "echo" "print") '${msg}' if it fails|cat /x || echo '${msg}'|cat /nonexistent || echo '${msg}'")
   questions+=("Check if ${W}${txt}${C} exists and show it|test -f ${txt} && cat ${txt}")
   questions+=("Create ${W}${dir}${C} and create a file inside§mkdir ${dir} && touch ${dir}/file.txt")
   printf '%s\n' "${questions[@]}"
