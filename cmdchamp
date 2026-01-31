@@ -965,15 +965,15 @@ gen_level4() {
   word=$(_phrase hello world test bash linux unix pipe data file code)
 
   # < feeds file INTO command (instead of command reading file directly)
-  questions+=("Feed ${W}${csv}${C} into wc -l using ${Y}<${C}|wc -l < ${csv}|#output:~^\\s*[0-9]+")
-  questions+=("Feed ${W}${txt}${C} into wc -l using ${Y}<${C}|wc -l < ${txt}|#output:~^\\s*[0-9]+")
-  questions+=("Feed ${W}${txt}${C} into sort using ${Y}<${C}|sort < ${txt}|#output:*")
-  questions+=("Feed ${W}${log}${C} into sort using ${Y}<${C}|sort < ${log}|#output:*")
+  questions+=("Feed ${W}${csv}${C} into ${G}wc -l${C} using ${Y}<${C}|wc -l < ${csv}|#output:~^\\s*[0-9]+")
+  questions+=("Feed ${W}${txt}${C} into ${G}wc -l${C} using ${Y}<${C}|wc -l < ${txt}|#output:~^\\s*[0-9]+")
+  questions+=("Feed ${W}${txt}${C} into ${G}sort${C} using ${Y}<${C}|sort < ${txt}|#output:*")
+  questions+=("Feed ${W}${log}${C} into ${G}sort${C} using ${Y}<${C}|sort < ${log}|#output:*")
   # <<< feeds a string INTO command (no file needed)
-  questions+=("Feed ${Y}'${word}'${C} into tr to uppercase (use ${Y}<<<${C})|tr a-z A-Z <<< '${word}'|tr a-z A-Z <<< ${word}|#output:~[A-Z]")
-  questions+=("Feed ${Y}'${word}'${C} into rev to reverse (use ${Y}<<<${C})|rev <<< '${word}'|rev <<< ${word}|#output:*")
-  questions+=("Feed ${Y}'${word} ${word}'${C} into wc -w|wc -w <<< '${word} ${word}'|#output:~2")
-  questions+=("Feed ${Y}'${word}'${C} into wc -c (counts chars)|wc -c <<< '${word}'|#output:~[0-9]")
+  questions+=("Feed ${Y}'${word}'${C} into ${G}tr a-z A-Z${C} (use ${Y}<<<${C})|tr a-z A-Z <<< '${word}'|tr a-z A-Z <<< ${word}|#output:~[A-Z]")
+  questions+=("Feed ${Y}'${word}'${C} into ${G}rev${C} (use ${Y}<<<${C})|rev <<< '${word}'|rev <<< ${word}|#output:*")
+  questions+=("Feed ${Y}'${word} ${word}'${C} into ${G}wc -w${C}|wc -w <<< '${word} ${word}'|#output:~2")
+  questions+=("Feed ${Y}'${word}'${C} into ${G}wc -c${C} (counts chars)|wc -c <<< '${word}'|#output:~[0-9]")
   printf '%s\n' "${questions[@]}"
 }
 
