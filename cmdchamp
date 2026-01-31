@@ -867,7 +867,7 @@ gen_level0() {
   local questions=() log cfg txt csv dir n word; _ctx
   log=$(_pick SANDBOX_LOGS); txt=$(_pick SANDBOX_TXTS); cfg=$(_pick SANDBOX_CFGS)
   csv=$(_pick SANDBOX_CSVS); dir=$(_phrase src data logs)
-  word=$(_phrase hello world test foo bar ping pong beep boop zap)
+  word=$(_phrase hello world example demo sample output result status)
 
   questions+=("$(_phrase "Print" "Show" "Display") current directory|pwd|#output:~^/sandbox")
   questions+=("$(_phrase "List" "Show") files in current directory|ls|#output:~server.log")
@@ -962,7 +962,7 @@ gen_level3() {
 gen_level4() {
   local questions=() txt csv log word; _ctx
   txt=$(_pick SANDBOX_TXTS); csv=$(_pick SANDBOX_CSVS); log=$(_pick SANDBOX_LOGS)
-  word=$(_phrase hello world test bash linux unix pipe data file code)
+  word=$(_phrase hello world example config backup server admin debug)
 
   local n=$((RANDOM % 5 + 3))  # 3-7
   local num1=$((RANDOM % 50 + 10)) num2=$((RANDOM % 20 + 5))
