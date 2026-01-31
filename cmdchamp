@@ -986,7 +986,7 @@ gen_level5() {
 
   # 2> = stderr to file (goal: capture/hide errors)
   questions+=("Save errors from ${G}./${script}${C} to ${W}${errfile}${C} (use ${Y}2>${C})|./${script} 2> ${errfile}")
-  questions+=("Try to read ${W}${missing}${C}, log the 'not found' error to ${W}${errfile}${C}|cat ${missing} 2> ${errfile}|~^cat [^ ]+ 2> ?${errfile}$")
+  questions+=("${G}cat${C} ${W}${missing}${C}, log error to ${W}${errfile}${C}|cat ${missing} 2> ${errfile}|~^cat [^ ]+ 2> ?${errfile}$")
   questions+=("Find ${Y}*.${ext}${C} files, hide 'permission denied' errors|find . -name '*.${ext}' 2> /dev/null|#output:*")
   # &> = both stdout+stderr to file (goal: capture everything)
   questions+=("Capture ALL output from ${G}./${script}${C} to ${W}${outfile}${C} (use ${Y}&>${C})|./${script} &> ${outfile}|./${script} > ${outfile} 2>&1")
