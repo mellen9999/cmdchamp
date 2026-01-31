@@ -971,7 +971,7 @@ gen_level4() {
   questions+=("Uppercase the word ${Y}'${word}'${C} (use ${Y}<<<${C} to feed it to tr)|tr a-z A-Z <<< '${word}'|tr a-z A-Z <<< ${word}|#output:~[A-Z]")
   questions+=("Reverse ${Y}'${word}'${C} (use ${Y}<<<${C} to feed it to rev)|rev <<< '${word}'|rev <<< ${word}|#output:*")
   questions+=("Calculate ${Y}${num1}+${num2}${C} with bc (use ${Y}<<<${C})|bc <<< '${num1}+${num2}'|bc <<< ${num1}+${num2}|#output:~$((num1+num2))")
-  questions+=("Get the 2nd colon-separated field from ${Y}'a:b:c'${C}|cut -d: -f2 <<< 'a:b:c'|#output:~b")
+  questions+=("Extract home dir from ${Y}'root:x:0:0:root:/root:/bin/bash'${C}|cut -d: -f6 <<< 'root:x:0:0:root:/root:/bin/bash'|#output:~/root")
   printf '%s\n' "${questions[@]}"
 }
 
@@ -1312,7 +1312,7 @@ gen_level16() {
   questions+=("Print lines ${n} through ${n2}|awk 'NR>=${n} && NR<=${n2}' ${txt}|sed -n '${n},${n2}p' ${txt}")
   questions+=("Average of column ${col}|awk -F',' '{sum+=\$${col}; count++} END {print sum/count}' ${csv}")
   questions+=("Maximum value in column ${col}|awk -F',' 'BEGIN{max=0} \$${col}>max{max=\$${col}} END{print max}' ${csv}")
-  questions+=("Print fields in reverse order|awk '{for(i=NF;i>0;i--) printf \"%s \", \$i; print \"\"}' ${txt}")
+  questions+=("Swap columns 1 and 2 in output|awk '{print \$2, \$1}' ${txt}")
   questions+=("Print unique values from column ${col}|awk -F',' '!seen[\$${col}]++' ${csv}")
   questions+=("Count records by column ${col} value|awk -F',' '{count[\$${col}]++} END {for(k in count) print k, count[k]}' ${csv}")
 
@@ -1324,7 +1324,7 @@ gen_level16() {
   questions+=("Convert to uppercase|tr 'a-z' 'A-Z' < ${txt}|tr '[:lower:]' '[:upper:]' < ${txt}")
   questions+=("Delete all whitespace|tr -d '[:space:]' < ${txt}")
   questions+=("Replace newlines with spaces|tr '\\n' ' ' < ${txt}")
-  questions+=("Transliterate characters|tr 'abc' 'xyz' < ${txt}")
+  questions+=("Convert tabs to spaces|tr '\\t' ' ' < ${txt}")
 
   # Useful pipes - dynamic counts
   questions+=("Top ${n} most common lines in ${log}§sort ${log} | uniq -c | sort -rn | head -${n}§sort ${log} | uniq -c | sort -nr | head -${n}")
@@ -1403,11 +1403,11 @@ gen_level19() {
   questions+=("Delete files listed in ${txt}§cat ${txt} | xargs rm§xargs rm < ${txt}")
   questions+=("Run grep on files from find§find . -name '*.${ext}' | xargs grep ${term}")
   questions+=("Process files with spaces in names§find . -name '*.${ext}' -print0 | xargs -0 wc -l")
-  questions+=("Run commands in parallel (${parallel} jobs)§find . -name '*.${ext}' | xargs -P ${parallel} -I {} process {}")
-  questions+=("Confirm before each delete§find . -name '*.${ext2}' | xargs -p rm")
-  questions+=("Limit xargs to ${n} arguments per command§cat ${txt} | xargs -n ${n} echo")
-  questions+=("Replace placeholder {} in command§cat ${txt} | xargs -I {} echo \"Processing {}\"")
-  questions+=("Show commands without executing (dry run)§cat ${txt} | xargs -t echo")
+  questions+=("Grep in parallel (${parallel} jobs)§find . -name '*.${ext}' -print0 | xargs -0 -P ${parallel} grep ${term}")
+  questions+=("Confirm before each delete (interactive)§find . -name '*.${ext2}' -print0 | xargs -0 -p rm")
+  questions+=("Copy files in batches of ${n}§find . -name '*.${ext}' -print0 | xargs -0 -n ${n} cp -t ${dir}/")
+  questions+=("Rename each file with prefix§find . -name '*.${ext}' | xargs -I {} mv {} backup_{}")
+  questions+=("Preview what xargs would run (-t flag)§find . -name '*.${ext}' -print0 | xargs -0 -t wc -l")
 
   # Combined operations
   questions+=("Find .${ext} files > ${size}, show sizes sorted|find . -name '*.${ext}' -size +${size} -exec du -h {} \\; | sort -rh")
@@ -1890,8 +1890,8 @@ gen_level28() {
   # === SYSTEM FORENSICS ===
   questions+=("List all cron jobs system-wide|for u in \$(cut -f1 -d: /etc/passwd); do crontab -l -u \$u 2>/dev/null; done; cat /etc/crontab; ls /etc/cron.*")
   questions+=("Find files modified in last hour|find / -mmin -60 -type f 2>/dev/null")
-  questions+=("List all users with shell access§grep -v '/nologin\\|/false' /etc/passwd")
-  questions+=("Show failed login attempts§journalctl _COMM=sshd | grep -i 'failed\\|invalid'§grep 'Failed' /var/log/auth.log")
+  questions+=("List all users with shell access§grep -vE 'nologin|false' /etc/passwd")
+  questions+=("Show failed login attempts§journalctl _COMM=sshd | grep -iE 'failed|invalid'§grep 'Failed' /var/log/auth.log")
   questions+=("Find hidden files in home dirs|find /home -name '.*' -type f 2>/dev/null")
   questions+=("Check for rootkits|chkrootkit|rkhunter --check")
   questions+=("Dump all environment variables|env; cat /proc/*/environ 2>/dev/null | tr '\\0' '\\n'")
@@ -2145,7 +2145,7 @@ gen_level27() {
   questions+=("Show current user|whoami|id")
   questions+=("Show user groups|groups|id -Gn")
   questions+=("Show all users|cat /etc/passwd|getent passwd")
-  questions+=("Show users with shells§grep -v '/nologin\\|/false' /etc/passwd")
+  questions+=("Show users with login shells§grep -vE 'nologin|false' /etc/passwd")
   questions+=("Show sudoers rules|sudo -l")
   questions+=("Check sudo version (CVE check)|sudo --version")
   questions+=("Show logged in users|who|w")
