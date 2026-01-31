@@ -965,16 +965,17 @@ gen_level4() {
   word=$(_phrase hello world test bash linux unix pipe data file code)
 
   local n=$((RANDOM % 5 + 3))  # 3-7
-  # < feeds file INTO command
-  questions+=("Feed ${W}${csv}${C} into ${G}wc -l${C} using ${Y}<${C}|wc -l < ${csv}|#output:~^\\s*[0-9]+")
-  questions+=("Feed ${W}${txt}${C} into ${G}sort${C} using ${Y}<${C}|sort < ${txt}|#output:*")
-  questions+=("Feed ${W}${log}${C} into ${G}head -${n}${C} using ${Y}<${C}|head -${n} < ${log}|#output:@${n}")
-  questions+=("Feed ${W}${log}${C} into ${G}grep GET${C} using ${Y}<${C}|grep GET < ${log}|#output:~GET")
-  # <<< feeds string INTO command
-  questions+=("Feed ${Y}'${word}'${C} into ${G}tr a-z A-Z${C} (use ${Y}<<<${C})|tr a-z A-Z <<< '${word}'|tr a-z A-Z <<< ${word}|#output:~[A-Z]")
-  questions+=("Feed ${Y}'${word}'${C} into ${G}rev${C} (use ${Y}<<<${C})|rev <<< '${word}'|rev <<< ${word}|#output:*")
-  questions+=("Feed ${Y}'2+2'${C} into ${G}bc${C} (use ${Y}<<<${C})|bc <<< '2+2'|bc <<< 2+2|#output:~4")
-  questions+=("Feed ${Y}'a:b:c'${C} into ${G}cut -d: -f2${C} (use ${Y}<<<${C})|cut -d: -f2 <<< 'a:b:c'|#output:~b")
+  local num1=$((RANDOM % 50 + 10)) num2=$((RANDOM % 20 + 5))
+  # < reads file as input - describe the GOAL not the syntax
+  questions+=("Count lines in ${W}${csv}${C} using ${Y}<${C} instead of cat|wc -l < ${csv}|#output:~^\\s*[0-9]+")
+  questions+=("Sort ${W}${txt}${C} alphabetically using ${Y}<${C}|sort < ${txt}|#output:*")
+  questions+=("Show first ${n} lines of ${W}${log}${C} using ${Y}<${C}|head -${n} < ${log}|#output:@${n}")
+  questions+=("Search for ${Y}GET${C} requests in ${W}${log}${C} using ${Y}<${C}|grep GET < ${log}|#output:~GET")
+  # <<< feeds a string - describe what you're DOING
+  questions+=("Uppercase the word ${Y}'${word}'${C} (use ${Y}<<<${C} to feed it to tr)|tr a-z A-Z <<< '${word}'|tr a-z A-Z <<< ${word}|#output:~[A-Z]")
+  questions+=("Reverse ${Y}'${word}'${C} (use ${Y}<<<${C} to feed it to rev)|rev <<< '${word}'|rev <<< ${word}|#output:*")
+  questions+=("Calculate ${Y}${num1}+${num2}${C} with bc (use ${Y}<<<${C})|bc <<< '${num1}+${num2}'|bc <<< ${num1}+${num2}|#output:~$((num1+num2))")
+  questions+=("Get the 2nd colon-separated field from ${Y}'a:b:c'${C}|cut -d: -f2 <<< 'a:b:c'|#output:~b")
   printf '%s\n' "${questions[@]}"
 }
 
