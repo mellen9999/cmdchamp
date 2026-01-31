@@ -648,75 +648,58 @@ _ctx() {
 
 # Mini manpages for complex commands (shown as block when command is first token)
 declare -A MANPAGE=(
-  [hydra]="hydra - network login cracker
-  -l USER   single username        -L FILE   username list
-  -p PASS   single password        -P FILE   password list
-  -t N      threads per target     -s PORT   target port
-  PROTOCOLS: ssh ftp http-get http-post-form mysql smb rdp
-  http-post-form '/path:user=^USER^&pass=^PASS^:F=fail_string'"
-  [nmap]="nmap - network scanner
-  -sS       SYN scan (stealth)     -sT       TCP connect scan
-  -sU       UDP scan               -sV       version detection
-  -sC       default scripts        -O        OS detection
-  -p 22,80  specific ports         -p-       all 65535 ports
-  -Pn       skip ping              -A        aggressive (OS+ver+script)
-  -oN FILE  normal output          -oG FILE  greppable output"
-  [hashcat]="hashcat - GPU hash cracker
-  -m TYPE   hash type (0=MD5, 100=SHA1, 1000=NTLM, 1800=SHA512)
-  -a MODE   attack mode (0=dict, 3=brute)
-  -r FILE   rules file             --show    show cracked
-  MASKS: ?l=lower ?u=upper ?d=digit ?s=special ?a=all"
-  [john]="john - password cracker
-  --wordlist=FILE   dictionary attack
-  --format=TYPE     force hash type (raw-md5, sha512crypt, etc)
-  --show            show cracked passwords
-  --list=formats    list supported hash types"
-  [tshark]="tshark - terminal packet analyzer
-  -r FILE   read pcap              -i IFACE  capture interface
-  -Y FILTER display filter         -T fields output format
-  -e FIELD  extract field          -c N      capture N packets
-  FILTERS: ip.addr==X tcp.port==Y http ftp dns"
-  [curl]="curl - HTTP client
-  -X METHOD   request method (GET/POST/PUT/DELETE)
-  -H 'K: V'   add header           -d DATA   POST data
-  -o FILE     output to file       -O        use remote filename
-  -L          follow redirects     -s        silent mode
-  -i          show response headers"
-  [find]="find - search for files
-  -name 'X'   match filename       -type f/d  file or directory
-  -size +10M  larger than 10MB     -mtime -7  modified last 7 days
-  -exec CMD {} \\;  run on each    -delete    remove matches
-  -perm -4000      SUID files      -user root owned by root"
-  [awk]="awk - pattern scanning and processing
-  '{print \$1}'      first field    '{print \$NF}'   last field
-  -F','             field separator NR              line number
-  '/pattern/'       match lines     '\$1 > 10'      condition
-  'BEGIN{} {} END{}'  sections"
-  [sed]="sed - stream editor
-  's/old/new/'      replace first   's/old/new/g'   replace all
-  -i                edit in place   -n              suppress output
-  '/pat/d'          delete lines    '/pat/p'        print matches
-  '5,10d'           delete range    's/.*/\\u&/'    capitalize"
-  [xargs]="xargs - build commands from stdin
-  -I {}     placeholder            -0        null delimiter
-  -n N      N args per command     -P N      parallel jobs
-  -p        prompt before exec     -t        print commands"
-  [tar]="tar - archive tool
-  -c        create                 -x        extract
-  -v        verbose                -f FILE   archive file
-  -z        gzip compress          -j        bzip2 compress
-  -C DIR    change directory       -t        list contents"
-  [ssh]="ssh - secure shell
-  -i KEY    identity file          -p PORT   port
-  -L P:H:P  local forward          -R P:H:P  remote forward
-  -D PORT   SOCKS proxy            -N        no command
-  -J HOST   jump host              -o OPT    option"
-  [git]="git - version control
-  add       stage files            commit    save changes
-  push      upload to remote       pull      download + merge
-  status    show changes           diff      show differences
-  log       show history           checkout  switch branch/restore
-  branch    list/create branches   merge     combine branches"
+  [hydra]=$'\e[32;1mhydra\e[0m \e[2m- network login cracker\e[0m
+  \e[36m-l\e[0m USER   single username        \e[36m-L\e[0m FILE   username list
+  \e[36m-p\e[0m PASS   single password        \e[36m-P\e[0m FILE   password list
+  \e[36m-t\e[0m N      threads per target     \e[36m-s\e[0m PORT   target port
+  \e[33mPROTOCOLS:\e[0m ssh ftp http-get http-post-form mysql smb rdp
+  \e[33mhttp-post-form\e[0m \e[2m'"'"'/path:user=\e[33m^USER^\e[0m\e[2m&pass=\e[33m^PASS^\e[0m\e[2m:F=fail'"'"'\e[0m'
+  [nmap]=$'\e[32;1mnmap\e[0m \e[2m- network scanner\e[0m
+  \e[36m-sS\e[0m       SYN scan (stealth)     \e[36m-sT\e[0m       TCP connect
+  \e[36m-sU\e[0m       UDP scan               \e[36m-sV\e[0m       version detect
+  \e[36m-sC\e[0m       default scripts        \e[36m-O\e[0m        OS detection
+  \e[36m-p\e[0m 22,80  specific ports         \e[36m-p-\e[0m       all 65535 ports
+  \e[36m-Pn\e[0m       skip ping              \e[36m-A\e[0m        aggressive'
+  [hashcat]=$'\e[32;1mhashcat\e[0m \e[2m- GPU hash cracker\e[0m
+  \e[36m-m\e[0m TYPE   hash type \e[2m(0=MD5 100=SHA1 1000=NTLM 1800=SHA512)\e[0m
+  \e[36m-a\e[0m MODE   attack \e[2m(0=dict, 3=brute)\e[0m     \e[36m--show\e[0m   show cracked
+  \e[33mMASKS:\e[0m ?l=lower ?u=upper ?d=digit ?s=special ?a=all'
+  [john]=$'\e[32;1mjohn\e[0m \e[2m- password cracker\e[0m
+  \e[36m--wordlist\e[0m=FILE   dictionary     \e[36m--format\e[0m=TYPE   hash type
+  \e[36m--show\e[0m            cracked        \e[36m--list\e[0m=formats  list types'
+  [tshark]=$'\e[32;1mtshark\e[0m \e[2m- terminal packet analyzer\e[0m
+  \e[36m-r\e[0m FILE   read pcap              \e[36m-i\e[0m IFACE  capture live
+  \e[36m-Y\e[0m FILTER display filter         \e[36m-T\e[0m fields output format
+  \e[33mFILTERS:\e[0m ip.addr==X tcp.port==Y http ftp dns'
+  [curl]=$'\e[32;1mcurl\e[0m \e[2m- HTTP client\e[0m
+  \e[36m-X\e[0m METHOD  GET/POST/PUT/DELETE   \e[36m-H\e[0m \e[2m'"'"'K: V'"'"'\e[0m  header
+  \e[36m-d\e[0m DATA    POST body              \e[36m-o\e[0m FILE   output file
+  \e[36m-L\e[0m         follow redirects       \e[36m-s\e[0m        silent'
+  [find]=$'\e[32;1mfind\e[0m \e[2m- search for files\e[0m
+  \e[36m-name\e[0m \e[2m'"'"'X'"'"'\e[0m   filename            \e[36m-type\e[0m f/d  file or dir
+  \e[36m-size\e[0m +10M  larger than         \e[36m-mtime\e[0m -7  last 7 days
+  \e[36m-exec\e[0m CMD {} \\;  run on each   \e[36m-delete\e[0m    remove'
+  [awk]=$'\e[32;1mawk\e[0m \e[2m- pattern scanning\e[0m
+  \e[33m'"'"'{print $1}'"'"'\e[0m   first field       \e[33m'"'"'{print $NF}'"'"'\e[0m  last field
+  \e[36m-F\e[0m\e[2m'"'"','"'"'\e[0m          delimiter          \e[33mNR\e[0m          line number
+  \e[33m'"'"'/pat/'"'"'\e[0m        match lines        \e[33mBEGIN{} END{}\e[0m'
+  [sed]=$'\e[32;1msed\e[0m \e[2m- stream editor\e[0m
+  \e[33m'"'"'s/old/new/'"'"'\e[0m    replace first     \e[33m'"'"'s/old/new/g'"'"'\e[0m  replace all
+  \e[36m-i\e[0m            edit in place     \e[33m'"'"'/pat/d'"'"'\e[0m       delete lines'
+  [xargs]=$'\e[32;1mxargs\e[0m \e[2m- build commands from stdin\e[0m
+  \e[36m-I\e[0m {}     placeholder            \e[36m-0\e[0m        null delim
+  \e[36m-n\e[0m N      args per command       \e[36m-P\e[0m N      parallel'
+  [tar]=$'\e[32;1mtar\e[0m \e[2m- archive tool\e[0m
+  \e[36m-c\e[0m create   \e[36m-x\e[0m extract   \e[36m-v\e[0m verbose   \e[36m-f\e[0m FILE
+  \e[36m-z\e[0m gzip     \e[36m-j\e[0m bzip2     \e[36m-C\e[0m DIR       \e[36m-t\e[0m list'
+  [ssh]=$'\e[32;1mssh\e[0m \e[2m- secure shell\e[0m
+  \e[36m-i\e[0m KEY    identity file          \e[36m-p\e[0m PORT   port
+  \e[36m-L\e[0m P:H:P  local forward          \e[36m-D\e[0m PORT   SOCKS proxy
+  \e[36m-J\e[0m HOST   jump host              \e[36m-N\e[0m        no command'
+  [git]=$'\e[32;1mgit\e[0m \e[2m- version control\e[0m
+  \e[33madd\e[0m     stage      \e[33mcommit\e[0m  save       \e[33mpush\e[0m    upload
+  \e[33mpull\e[0m    download   \e[33mstatus\e[0m  changes    \e[33mdiff\e[0m    compare
+  \e[33mlog\e[0m     history    \e[33mbranch\e[0m  branches   \e[33mmerge\e[0m   combine'
 )
 
 declare -A EXP=(
@@ -871,7 +854,7 @@ explain() {
   for tok in $1; do [[ "$tok" != *=* ]] && { cmd="$tok"; break; }; done
   # Show mini manpage if available
   if [[ -n "${MANPAGE[$cmd]:-}" ]]; then
-    echo -e "${D}${MANPAGE[$cmd]}${N}"
+    echo -e "${MANPAGE[$cmd]}"
     echo -e "${D}────────────────────────────────────────${N}"
   fi
   for tok in $1; do
