@@ -2683,7 +2683,7 @@ run() {
         else
           ((++done)); echo -e "\n${G}${B}✓${N}"; ((++streak)); _sset "$prompt" "$((tier<2?tier+1:2))"
         fi
-        read -rsp $'\e[2mEnter...\e[0m'  # pause to see output
+        read -rsp $'\e[2mPress Enter...\e[0m'  # pause to see output
         ((++qi)); QI=$qi; save; break
       else
         # Wrong answer - show expected with full breakdown
@@ -2692,7 +2692,7 @@ run() {
         fi
         echo -e "${R}✗${N}  ${D}expected:${N} ${Y}${ans}${N}\n"
         explain "$ans"  # show full breakdown so they learn
-        streak=0; _sset "$prompt" "$((tier>0?tier-1:0))"; read -rsp $'\e[2mEnter...\e[0m'
+        streak=0; _sset "$prompt" "$((tier>0?tier-1:0))"; read -rsp $'\e[2mPress Enter...\e[0m'
       fi
       tier=$(_sget "$prompt"); hdr "$lv" "$((qi+1))" "$TOT"; qdisp "$prompt" "$tier" "$ans"
     done
