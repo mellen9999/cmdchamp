@@ -646,6 +646,7 @@ _ctx() {
 # COMMAND EXPLANATIONS (shown on TAB)
 # ═══════════════════════════════════════════════════════════════════════════════
 declare -A EXP=(
+  [pwd]="print working directory (where you are)"
   [echo]="print text to stdout" [cat]="concatenate and display file contents" [ls]="list directory contents"
   [cd]="change directory" [cp]="copy files" [mv]="move/rename files" [rm]="delete files permanently"
   [mkdir]="create directory" [touch]="create file/update timestamp"
