@@ -863,8 +863,8 @@ VI_MODE=${CMD_VI:-1}
 gen_level0() {
   local questions=() log cfg txt csv dir n word; _ctx
   log=$(_pick SANDBOX_LOGS); txt=$(_pick SANDBOX_TXTS); cfg=$(_pick SANDBOX_CFGS)
-  csv=$(_pick SANDBOX_CSVS); dir=$(_pick src data logs)
-  word=$(_pick hello world test foo bar ping pong beep boop zap)
+  csv=$(_pick SANDBOX_CSVS); dir=$(_phrase src data logs)
+  word=$(_phrase hello world test foo bar ping pong beep boop zap)
 
   questions+=("$(_phrase "Print" "Show" "Display") current directory|pwd|#output:~^/sandbox")
   questions+=("$(_phrase "List" "Show") files in current directory|ls|#output:~server.log")
@@ -883,9 +883,9 @@ gen_level0() {
 gen_level1() {
   local questions=() log txt word word2 outfile; _ctx
   log=$(_pick SANDBOX_LOGS); txt=$(_pick SANDBOX_TXTS)
-  word=$(_pick hello done ready complete finished saved logged started stopped)
-  word2=$(_pick entry note line record message update status)
-  outfile=$(_pick output.txt files.txt list.txt result.txt)
+  word=$(_phrase hello done ready complete finished saved logged started stopped)
+  word2=$(_phrase entry note line record message update status)
+  outfile=$(_phrase output.txt files.txt list.txt result.txt)
 
   # > = overwrite, >> = append
   questions+=("$(_phrase "Write" "Save" "Redirect") ls output to ${W}${outfile}${C}|ls > ${outfile}|#state:exists:${outfile}")
@@ -960,7 +960,7 @@ gen_level3() {
 gen_level4() {
   local questions=() txt csv log word; _ctx
   txt=$(_pick SANDBOX_TXTS); csv=$(_pick SANDBOX_CSVS); log=$(_pick SANDBOX_LOGS)
-  word=$(_pick hello world test bash linux unix pipe data file code)
+  word=$(_phrase hello world test bash linux unix pipe data file code)
 
   questions+=("Count lines in ${W}${csv}${C} via stdin|wc -l < ${csv}|#output:~^\\s*[0-9]+")
   questions+=("Count lines in ${W}${txt}${C} using input redirect|wc -l < ${txt}|#output:~^\\s*[0-9]+")
@@ -976,9 +976,9 @@ gen_level4() {
 # Level 5: Error Redirection (2>, &>, 2>&1)
 gen_level5() {
   local questions=() script ext errfile outfile; _ctx
-  script=$(_pick SANDBOX_SCRIPTS); ext=$(_pick py sh log txt)
-  errfile=$(_pick errors.log err.txt stderr.log error.out)
-  outfile=$(_pick output.log out.txt all.log combined.out)
+  script=$(_pick SANDBOX_SCRIPTS); ext=$(_phrase py sh log txt)
+  errfile=$(_phrase errors.log err.txt stderr.log error.out)
+  outfile=$(_phrase output.log out.txt all.log combined.out)
 
   # 2> = stderr to file, &> = both to file, 2>&1 = stderr to stdout
   questions+=("Run ${W}${script}${C} and $(_phrase "save" "redirect" "send") errors to ${W}${errfile}${C}|./${script} 2> ${errfile}")
@@ -995,9 +995,9 @@ gen_level5() {
 # Level 6: Logic Operators (&&, ||)
 gen_level6() {
   local questions=() dir cfg txt msg; _ctx
-  dir=$(_pick temp backup new test work build output cache)
+  dir=$(_phrase temp backup new test work build output cache)
   cfg=$(_pick SANDBOX_CFGS); txt=$(_pick SANDBOX_TXTS)
-  msg=$(_pick exists failed done error warning success ok)
+  msg=$(_phrase exists failed done error warning success ok)
 
   questions+=("Create ${W}${dir}${C} and cd into it|mkdir ${dir} && cd ${dir}")
   questions+=("Create parents if needed, then cd|mkdir -p ${dir}/sub && cd ${dir}/sub")
@@ -1031,9 +1031,9 @@ gen_level7() {
 gen_level8() {
   local questions=() txt var val var2; _ctx
   txt=$(_pick SANDBOX_TXTS)
-  var=$(_pick msg name data result value output status)
-  var2=$(_pick now time today count num lines)
-  val=$(_pick hello world test ready done success running active)
+  var=$(_phrase msg name data result value output status)
+  var2=$(_phrase now time today count num lines)
+  val=$(_phrase hello world test ready done success running active)
 
   questions+=("Store '${val}' in variable ${var}|${var}=${val}|${var}='${val}'")
   questions+=("$(_phrase "Print" "Echo" "Show") variable \$${var}|echo \$${var}")
@@ -1067,7 +1067,7 @@ gen_level9() {
 gen_level10() {
   local questions=() txt cfg script dir n; _ctx
   txt=$(_pick SANDBOX_TXTS); cfg=$(_pick SANDBOX_CFGS); script=$(_pick SANDBOX_SCRIPTS)
-  dir=$(_pick src data logs backup); n=$((RANDOM % 90 + 10))
+  dir=$(_phrase src data logs backup); n=$((RANDOM % 90 + 10))
 
   questions+=("Test if ${W}${txt}${C} exists and is a file|[[ -f ${txt} ]]|test -f ${txt}")
   questions+=("Test if ${W}${dir}${C} exists and is a directory|[[ -d ${dir} ]]|test -d ${dir}")
