@@ -645,6 +645,80 @@ _ctx() {
 # ═══════════════════════════════════════════════════════════════════════════════
 # COMMAND EXPLANATIONS (shown on TAB)
 # ═══════════════════════════════════════════════════════════════════════════════
+
+# Mini manpages for complex commands (shown as block when command is first token)
+declare -A MANPAGE=(
+  [hydra]="hydra - network login cracker
+  -l USER   single username        -L FILE   username list
+  -p PASS   single password        -P FILE   password list
+  -t N      threads per target     -s PORT   target port
+  PROTOCOLS: ssh ftp http-get http-post-form mysql smb rdp
+  http-post-form '/path:user=^USER^&pass=^PASS^:F=fail_string'"
+  [nmap]="nmap - network scanner
+  -sS       SYN scan (stealth)     -sT       TCP connect scan
+  -sU       UDP scan               -sV       version detection
+  -sC       default scripts        -O        OS detection
+  -p 22,80  specific ports         -p-       all 65535 ports
+  -Pn       skip ping              -A        aggressive (OS+ver+script)
+  -oN FILE  normal output          -oG FILE  greppable output"
+  [hashcat]="hashcat - GPU hash cracker
+  -m TYPE   hash type (0=MD5, 100=SHA1, 1000=NTLM, 1800=SHA512)
+  -a MODE   attack mode (0=dict, 3=brute)
+  -r FILE   rules file             --show    show cracked
+  MASKS: ?l=lower ?u=upper ?d=digit ?s=special ?a=all"
+  [john]="john - password cracker
+  --wordlist=FILE   dictionary attack
+  --format=TYPE     force hash type (raw-md5, sha512crypt, etc)
+  --show            show cracked passwords
+  --list=formats    list supported hash types"
+  [tshark]="tshark - terminal packet analyzer
+  -r FILE   read pcap              -i IFACE  capture interface
+  -Y FILTER display filter         -T fields output format
+  -e FIELD  extract field          -c N      capture N packets
+  FILTERS: ip.addr==X tcp.port==Y http ftp dns"
+  [curl]="curl - HTTP client
+  -X METHOD   request method (GET/POST/PUT/DELETE)
+  -H 'K: V'   add header           -d DATA   POST data
+  -o FILE     output to file       -O        use remote filename
+  -L          follow redirects     -s        silent mode
+  -i          show response headers"
+  [find]="find - search for files
+  -name 'X'   match filename       -type f/d  file or directory
+  -size +10M  larger than 10MB     -mtime -7  modified last 7 days
+  -exec CMD {} \\;  run on each    -delete    remove matches
+  -perm -4000      SUID files      -user root owned by root"
+  [awk]="awk - pattern scanning and processing
+  '{print \$1}'      first field    '{print \$NF}'   last field
+  -F','             field separator NR              line number
+  '/pattern/'       match lines     '\$1 > 10'      condition
+  'BEGIN{} {} END{}'  sections"
+  [sed]="sed - stream editor
+  's/old/new/'      replace first   's/old/new/g'   replace all
+  -i                edit in place   -n              suppress output
+  '/pat/d'          delete lines    '/pat/p'        print matches
+  '5,10d'           delete range    's/.*/\\u&/'    capitalize"
+  [xargs]="xargs - build commands from stdin
+  -I {}     placeholder            -0        null delimiter
+  -n N      N args per command     -P N      parallel jobs
+  -p        prompt before exec     -t        print commands"
+  [tar]="tar - archive tool
+  -c        create                 -x        extract
+  -v        verbose                -f FILE   archive file
+  -z        gzip compress          -j        bzip2 compress
+  -C DIR    change directory       -t        list contents"
+  [ssh]="ssh - secure shell
+  -i KEY    identity file          -p PORT   port
+  -L P:H:P  local forward          -R P:H:P  remote forward
+  -D PORT   SOCKS proxy            -N        no command
+  -J HOST   jump host              -o OPT    option"
+  [git]="git - version control
+  add       stage files            commit    save changes
+  push      upload to remote       pull      download + merge
+  status    show changes           diff      show differences
+  log       show history           checkout  switch branch/restore
+  branch    list/create branches   merge     combine branches"
+)
+
 declare -A EXP=(
   [pwd]="print working directory (where you are)"
   [echo]="print text to stdout" [cat]="concatenate and display file contents" [ls]="list directory contents"
@@ -791,8 +865,15 @@ declare -A EXP=(
   ['-t']="threads (hydra) / type (file)"
 )
 explain() {
-  local tok n=0 exp label desc tcol
+  local tok n=0 exp label desc tcol cmd
   echo -e "${D}────────────────────────────────────────${N}"
+  # Get first command (skip env vars like VAR=val)
+  for tok in $1; do [[ "$tok" != *=* ]] && { cmd="$tok"; break; }; done
+  # Show mini manpage if available
+  if [[ -n "${MANPAGE[$cmd]:-}" ]]; then
+    echo -e "${D}${MANPAGE[$cmd]}${N}"
+    echo -e "${D}────────────────────────────────────────${N}"
+  fi
   for tok in $1; do
     exp="${EXP[$tok]:-}"
     if [[ -n "$exp" ]]; then
