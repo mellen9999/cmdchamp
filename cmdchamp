@@ -1011,8 +1011,8 @@ gen_level6() {
   questions+=("Create ${W}${dir}${C} or $(_phrase "warn" "echo") if exists§mkdir ${dir} || echo '${msg}'")
   questions+=("Backup ${W}${cfg}${C} if it exists|test -f ${cfg} && cp ${cfg} ${cfg}.bak")
   questions+=("$(_phrase "Copy" "Backup") ${W}${txt}${C} then $(_phrase "echo" "say") done|cp ${txt} ${txt}.bak && echo done")
-  questions+=("Cat a fake path, or echo '${msg}' if it fails§~^cat [^ ]+ \\|\\| echo .?${msg}.?$")
-  questions+=("Check if ${W}${txt}${C} exists and show it|test -f ${txt} && cat ${txt}")
+  questions+=("${G}cat${C} missing.txt, or ${G}echo${C} '${msg}' if it fails§cat missing.txt || echo '${msg}'")
+  questions+=("Check if ${W}${txt}${C} exists, then ${G}cat${C} it|test -f ${txt} && cat ${txt}")
   questions+=("Create ${W}${dir}${C} and create a file inside§mkdir ${dir} && touch ${dir}/file.txt")
   printf '%s\n' "${questions[@]}"
 }
