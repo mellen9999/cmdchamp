@@ -872,7 +872,7 @@ gen_level0() {
   questions+=("$(_phrase "List" "Show") files in current directory|ls|#output:~server.log")
   questions+=("List $(_phrase "all files" "files") including hidden|ls -a|#output:~\\.")
   questions+=("List files with $(_phrase "details" "permissions and size" "long format")|ls -l|#output:~^[-drwx]")
-  questions+=("Print ${Y}Hello World${C} (the classic)|echo Hello World|echo 'Hello World'|#output:Hello World")
+  questions+=("Print ${Y}Hello World${C}|echo Hello World|echo 'Hello World'|#output:Hello World")
   questions+=("Print your username using ${Y}\$USER${C}|echo \$USER|#output:~.")
   questions+=("$(_phrase "Change to" "Go to" "Enter") ${dir} directory|cd ${dir}|#output:*")
   questions+=("Go to home directory|cd|cd ~|#output:*")
