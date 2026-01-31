@@ -939,12 +939,12 @@ gen_level0() {
   questions+=("$(_phrase "List" "Show") files in current directory|ls|#output:~server.log")
   questions+=("List $(_phrase "all files" "files") including hidden|ls -a|#output:~\\.")
   questions+=("List files with $(_phrase "details" "permissions and size" "long format")|ls -l|#output:~^[-drwx]")
+  questions+=("List files sorted by time (newest first)|ls -lt|#output:~^[-drwx]")
   questions+=("Print ${Y}hello world${C}|echo hello world|echo 'hello world'|#output:hello world")
   questions+=("Print your username using ${Y}\$USER${C}|echo \$USER|#output:~.")
   questions+=("$(_phrase "Change to" "Go to" "Enter") ${dir} directory|cd ${dir}|#output:*")
   questions+=("Go to home directory|cd|cd ~|#output:*")
   questions+=("Go up one directory|cd ..|#output:*")
-  questions+=("$(_phrase "Show" "Display" "What is") current path|pwd|#output:~^/")
   printf '%s\n' "${questions[@]}"
 }
 
@@ -969,57 +969,45 @@ gen_level1() {
 
 # Level 2: Read Files (cat, head, tail)
 gen_level2() {
-  local questions=() log log2 txt cfg n n2; _ctx
-  log=$(_pick SANDBOX_LOGS); log2=$(_pick SANDBOX_LOGS); txt=$(_pick SANDBOX_TXTS); cfg=$(_pick SANDBOX_CFGS)
-  n=$((RANDOM % 8 + 3)); n2=$((RANDOM % 8 + 3))  # 3-10
+  local questions=() log txt cfg n n2; _ctx
+  log=$(_pick SANDBOX_LOGS); txt=$(_pick SANDBOX_TXTS); cfg=$(_pick SANDBOX_CFGS)
+  n=$((RANDOM % 6 + 3)); n2=$((RANDOM % 5 + 2))  # different ranges
 
+  # Each command pattern appears ONCE
   questions+=("$(_phrase "Display" "Show" "View") contents of ${W}${txt}${C}|cat ${txt}|#output:~.")
-  questions+=("$(_phrase "Display" "Show" "View") contents of ${W}${log}${C}|cat ${log}|#output:~.")
-  questions+=("$(_phrase "Show" "Display" "Get") first ${n} lines of ${W}${log}${C}|head -${n} ${log}|head -n ${n} ${log}|#output:@${n}")
-  questions+=("Show first 10 lines of ${W}${log2}${C}|head ${log2}|head -10 ${log2}|#output:@10")
-  questions+=("$(_phrase "Show" "Display" "Get") last ${n2} lines of ${W}${log}${C}|tail -${n2} ${log}|tail -n ${n2} ${log}|#output:@${n2}")
-  questions+=("Show last 10 lines of ${W}${cfg}${C}|tail ${cfg}|tail -10 ${cfg}|#output:@10")
+  questions+=("$(_phrase "Show" "Get") first ${n} lines of ${W}${log}${C}|head -${n} ${log}|head -n ${n} ${log}|#output:@${n}")
+  questions+=("Show first 10 lines of ${W}${cfg}${C} (default)|head ${cfg}|#output:@10")
+  questions+=("$(_phrase "Show" "Get") last ${n2} lines of ${W}${txt}${C}|tail -${n2} ${txt}|tail -n ${n2} ${txt}|#output:@${n2}")
+  questions+=("Show last 10 lines of ${W}${log}${C} (default)|tail ${log}|#output:@10")
   questions+=("$(_phrase "Follow" "Watch" "Monitor") ${W}${log}${C} for new lines|tail -f ${log}|#text:")
-  questions+=("Show ${W}${txt}${C} with line numbers|cat -n ${txt}|#output:~^\\s+1")
   questions+=("Show ${W}${cfg}${C} with line numbers|cat -n ${cfg}|#output:~^\\s+1")
+  questions+=("Concatenate ${W}${txt}${C} and ${W}${cfg}${C}|cat ${txt} ${cfg}|#output:~.")
   printf '%s\n' "${questions[@]}"
 }
 
 # Level 3: Basic Pipes (|)
 gen_level3() {
-  local questions=() log log2 cfg cfg2 txt txt2 csv csv2 dir dir2 ext ext2 script archive bin img pcap hash photo wordlist ip subnet port port2 mac url user host term term2 term3 field field2 key old new size iface proc svc sig branch time n1 n2 n3 col n; _ctx
-  # Use sandbox-specific files for this level
+  local questions=() n n2 log txt cfg csv term1 term2; _ctx
+  # Each question uses DIFFERENT files/terms to avoid repetition
+  n=$((RANDOM % 5 + 3)); n2=$((RANDOM % 4 + 2))  # different numbers
   log=$(_pick SANDBOX_LOGS); txt=$(_pick SANDBOX_TXTS)
-  n=$((RANDOM % 7 + 3))  # 3-9
+  cfg=$(_pick SANDBOX_CFGS); csv=$(_pick SANDBOX_CSVS)
+  term1=$(_phrase ERROR WARN INFO GET POST); term2=$(_phrase debug error warning failed success)
 
-  # ls | wc (counting)
-  questions+=("$(_phrase "List files and count them" "Count how many files" "How many files in current dir")§ls | wc -l§#output:~^\\s*[0-9]+")
-
-  # cat | head/tail
-  questions+=("$(_phrase "Show" "Display" "Get") first ${n} lines of ${W}${log}${C}§cat ${log} | head -${n}§head -${n} ${log}§head -n ${n} ${log}§#output:@${n}")
-  questions+=("$(_phrase "Show" "Display" "Get") last ${n} lines of ${W}${log}${C}§cat ${log} | tail -${n}§tail -${n} ${log}§tail -n ${n} ${log}§#output:@${n}")
-
-  # grep (search)
-  questions+=("$(_phrase "Search for" "Find" "Look for") ${Y}${term}${C} in ${W}${log}${C}§grep ${term} ${log}§cat ${log} | grep ${term}§#output:~${term}")
-  questions+=("$(_phrase "Search for" "Find" "Look for") ${Y}${term2}${C} in ${W}${txt}${C}§grep ${term2} ${txt}§cat ${txt} | grep ${term2}§#output:*")
-
-  # grep -c (count matches)
-  questions+=("Count ${Y}${term}${C} matches in ${W}${log}${C}§grep -c ${term} ${log}§grep ${term} ${log} | wc -l§#output:~^\\s*[0-9]+")
-  questions+=("How many lines contain ${Y}${term2}${C} in ${W}${txt}${C}§grep -c ${term2} ${txt}§grep ${term2} ${txt} | wc -l§#output:~^\\s*[0-9]+")
-
-  # sort
-  questions+=("$(_phrase "Sort" "Alphabetize") ${W}${txt}${C}§sort ${txt}§cat ${txt} | sort§#output:*")
-  questions+=("Sort ${W}${txt}${C} in reverse§sort -r ${txt}§cat ${txt} | sort -r§#output:*")
-
-  # sort | uniq
+  # Each pipe pattern appears ONCE with unique file/term combo
+  questions+=("Count files in current directory§ls | wc -l§#output:~^\\s*[0-9]+")
+  questions+=("$(_phrase "Show" "Get") first ${n} lines of ${W}${log}${C}§head -${n} ${log}§cat ${log} | head -${n}§#output:@${n}")
+  questions+=("$(_phrase "Show" "Get") last ${n2} lines of ${W}${cfg}${C}§tail -${n2} ${cfg}§cat ${cfg} | tail -${n2}§#output:@${n2}")
+  questions+=("$(_phrase "Search for" "Find") ${Y}${term1}${C} in ${W}${log}${C}§grep ${term1} ${log}§#output:*")
+  questions+=("Count ${Y}${term2}${C} matches in ${W}${txt}${C}§grep -c ${term2} ${txt}§#output:~^\\s*[0-9]+")
+  questions+=("Sort ${W}${txt}${C} alphabetically§sort ${txt}§#output:*")
+  questions+=("Sort ${W}${cfg}${C} in reverse§sort -r ${cfg}§#output:*")
   questions+=("Sort ${W}${txt}${C} and remove duplicates§sort ${txt} | uniq§sort -u ${txt}§#output:*")
-
-  # wc variants
-  questions+=("Count lines in ${W}${txt}${C}§wc -l ${txt}§cat ${txt} | wc -l§#output:~[0-9]+")
-  questions+=("Count words in ${W}${txt}${C}§wc -w ${txt}§cat ${txt} | wc -w§#output:~[0-9]+")
-
-  # head | grep, grep | head
-  questions+=("$(_phrase "Show" "Get") first ${n} ${Y}${term}${C} matches in ${W}${log}${C}§grep ${term} ${log} | head -${n}§#output:*")
+  questions+=("Count lines in ${W}${csv}${C}§wc -l ${csv}§#output:~[0-9]+")
+  questions+=("Count words in ${W}${txt}${C}§wc -w ${txt}§#output:~[0-9]+")
+  questions+=("First ${n} ${Y}${term1}${C} matches in ${W}${log}${C}§grep ${term1} ${log} | head -${n}§#output:*")
+  questions+=("Last ${n2} lines of ${W}${log}${C} containing ${Y}${term2}${C}§grep ${term2} ${log} | tail -${n2}§#output:*")
+  questions+=("Unique sorted lines from ${W}${txt}${C}§sort -u ${txt}§sort ${txt} | uniq§#output:*")
 
   printf '%s\n' "${questions[@]}"
 }
