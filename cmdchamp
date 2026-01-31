@@ -997,7 +997,6 @@ gen_level5() {
   # Combinations
   questions+=("Run ${G}./${script}${C} but hide any errors|./${script} 2> /dev/null")
   questions+=("Separate stdout and stderr: output to ${W}${outfile}${C}, errors to ${W}${errfile}${C}|ls -la > ${outfile} 2> ${errfile}")
-  questions+=("List ${W}${missing}${C}, merge errors into stdout, pipe to head§ls ${missing} 2>&1 | head§~^ls [^ ]+ 2>&1 \\| head§#text:")
   printf '%s\n' "${questions[@]}"
 }
 
