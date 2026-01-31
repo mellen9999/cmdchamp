@@ -889,14 +889,14 @@ gen_level1() {
   outfile=$(_phrase output.txt files.txt list.txt result.txt)
 
   # > = overwrite, >> = append
-  questions+=("$(_phrase "Write" "Save" "Redirect") ls output to ${W}${outfile}${C}|ls > ${outfile}|#state:exists:${outfile}")
+  questions+=("$(_phrase "Write" "Save" "Redirect") ls output to ${W}${outfile}${C}|ls > ${outfile}|#state:contains:${outfile}:server.log")
   questions+=("$(_phrase "Echo" "Write") '${word}' to ${W}${txt}${C} (overwrite)|echo ${word} > ${txt}|echo '${word}' > ${txt}|#state:contains:${txt}:${word}")
   questions+=("$(_phrase "Append" "Add") '${word}' to ${W}${log}${C}|echo ${word} >> ${log}|echo '${word}' >> ${log}|#state:contains:${log}:${word}")
-  questions+=("Append current date to ${W}${log}${C}|date >> ${log}|#state:exists:${log}")
-  questions+=("$(_phrase "Save" "Write") directory listing to ${W}${txt}${C}|ls -l > ${txt}|ls > ${txt}|#state:exists:${txt}")
+  questions+=("Append current date to ${W}${log}${C}|date >> ${log}|#state:contains:${log}:2026")
+  questions+=("$(_phrase "Save" "Write") directory listing to ${W}${txt}${C}|ls -l > ${txt}|ls > ${txt}|#state:contains:${txt}:server.log")
   questions+=("Append '${word2}' to ${W}${txt}${C}|echo ${word2} >> ${txt}|echo '${word2}' >> ${txt}|#state:contains:${txt}:${word2}")
-  questions+=("$(_phrase "Overwrite" "Replace") ${W}${txt}${C} with pwd output|pwd > ${txt}|#state:exists:${txt}")
-  questions+=("Run ls on a fake path, redirect stderr to ${W}errors.txt${C}|~^ls [^ ]+ 2> ?errors\\.txt$|#state:exists:errors.txt")
+  questions+=("$(_phrase "Overwrite" "Replace") ${W}${txt}${C} with pwd output|pwd > ${txt}|#state:contains:${txt}:sandbox")
+  questions+=("Run ls on a fake path, redirect stderr to ${W}errors.txt${C}|~^ls [^ ]+ 2> ?errors\\.txt$|#state:contains:errors.txt:No such file")
   printf '%s\n' "${questions[@]}"
 }
 
