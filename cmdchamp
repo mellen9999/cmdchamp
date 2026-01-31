@@ -1004,23 +1004,19 @@ gen_level2() {
   # cat - display file (hint base command, user figures out flags)
   questions+=("Display entire ${W}${txt}${C} (use ${Y}cat${C})|cat ${txt}|#output:~.")
   questions+=("Display ${W}${cfg}${C} with line numbers (use ${Y}cat${C})|cat -n ${cfg}|#output:~^\\s+1")
-  questions+=("Concatenate ${W}${log}${C} and ${W}${log2}${C} (use ${Y}cat${C})|cat ${log} ${log2}|#output:~.")
 
   # head - first N lines (user figures out -N flag)
   questions+=("First ${n} lines of ${W}${log}${C} (use ${Y}head${C})|head -${n} ${log}|head -n ${n} ${log}|#output:@${n}")
-  questions+=("First 10 lines of ${W}${cfg}${C} (use ${Y}head${C})|head ${cfg}|#output:@10")
+  questions+=("First 10 lines of ${W}${cfg}${C} (use ${Y}head${C})|head ${cfg}|head -10 ${cfg}|head -n 10 ${cfg}|#output:@10")
   questions+=("First line only of ${W}${log}${C} (use ${Y}head${C})|head -1 ${log}|head -n 1 ${log}|#output:@1")
 
   # tail - last N lines (user figures out -N flag)
   questions+=("Last ${n2} lines of ${W}${txt}${C} (use ${Y}tail${C})|tail -${n2} ${txt}|tail -n ${n2} ${txt}|#output:@${n2}")
-  questions+=("Last 10 lines of ${W}${log}${C} (use ${Y}tail${C})|tail ${log}|#output:@10")
+  questions+=("Last 10 lines of ${W}${log}${C} (use ${Y}tail${C})|tail ${log}|tail -10 ${log}|tail -n 10 ${log}|#output:@10")
   questions+=("Last line only of ${W}${txt}${C} (use ${Y}tail${C})|tail -1 ${txt}|tail -n 1 ${txt}|#output:@1")
 
   # tail -f (user figures out -f flag for "follow")
   questions+=("Watch ${W}${log}${C} for new lines as they're added (use ${Y}tail${C})|tail -f ${log}|#text:")
-
-  # tail +N (start from line N - tricky, hint system will help)
-  questions+=("Show ${W}${txt}${C} starting from line ${n} (use ${Y}tail${C})|tail -n +${n} ${txt}|tail +${n} ${txt}|#output:~.")
 
   printf '%s\n' "${questions[@]}"
 }
@@ -1453,7 +1449,7 @@ gen_level11() {
   # Viewing files
   questions+=("Display ${cfg} contents (use ${Y}cat${C})|cat ${cfg}|bat ${cfg}")
   questions+=("Display ${log} with line numbers (use ${Y}cat${C})|cat -n ${log}|bat -n ${log}")
-  questions+=("Concatenate ${txt} and ${txt2} (use ${Y}cat${C})|cat ${txt} ${txt2}")
+  questions+=("Display ${txt} and ${txt2} together (use ${Y}cat${C})|cat ${txt} ${txt2}")
 
   # Listing files
   questions+=("Long listing with permissions, size, date (use ${Y}ls${C})|ls -l|ls -la|eza -l")
@@ -2880,7 +2876,7 @@ _del() { # $1=motion
 
 run() {
   local lv=$1 shuf=() qi=${QI:-0} done=0 streak=0
-  local -a HIST=() ; local HIST_IDX=0 HIST_SAVE=""
+  local -a HIST=() SEEN_PROMPTS=() ; local HIST_IDX=0 HIST_SAVE=""
   # Save terminal state for clean restoration
   _stty_saved=$(stty -g 2>/dev/null) || _stty_saved=""
 
@@ -2929,6 +2925,7 @@ run() {
     ((SANDBOX_MODE && _SANDBOX_DESTRUCTIVE)) && { _sandbox_reset; _SANDBOX_DESTRUCTIVE=0; }
 
     _qparse "${shuf[$qi]}"; local prompt=$_qprompt ans=$_qans
+    SEEN_PROMPTS+=("$prompt")  # Track for boss exclusion
     local tier; tier=$(_sget "$prompt")
     # Fire mode: force tier 2 (pure recall, no hints)
     ((streak>=5)) && tier=2
@@ -3057,9 +3054,19 @@ run() {
   echo -e "${D}No hints! Prove you learned it.${N}\n"
   read -rsp $'\e[2mEnter to start...\e[0m'; echo
 
-  # Pick 5 random questions
-  local boss_q=() boss_correct=0 boss_total=5
-  readarray -t boss_q < <(printf '%s\n' "${CURRENT_QUESTIONS[@]}" | shuf | head -$boss_total)
+  # Pick 5 random questions, excluding ones seen during practice
+  local boss_q=() boss_correct=0 boss_total=5 unseen_q=()
+  for q in "${CURRENT_QUESTIONS[@]}"; do
+    _qparse "$q"; local p=$_qprompt seen=0
+    for s in "${SEEN_PROMPTS[@]}"; do [[ "$p" == "$s" ]] && { seen=1; break; }; done
+    ((seen)) || unseen_q+=("$q")
+  done
+  # Use unseen questions if enough, otherwise fall back to all
+  if ((${#unseen_q[@]} >= boss_total)); then
+    readarray -t boss_q < <(printf '%s\n' "${unseen_q[@]}" | shuf | head -$boss_total)
+  else
+    readarray -t boss_q < <(printf '%s\n' "${CURRENT_QUESTIONS[@]}" | shuf | head -$boss_total)
+  fi
 
   for ((bi=0; bi<${#boss_q[@]}; bi++)); do
     _qparse "${boss_q[$bi]}"; local prompt=$_qprompt ans=$_qans
