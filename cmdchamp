@@ -771,7 +771,7 @@ declare -A EXP=(
   [mount]="attach filesystem" [umount]="detach filesystem" [showmount]="list NFS exports"
   [lxc]="LXD container tool" [searchsploit]="exploit database search"
   ['-r']="recursive" ['-i']="case insensitive" ['-v']="invert/verbose" ['-l']="lines (wc) / long (ls)"
-  ['-n']="line numbers" ['-c']="count (grep) / bytes (wc)" ['-q']="quiet" ['-f']="follow (tail) / force (rm)" ['-p']="create parents"
+  ['-n']="no newline (echo) / line numbers (cat/grep)" ['-c']="count (grep) / bytes (wc)" ['-q']="quiet" ['-f']="follow (tail) / force (rm)" ['-p']="create parents"
   ['-e']="extension" ['-t']="type" ['-x']="execute" ['-h']="human readable" ['-s']="size/silent"
   ['-a']="all/hidden" ['-u']="unique" ['-k']="key/column" ['-d']="delimiter" ['-o']="output" ['-w']="words (wc) / width"
   ['-A']="aggressive scan" ['-O']="OS detection" ['-sV']="version detection" ['-sC']="default scripts"
