@@ -1012,54 +1012,74 @@ gen_level6() {
 
 # Level 7: Job Control (&, jobs, bg, fg)
 gen_level7() {
-  local questions=() log log2 cfg cfg2 txt txt2 csv csv2 dir dir2 ext ext2 script archive bin img pcap hash photo wordlist ip subnet port port2 mac url user host term term2 term3 field field2 key old new size iface proc svc sig branch time n1 n2 n3 col; _ctx
-  questions+=("Run sleep 60 in background|sleep 60 &")
-  questions+=("List background jobs|jobs")
-  questions+=("Bring job 1 to foreground|fg %1")
-  questions+=("Send job 1 to background|bg %1")
-  questions+=("Kill job 1|kill %1")
-  questions+=("Kill job 2 with SIGKILL|kill -9 %2")
+  local questions=() n n2 script; _ctx
+  n=$((RANDOM % 90 + 10)); n2=$((RANDOM % 3 + 1))  # 10-99, 1-3
+  script=$(_pick SANDBOX_SCRIPTS)
+
+  questions+=("Run sleep ${n} in $(_phrase "background" "the background")|sleep ${n} &")
+  questions+=("$(_phrase "List" "Show" "View") background jobs|jobs")
+  questions+=("Bring job ${n2} to foreground|fg %${n2}")
+  questions+=("$(_phrase "Send" "Move" "Put") job ${n2} to background|bg %${n2}")
+  questions+=("Kill job ${n2}|kill %${n2}")
+  questions+=("Kill job ${n2} with $(_phrase "SIGKILL" "signal 9" "force")|kill -9 %${n2}|kill -KILL %${n2}")
+  questions+=("Run ${W}${script}${C} in background|./${script} &")
+  questions+=("$(_phrase "Wait for" "Wait until") all background jobs finish|wait")
   printf '%s\n' "${questions[@]}"
 }
 
 # Level 8: Variables & Substitution
 gen_level8() {
-  local questions=() log log2 cfg cfg2 txt txt2 csv csv2 dir dir2 ext ext2 script archive bin img pcap hash photo wordlist ip subnet port port2 mac url user host term term2 term3 field field2 key old new size iface proc svc sig branch time n1 n2 n3 col; _ctx
-  questions+=("Store 'hello' in variable msg|msg=hello|msg='hello'")
-  questions+=("Print variable \$msg|echo \$msg")
-  questions+=("Store date output in variable|now=\$(date)")
-  questions+=("Print today's date inline|echo \"Today is \$(date +%Y-%m-%d)\"")
-  questions+=("Store line count in variable|lines=\$(wc -l < ${txt})")
-  questions+=("Create dir named with today's date|mkdir \$(date +%Y-%m-%d)")
+  local questions=() txt var val var2; _ctx
+  txt=$(_pick SANDBOX_TXTS)
+  var=$(_pick msg name data result value output status)
+  var2=$(_pick now time today count num lines)
+  val=$(_pick hello world test ready done success running active)
+
+  questions+=("Store '${val}' in variable ${var}|${var}=${val}|${var}='${val}'")
+  questions+=("$(_phrase "Print" "Echo" "Show") variable \$${var}|echo \$${var}")
+  questions+=("Store date output in variable ${var2}|${var2}=\$(date)")
+  questions+=("Print $(_phrase "today's date" "the date" "current date") inline|echo \"Today is \$(date +%Y-%m-%d)\"")
+  questions+=("Store line count of ${W}${txt}${C} in variable|${var2}=\$(wc -l < ${txt})")
+  questions+=("Create dir named with $(_phrase "today's date" "current date")|mkdir \$(date +%Y-%m-%d)")
+  questions+=("Store hostname in variable|${var}=\$(hostname)")
+  questions+=("Store current directory in variable|${var}=\$(pwd)")
   printf '%s\n' "${questions[@]}"
 }
 
 # Level 9: Special Variables ($$, $?, $!)
 gen_level9() {
-  local questions=() log log2 cfg cfg2 txt txt2 csv csv2 dir dir2 ext ext2 script archive bin img pcap hash photo wordlist ip subnet port port2 mac url user host term term2 term3 field field2 key old new size iface proc svc sig branch time n1 n2 n3 col; _ctx
-  questions+=("Print current shell PID|echo \$\$")
-  questions+=("Print exit status of last command|echo \$?")
-  questions+=("Print PID of last background process|echo \$!")
-  questions+=("Print number of script arguments|echo \$#")
-  questions+=("Print all script arguments|echo \"\$@\"")
-  questions+=("Print script name|echo \$0")
+  local questions=(); _ctx
+
+  questions+=("$(_phrase "Print" "Echo" "Show") current shell PID|echo \$\$")
+  questions+=("$(_phrase "Print" "Show" "Get") exit status of last command|echo \$?")
+  questions+=("$(_phrase "Print" "Show" "Get") PID of last background process|echo \$!")
+  questions+=("$(_phrase "Print" "Show") number of script arguments|echo \$#")
+  questions+=("$(_phrase "Print" "Show" "Echo") all script arguments|echo \"\$@\"")
+  questions+=("Print script $(_phrase "name" "path" "itself")|echo \$0")
+  questions+=("Print first argument to script|echo \$1")
+  questions+=("Print current user|echo \$USER")
+  questions+=("Print home directory|echo \$HOME")
+  questions+=("Print current shell|echo \$SHELL")
   printf '%s\n' "${questions[@]}"
 }
 
 # Level 10: Test Operators ([[ -f ]], [[ -d ]], etc)
 gen_level10() {
-  local questions=() log log2 cfg cfg2 txt txt2 csv csv2 dir dir2 ext ext2 script archive bin img pcap hash photo wordlist ip subnet port port2 mac url user host term term2 term3 field field2 key old new size iface proc svc sig branch time n1 n2 n3 col; _ctx
-  questions+=("Test if ${txt} exists and is a file|[[ -f ${txt} ]]")
-  questions+=("Test if ${dir} exists and is a directory|[[ -d ${dir} ]]")
-  questions+=("Test if ${txt} is readable|[[ -r ${txt} ]]")
-  questions+=("Test if ${script} is executable|[[ -x ${script} ]]")
-  questions+=("Test if \$var is empty|[[ -z \"\$var\" ]]")
+  local questions=() txt cfg script dir n; _ctx
+  txt=$(_pick SANDBOX_TXTS); cfg=$(_pick SANDBOX_CFGS); script=$(_pick SANDBOX_SCRIPTS)
+  dir=$(_pick src data logs backup); n=$((RANDOM % 90 + 10))
+
+  questions+=("Test if ${W}${txt}${C} exists and is a file|[[ -f ${txt} ]]|test -f ${txt}")
+  questions+=("Test if ${W}${dir}${C} exists and is a directory|[[ -d ${dir} ]]|test -d ${dir}")
+  questions+=("Test if ${W}${txt}${C} is readable|[[ -r ${txt} ]]|test -r ${txt}")
+  questions+=("Test if ${W}${script}${C} is executable|[[ -x ${script} ]]|test -x ${script}")
+  questions+=("Test if \$var is $(_phrase "empty" "unset" "blank")|[[ -z \"\$var\" ]]")
   questions+=("Test if \$var is NOT empty|[[ -n \"\$var\" ]]")
-  questions+=("Test if \$a equals \$b|[[ \"\$a\" == \"\$b\" ]]")
-  questions+=("Test if \$num is greater than 10|[[ \$num -gt 10 ]]")
-  questions+=("Test if file1 is newer than file2|[[ file1 -nt file2 ]]")
-  questions+=("Combine tests with AND|[[ -f ${txt} && -r ${txt} ]]")
-  questions+=("Combine tests with OR§[[ -f ${txt} || -f ${cfg} ]]")
+  questions+=("Test if \$a $(_phrase "equals" "matches" "is same as") \$b|[[ \"\$a\" == \"\$b\" ]]")
+  questions+=("Test if \$num is greater than ${n}|[[ \$num -gt ${n} ]]")
+  questions+=("Test if ${W}${txt}${C} is newer than ${W}${cfg}${C}|[[ ${txt} -nt ${cfg} ]]")
+  questions+=("Test if ${W}${txt}${C} exists AND is readable|[[ -f ${txt} && -r ${txt} ]]")
+  questions+=("Test if ${W}${txt}${C} OR ${W}${cfg}${C} exists§[[ -f ${txt} || -f ${cfg} ]]")
   printf '%s\n' "${questions[@]}"
 }
 
