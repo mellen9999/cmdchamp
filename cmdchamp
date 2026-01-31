@@ -864,17 +864,16 @@ VI_MODE=${CMD_VI:-1}
 
 # Level 0: First Commands (pwd, ls, echo, cd)
 gen_level0() {
-  local questions=() log cfg txt csv dir n word; _ctx
+  local questions=() log cfg txt csv dir; _ctx
   log=$(_pick SANDBOX_LOGS); txt=$(_pick SANDBOX_TXTS); cfg=$(_pick SANDBOX_CFGS)
   csv=$(_pick SANDBOX_CSVS); dir=$(_phrase src data logs)
-  word=$(_phrase hello world example demo sample output result status)
 
   questions+=("$(_phrase "Print" "Show" "Display") current directory|pwd|#output:~^/sandbox")
   questions+=("$(_phrase "List" "Show") files in current directory|ls|#output:~server.log")
   questions+=("List $(_phrase "all files" "files") including hidden|ls -a|#output:~\\.")
   questions+=("List files with $(_phrase "details" "permissions and size" "long format")|ls -l|#output:~^[-drwx]")
-  questions+=("$(_phrase "Print" "Echo" "Output") '${word}'|echo ${word}|echo '${word}'|echo \"${word}\"|#output:${word}")
-  questions+=("$(_phrase "Print" "Echo") '${word} ${word}'|echo ${word} ${word}|echo '${word} ${word}'|#output:${word} ${word}")
+  questions+=("Print ${Y}Hello World${C} (the classic)|echo Hello World|echo 'Hello World'|#output:Hello World")
+  questions+=("Print your username using ${Y}\$USER${C}|echo \$USER|#output:~.")
   questions+=("$(_phrase "Change to" "Go to" "Enter") ${dir} directory|cd ${dir}|#output:*")
   questions+=("Go to home directory|cd|cd ~|#output:*")
   questions+=("Go up one directory|cd ..|#output:*")
