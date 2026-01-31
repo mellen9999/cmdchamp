@@ -964,16 +964,17 @@ gen_level4() {
   txt=$(_pick SANDBOX_TXTS); csv=$(_pick SANDBOX_CSVS); log=$(_pick SANDBOX_LOGS)
   word=$(_phrase hello world test bash linux unix pipe data file code)
 
-  # < feeds file INTO command (instead of command reading file directly)
+  local n=$((RANDOM % 5 + 3))  # 3-7
+  # < feeds file INTO command
   questions+=("Feed ${W}${csv}${C} into ${G}wc -l${C} using ${Y}<${C}|wc -l < ${csv}|#output:~^\\s*[0-9]+")
-  questions+=("Feed ${W}${txt}${C} into ${G}wc -l${C} using ${Y}<${C}|wc -l < ${txt}|#output:~^\\s*[0-9]+")
   questions+=("Feed ${W}${txt}${C} into ${G}sort${C} using ${Y}<${C}|sort < ${txt}|#output:*")
-  questions+=("Feed ${W}${log}${C} into ${G}sort${C} using ${Y}<${C}|sort < ${log}|#output:*")
-  # <<< feeds a string INTO command (no file needed)
+  questions+=("Feed ${W}${log}${C} into ${G}head -${n}${C} using ${Y}<${C}|head -${n} < ${log}|#output:@${n}")
+  questions+=("Feed ${W}${log}${C} into ${G}grep GET${C} using ${Y}<${C}|grep GET < ${log}|#output:~GET")
+  # <<< feeds string INTO command
   questions+=("Feed ${Y}'${word}'${C} into ${G}tr a-z A-Z${C} (use ${Y}<<<${C})|tr a-z A-Z <<< '${word}'|tr a-z A-Z <<< ${word}|#output:~[A-Z]")
   questions+=("Feed ${Y}'${word}'${C} into ${G}rev${C} (use ${Y}<<<${C})|rev <<< '${word}'|rev <<< ${word}|#output:*")
-  questions+=("Feed ${Y}'${word} ${word}'${C} into ${G}wc -w${C} (use ${Y}<<<${C})|wc -w <<< '${word} ${word}'|#output:~2")
-  questions+=("Feed ${Y}'${word}'${C} into ${G}wc -c${C} (use ${Y}<<<${C})|wc -c <<< '${word}'|#output:~[0-9]")
+  questions+=("Feed ${Y}'2+2'${C} into ${G}bc${C} (use ${Y}<<<${C})|bc <<< '2+2'|bc <<< 2+2|#output:~4")
+  questions+=("Feed ${Y}'a:b:c'${C} into ${G}cut -d: -f2${C} (use ${Y}<<<${C})|cut -d: -f2 <<< 'a:b:c'|#output:~b")
   printf '%s\n' "${questions[@]}"
 }
 
