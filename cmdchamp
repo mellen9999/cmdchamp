@@ -852,10 +852,11 @@ explain() {
   echo -e "${D}────────────────────────────────────────${N}"
   # Get first command (skip env vars like VAR=val)
   for tok in $1; do [[ "$tok" != *=* ]] && { cmd="$tok"; break; }; done
-  # Show mini manpage if available
+  # Show mini manpage if available (skip token breakdown - manpage is comprehensive)
   if [[ -n "${MANPAGE[$cmd]:-}" ]]; then
     echo -e "${MANPAGE[$cmd]}"
     echo -e "${D}────────────────────────────────────────${N}"
+    return
   fi
   for tok in $1; do
     exp="${EXP[$tok]:-}"
