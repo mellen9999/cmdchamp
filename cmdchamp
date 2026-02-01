@@ -7,6 +7,144 @@ _tty() { [[ -t 0 ]] || { echo "Error: requires interactive terminal" >&2; exit 1
 DATA="${XDG_DATA_HOME:-$HOME/.local/share}/cmdchamp"; mkdir -p "$DATA"; touch "$DATA/scores"
 
 # ═══════════════════════════════════════════════════════════════════════════════
+# PLAYER PROFILE & BOSS SYSTEM
+# ═══════════════════════════════════════════════════════════════════════════════
+PLAYER_NAME="" PLAYER_XP=0 BOSS_BEATEN=-1
+
+_load_profile() {
+  [[ -f "$DATA/profile" ]] && source "$DATA/profile"
+  [[ -z "$PLAYER_NAME" ]] && _first_run
+}
+
+_save_profile() {
+  printf 'PLAYER_NAME=%q\nPLAYER_XP=%d\nBOSS_BEATEN=%d\n' "$PLAYER_NAME" "$PLAYER_XP" "$BOSS_BEATEN" > "$DATA/profile"
+}
+
+_first_run() {
+  printf '\e[2J\e[H'
+  cat <<'EOF'
+
+    ██████╗███╗   ███╗██████╗  ██████╗██╗  ██╗ █████╗ ███╗   ███╗██████╗
+   ██╔════╝████╗ ████║██╔══██╗██╔════╝██║  ██║██╔══██╗████╗ ████║██╔══██╗
+   ██║     ██╔████╔██║██║  ██║██║     ███████║███████║██╔████╔██║██████╔╝
+   ██║     ██║╚██╔╝██║██║  ██║██║     ██╔══██║██╔══██║██║╚██╔╝██║██╔═══╝
+   ╚██████╗██║ ╚═╝ ██║██████╔╝╚██████╗██║  ██║██║  ██║██║ ╚═╝ ██║██║
+    ╚═════╝╚═╝     ╚═╝╚═════╝  ╚═════╝╚═╝  ╚═╝╚═╝  ╚═╝╚═╝     ╚═╝╚═╝
+
+                      ░▒▓█ MASTER THE COMMAND LINE █▓▒░
+
+EOF
+  echo
+  read -rp "    Enter your handle: " PLAYER_NAME
+  [[ -z "$PLAYER_NAME" ]] && PLAYER_NAME="anon"
+  PLAYER_XP=0
+  BOSS_BEATEN=-1
+  _save_profile
+  _intro
+}
+
+_intro() {
+  printf '\e[2J\e[H'
+  # Padding: inner width 66, fixed text 44 chars ("      You are " + ". You have only your terminal.")
+  local pad=$((22 - ${#PLAYER_NAME}))
+  local spaces; printf -v spaces '%*s' "$pad" ''
+  cat <<EOF
+
+
+    ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
+    ░░                                                                  ░░
+    ░░      The networks are dead. The cloud is ash.                    ░░
+    ░░      What remains runs on bone and silicon.                      ░░
+    ░░                                                                  ░░
+    ░░      You are ${C}${PLAYER_NAME}${N}. You have only your terminal.${spaces}░░
+    ░░                                                                  ░░
+    ░░      29 gatekeepers guard the path to ROOT.                      ░░
+    ░░      Learn their commands. Speak their language.                 ░░
+    ░░                                                                  ░░
+    ░░                         ${D}Or be forgotten.${N}                         ░░
+    ░░                                                                  ░░
+    ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
+
+
+EOF
+  read -rsn1 -p "                        Press Enter to begin..."
+  echo
+}
+
+# Boss names - command/system themed
+declare -a BOSS_NAMES=(
+  "n00b" "CopyPasta" "CatMan" "PipeWrench" "Redirect"
+  "DevNull" "AndOr" "BackgroundNoise" "\$VARIABLE" "\$\$"
+  "TestCase" "SubShell" "Globber" "QuoteMaster" "ArrayLord"
+  "TheFork" "Regex" "Cron" "Daemon" "RootKit"
+  "KernelPanic" "Segfault" "ZeroDay" "TheFirewall" "Entropy"
+  "Singularity" "Void" "Omega" "ROOT"
+)
+
+# Boss flavor text - dark + command themed
+declare -a BOSS_FLAVOR=(
+  "We all die as n00bs first."
+  "Your keystrokes echo in empty halls."
+  "I read the bones of dead files."
+  "Data flows through me like blood."
+  "I send your output to the grave."
+  "Your stderr falls into the void."
+  "True or false. Live or die."
+  "I wait in the dark between processes."
+  "I hold what you've forgotten."
+  "Every process has a death."
+  "Pass my test or be terminated."
+  "Trapped in shells within shells."
+  "I match everything. I consume all."
+  "Escape is just another cage."
+  "Count from zero. End at null."
+  "I birth processes that outlive you."
+  "I see patterns in your ashes."
+  "I wake the dead at midnight."
+  "I run while you sleep forever."
+  "I take what isn't given."
+  "The kernel screams. No one hears."
+  "Your memory is already corrupted."
+  "No patch saves you from me."
+  "Nothing enters. Nothing leaves."
+  "Chaos is the only certainty."
+  "All threads end here."
+  "I am where data goes to die."
+  "Everything ends. I am the proof."
+  "I am ROOT. Bow or break."
+)
+
+# Level names
+declare -a LEVEL_NAMES=(
+  "First Steps" "Save Your Work" "Reading Files" "Basic Pipes" "Input & Transform"
+  "Error Handling" "Logic Gates" "Job Control" "Variables" "Special Variables"
+  "Test Conditions" "Subshells" "Pattern Matching" "Quoting" "Arrays"
+  "Process Control" "Regular Expressions" "Cron" "Daemons" "Privilege"
+  "Kernel" "Memory" "Zero Day" "Firewall" "Entropy"
+  "Singularity" "Void" "Omega" "ROOT"
+)
+
+# Boss splash screen
+_boss_splash() {
+  local lv=$1
+  local boss="${BOSS_NAMES[$lv]}"
+  local flavor="${BOSS_FLAVOR[$lv]}"
+  clear
+  echo
+  echo
+  echo -e "                         \e[31m\e[1m═══ BOSS ═══\e[0m"
+  echo
+  echo -e "                           \e[33m\e[1m$boss\e[0m"
+  echo
+  echo -e "                       \e[2m\"$flavor\"\e[0m"
+  echo
+  echo -e "                    \e[2mNo hints. 4/5 to pass.\e[0m"
+  echo
+  read -rsn1 -p "                     Press Enter to continue..."
+  echo
+}
+
+# ═══════════════════════════════════════════════════════════════════════════════
 # SANDBOX SYSTEM - Real command execution in isolated environment
 # ═══════════════════════════════════════════════════════════════════════════════
 SANDBOX_MODE=1  # ON by default
@@ -1180,7 +1318,7 @@ gen_level5() {
 
 # Level 6: Logic Operators (&&, ||)
 gen_level6() {
-  local questions=() dir dir2 cfg cfg2 txt txt2 log msg msg2 script; _ctx
+  local questions=() dir dir2 cfg cfg2 txt txt2 log msg msg2 script n; _ctx
   dir=$(_phrase temp backup new test work build output cache)
   dir2=$(_phrase archive old data staging release deploy results)
   cfg=$(_pick SANDBOX_CFGS); cfg2=$(_pick SANDBOX_CFGS)
@@ -1189,264 +1327,257 @@ gen_level6() {
   msg=$(_phrase exists failed done error warning success ok)
   msg2=$(_phrase ready complete skipped finished created started)
   script=$(_pick SANDBOX_SCRIPTS)
+  n=$((RANDOM % 5 + 3))
+  local term=$(_phrase ERROR WARN INFO DEBUG)
 
-  # && = run second only if first succeeds (hint at && since this level teaches logic ops)
+  # === PURE: Just && and || basics ===
   questions+=("Create ${W}${dir}${C} and cd into it (use ${Y}&&${C})|mkdir ${dir} && cd ${dir}")
-  questions+=("Create parents then cd (use ${Y}&&${C})|mkdir -p ${dir}/sub && cd ${dir}/sub")
   questions+=("Make ${W}${dir2}${C} and cd into it (use ${Y}&&${C})|mkdir ${dir2} && cd ${dir2}")
-  questions+=("$(_phrase "Copy" "Backup") ${W}${txt}${C} then echo done|cp ${txt} ${txt}.bak && echo done")
-  questions+=("Copy ${W}${cfg}${C} then echo '${msg2}'|cp ${cfg} ${cfg}.bak && echo '${msg2}'")
-  questions+=("Create ${W}${dir}${C} and create a file inside§mkdir ${dir} && touch ${dir}/file.txt")
-  questions+=("Create ${W}${dir2}${C}/sub and touch ${W}${dir2}${C}/sub/test.txt§mkdir -p ${dir2}/sub && touch ${dir2}/sub/test.txt")
-
-  # && with test
-  questions+=("Backup ${W}${cfg}${C} if it exists|test -f ${cfg} && cp ${cfg} ${cfg}.bak|[[ -f ${cfg} ]] && cp ${cfg} ${cfg}.bak")
-  questions+=("Check if ${W}${txt}${C} exists, then ${G}cat${C} it|test -f ${txt} && cat ${txt}|[[ -f ${txt} ]] && cat ${txt}")
-  questions+=("If ${W}${log}${C} exists, show first 5 lines|test -f ${log} && head -5 ${log}|[[ -f ${log} ]] && head -5 ${log}")
-  questions+=("If ${W}${dir}${C} is a directory, list its contents|test -d ${dir} && ls ${dir}|[[ -d ${dir} ]] && ls ${dir}")
-
-  # || = run second only if first fails (hint at || since this level teaches logic ops)
   questions+=("Create ${W}${dir}${C} or echo '${msg}' if fails (use ${Y}||${C})§mkdir ${dir} || echo '${msg}'")
-  questions+=("${G}cat${C} missing.txt, or echo '${msg}' if fails (use ${Y}||${C})§cat missing.txt || echo '${msg}'")
-  questions+=("${G}cat${C} gone.log, or echo '${msg2}' on failure§cat gone.log || echo '${msg2}'")
-  questions+=("Try cd ${W}${dir2}${C}, or echo '${msg}' if fails§cd ${dir2} || echo '${msg}'")
-  questions+=("Copy ${W}${txt2}${C} or warn if fails|cp ${txt2} backup.txt || echo '${msg}'")
-
-  # || with creation fallback
   questions+=("cd to ${W}${dir}${C}, create it if missing|cd ${dir} || mkdir ${dir}")
-  questions+=("Use existing ${W}${dir2}${C} or create it|test -d ${dir2} || mkdir ${dir2}|[[ -d ${dir2} ]] || mkdir ${dir2}")
 
-  # Combined && and ||
+  # === COMPOUND: Uses cat (L2), head (L2), tail (L2) ===
+  questions+=("If ${W}${txt}${C} exists, display it (use ${Y}&&${C})|test -f ${txt} && cat ${txt}|[[ -f ${txt} ]] && cat ${txt}")
+  questions+=("If ${W}${log}${C} exists, show first ${n} lines|test -f ${log} && head -${n} ${log}|[[ -f ${log} ]] && head -${n} ${log}")
+  questions+=("If ${W}${log}${C} exists, show last ${n} lines|test -f ${log} && tail -${n} ${log}|[[ -f ${log} ]] && tail -${n} ${log}")
+  questions+=("${G}cat${C} missing.txt, or echo '${msg}' on failure§cat missing.txt || echo '${msg}'")
   questions+=("If ${W}${txt}${C} exists cat it, else echo '${msg}'§test -f ${txt} && cat ${txt} || echo '${msg}'§[[ -f ${txt} ]] && cat ${txt} || echo '${msg}'")
-  questions+=("Copy ${W}${cfg}${C}, say done or failed§cp ${cfg} ${cfg}.bak && echo done || echo failed")
-  questions+=("Run ${G}./${script}${C}, echo success or failed§./${script} && echo success || echo failed")
+
+  # === COMPOUND: Uses grep (L3), pipes (L3) ===
+  questions+=("If ${W}${log}${C} has ${Y}${term}${C}, show matching lines§grep -q ${term} ${log} && grep ${term} ${log}")
+  questions+=("Search ${Y}${term}${C} in ${W}${log}${C}, or echo 'not found'§grep ${term} ${log} || echo 'not found'")
+  questions+=("If ${W}${log}${C} contains ${Y}${term}${C}, count the matches§grep -q ${term} ${log} && grep -c ${term} ${log}")
+  questions+=("Show ${Y}${term}${C} lines from ${W}${log}${C} if any, else show all§grep ${term} ${log} || cat ${log}")
+
+  # === COMPOUND: Uses redirection (L1, L5) ===
+  questions+=("Backup ${W}${cfg}${C} if it exists, then log success|test -f ${cfg} && cp ${cfg} ${cfg}.bak && echo done >> backup.log")
+  questions+=("Copy ${W}${txt}${C} to backup and echo '${msg2}'|cp ${txt} ${txt}.bak && echo '${msg2}'")
+  questions+=("Run ${G}./${script}${C} silently, echo success or failed§./${script} &>/dev/null && echo success || echo failed")
+  questions+=("Run ${G}./${script}${C}, save output or log error§./${script} > output.txt || echo 'failed' >> errors.log")
+
+  # === COMPOUND: Uses ls (L0), test + cat/head combo ===
+  questions+=("If ${W}${dir}${C} exists, list contents|test -d ${dir} && ls ${dir}|[[ -d ${dir} ]] && ls ${dir}")
+  questions+=("List ${W}${dir}${C} or create it if missing|ls ${dir} || mkdir ${dir}")
+  questions+=("Create ${W}${dir}${C} and save listing to files.txt§mkdir -p ${dir} && ls ${dir} > files.txt")
+  questions+=("If ${W}${cfg}${C} is readable, cat it; else echo 'denied'§test -r ${cfg} && cat ${cfg} || echo 'denied'§[[ -r ${cfg} ]] && cat ${cfg} || echo 'denied'")
+
+  # === COMPOUND: Multi-step pipelines with logic ===
+  questions+=("Check if ${W}${log}${C} has ${Y}${term}${C}, show first ${n} matches§grep -q ${term} ${log} && grep ${term} ${log} | head -${n}")
+  questions+=("If ${W}${txt}${C} exists, sort and save to sorted.txt§test -f ${txt} && sort ${txt} > sorted.txt")
+  questions+=("Search ${Y}${term}${C} in ${W}${log}${C}, save matches or echo 'none'§grep ${term} ${log} > matches.txt || echo 'none'")
 
   printf '%s\n' "${questions[@]}"
 }
 
 # Level 7: Job Control (&, jobs, bg, fg)
 gen_level7() {
-  local questions=() n n2 n3 script script2 log outfile; _ctx
+  local questions=() n n2 n3 script script2 log outfile errfile txt term; _ctx
   n=$((RANDOM % 90 + 10)); n2=$((RANDOM % 3 + 1)); n3=$((RANDOM % 60 + 30))
   script=$(_pick SANDBOX_SCRIPTS); script2=$(_pick SANDBOX_SCRIPTS)
-  log=$(_pick SANDBOX_LOGS)
+  log=$(_pick SANDBOX_LOGS); txt=$(_pick SANDBOX_TXTS)
   outfile=$(_phrase output.log results.txt run.log process.out)
+  errfile=$(_phrase errors.log err.txt debug.log)
+  term=$(_phrase ERROR WARN INFO)
 
-  # & = run in background (hint at & since this level teaches job control)
+  # === PURE: Just & and job control basics ===
   questions+=("Run sleep ${n} in background (use ${Y}&${C})|sleep ${n} &")
   questions+=("Run ${W}${script}${C} in background (use ${Y}&${C})|./${script} &")
-  questions+=("Run ${W}${script2}${C} in background (use ${Y}&${C})|./${script2} &")
-
-  # jobs = list jobs
   questions+=("$(_phrase "List" "Show" "View") background jobs|jobs")
-  questions+=("Show running background jobs|jobs")
-  questions+=("List all background processes|jobs")
-
-  # fg = foreground
   questions+=("Bring job ${n2} to foreground|fg %${n2}|fg ${n2}")
-  questions+=("Resume job ${n2} in foreground|fg %${n2}|fg ${n2}")
-  questions+=("Bring most recent job to foreground|fg|fg %")
-
-  # bg = background (resume stopped job)
   questions+=("$(_phrase "Send" "Move" "Put") job ${n2} to background|bg %${n2}|bg ${n2}")
-  questions+=("Resume job ${n2} in background|bg %${n2}|bg ${n2}")
-  questions+=("Continue stopped job in background|bg")
-
-  # kill jobs
   questions+=("Kill job ${n2}|kill %${n2}")
-  questions+=("Terminate job ${n2}|kill %${n2}")
-  questions+=("Kill job ${n2} with force (SIGKILL)|kill -9 %${n2}|kill -KILL %${n2}")
-  questions+=("Force kill job ${n2}|kill -9 %${n2}|kill -KILL %${n2}")
-  questions+=("Stop job ${n2} (SIGSTOP)|kill -STOP %${n2}|kill -19 %${n2}")
-
-  # wait
   questions+=("$(_phrase "Wait for" "Wait until") all background jobs finish|wait")
-  questions+=("Wait for all background jobs|wait")
-  questions+=("Wait for job ${n2} specifically|wait %${n2}")
 
-  # Combining
-  questions+=("Run ${W}${script}${C} in background, redirect output to ${W}${outfile}${C}|./${script} > ${outfile} &|./${script} &> ${outfile} &")
+  # === COMPOUND: Uses redirection (L1, L5) ===
+  questions+=("Run ${W}${script}${C} in background, save stdout to ${W}${outfile}${C}|./${script} > ${outfile} &")
+  questions+=("Run ${W}${script2}${C} in background, capture all output|./${script2} &> ${outfile} &|./${script2} > ${outfile} 2>&1 &")
+  questions+=("Run ${W}${script}${C} in background, separate stdout and stderr|./${script} > ${outfile} 2> ${errfile} &")
+  questions+=("Run ${W}${script}${C} silently in background|./${script} &>/dev/null &|./${script} >/dev/null 2>&1 &")
+
+  # === COMPOUND: Uses && || (L6) ===
+  questions+=("Run ${W}${script}${C} in background and echo 'started'|./${script} & && echo started")
+  questions+=("Wait for all jobs, then echo 'done'|wait && echo done")
+  questions+=("Kill job ${n2}, echo 'killed' on success|kill %${n2} && echo killed")
+
+  # === COMPOUND: Uses cat/grep (L2, L3) with job control ===
+  questions+=("Run ${W}${script}${C} in background, later grep its output§./${script} > ${outfile} & ; sleep 1 ; grep ${term} ${outfile}")
+  questions+=("Tail ${W}${log}${C} in background|tail -f ${log} &")
+  questions+=("Run grep in background, save matches|grep ${term} ${log} > matches.txt &")
+
+  # === COMPOUND: Advanced job control ===
   questions+=("Disown job ${n2} (detach from shell)|disown %${n2}")
+  questions+=("Kill job ${n2} with force (SIGKILL)|kill -9 %${n2}|kill -KILL %${n2}")
+  questions+=("Stop job ${n2} (SIGSTOP)|kill -STOP %${n2}|kill -19 %${n2}")
+  questions+=("Wait for job ${n2} specifically|wait %${n2}")
+  questions+=("Bring most recent job to foreground|fg|fg %")
+  questions+=("Continue stopped job in background|bg")
 
   printf '%s\n' "${questions[@]}"
 }
 
 # Level 8: Variables & Substitution
 gen_level8() {
-  local questions=() txt txt2 log var var2 var3 val val2; _ctx
+  local questions=() txt txt2 log cfg var var2 var3 val val2 term n; _ctx
   txt=$(_pick SANDBOX_TXTS); txt2=$(_pick SANDBOX_TXTS)
-  log=$(_pick SANDBOX_LOGS)
+  log=$(_pick SANDBOX_LOGS); cfg=$(_pick SANDBOX_CFGS)
   var=$(_phrase msg name data result value output status)
   var2=$(_phrase now time today count num lines)
   var3=$(_phrase tmp dir file path prefix backup)
   val=$(_phrase hello world test ready done success running active)
   val2=$(_phrase config debug enabled production staging offline)
+  term=$(_phrase ERROR WARN INFO DEBUG); n=$((RANDOM % 5 + 3))
 
-  # Basic variable assignment
+  # === PURE: Just variables and substitution basics ===
   questions+=("Store '${val}' in variable ${var}|${var}=${val}|${var}='${val}'")
-  questions+=("Set ${var2} to '${val2}'|${var2}=${val2}|${var2}='${val2}'")
-  questions+=("Assign '${val}' to ${var3}|${var3}=${val}|${var3}='${val}'")
-
-  # echo variables
   questions+=("$(_phrase "Print" "Echo" "Show") variable \$${var}|echo \$${var}")
-  questions+=("Print the value of \$${var2}|echo \$${var2}")
-  questions+=("Display \$${var3}|echo \$${var3}")
-
-  # Command substitution $() (hint at $() since this level teaches substitution)
   questions+=("Store date output in ${var2} (use ${Y}\$()${C})|${var2}=\$(date)")
   questions+=("Store hostname in variable (use ${Y}\$()${C})|${var}=\$(hostname)")
-  questions+=("Store pwd in variable (use ${Y}\$()${C})|${var}=\$(pwd)")
-  questions+=("Store username in variable (use ${Y}\$()${C})|${var}=\$(whoami)")
+  questions+=("Print length of \$${var}|echo \${#${var}}")
+  questions+=("Print \$${var} or 'default' if empty|echo \${${var}:-default}")
+
+  # === COMPOUND: Uses wc/head/tail (L2), input redir (L4) ===
   questions+=("Store line count of ${W}${txt}${C} in variable|${var2}=\$(wc -l < ${txt})")
   questions+=("Store word count of ${W}${txt2}${C} in ${var2}|${var2}=\$(wc -w < ${txt2})")
   questions+=("Store first line of ${W}${log}${C} in ${var}|${var}=\$(head -1 ${log})")
-
-  # Inline command substitution
-  questions+=("Print today's date inline|echo \"Today is \$(date +%Y-%m-%d)\"")
-  questions+=("Echo 'User is' followed by username|echo \"User is \$(whoami)\"")
-  questions+=("Print 'Host:' and hostname|echo \"Host: \$(hostname)\"")
+  questions+=("Store last line of ${W}${log}${C} in ${var}|${var}=\$(tail -1 ${log})")
   questions+=("Show 'Lines:' with line count of ${W}${txt}${C}§echo \"Lines: \$(wc -l < ${txt})\"")
 
-  # Using variables in commands
+  # === COMPOUND: Uses grep (L3), pipes (L3) ===
+  questions+=("Store count of ${Y}${term}${C} matches in ${var2}§${var2}=\$(grep -c ${term} ${log})")
+  questions+=("Store first ${Y}${term}${C} line from ${W}${log}${C}§${var}=\$(grep ${term} ${log} | head -1)")
+  questions+=("Count unique lines and store in variable§${var2}=\$(sort ${txt} | uniq | wc -l)")
+
+  # === COMPOUND: Uses redirection (L1, L5) ===
+  questions+=("Backup ${W}${txt}${C} with date suffix|cp ${txt} ${txt}.\$(date +%Y%m%d)")
   questions+=("Create dir named with today's date|mkdir \$(date +%Y-%m-%d)")
-  questions+=("Create dir named with hostname|mkdir \$(hostname)")
-  questions+=("Create backup file: ${W}${txt}${C}.\$(date +%Y%m%d)|cp ${txt} ${txt}.\$(date +%Y%m%d)")
+  questions+=("Save grep results, echo count found§grep ${term} ${log} > matches.txt && echo \"Found: \$(wc -l < matches.txt)\"")
 
-  # Variable in strings
-  questions+=("Echo 'Value is \$${var}'|echo \"Value is \$${var}\"")
+  # === COMPOUND: Uses && || (L6) ===
+  questions+=("Check file exists, store line count or 0§${var2}=\$(test -f ${txt} && wc -l < ${txt} || echo 0)")
+  questions+=("Store hostname, then echo if set§${var}=\$(hostname) && echo \"Host: \$${var}\"")
+
+  # === COMPOUND: Complex substitution chains ===
+  questions+=("Print today's date inline|echo \"Today is \$(date +%Y-%m-%d)\"")
+  questions+=("Echo 'User is' followed by username|echo \"User is \$(whoami)\"")
+  questions+=("Print hostname and current directory§echo \"Host: \$(hostname), Dir: \$(pwd)\"")
+  questions+=("Show file info: name, lines, words§echo \"${txt}: \$(wc -l < ${txt}) lines, \$(wc -w < ${txt}) words\"")
+
+  # === COMPOUND: Variable with earlier skills ===
+  questions+=("Store sorted unique lines in variable§${var}=\$(sort -u ${txt})")
+  questions+=("Store first ${n} lines of ${W}${log}${C}|${var}=\$(head -${n} ${log})")
   questions+=("Echo path: /home/\$USER|echo \"/home/\$USER\"")
-  questions+=("Echo '\$HOME is' followed by home path|echo \"\$HOME is \$HOME\"")
-
-  # Parameter expansion basics
-  questions+=("Print length of \$${var}|echo \${#${var}}")
-  questions+=("Print \$${var} or 'default' if empty|echo \${${var}:-default}")
 
   printf '%s\n' "${questions[@]}"
 }
 
 # Level 9: Special Variables ($$, $?, $!)
 gen_level9() {
-  local questions=() n n2; _ctx
+  local questions=() n n2 script log txt; _ctx
   n=$((RANDOM % 3 + 2)); n2=$((RANDOM % 4 + 3))
+  script=$(_pick SANDBOX_SCRIPTS); log=$(_pick SANDBOX_LOGS); txt=$(_pick SANDBOX_TXTS)
+  local term=$(_phrase ERROR WARN INFO)
 
-  # Process IDs (hint at the variable since this level teaches special vars)
+  # === PURE: Special variables basics ===
   questions+=("Print current shell PID (use ${Y}\$\$${C})|echo \$\$")
-  questions+=("Show this shell's process ID (use ${Y}\$\$${C})|echo \$\$")
   questions+=("Print PID of last background process (use ${Y}\$!${C})|echo \$!")
-  questions+=("Get PID of most recent background job (use ${Y}\$!${C})|echo \$!")
-
-  # Exit status
   questions+=("Print exit status of last command (use ${Y}\$?${C})|echo \$?")
-  questions+=("Check last command's exit code (use ${Y}\$?${C})|echo \$?")
-  questions+=("Show return code of previous command (use ${Y}\$?${C})|echo \$?")
-
-  # Script arguments
   questions+=("Print number of script arguments (use ${Y}\$#${C})|echo \$#")
-  questions+=("Count of arguments passed (use ${Y}\$#${C})|echo \$#")
   questions+=("Print all script arguments (use ${Y}\$@${C})|echo \"\$@\"")
-  questions+=("Show all arguments as separate words (use ${Y}\$@${C})|echo \"\$@\"")
-  questions+=("Show all arguments as single string (use ${Y}\$*${C})|echo \"\$*\"")
   questions+=("Print script name (use ${Y}\$0${C})|echo \$0")
-  questions+=("Show name of current script (use ${Y}\$0${C})|echo \$0")
   questions+=("Print first argument (use ${Y}\$1${C})|echo \$1")
-  questions+=("Print argument ${n} (use ${Y}\$${n}${C})|echo \$${n}")
-  questions+=("Print argument ${n2} (use ${Y}\$${n2}${C})|echo \$${n2}")
-  questions+=("Print second argument (use ${Y}\$2${C})|echo \$2")
-
-  # Environment variables
-  questions+=("Print current user (use ${Y}\$USER${C})|echo \$USER")
-  questions+=("Show logged in username (use ${Y}\$USER${C})|echo \$USER|echo \$LOGNAME")
-  questions+=("Print home directory (use ${Y}\$HOME${C})|echo \$HOME")
-  questions+=("Show user's home path (use ${Y}\$HOME${C})|echo \$HOME")
-  questions+=("Print current shell (use ${Y}\$SHELL${C})|echo \$SHELL")
-  questions+=("Show default shell path (use ${Y}\$SHELL${C})|echo \$SHELL")
-  questions+=("Print working directory (use ${Y}\$PWD${C})|echo \$PWD")
-  questions+=("Show PATH variable (use ${Y}\$PATH${C})|echo \$PATH")
-  questions+=("Print hostname variable (use ${Y}\$HOSTNAME${C})|echo \$HOSTNAME")
-  questions+=("Show terminal type (use ${Y}\$TERM${C})|echo \$TERM")
-  questions+=("Print language setting (use ${Y}\$LANG${C})|echo \$LANG")
-  questions+=("Show editor preference (use ${Y}\$EDITOR${C})|echo \$EDITOR|echo \$VISUAL")
-
-  # Random
   questions+=("Print random number (use ${Y}\$RANDOM${C})|echo \$RANDOM")
-  questions+=("Show a random value|echo \$RANDOM")
+
+  # === COMPOUND: Uses && || (L6) with exit status ===
+  questions+=("Run grep, check exit status if found§grep -q ${term} ${log} ; echo \$?")
+  questions+=("Run command, echo 'success' if \$? is 0§ls && echo 'exit: '\$?")
+  questions+=("Test if last command succeeded (exit 0)|[[ \$? -eq 0 ]] && echo success")
+
+  # === COMPOUND: Uses & (L7) with $! ===
+  questions+=("Run ${W}${script}${C} in background, save its PID§./${script} & ; echo \"PID: \$!\"")
+  questions+=("Start sleep in background, show PID|sleep 60 & ; echo \$!")
+  questions+=("Run in background and wait for it by PID§./${script} & pid=\$! ; wait \$pid")
+
+  # === COMPOUND: Uses redirection (L1, L5) ===
+  questions+=("Save PID to file after starting background job§./${script} & ; echo \$! > pid.txt")
+  questions+=("Log exit status after command§grep ${term} ${log} ; echo \$? >> status.log")
+  questions+=("Print 'failed' to stderr using exit status check§ls /nonexistent 2>/dev/null ; [[ \$? -ne 0 ]] && echo failed >&2")
+
+  # === COMPOUND: Environment variables with commands ===
+  questions+=("List files in home directory using \$HOME|ls \$HOME")
+  questions+=("Create file in home using \$HOME|touch \$HOME/test.txt")
+  questions+=("Search in user's home for ${Y}${term}${C}§grep -r ${term} \$HOME 2>/dev/null | head -5")
+  questions+=("Show user and hostname together|echo \"\$USER@\$HOSTNAME\"")
+
+  # === COMPOUND: Using $RANDOM ===
+  questions+=("Create file with random name|touch file_\$RANDOM.txt")
+  questions+=("Pick random line from ${W}${txt}${C}§head -\$((RANDOM % \$(wc -l < ${txt}) + 1)) ${txt} | tail -1")
 
   printf '%s\n' "${questions[@]}"
 }
 
 # Level 10: Test Operators ([[ -f ]], [[ -d ]], etc)
 gen_level10() {
-  local questions=() txt txt2 cfg cfg2 log script dir dir2 n n2; _ctx
+  local questions=() txt txt2 cfg cfg2 log script dir dir2 n n2 n3 term; _ctx
   txt=$(_pick SANDBOX_TXTS); txt2=$(_pick SANDBOX_TXTS)
   cfg=$(_pick SANDBOX_CFGS); cfg2=$(_pick SANDBOX_CFGS)
   log=$(_pick SANDBOX_LOGS); script=$(_pick SANDBOX_SCRIPTS)
   dir=$(_phrase src data logs backup); dir2=$(_phrase temp cache build output)
-  n=$((RANDOM % 90 + 10)); n2=$((RANDOM % 50 + 5))
+  n=$((RANDOM % 90 + 10)); n2=$((RANDOM % 50 + 5)); n3=$((RANDOM % 5 + 3))
+  term=$(_phrase ERROR WARN INFO DEBUG)
 
-  # File exists tests
+  # === PURE: Test operator basics ===
   questions+=("Test if ${W}${txt}${C} exists and is a file|[[ -f ${txt} ]]|test -f ${txt}")
-  questions+=("Check if ${W}${cfg}${C} is a regular file|[[ -f ${cfg} ]]|test -f ${cfg}")
-  questions+=("Test if ${W}${log}${C} exists as a file|[[ -f ${log} ]]|test -f ${log}")
-  questions+=("Test if any file exists at ${W}${txt2}${C}|[[ -e ${txt2} ]]|test -e ${txt2}")
-
-  # Directory tests
   questions+=("Test if ${W}${dir}${C} exists and is a directory|[[ -d ${dir} ]]|test -d ${dir}")
-  questions+=("Check if ${W}${dir2}${C} is a directory|[[ -d ${dir2} ]]|test -d ${dir2}")
-
-  # Permission tests
   questions+=("Test if ${W}${txt}${C} is readable|[[ -r ${txt} ]]|test -r ${txt}")
-  questions+=("Check if ${W}${cfg}${C} is readable|[[ -r ${cfg} ]]|test -r ${cfg}")
-  questions+=("Test if ${W}${txt}${C} is writable|[[ -w ${txt} ]]|test -w ${txt}")
-  questions+=("Check if ${W}${cfg2}${C} is writable|[[ -w ${cfg2} ]]|test -w ${cfg2}")
   questions+=("Test if ${W}${script}${C} is executable|[[ -x ${script} ]]|test -x ${script}")
-
-  # File size tests
   questions+=("Test if ${W}${txt}${C} is non-empty|[[ -s ${txt} ]]|test -s ${txt}")
-  questions+=("Check if ${W}${log}${C} has content (size > 0)|[[ -s ${log} ]]|test -s ${log}")
-
-  # String tests
   questions+=("Test if \$var is empty|[[ -z \"\$var\" ]]")
-  questions+=("Check if \$name is blank|[[ -z \"\$name\" ]]")
   questions+=("Test if \$var is NOT empty|[[ -n \"\$var\" ]]")
-  questions+=("Check if \$value has content|[[ -n \"\$value\" ]]")
-
-  # String comparison
-  questions+=("Test if \$a equals \$b|[[ \"\$a\" == \"\$b\" ]]")
-  questions+=("Check if \$name equals \$expected|[[ \"\$name\" == \"\$expected\" ]]")
-  questions+=("Test if \$a does NOT equal \$b|[[ \"\$a\" != \"\$b\" ]]")
-
-  # Numeric comparison
   questions+=("Test if \$num is greater than ${n}|[[ \$num -gt ${n} ]]")
-  questions+=("Check if \$count is greater than ${n2}|[[ \$count -gt ${n2} ]]")
-  questions+=("Test if \$num is less than ${n}|[[ \$num -lt ${n} ]]")
-  questions+=("Check if \$x equals ${n2}|[[ \$x -eq ${n2} ]]")
-  questions+=("Test if \$num is not equal to ${n}|[[ \$num -ne ${n} ]]")
-  questions+=("Check if \$count >= ${n2}|[[ \$count -ge ${n2} ]]")
-  questions+=("Test if \$num <= ${n}|[[ \$num -le ${n} ]]")
 
-  # File comparison
-  questions+=("Test if ${W}${txt}${C} is newer than ${W}${cfg}${C}|[[ ${txt} -nt ${cfg} ]]")
-  questions+=("Check if ${W}${log}${C} is older than ${W}${txt}${C}|[[ ${log} -ot ${txt} ]]")
+  # === COMPOUND: Uses cat (L2) ===
+  questions+=("If ${W}${txt}${C} is readable, display it|[[ -r ${txt} ]] && cat ${txt}")
+  questions+=("If ${W}${cfg}${C} exists and readable, show with line numbers|[[ -f ${cfg} && -r ${cfg} ]] && cat -n ${cfg}")
 
-  # Combined tests
+  # === COMPOUND: Uses head/tail (L2) ===
+  questions+=("If ${W}${log}${C} exists, show first ${n3} lines|[[ -f ${log} ]] && head -${n3} ${log}")
+  questions+=("If ${W}${log}${C} has content, show last ${n3} lines|[[ -s ${log} ]] && tail -${n3} ${log}")
+
+  # === COMPOUND: Uses grep (L3), pipes (L3) ===
+  questions+=("If ${W}${log}${C} exists, search for ${Y}${term}${C}|[[ -f ${log} ]] && grep ${term} ${log}")
+  questions+=("If ${W}${log}${C} is non-empty, count ${Y}${term}${C} matches|[[ -s ${log} ]] && grep -c ${term} ${log}")
+  questions+=("Test if ${W}${log}${C} contains ${Y}${term}${C}§[[ -f ${log} ]] && grep -q ${term} ${log}")
+
+  # === COMPOUND: Uses redirection (L1, L5) ===
+  questions+=("If ${W}${txt}${C} is writable, append timestamp|[[ -w ${txt} ]] && date >> ${txt}")
+  questions+=("If ${W}${script}${C} is executable, run and log output|[[ -x ${script} ]] && ./${script} > output.log 2>&1")
+  questions+=("Test if ${W}${dir}${C} exists, create if not|[[ -d ${dir} ]] || mkdir -p ${dir}")
+
+  # === COMPOUND: Uses && || (L6) ===
+  questions+=("If ${W}${txt}${C} exists cat it, else echo 'missing'§[[ -f ${txt} ]] && cat ${txt} || echo 'missing'")
+  questions+=("If ${W}${cfg}${C} is writable, backup it and echo done|[[ -w ${cfg} ]] && cp ${cfg} ${cfg}.bak && echo done")
+  questions+=("Check file exists or exit with error§[[ -f ${txt} ]] || { echo 'not found' >&2; exit 1; }")
+
+  # === COMPOUND: Numeric tests with variables (L8) ===
+  questions+=("If line count > ${n2}, show first ${n3} lines§lines=\$(wc -l < ${txt}); [[ \$lines -gt ${n2} ]] && head -${n3} ${txt}")
+  questions+=("Test if ${W}${txt}${C} has more than ${n2} words§[[ \$(wc -w < ${txt}) -gt ${n2} ]]")
+
+  # === Combined/advanced tests ===
   questions+=("Test if ${W}${txt}${C} exists AND is readable|[[ -f ${txt} && -r ${txt} ]]")
-  questions+=("Check if ${W}${cfg}${C} is file AND writable|[[ -f ${cfg} && -w ${cfg} ]]")
   questions+=("Test if ${W}${txt}${C} OR ${W}${cfg}${C} exists§[[ -f ${txt} || -f ${cfg} ]]")
-  questions+=("Check if either ${W}${dir}${C} or ${W}${dir2}${C} is a directory§[[ -d ${dir} || -d ${dir2} ]]")
-
-  # Negation
   questions+=("Test if ${W}${txt}${C} does NOT exist|[[ ! -f ${txt} ]]|test ! -f ${txt}")
-  questions+=("Check if ${W}${dir}${C} is NOT a directory|[[ ! -d ${dir} ]]|test ! -d ${dir}")
+  questions+=("Test if ${W}${txt}${C} is newer than ${W}${cfg}${C}|[[ ${txt} -nt ${cfg} ]]")
 
   printf '%s\n' "${questions[@]}"
 }
 
-# Level 1: Core File Tools (cat, ls, head, tail, cp, wc, du, tree)
+# Level 11: Core File Tools (cat, ls, head, tail, cp, wc, du, tree)
 gen_level11() {
   local questions=() log log2 cfg cfg2 txt txt2 csv csv2 dir dir2 ext ext2 script archive bin img pcap hash photo wordlist ip subnet port port2 mac url user host term term2 term3 field field2 key old new size iface proc svc sig branch time n1 n2 n3 col; _ctx
   local perm1=$((RANDOM % 8))$((RANDOM % 8))$((RANDOM % 8))
+  local searchterm=$(_phrase ERROR WARN INFO DEBUG)
 
-  # Viewing files
+  # === PURE: Basic file operations ===
   questions+=("Display ${cfg} contents (use ${Y}cat${C})|cat ${cfg}|bat ${cfg}")
   questions+=("Display ${log} with line numbers (use ${Y}cat${C})|cat -n ${log}|bat -n ${log}")
   questions+=("Display ${txt} and ${txt2} together (use ${Y}cat${C})|cat ${txt} ${txt2}")
@@ -1506,10 +1637,18 @@ gen_level11() {
   questions+=("Set read-only for everyone|chmod a-w ${txt}|chmod 444 ${txt}")
   questions+=("Copy permissions from ${cfg} to ${txt}|chmod --reference=${cfg} ${txt}")
 
+  # === COMPOUND: Uses grep (L3), pipes (L3), logic (L6) ===
+  questions+=("If ${W}${log}${C} exists, show lines with ${Y}${searchterm}${C}§[[ -f ${log} ]] && grep ${searchterm} ${log}")
+  questions+=("Copy ${W}${cfg}${C} to backup and verify§cp ${cfg} ${cfg}.bak && diff ${cfg} ${cfg}.bak")
+  questions+=("Create ${W}${dir}${C}, then list its contents|mkdir -p ${dir} && ls -la ${dir}")
+  questions+=("Count ${Y}${searchterm}${C} in ${W}${log}${C} if exists§[[ -f ${log} ]] && grep -c ${searchterm} ${log}")
+  questions+=("Extract ${W}${archive}${C} and list contents§tar xzf ${archive} && ls -la")
+  questions+=("Copy ${W}${txt}${C} to ${W}${dir}${C}/ and echo done|cp ${txt} ${dir}/ && echo done")
+
   printf '%s\n' "${questions[@]}"
 }
 
-# Level 3: Text Search (grep, rg)
+# Level 14: Text Search (grep, rg)
 gen_level14() {
   local questions=() log log2 cfg cfg2 txt txt2 csv csv2 dir dir2 ext ext2 script archive bin img pcap hash photo wordlist ip subnet port port2 mac url user host term term2 term3 field field2 key old new size iface proc svc sig branch time n1 n2 n3 col; _ctx
   local ctx=$(_rnum 1 10) ctx2=$(_rnum 2 5)
@@ -1562,10 +1701,17 @@ gen_level14() {
   questions+=("Quiet mode (exit code only, no output)|grep -q ${term} ${log}|rg -q ${term} ${log}")
   questions+=("Colorize output|grep --color=always ${term}|rg --color=always ${term}")
 
+  # === COMPOUND: Uses pipes (L3), head/tail (L2), sort/uniq (L16), logic (L6) ===
+  questions+=("Find ${Y}${term}${C} in ${W}${log}${C}, show first ${ctx} matches§grep ${term} ${log} | head -${ctx}")
+  questions+=("Count ${Y}${term}${C} lines and show sorted unique§grep ${term} ${log} | sort | uniq -c | sort -rn")
+  questions+=("If ${Y}${term}${C} found, count matches; else echo 'none'§grep -q ${term} ${log} && grep -c ${term} ${log} || echo 'none'")
+  questions+=("Search ${Y}${term}${C} in all .${ext} files, save to results.txt§grep -r ${term} --include='*.${ext}' > results.txt")
+  questions+=("Find ${Y}${term}${C} lines, extract IPs, count unique§grep ${term} ${log} | grep -oE '[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+' | sort -u | wc -l")
+
   printf '%s\n' "${questions[@]}"
 }
 
-# Level 4: File Finding (find, fd)
+# Level 15: File Finding (find, fd)
 gen_level15() {
   local questions=() log log2 cfg cfg2 txt txt2 csv csv2 dir dir2 ext ext2 script archive bin img pcap hash photo wordlist ip subnet port port2 mac url user host term term2 term3 field field2 key old new size iface proc svc sig branch time n1 n2 n3 col; _ctx
 
@@ -1605,10 +1751,17 @@ gen_level15() {
   questions+=("Find .${ext} files, max 2 levels deep|find . -maxdepth 2 -name '*.${ext}'|fd -e ${ext} -d 2")
   questions+=("Find only in current dir (no recursion)|find . -maxdepth 1 -type f|fd -d 1 -t f")
 
+  # === COMPOUND: Uses grep (L14), pipes (L3), wc (L2), logic (L6) ===
+  questions+=("Find .${ext} files containing '${term}'§find . -name '*.${ext}' -exec grep -l ${term} {} \\;§fd -e ${ext} -x grep -l ${term} {}")
+  questions+=("Find .${ext} files, count total lines§find . -name '*.${ext}' -exec wc -l {} + | tail -1")
+  questions+=("Find large files (>${size}), show sizes sorted§find . -size +${size} -exec du -h {} \\; | sort -rh")
+  questions+=("Find .${ext} files modified today, grep for '${term}'§find . -name '*.${ext}' -mtime 0 -exec grep -l ${term} {} \\;")
+  questions+=("Find empty files and remove them (with confirm)§find . -type f -empty -print -delete")
+
   printf '%s\n' "${questions[@]}"
 }
 
-# Level 5: Data Processing (sort, uniq, cut, awk, ps, ss, ip)
+# Level 16: Data Processing (sort, uniq, cut, awk, ps, ss, ip)
 gen_level16() {
   local questions=() log log2 cfg cfg2 txt txt2 csv csv2 dir dir2 ext ext2 script archive bin img pcap hash photo wordlist ip subnet port port2 mac url user host term term2 term3 field field2 key old new size iface proc svc sig branch time n1 n2 n3 col; _ctx
   local proc2=$(_pick PROCS) col2=$(_rnum 1 5) col3=$((col + 1)) chars=$(_rnum 10 80) thresh=$(_rnum 50 500)
@@ -1790,6 +1943,13 @@ gen_level19() {
   questions+=("Disk usage of journal|journalctl --disk-usage")
   questions+=("Vacuum journal to ${size}|journalctl --vacuum-size=${size}|sudo journalctl --vacuum-size=${size}")
   questions+=("Output as JSON|journalctl -u ${svc} -o json")
+
+  # === COMPOUND: Uses grep (L14), pipes (L3), logic (L6), find (L15) ===
+  questions+=("Replace '${old}' in all .${ext} files, confirm changes§find . -name '*.${ext}' -exec grep -l ${old} {} \\; | xargs sed -i 's/${old}/${new}/g'")
+  questions+=("Find .${ext} files > ${size}, delete with confirm§find . -name '*.${ext}' -size +${size} -print -delete")
+  questions+=("Check ${svc} status, restart if not active§systemctl is-active ${svc} || systemctl restart ${svc}")
+  questions+=("View ${svc} errors, count unique messages§journalctl -u ${svc} -p err --no-pager | sort | uniq -c | sort -rn")
+  questions+=("Find and grep all logs modified today§find /var/log -mtime 0 -type f -exec grep -l ${term} {} \\;")
 
   printf '%s\n' "${questions[@]}"
 }
@@ -2688,7 +2848,7 @@ gen_level12() {
   questions+=("Enable ${svc} at boot|systemctl enable ${svc}")
   questions+=("Disable ${svc} at boot|systemctl disable ${svc}")
   questions+=("List running services|systemctl list-units --type=service --state=running")
-  questions+=("List failed services|systemctl --failed")
+  questions+=("Show services that failed to start|systemctl --failed")
   questions+=("Reload systemd daemon|systemctl daemon-reload")
   questions+=("Show ${svc} logs|journalctl -u ${svc}")
   questions+=("Follow ${svc} logs|journalctl -fu ${svc}")
@@ -2743,10 +2903,31 @@ generate_level() {
   local level=$1
   CURRENT_QUESTIONS=()
   local raw
+
+  # Main level questions
   raw=$(gen_level${level})
   while IFS= read -r line; do
     [[ -n "$line" ]] && CURRENT_QUESTIONS+=("$line")
   done <<< "$raw"
+
+  # Review: add 1-2 questions from each previous level (skills you've "acquired")
+  if ((level > 0)); then
+    local review=()
+    for ((prev=0; prev<level; prev++)); do
+      local prev_raw prev_arr=()
+      prev_raw=$(gen_level${prev})
+      while IFS= read -r line; do
+        [[ -n "$line" ]] && prev_arr+=("$line")
+      done <<< "$prev_raw"
+      # Pick 1-2 random questions from this previous level
+      if ((${#prev_arr[@]} > 0)); then
+        readarray -t picks < <(printf '%s\n' "${prev_arr[@]}" | shuf | head -2)
+        review+=("${picks[@]}")
+      fi
+    done
+    # Add review questions to the mix
+    CURRENT_QUESTIONS+=("${review[@]}")
+  fi
 }
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -2813,7 +2994,7 @@ _hash() { local h; h=$(printf '%s' "$1"|md5sum); echo "${h:0:16}"; }
 
 stats() {
   local -A sc; [[ -f "$DATA/scores" ]] && while IFS='|' read -r k v; do sc[$k]=$v; done < "$DATA/scores"
-  echo -e "${B}Mastery Stats${N}"
+  echo -e "${C}${PLAYER_NAME:-anon}${N} | ${Y}${PLAYER_XP:-0} XP${N}"
   echo -e "${D}Stats show unique prompts seen${N}\n"
   local total_seen=0 total_t1=0 total_t2=0
   for k in "${!sc[@]}"; do
@@ -2822,7 +3003,7 @@ stats() {
   done
   echo -e "Total: ${B}${total_seen}${N}  ${Y}${total_t1}${N} learning  ${G}${total_t2}${N} mastered"
   echo
-  for lv in {0..28}; do printf "  ${C}%2d${N} %s\n" "$lv" "${LEVEL_DESC[$lv]}"; done
+  for lv in {0..28}; do printf "  ${C}%2d${N} %-25s %s\n" "$lv" "${LEVEL_NAMES[$lv]:-}" "${BOSS_NAMES[$lv]:-}"; done
 }
 
 # Tier display: removed - pure recall, Tab for hints
@@ -2835,9 +3016,9 @@ clear_hint() { for ((i=0;i<=EXPLAIN_LINES;i++)); do printf '\e[A\e[2K'; done; pr
 hdr() {
   printf '\e[2J\e[H'
   local fire=""; ((streak>=5)) && fire="  ${R}🔥${N} ${Y}2x${N}"
-  echo -e "${B}=== Level $1 ===${N}${fire}"
-  echo -e "${M}${LEVEL_DESC[$1]}${N}"
-  echo -e "${D}[$2/$3]  Tab=hint Ctrl+n=skip${N}\n"
+  echo -e "${C}${PLAYER_NAME:-anon}${N} | ${Y}${PLAYER_XP:-0} XP${N}${fire}"
+  echo -e "${B}Level $1: ${LEVEL_NAMES[$1]:-}${N}"
+  echo -e "${D}[$2/$3]  Tab=hint${N}\n"
 }
 qdisp() { bar; echo -e "\n${C}$1${N}"; show_tier "$2" "$3"; echo; }
 bar() { local f e; printf -v f '%*s' "$PROG" ''; printf -v e '%*s' "$((TOT-PROG))" ''; printf "${G}[${Y}%s${D}%s${G}]${N}" "${f// /█}" "${e// /░}"; }
@@ -2951,7 +3132,6 @@ run() {
             SHOW_HINT=0; clear_hint
           fi
           case "$c" in
-            $'\x0e') echo -e "\n${D}[skipped]${N}"; ((++qi)); break 2;;  # Ctrl+N skip
             $'\x04') echo -e "\n${D}[quit]${N}"; exit 0;;  # Ctrl+D quit
             $'\x1b')  # ESC or arrow key
               local _e1 _e2; read -rsn1 -t 0.01 _e1 || _e1=""
@@ -3013,9 +3193,8 @@ run() {
             u) ((${#UNDO_STACK[@]}>0)) && { local _u="${UNDO_STACK[-1]}"; unset 'UNDO_STACK[-1]'; input="${_u%:*}"; cursor="${_u#*:}"; draw; };;  # multi-level undo
             g) IFS= read -rsn1 c2; [[ "$c2" == "g" ]] && { cursor=0; draw; };;  # gg = start
             G) cursor=$((${#input}>0?${#input}-1:0)); draw;;  # G = end
-            n) echo -e "\n${D}[skipped]${N}"; ((++qi)); break 2;;  # skip in normal mode
             q) echo -e "\n${D}[quit]${N}"; exit 0;;  # quit
-            \?) echo -e "\n${D}hl${N} move  ${D}kj${N}/↑↓ history  ${D}wb${N} word  ${D}fFtT${N}+char find  ${D}0\$/gg/G${N} line"; echo -e "${D}x/X${N} del char  ${D}dw/db/dd${N} del  ${D}cw/cb/cc${N} change  ${D}r${N} replace"; echo -e "${D}s/S${N} subst  ${D}i/a/I/A${N} insert  ${D}u${N} undo(stack)  ${D}n${N} skip  ${D}q${N} quit"; echo -e "${D}Tab${N} hint  ${D}Ctrl+n${N} skip  ${D}Ctrl+d${N} quit  ${D}[num]cmd${N} repeat"; read -rsn1; hdr "$lv" "$((qi+1))" "$TOT"; qdisp "$prompt" "$tier" "$ans"; draw;;
+            \?) echo -e "\n${D}hl${N} move  ${D}kj${N}/↑↓ history  ${D}wb${N} word  ${D}fFtT${N}+char find  ${D}0\$/gg/G${N} line"; echo -e "${D}x/X${N} del char  ${D}dw/db/dd${N} del  ${D}cw/cb/cc${N} change  ${D}r${N} replace"; echo -e "${D}s/S${N} subst  ${D}i/a/I/A${N} insert  ${D}u${N} undo(stack)  ${D}q${N} quit"; echo -e "${D}Tab${N} hint  ${D}Ctrl+d${N} quit  ${D}[num]cmd${N} repeat"; read -rsn1; hdr "$lv" "$((qi+1))" "$TOT"; qdisp "$prompt" "$tier" "$ans"; draw;;
             '') echo; break;;
           esac
         fi
@@ -3049,10 +3228,7 @@ run() {
     done
   done
   # === BOSS ROUND ===
-  printf '\e[2J\e[H'
-  echo -e "${R}${B}═══ BOSS ROUND ═══${N}"
-  echo -e "${D}No hints! Prove you learned it.${N}\n"
-  read -rsp $'\e[2mEnter to start...\e[0m'; echo
+  _boss_splash "$lv"
 
   # Pick 5 random questions, excluding ones seen during practice
   local boss_q=() boss_correct=0 boss_total=5 unseen_q=()
@@ -3113,18 +3289,22 @@ run() {
 
   # Results
   printf '\e[2J\e[H'
+  local boss="${BOSS_NAMES[$lv]}"
   if ((boss_correct >= 4)); then
-    echo -e "${G}${B}══ BOSS DEFEATED ══${N}"
-    echo -e "${G}${boss_correct}/${boss_total}${N} correct!\n"
-    ((lv<28)) && { echo -e "Enter for Level $((lv+1))..."; read -r; LVL=$((lv+1)); QI=0; save; run "$LVL"; } || echo -e "${G}${B}ALL COMPLETE - ELITE APOCALYPSE HACKER SUPREME${N}"
+    echo -e "${G}${B}══ ${boss} DEFEATED ══${N}"
+    echo -e "${G}${boss_correct}/${boss_total}${N} correct!"
+    ((PLAYER_XP += 100)); _save_profile
+    echo -e "${Y}+100 XP${N}"
+    echo -e "${C}You acquired: ${LEVEL_NAMES[$lv]}${N}\n"
+    ((lv<28)) && { echo -e "Enter for Level $((lv+1))..."; read -r; LVL=$((lv+1)); QI=0; save; run "$LVL"; } || echo -e "${G}${B}ALL COMPLETE - ROOT ACCESS GRANTED${N}"
   else
-    echo -e "${R}${B}══ BOSS WINS ══${N}"
+    echo -e "${R}${B}══ ${boss} PREVAILS ══${N}"
     echo -e "${R}${boss_correct}/${boss_total}${N} - need 4 to pass\n"
-    echo -e "${D}r = retry boss, p = practice level again${N}"
+    echo -e "${D}r = retry, p = practice${N}"
     read -rsn1 choice
     case "$choice" in
-      r) QI=0; run "$lv" ;;  # restart triggers boss again
-      *) QI=0; save; run "$lv" ;;  # practice
+      r) QI=0; run "$lv" ;;
+      *) QI=0; save; run "$lv" ;;
     esac
   fi
 }
@@ -3133,11 +3313,11 @@ run() {
 [[ "${1:-}" == "--no-sandbox" ]] && { SANDBOX_MODE=0; shift; }
 
 case "${1:-}" in
-  [0-9]|1[0-9]|2[0-8]) _tty; LVL=$1; QI=0; save; run "$LVL";;
-  r|reset) rm -f "$DATA"/*.json "$DATA/scores" "$DATA/scores.lock"; rm -rf "$DATA/sandbox" "$DATA/sandbox.pristine" 2>/dev/null; echo "Reset.";;
+  [0-9]|1[0-9]|2[0-8]) _tty; _load_profile; LVL=$1; QI=0; save; run "$LVL";;
+  r|reset) rm -f "$DATA"/*.json "$DATA/scores" "$DATA/scores.lock" "$DATA/profile"; rm -rf "$DATA/sandbox" "$DATA/sandbox.pristine" 2>/dev/null; echo "Reset.";;
   c|cleanup) [[ -f "$DATA/scores" ]] && { awk -F'|' '!seen[$1]++' "$DATA/scores" > "$DATA/scores.tmp" && mv "$DATA/scores.tmp" "$DATA/scores"; echo "Deduplicated scores."; } || echo "No scores file.";;
-  s|stats) stats;;
-  v|version|-v|--version) echo "cmdchamp 0.2";;
+  s|stats) [[ -f "$DATA/profile" ]] && source "$DATA/profile"; stats;;
+  v|version|-v|--version) echo "cmdchamp 0.3";;
   h|help|-h|--help)
     echo -e "${B}cmdchamp${N} - CLI trainer"
     echo -e "${D}29 levels, spaced repetition, sandbox execution${N}"
@@ -3157,7 +3337,6 @@ case "${1:-}" in
     echo
     echo "Controls:"
     echo "  Tab      Toggle hint + explanations"
-    echo "  Ctrl+n   Skip question"
     echo "  Ctrl+d   Quit"
     echo "  ?        Show vi keybindings (in vi mode)"
     echo
@@ -3166,7 +3345,7 @@ case "${1:-}" in
       printf "  %2d - %s\n" "$lv" "${LEVEL_DESC[$lv]}"
     done
     ;;
-  n|new) _tty; LVL=0; QI=0; save; run "$LVL";;
-  "") _tty; load; ((LVL>0||QI>0)) && { read -rp "Continue Level $LVL Q$((QI+1))? [Y/n] " yn; [[ "$yn" =~ ^[Nn] ]] && { LVL=0; QI=0; save; }; }; run "$LVL";;
+  n|new) _tty; _load_profile; LVL=0; QI=0; save; run "$LVL";;
+  "") _tty; _load_profile; load; ((LVL>0||QI>0)) && { read -rp "Continue Level $LVL Q$((QI+1))? [Y/n] " yn; [[ "$yn" =~ ^[Nn] ]] && { LVL=0; QI=0; save; }; }; run "$LVL";;
   *) echo "Usage: cmdchamp [0-28|reset|stats|help|version]"; exit 1;;
 esac
