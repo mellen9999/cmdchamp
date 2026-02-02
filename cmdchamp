@@ -147,7 +147,7 @@ _boss_splash() {
   local lv=$1
   local boss="${BOSS_NAMES[$lv]}"
   local flavor="${BOSS_FLAVOR[$lv]}"
-  clear
+  printf '\e[2J\e[H'
   echo
   echo
   printf '                         \e[31m\e[1m═══ BOSS ═══\e[0m\n\n'
@@ -3027,7 +3027,7 @@ _dispwidth() { printf '%s' "$1" | wc -L; }
 _wfwd() { while ((cursor<${#input})) && [[ "${input:cursor:1}" != " " ]]; do ((++cursor)); done; while ((cursor<${#input})) && [[ "${input:cursor:1}" == " " ]]; do ((++cursor)); done; ((cursor>=${#input}&&${#input}>0)) && cursor=$((${#input}-1)); }
 _wbck() { ((cursor>0)) && ((cursor--)); while ((cursor>0)) && [[ "${input:cursor:1}" == " " ]]; do ((cursor--)); done; while ((cursor>0)) && [[ "${input:cursor-1:1}" != " " ]]; do ((cursor--)); done; }
 _wend() { ((cursor<${#input}-1)) && ((++cursor)); while ((cursor<${#input}-1)) && [[ "${input:cursor:1}" == " " ]]; do ((++cursor)); done; while ((cursor<${#input}-1)) && [[ "${input:cursor+1:1}" != " " ]]; do ((++cursor)); done; }
-_clamp() { ((cursor>=${#input}&&cursor>0)) && cursor=$((${#input}-1)); }
+_clamp() { ((cursor>=${#input})) && cursor=$((${#input}>0?${#input}-1:0)); }
 _del() { # $1=motion
   local e=$cursor
   case "$1" in
@@ -3072,12 +3072,11 @@ run() {
   ((${#t1[@]} > 0)) && readarray -t _shuf1 < <(printf '%s\n' "${t1[@]}" | LC_ALL=C shuf)
   ((${#t2[@]} > 0)) && readarray -t _shuf2 < <(printf '%s\n' "${t2[@]}" | LC_ALL=C shuf)
   shuf=()
-  local i1=0 i2=0 idx=0
+  local i1=0 i2=0
   while ((i1 < ${#_shuf1[@]} || i2 < ${#_shuf2[@]})); do
     if ((i1 < ${#_shuf1[@]})); then shuf+=("${_shuf1[$i1]}"); ((++i1))
     elif ((i2 < ${#_shuf2[@]})); then shuf+=("${_shuf2[$i2]}"); ((++i2))
     fi
-    ((++idx))
   done
   # Safety check: if no questions to practice, skip to boss
   if ((${#shuf[@]} == 0)); then
