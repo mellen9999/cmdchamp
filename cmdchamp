@@ -3,6 +3,7 @@
 set -uo pipefail
 [[ ${BASH_VERSINFO[0]:-0} -lt 4 || (${BASH_VERSINFO[0]} -eq 4 && ${BASH_VERSINFO[1]:-0} -lt 3) ]] && { echo "Requires bash 4.3+"; exit 1; }
 _tty() { [[ -t 0 ]] || { echo "Error: requires interactive terminal" >&2; exit 1; }; }
+for _dep in shuf md5sum awk; do command -v "$_dep" &>/dev/null || { echo "Error: $_dep not found" >&2; exit 1; }; done
 
 DATA="${XDG_DATA_HOME:-$HOME/.local/share}/cmdchamp"; mkdir -p "$DATA"; touch "$DATA/scores"
 
@@ -131,13 +132,10 @@ _boss_splash() {
   clear
   echo
   echo
-  echo -e "                         \e[31m\e[1m═══ BOSS ═══\e[0m"
-  echo
-  echo -e "                           \e[33m\e[1m$boss\e[0m"
-  echo
-  echo -e "                       \e[2m\"$flavor\"\e[0m"
-  echo
-  echo -e "                    \e[2mNo hints. 4/5 to pass.\e[0m"
+  printf '                         \e[31m\e[1m═══ BOSS ═══\e[0m\n\n'
+  printf '                           \e[33m\e[1m%s\e[0m\n\n' "$boss"
+  printf '                       \e[2m"%s"\e[0m\n\n' "$flavor"
+  printf '                    \e[2mNo hints. 4/5 to pass.\e[0m\n'
   echo
   read -rsn1 -p "                     Press Enter to continue..."
   echo
@@ -153,7 +151,7 @@ SANDBOX_DIR="$DATA/sandbox"
 # Check bwrap dependency
 _check_bwrap() {
   command -v bwrap &>/dev/null || {
-    echo -e "${R}Error: bubblewrap (bwrap) not installed${N}" >&2
+    printf '%s\n' "${R}Error: bubblewrap (bwrap) not installed${N}" >&2
     echo "Install: paru -S bubblewrap" >&2
     SANDBOX_MODE=0
     return 1
@@ -464,7 +462,7 @@ _sandbox_exec() {
 _SANDBOX_DESTRUCTIVE=0
 _is_destructive() {
   local cmd="$1"
-  [[ "$cmd" =~ (^|[[:space:]])(rm|mv|cp|>|>>|chmod|chown)[[:space:]] ]] && return 0
+  [[ "$cmd" =~ (^|[[:space:]])(rm|mv|cp|dd|truncate|shred|unlink|tee|chmod|chown)[[:space:]]|[[:space:]](\>|\>\>)[[:space:]]|sed[[:space:]]+-i ]] && return 0
   return 1
 }
 
@@ -486,7 +484,7 @@ _sandbox_check_output() {
       ;;
     @*)   # Line count match
       local count="${expected:1}"
-      local lines=$(echo -n "$actual" | wc -l)
+      local lines=0; [[ -n "$actual" ]] && lines=$(printf '%s\n' "$actual" | wc -l)
       ((lines == count)) && return 0
       ;;
     \*)   # Any output
@@ -537,7 +535,7 @@ _sandbox_check_state() {
 }
 # Terminal state management
 _stty_saved=""
-_cleanup() { [[ -n "$_stty_saved" ]] && stty "$_stty_saved" 2>/dev/null; echo; }
+_cleanup() { printf '\e[?25h'; [[ -n "$_stty_saved" ]] && stty "$_stty_saved" 2>/dev/null; echo; }
 trap '_cleanup; exit 0' INT TERM HUP EXIT
 R=$'\e[31m' G=$'\e[32m' Y=$'\e[33m' Bl=$'\e[34m' M=$'\e[35m' C=$'\e[36m' W=$'\e[97m' D=$'\e[2m' B=$'\e[1m' N=$'\e[0m'
 PROMPT_CHAR="${CMD_PROMPT:-$([[ $EUID -eq 0 ]] && echo '# ' || echo '$ ')}"
@@ -986,13 +984,13 @@ declare -A EXP=(
 )
 explain() {
   local tok n=0 exp label desc tcol cmd
-  echo -e "${D}────────────────────────────────────────${N}"
+  printf '%s\n' "${D}────────────────────────────────────────${N}"
   # Get first command (skip env vars like VAR=val)
   for tok in $1; do [[ "$tok" != *=* ]] && { cmd="$tok"; break; }; done
   # Show mini manpage if available (skip token breakdown - manpage is comprehensive)
   if [[ -n "${MANPAGE[$cmd]:-}" ]]; then
-    echo -e "${MANPAGE[$cmd]}"
-    echo -e "${D}────────────────────────────────────────${N}"
+    printf '%s\n' "${MANPAGE[$cmd]}"
+    printf '%s\n' "${D}────────────────────────────────────────${N}"
     return
   fi
   for tok in $1; do
@@ -1013,19 +1011,19 @@ explain() {
         desc="${exp#*: }"
         # If label has spaces, it's an example - use magenta
         if [[ "$label" == *" "* ]]; then
-          echo -e "  ${tcol}${tok}${N}  ${D}→${N}  ${M}${label}${D}:${N} ${W}${desc}${N}"
+          printf '  %s  %s  %s%s%s %s\n' "${tcol}${tok}${N}" "${D}→${N}" "${M}${label}${D}:${N}" "" "${W}${desc}${N}" ""
         else
-          echo -e "  ${tcol}${tok}${N}  ${D}→${N}  ${Y}${label}${D}:${N} ${W}${desc}${N}"
+          printf '  %s  %s  %s%s%s %s\n' "${tcol}${tok}${N}" "${D}→${N}" "${Y}${label}${D}:${N}" "" "${W}${desc}${N}" ""
         fi
       else
-        echo -e "  ${tcol}${tok}${N}  ${D}→${N}  ${W}${exp}${N}"
+        printf '  %s  %s  %s\n' "${tcol}${tok}${N}" "${D}→${N}" "${W}${exp}${N}"
       fi
       ((++n))
     fi
   done
   # Show full answer if no explanations found
-  ((n == 0)) && { echo -e "  ${Y}$1${N}"; ((++n)); }
-  echo -e "${D}────────────────────────────────────────${N}"
+  ((n == 0)) && { printf '  %s\n' "${Y}$1${N}"; ((++n)); }
+  printf '%s\n' "${D}────────────────────────────────────────${N}"
   EXPLAIN_LINES=$((n + 2))
 }
 
@@ -2959,7 +2957,7 @@ check() {
     b="${a#"${a%%[![:space:]]*}"}"; b="${b%"${b##*[![:space:]]}"}"
     # ~pattern = regex match
     if [[ "$b" == ~* ]]; then
-      [[ "$inp" =~ ${b:1} ]] && return 0
+      local _pat="${b:1}"; [[ "$inp" =~ $_pat ]] && return 0
     else
       [[ "$inp" == "$b" || "$ninp" == "$(norm "$b")" ]] && return 0
     fi
@@ -2974,20 +2972,16 @@ _hash() { local h; h=$(printf '%s' "$1"|md5sum); echo "${h:0:16}"; }
 
 stats() {
   local -A sc; [[ -f "$DATA/scores" ]] && while IFS='|' read -r k v; do sc[$k]=$v; done < "$DATA/scores"
-  echo -e "${C}${PLAYER_NAME:-anon}${N}"
-  echo -e "${D}Stats show unique prompts seen${N}\n"
+  printf '%s\n' "${C}${PLAYER_NAME:-anon}${N}"
+  printf '%s\n\n' "${D}Stats show unique prompts seen${N}"
   local total_seen=0 total_t1=0 total_t2=0
   for k in "${!sc[@]}"; do
     case "${sc[$k]}" in 1) ((++total_t1));; *) ((++total_t2));; esac
     ((++total_seen))
   done
-  echo -e "Total: ${B}${total_seen}${N}  ${Y}${total_t1}${N} learning  ${G}${total_t2}${N} mastered"
-  echo
+  printf 'Total: %s  %s learning  %s mastered\n\n' "${B}${total_seen}${N}" "${Y}${total_t1}${N}" "${G}${total_t2}${N}"
   for lv in {0..28}; do printf "  ${C}%2d${N} %-25s %s\n" "$lv" "${LEVEL_NAMES[$lv]:-}" "${BOSS_NAMES[$lv]:-}"; done
 }
-
-# Tier display: removed - pure recall, Tab for hints
-show_tier() { :; }
 
 input="" cursor=0 mode="insert" SHOW_HINT=0 EXPLAIN_LINES=0 _rep=""
 declare -a UNDO_STACK=()  # Multi-level undo
@@ -2996,24 +2990,24 @@ clear_hint() { for ((i=0;i<=EXPLAIN_LINES;i++)); do printf '\e[A\e[2K'; done; pr
 hdr() {
   printf '\e[2J\e[H'
   local fire=""; ((streak>=5)) && fire="  ${R}🔥${N}"
-  echo -e "${C}${PLAYER_NAME:-anon}${N}${fire}"
-  echo -e "${B}Level $1: ${LEVEL_NAMES[$1]:-}${N}"
-  echo -e "${D}[$2/$3]  Tab=hint${N}\n"
+  printf '%s\n' "${C}${PLAYER_NAME:-anon}${N}${fire}"
+  printf '%s\n' "${B}Level $1: ${LEVEL_NAMES[$1]:-}${N}"
+  printf '%s\n\n' "${D}[$2/$3]  Tab=hint${N}"
 }
-qdisp() { bar; echo -e "\n${C}$1${N}"; show_tier "$2" "$3"; echo; }
+qdisp() { bar; printf '\n\e[36m%s\e[0m\n\n' "$1"; }
 bar() { local f e; printf -v f '%*s' "$PROG" ''; printf -v e '%*s' "$((TOT-PROG))" ''; printf "${G}[${Y}%s${D}%s${G}]${N}" "${f// /█}" "${e// /░}"; }
 draw() {
-  echo -ne "\e[?25l\r\e[K"  # hide cursor, clear line
+  printf '\e[?25l\r\e[K'  # hide cursor, clear line
   if ((SHOW_HINT)); then
-    echo -ne "${D}$PROMPT_CHAR${ans}${N}"
+    printf '%s' "${D}$PROMPT_CHAR${ans}${N}"
   else
-    ((VI_MODE)) && [[ $mode != insert ]] && echo -ne "\e[91m$PROMPT_CHAR\e[0m" || echo -ne "\e[97m$PROMPT_CHAR\e[0m"
-    echo -n "$input"
+    ((VI_MODE)) && [[ $mode != insert ]] && printf '\e[91m%s\e[0m' "$PROMPT_CHAR" || printf '\e[97m%s\e[0m' "$PROMPT_CHAR"
+    printf '%s' "$input"
     # Use display width for UTF-8 correct cursor positioning
     local disp_len=$(_dispwidth "$input") disp_cur=$(_dispwidth "${input:0:cursor}")
-    ((disp_cur < disp_len)) && echo -ne "\e[$((disp_len - disp_cur))D"
+    ((disp_cur < disp_len)) && printf '\e[%dD' "$((disp_len - disp_cur))"
   fi
-  echo -ne "\e[?25h"  # show cursor
+  printf '\e[?25h'  # show cursor
 }
 
 # Display width (character count, not bytes)
@@ -3075,11 +3069,10 @@ run() {
     fi
     ((++idx))
   done
-  # Safety check: if no questions to practice, skip to boss (or show error)
+  # Safety check: if no questions to practice, skip to boss
   if ((${#shuf[@]} == 0)); then
-    echo -e "${Y}DEBUG: CURRENT_QUESTIONS=${#CURRENT_QUESTIONS[@]} t1=${#t1[@]} t2=${#t2[@]}${N}"
-    echo -e "${Y}No questions to practice. Straight to boss!${N}"
-    sleep 2
+    printf '%s\n' "${Y}No questions to practice. Straight to boss!${N}"
+    sleep 1
   fi
   while ((qi < ${#shuf[@]})); do
     # Reset sandbox if previous command was destructive
@@ -3091,7 +3084,7 @@ run() {
     # Fire mode: force tier 2 (pure recall, no hints)
     ((streak>=5)) && tier=2
     HINT=false SHOW_HINT=0 EXPLAIN_LINES=0
-    hdr "$lv" "$((qi+1))" "$TOT"; qdisp "$prompt" "$tier" "$ans"
+    hdr "$lv" "$((qi+1))" "$TOT"; qdisp "$prompt"
     while true; do
       input="" cursor=0 mode="insert" SHOW_HINT=0; UNDO_STACK=(); HIST_IDX=${#HIST[@]}; HIST_SAVE=""
       read -t 0.01 -rsn 1000 ||:
@@ -3112,7 +3105,7 @@ run() {
             SHOW_HINT=0; clear_hint
           fi
           case "$c" in
-            $'\x04') echo -e "\n${D}[quit]${N}"; exit 0;;  # Ctrl+D quit
+            $'\x04') printf '\n%s\n' "${D}[quit]${N}"; exit 0;;  # Ctrl+D quit
             $'\x1b')  # ESC or arrow key
               local _e1 _e2; read -rsn1 -t 0.01 _e1 || _e1=""
               if [[ "$_e1" == "[" ]]; then
@@ -3173,8 +3166,8 @@ run() {
             u) ((${#UNDO_STACK[@]}>0)) && { local _u="${UNDO_STACK[-1]}"; unset 'UNDO_STACK[-1]'; input="${_u%:*}"; cursor="${_u#*:}"; draw; };;  # multi-level undo
             g) IFS= read -rsn1 c2; [[ "$c2" == "g" ]] && { cursor=0; draw; };;  # gg = start
             G) cursor=$((${#input}>0?${#input}-1:0)); draw;;  # G = end
-            q) echo -e "\n${D}[quit]${N}"; exit 0;;  # quit
-            \?) echo -e "\n${D}hl${N} move  ${D}kj${N}/↑↓ history  ${D}wb${N} word  ${D}fFtT${N}+char find  ${D}0\$/gg/G${N} line"; echo -e "${D}x/X${N} del char  ${D}dw/db/dd${N} del  ${D}cw/cb/cc${N} change  ${D}r${N} replace"; echo -e "${D}s/S${N} subst  ${D}i/a/I/A${N} insert  ${D}u${N} undo(stack)  ${D}q${N} quit"; echo -e "${D}Tab${N} hint  ${D}Ctrl+d${N} quit  ${D}[num]cmd${N} repeat"; read -rsn1; hdr "$lv" "$((qi+1))" "$TOT"; qdisp "$prompt" "$tier" "$ans"; draw;;
+            q) printf '\n%s\n' "${D}[quit]${N}"; exit 0;;  # quit
+            \?) printf '\n%s\n%s\n%s\n%s\n' "${D}hl${N} move  ${D}kj${N}/↑↓ history  ${D}wb${N} word  ${D}fFtT${N}+char find  ${D}0\$/gg/G${N} line" "${D}x/X${N} del char  ${D}dw/db/dd${N} del  ${D}cw/cb/cc${N} change  ${D}r${N} replace" "${D}s/S${N} subst  ${D}i/a/I/A${N} insert  ${D}u${N} undo(stack)  ${D}q${N} quit" "${D}Tab${N} hint  ${D}Ctrl+d${N} quit  ${D}[num]cmd${N} repeat"; read -rsn1; hdr "$lv" "$((qi+1))" "$TOT"; qdisp "$prompt"; draw;;
             '') echo; break;;
           esac
         fi
@@ -3183,39 +3176,39 @@ run() {
         [[ -n "$input" ]] && { HIST+=("$input"); HIST_IDX=${#HIST[@]}; HIST_SAVE=""; }
         # Show sandbox output prominently
         if [[ -n "$_SANDBOX_OUTPUT" ]]; then
-          echo -e "\n${W}${_SANDBOX_OUTPUT}${N}"
+          printf '\n%s\n' "${W}${_SANDBOX_OUTPUT}${N}"
         fi
         if $HINT; then
-          echo -e "\n${D}+0 (hint)${N}"; streak=0; _sset "$prompt" "$tier"
+          printf '\n%s\n' "${D}+0 (hint)${N}"; streak=0; _sset "$prompt" "$tier"
           read -rsp $'\e[2mPress Enter...\e[0m'; break
         elif ((streak>=5)); then
-          ((++PROG)); ((++PROG)); ((++done)); ((++done)); echo -e "\n${R}${B}🔥 ON FIRE!${N} ${Y}+2${N}"; ((++streak)); _sset "$prompt" "$((tier<2?tier+1:2))"
+          ((++PROG)); ((++PROG)); ((++done)); ((++done)); printf '\n%s\n' "${R}${B}🔥 ON FIRE!${N} ${Y}+2${N}"; ((++streak)); _sset "$prompt" "$((tier<2?tier+1:2))"
         else
-          ((++PROG)); ((++done)); echo -e "\n${G}${B}✓${N}"; ((++streak)); _sset "$prompt" "$((tier<2?tier+1:2))"
+          ((++PROG)); ((++done)); printf '\n%s\n' "${G}${B}✓${N}"; ((++streak)); _sset "$prompt" "$((tier<2?tier+1:2))"
         fi
         read -rsp $'\e[2mPress Enter...\e[0m'
         ((++qi)); QI=$qi; save; break
       else
         # Wrong answer - show expected with full breakdown
         if [[ -n "$_SANDBOX_OUTPUT" ]]; then
-          echo -e "\n${D}output:${N} ${_SANDBOX_OUTPUT}"
+          printf '\n%s %s\n' "${D}output:${N}" "$_SANDBOX_OUTPUT"
         fi
-        echo -e "${R}✗${N}  ${D}expected:${N} ${Y}${ans}${N}\n"
+        printf '%s  %s %s\n\n' "${R}✗${N}" "${D}expected:${N}" "${Y}${ans}${N}"
         explain "$ans"  # show full breakdown so they learn
         streak=0; _sset "$prompt" "$((tier>0?tier-1:0))"; read -rsp $'\e[2mPress Enter...\e[0m'
       fi
-      tier=$(_sget "$prompt"); hdr "$lv" "$((qi+1))" "$TOT"; qdisp "$prompt" "$tier" "$ans"
+      tier=$(_sget "$prompt"); hdr "$lv" "$((qi+1))" "$TOT"; qdisp "$prompt"
     done
   done
   # === BOSS ROUND ===
   _boss_splash "$lv"
 
-  # Pick 5 random questions, excluding ones seen during practice
+  # Pick 5 random questions, excluding ones seen during practice (O(n) with assoc array)
   local boss_q=() boss_correct=0 boss_total=5 unseen_q=()
+  local -A _seen_map; for s in "${SEEN_PROMPTS[@]}"; do _seen_map[$s]=1; done
   for q in "${CURRENT_QUESTIONS[@]}"; do
-    _qparse "$q"; local p=$_qprompt seen=0
-    for s in "${SEEN_PROMPTS[@]}"; do [[ "$p" == "$s" ]] && { seen=1; break; }; done
-    ((seen)) || unseen_q+=("$q")
+    _qparse "$q"
+    [[ -z "${_seen_map[$_qprompt]:-}" ]] && unseen_q+=("$q")
   done
   # Use unseen questions if enough, otherwise fall back to all
   if ((${#unseen_q[@]} >= boss_total)); then
@@ -3229,14 +3222,13 @@ run() {
     # Skip malformed questions
     [[ -z "$prompt" ]] && { ((boss_total--)); continue; }
     printf '\e[2J\e[H'
-    echo -e "${R}${B}═══ BOSS ${bi+1}/${boss_total} ═══${N}\n"
-    echo -e "${C}${prompt}${N}\n"
+    printf '%s\n\n%s\n\n' "${R}${B}═══ BOSS $((bi+1))/${boss_total} ═══${N}" "${C}${prompt}${N}"
 
     input="" cursor=0 mode="insert"
     draw
     while IFS= read -rsn1 c; do
       if [[ "$c" == $'\t' ]]; then
-        echo -e "\n${R}No hints in boss mode!${N}"; sleep 0.5
+        printf '\n%s\n' "${R}No hints in boss mode!${N}"; sleep 0.5
         printf '\e[A\e[2K'; draw; continue
       fi
       if [[ "$mode" == "insert" ]]; then
@@ -3259,9 +3251,9 @@ run() {
 
     if check "$input" "$_qanswers"; then
       ((++boss_correct))
-      echo -e "${G}${B}✓${N}"
+      printf '%s\n' "${G}${B}✓${N}"
     else
-      echo -e "${R}✗${N}  ${D}expected:${N} ${Y}${ans}${N}\n"
+      printf '%s  %s %s\n\n' "${R}✗${N}" "${D}expected:${N}" "${Y}${ans}${N}"
       explain "$ans"
     fi
     sleep 0.8
@@ -3271,14 +3263,14 @@ run() {
   printf '\e[2J\e[H'
   local boss="${BOSS_NAMES[$lv]}"
   if ((boss_correct >= 4)); then
-    echo -e "${G}${B}══ ${boss} DEFEATED ══${N}"
-    echo -e "${G}${boss_correct}/${boss_total}${N} correct!"
-    echo -e "${C}You acquired: ${LEVEL_NAMES[$lv]}${N}\n"
-    ((lv<28)) && { echo -e "Enter for Level $((lv+1))..."; read -r; LVL=$((lv+1)); QI=0; save; run "$LVL"; } || echo -e "${G}${B}ALL COMPLETE - ROOT ACCESS GRANTED${N}"
+    printf '%s\n' "${G}${B}══ ${boss} DEFEATED ══${N}"
+    printf '%s\n' "${G}${boss_correct}/${boss_total}${N} correct!"
+    printf '%s\n\n' "${C}You acquired: ${LEVEL_NAMES[$lv]}${N}"
+    ((lv<28)) && { printf 'Enter for Level %d...\n' "$((lv+1))"; read -r; LVL=$((lv+1)); QI=0; save; run "$LVL"; } || printf '%s\n' "${G}${B}ALL COMPLETE - ROOT ACCESS GRANTED${N}"
   else
-    echo -e "${R}${B}══ ${boss} PREVAILS ══${N}"
-    echo -e "${R}${boss_correct}/${boss_total}${N} - need 4 to pass\n"
-    echo -e "${D}r = retry, p = practice${N}"
+    printf '%s\n' "${R}${B}══ ${boss} PREVAILS ══${N}"
+    printf '%s\n\n' "${R}${boss_correct}/${boss_total}${N} - need 4 to pass"
+    printf '%s\n' "${D}r = retry, p = practice${N}"
     read -rsn1 choice
     case "$choice" in
       r) QI=0; run "$lv" ;;
@@ -3297,8 +3289,8 @@ case "${1:-}" in
   s|stats) [[ -f "$DATA/profile" ]] && source "$DATA/profile"; stats;;
   v|version|-v|--version) echo "cmdchamp 0.3";;
   h|help|-h|--help)
-    echo -e "${B}cmdchamp${N} - CLI trainer"
-    echo -e "${D}29 levels, spaced repetition, sandbox execution${N}"
+    printf '%s\n' "${B}cmdchamp${N} - CLI trainer"
+    printf '%s\n' "${D}29 levels, spaced repetition, sandbox execution${N}"
     echo
     echo "Usage: cmdchamp [--no-sandbox] [level|command]"
     echo
