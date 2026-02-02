@@ -3297,7 +3297,7 @@ case "${1:-}" in
   r|reset) rm -f "$DATA"/*.json "$DATA/scores" "$DATA/scores.lock" "$DATA/profile"; rm -rf "$DATA/sandbox" "$DATA/sandbox.pristine" 2>/dev/null; echo "Reset.";;
   c|cleanup) [[ -f "$DATA/scores" ]] && { awk -F'|' '!seen[$1]++' "$DATA/scores" > "$DATA/scores.tmp" && mv "$DATA/scores.tmp" "$DATA/scores"; echo "Deduplicated scores."; } || echo "No scores file.";;
   s|stats) _load_profile; stats;;
-  v|version|-v|--version) echo "cmdchamp 0.3";;
+  v|version|-v|--version) echo "cmdchamp 0.1";;
   h|help|-h|--help)
     printf '%s\n' "${B}cmdchamp${N} - CLI trainer"
     printf '%s\n' "${D}29 levels, spaced repetition, sandbox execution${N}"
