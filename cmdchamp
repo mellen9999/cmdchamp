@@ -3187,7 +3187,7 @@ run() {
           echo -e "\n${W}${_SANDBOX_OUTPUT}${N}"
         fi
         if $HINT; then
-          echo -e "\n${Y}+1${N} ${D}(hint)${N}"; streak=0; _sset "$prompt" "$tier"
+          echo -e "\n${D}+0 (hint)${N}"; streak=0; _sset "$prompt" "$tier"
         elif ((streak>=5)); then
           ((++done)); ((++done)); echo -e "\n${R}${B}🔥 ON FIRE!${N} ${Y}+2${N}"; ((++streak)); _sset "$prompt" "$((tier<2?tier+1:2))"
         else
