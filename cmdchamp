@@ -1118,9 +1118,9 @@ gen_level1() {
   questions+=("Create empty file ${W}${outfile2}${C} (use ${Y}touch${C})|touch ${outfile2}|#state:exists:${outfile2}")
 
   # tee - write to file AND stdout
-  questions+=("Echo '${word}' to screen AND save to ${W}${txt}${C} (use ${Y}tee${C})|echo ${word} | tee ${txt}|#output:${word}")
-  questions+=("Echo '${word2}' and append to ${W}${log}${C} (use ${Y}tee -a${C})|echo ${word2} | tee -a ${log}|#output:${word2}")
-  questions+=("Run ls, show output AND save to ${W}${outfile}${C}|ls | tee ${outfile}|#output:~server.log")
+  questions+=("Echo '${word}' to screen AND save to ${W}${txt}${C} (use ${Y}tee${C})§echo ${word} | tee ${txt}§#output:${word}")
+  questions+=("Echo '${word2}' and append to ${W}${log}${C} (use ${Y}tee -a${C})§echo ${word2} | tee -a ${log}§#output:${word2}")
+  questions+=("Run ls, show output AND save to ${W}${outfile}${C}§ls | tee ${outfile}§#output:~server.log")
 
   printf '%s\n' "${questions[@]}"
 }
@@ -1323,7 +1323,7 @@ gen_level6() {
   # === PURE: Just && and || basics ===
   questions+=("Create ${W}${dir}${C} and cd into it (use ${Y}&&${C})|mkdir ${dir} && cd ${dir}")
   questions+=("Create ${W}${dir}${C} or echo '${msg}' if fails (use ${Y}||${C})§mkdir ${dir} || echo '${msg}'")
-  questions+=("cd to ${W}${dir}${C}, create it if missing|cd ${dir} || mkdir ${dir}")
+  questions+=("cd to ${W}${dir}${C}, create it if missing§cd ${dir} || mkdir ${dir}")
 
   # === COMPOUND: Uses cat (L2), head (L2), tail (L2) ===
   questions+=("If ${W}${txt}${C} exists, display it (use ${Y}&&${C})|test -f ${txt} && cat ${txt}|[[ -f ${txt} ]] && cat ${txt}")
@@ -1344,7 +1344,7 @@ gen_level6() {
 
   # === COMPOUND: Uses ls (L0), test + cat/head combo ===
   questions+=("If ${W}${dir}${C} exists, list contents|test -d ${dir} && ls ${dir}|[[ -d ${dir} ]] && ls ${dir}")
-  questions+=("List ${W}${dir}${C} or create it if missing|ls ${dir} || mkdir ${dir}")
+  questions+=("List ${W}${dir}${C} or create it if missing§ls ${dir} || mkdir ${dir}")
   questions+=("Create ${W}${dir}${C} and save listing to files.txt§mkdir -p ${dir} && ls ${dir} > files.txt")
   questions+=("If ${W}${cfg}${C} is readable, cat it; else echo 'denied'§test -r ${cfg} && cat ${cfg} || echo 'denied'§[[ -r ${cfg} ]] && cat ${cfg} || echo 'denied'")
 
@@ -1551,7 +1551,7 @@ gen_level10() {
   # === COMPOUND: Uses redirection (L1, L5) ===
   questions+=("If ${W}${txt}${C} is writable, append timestamp|[[ -w ${txt} ]] && date >> ${txt}")
   questions+=("If ${W}${script}${C} is executable, run and log output|[[ -x ${script} ]] && ./${script} > output.log 2>&1")
-  questions+=("Test if ${W}${dir}${C} exists, create if not|[[ -d ${dir} ]] || mkdir -p ${dir}")
+  questions+=("Test if ${W}${dir}${C} exists, create if not§[[ -d ${dir} ]] || mkdir -p ${dir}")
 
   # === COMPOUND: Uses && || (L6) ===
   questions+=("If ${W}${txt}${C} exists cat it, else echo 'missing'§[[ -f ${txt} ]] && cat ${txt} || echo 'missing'")
@@ -1781,7 +1781,7 @@ gen_level16() {
 
   # Uniqueness
   questions+=("Remove adjacent duplicate lines (use ${Y}uniq${C})|uniq ${txt}")
-  questions+=("Count occurrences of each unique line (use ${Y}uniq${C})|sort ${txt} | uniq -c")
+  questions+=("Count occurrences of each unique line (use ${Y}uniq${C})§sort ${txt} | uniq -c")
   questions+=("Show only duplicate lines§sort ${txt} | uniq -d")
   questions+=("Show only unique lines (appear once)§sort ${txt} | uniq -u")
   questions+=("Count unique lines in ${txt}§sort ${txt} | uniq | wc -l§sort -u ${txt} | wc -l")
@@ -1880,7 +1880,7 @@ gen_level19() {
 
   # Batch with + (more efficient)
   questions+=("List all .${ext} files in one ls call|find . -name '*.${ext}' -exec ls -l {} +")
-  questions+=("Count total lines across all .${ext} files|find . -name '*.${ext}' -exec wc -l {} + | tail -1")
+  questions+=("Count total lines across all .${ext} files§find . -name '*.${ext}' -exec wc -l {} + | tail -1")
   questions+=("Cat all .${ext} files together|find . -name '*.${ext}' -exec cat {} +")
 
   # sed replacement - more patterns
@@ -1908,7 +1908,7 @@ gen_level19() {
   questions+=("Preview what xargs would run (-t flag)§find . -name '*.${ext}' -print0 | xargs -0 -t wc -l")
 
   # Combined operations
-  questions+=("Find .${ext} files > ${size}, show sizes sorted|find . -name '*.${ext}' -size +${size} -exec du -h {} \\; | sort -rh")
+  questions+=("Find .${ext} files > ${size}, show sizes sorted§find . -name '*.${ext}' -size +${size} -exec du -h {} \\; | sort -rh")
   questions+=("Replace and backup: ${old} -> ${new}, keep .bak|sed -i.bak 's/${old}/${new}/g' ${cfg}")
   questions+=("Find and replace recursively in ${dir}/|find ${dir}/ -type f -exec sed -i 's/${old}/${new}/g' {} \\;")
 
@@ -2047,15 +2047,15 @@ gen_level25() {
   questions+=("Limit hydra to 4 parallel tasks|hydra -t 4 -l ${user} -P ${wordlist} ${ip} ssh")
 
   # Encoding/decoding
-  questions+=("Encode string 'secret' to base64|echo -n 'secret' | base64")
+  questions+=("Encode string 'secret' to base64§echo -n 'secret' | base64")
   questions+=("Decode base64 file encoded.txt|base64 -d encoded.txt")
-  questions+=("Generate MD5 hash of string 'password'|echo -n 'password' | md5sum")
-  questions+=("Generate SHA256 hash of string|echo -n 'password' | sha256sum")
+  questions+=("Generate MD5 hash of string 'password'§echo -n 'password' | md5sum")
+  questions+=("Generate SHA256 hash of string§echo -n 'password' | sha256sum")
   questions+=("Generate SHA256 hash of file ${hash}|sha256sum ${hash}")
 
   # Hex operations
-  questions+=("Convert 'hello' to hex|echo -n 'hello' | xxd -p")
-  questions+=("Convert hex back to ascii|echo '68656c6c6f' | xxd -r -p")
+  questions+=("Convert 'hello' to hex§echo -n 'hello' | xxd -p")
+  questions+=("Convert hex back to ascii§echo '68656c6c6f' | xxd -r -p")
   questions+=("Hex dump of binary with addresses|xxd ${bin}")
   questions+=("Hex dump binary (no addresses)|xxd -p ${bin}")
 
@@ -2070,8 +2070,8 @@ gen_level26() {
   questions+=("Extract ASCII strings from ${bin}|strings ${bin}")
   questions+=("Extract strings minimum 10 chars|strings -n 10 ${bin}")
   questions+=("Extract Unicode strings (Windows binaries)|strings -e l ${bin}")
-  questions+=("Find URLs in binary|strings ${bin} | grep -E 'https?://'")
-  questions+=("Find email addresses in binary|strings ${bin} | grep -E '[A-Za-z0-9._%+-]+@'")
+  questions+=("Find URLs in binary§strings ${bin} | grep -E 'https?://'")
+  questions+=("Find email addresses in binary§strings ${bin} | grep -E '[A-Za-z0-9._%+-]+@'")
 
   # ELF analysis
   questions+=("Show ELF file header|readelf -h ${bin}")
@@ -2126,13 +2126,13 @@ gen_level22() {
   questions+=("Pretty print JSON file (use ${Y}jq${C})|jq '.' data/export.json")
   questions+=("Extract '${key}' array from JSON|jq '.${key}' data/export.json")
   questions+=("Extract first item from '${key}' array|jq '.${key}[0]' data/export.json")
-  questions+=("Extract 'name' field from each item|jq '.${key}[] | .name' data/export.json")
-  questions+=("Filter items where status is 'active'|jq '.${key}[] | select(.status == \"active\")' data/export.json")
-  questions+=("Count items in array|jq '.${key} | length' data/export.json")
+  questions+=("Extract 'name' field from each item§jq '.${key}[] | .name' data/export.json")
+  questions+=("Filter items where status is 'active'§jq '.${key}[] | select(.status == \"active\")' data/export.json")
+  questions+=("Count items in array§jq '.${key} | length' data/export.json")
   questions+=("Get keys of JSON object|jq 'keys' data/export.json")
   questions+=("Compact JSON (remove whitespace)|jq -c '.' data/export.json")
-  questions+=("Create new object from fields|jq '.${key}[] | {name: .name, id: .id}' data/export.json")
-  questions+=("Parse JSON from curl output|curl -s ${url}/api | jq '.${key}'")
+  questions+=("Create new object from fields§jq '.${key}[] | {name: .name, id: .id}' data/export.json")
+  questions+=("Parse JSON from curl output§curl -s ${url}/api | jq '.${key}'")
 
   # curl - HTTP client
   questions+=("GET request to ${url} (use ${Y}curl${C})|curl ${url}")
@@ -2400,9 +2400,9 @@ gen_level28() {
   questions+=("Show failed login attempts§journalctl _COMM=sshd | grep -iE 'failed|invalid'§grep 'Failed' /var/log/auth.log")
   questions+=("Find hidden files in home dirs|find /home -name '.*' -type f 2>/dev/null")
   questions+=("Check for rootkits|chkrootkit|rkhunter --check")
-  questions+=("Dump all environment variables|env; cat /proc/*/environ 2>/dev/null | tr '\\0' '\\n'")
+  questions+=("Dump all environment variables§env; cat /proc/*/environ 2>/dev/null | tr '\\0' '\\n'")
   questions+=("Show all listening processes with full path§ss -tlpn | awk 'NR>1 {print \$6}' | sed 's/.*:\\([0-9]*\\).*/\\1/' | xargs -I{} lsof -i:{}")
-  questions+=("Find processes with deleted binaries|ls -la /proc/*/exe 2>/dev/null | grep deleted")
+  questions+=("Find processes with deleted binaries§ls -la /proc/*/exe 2>/dev/null | grep deleted")
   questions+=("Memory dump of process|gcore -o dump \$(pgrep -f process)")
 
   # === DEFENSIVE HARDENING ===
@@ -2434,10 +2434,10 @@ gen_level28() {
   questions+=("Clone disk with progress|dd if=/dev/sda of=/dev/sdb bs=64K status=progress conv=noerror,sync")
 
   # === PURE BASH MAGIC ===
-  questions+=("Random string generator|tr -dc 'a-zA-Z0-9' < /dev/urandom | head -c 32")
+  questions+=("Random string generator§tr -dc 'a-zA-Z0-9' < /dev/urandom | head -c 32")
   questions+=("Timestamp in epoch|date +%s")
   questions+=("Convert epoch to date|date -d @1234567890")
-  questions+=("Parallel execution with xargs|cat urls.txt | xargs -P 10 -I{} curl -s {}")
+  questions+=("Parallel execution with xargs§cat urls.txt | xargs -P 10 -I{} curl -s {}")
   questions+=("Timeout a command|timeout 5 long_running_cmd")
   questions+=("Retry command until success|until cmd; do sleep 1; done")
   questions+=("Lock file to prevent concurrent runs§exec 200>/tmp/lock; flock -n 200 || exit 1")
@@ -2646,7 +2646,7 @@ gen_level27() {
   questions+=("Show current user and groups|id")
   questions+=("Show sudoers rules|sudo -l")
   questions+=("Check sudo version (CVE check)|sudo --version")
-  questions+=("Check if user in docker/lxd group|id | grep -E 'docker|lxd'")
+  questions+=("Check if user in docker/lxd group§id | grep -E 'docker|lxd'")
 
   # System enumeration
   questions+=("Show OS and kernel version|uname -a")
