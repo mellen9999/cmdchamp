@@ -1,2 +1,8 @@
-# User data (stored in ~/.local/share/bashgym/)
+# User data (stored in ~/.local/share/cmdchamp/)
 *.tmp
+
+# Model files (don't commit these)
+*.gguf
+*.safetensors
+*.bin
+qwen*/
