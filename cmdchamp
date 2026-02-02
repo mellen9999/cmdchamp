@@ -787,141 +787,169 @@ _ctx() {
 # Mini manpages for complex commands (shown as block when command is first token)
 declare -A MANPAGE=(
   [hydra]=$'\e[32;1mhydra\e[0m \e[2m- network login cracker\e[0m
-  \e[36m-l\e[0m USER   single username        \e[36m-L\e[0m FILE   username list
-  \e[36m-p\e[0m PASS   single password        \e[36m-P\e[0m FILE   password list
-  \e[36m-t\e[0m N      threads per target     \e[36m-s\e[0m PORT   target port
+  \e[36m-l\e[0m \e[33mUSER\e[0m   single username        \e[36m-L\e[0m \e[33mFILE\e[0m   username list
+  \e[36m-p\e[0m \e[33mPASS\e[0m   single password        \e[36m-P\e[0m \e[33mFILE\e[0m   password list
+  \e[36m-t\e[0m \e[33mN\e[0m      threads per target     \e[36m-s\e[0m \e[33mPORT\e[0m   target port
   \e[33mPROTOCOLS:\e[0m ssh ftp http-get http-post-form mysql smb rdp
-  \e[33mhttp-post-form\e[0m \e[2m'"'"'/path:user=\e[33m^USER^\e[0m\e[2m&pass=\e[33m^PASS^\e[0m\e[2m:F=fail'"'"'\e[0m'
+  \e[2mhydra -l admin -P pass.txt ssh://192.168.1.1\e[0m'
   [nmap]=$'\e[32;1mnmap\e[0m \e[2m- network scanner\e[0m
   \e[36m-sS\e[0m       SYN scan (stealth)     \e[36m-sT\e[0m       TCP connect
   \e[36m-sU\e[0m       UDP scan               \e[36m-sV\e[0m       version detect
   \e[36m-sC\e[0m       default scripts        \e[36m-O\e[0m        OS detection
   \e[36m-p\e[0m 22,80  specific ports         \e[36m-p-\e[0m       all 65535 ports
-  \e[36m-Pn\e[0m       skip ping              \e[36m-A\e[0m        aggressive'
+  \e[2mnmap -sV 192.168.1.1    nmap -A -p- 10.0.0.1    nmap -sn 192.168.1.0/24\e[0m'
   [hashcat]=$'\e[32;1mhashcat\e[0m \e[2m- GPU hash cracker\e[0m
-  \e[36m-m\e[0m TYPE   hash type \e[2m(0=MD5 100=SHA1 1000=NTLM 1800=SHA512)\e[0m
-  \e[36m-a\e[0m MODE   attack \e[2m(0=dict, 3=brute)\e[0m     \e[36m--show\e[0m   show cracked
-  \e[33mMASKS:\e[0m ?l=lower ?u=upper ?d=digit ?s=special ?a=all'
+  \e[36m-m\e[0m \e[33mTYPE\e[0m   hash type \e[2m(0=MD5 100=SHA1 1000=NTLM 1800=SHA512)\e[0m
+  \e[36m-a\e[0m \e[33mMODE\e[0m   attack \e[2m(0=dict, 3=brute)\e[0m     \e[36m--show\e[0m   show cracked
+  \e[2mhashcat -m 0 hash.txt wordlist.txt    hashcat -m 1000 -a 3 hash ?a?a?a?a\e[0m'
   [john]=$'\e[32;1mjohn\e[0m \e[2m- password cracker\e[0m
-  \e[36m--wordlist\e[0m=FILE   dictionary     \e[36m--format\e[0m=TYPE   hash type
-  \e[36m--show\e[0m            cracked        \e[36m--list\e[0m=formats  list types'
+  \e[36m--wordlist\e[0m=\e[33mFILE\e[0m   dictionary     \e[36m--format\e[0m=\e[33mTYPE\e[0m   hash type
+  \e[36m--show\e[0m            cracked        \e[36m--list\e[0m=formats  list types
+  \e[2mjohn --wordlist=rockyou.txt hash.txt    john --show hash.txt\e[0m'
   [tshark]=$'\e[32;1mtshark\e[0m \e[2m- terminal packet analyzer\e[0m
-  \e[36m-r\e[0m FILE   read pcap              \e[36m-i\e[0m IFACE  capture live
-  \e[36m-Y\e[0m FILTER display filter         \e[36m-T\e[0m fields output format
-  \e[33mFILTERS:\e[0m ip.addr==X tcp.port==Y http ftp dns'
+  \e[36m-r\e[0m \e[33mFILE\e[0m   read pcap              \e[36m-i\e[0m \e[33mIFACE\e[0m  capture live
+  \e[36m-Y\e[0m \e[33mFILTER\e[0m display filter         \e[36m-T\e[0m fields output format
+  \e[2mtshark -i eth0    tshark -r cap.pcap -Y "http"    tshark -i eth0 -w out.pcap\e[0m'
   [curl]=$'\e[32;1mcurl\e[0m \e[2m- HTTP client\e[0m
-  \e[36m-X\e[0m METHOD  GET/POST/PUT/DELETE   \e[36m-H\e[0m \e[2m'"'"'K: V'"'"'\e[0m  header
-  \e[36m-d\e[0m DATA    POST body              \e[36m-o\e[0m FILE   output file
-  \e[36m-L\e[0m         follow redirects       \e[36m-s\e[0m        silent'
+  \e[36m-X\e[0m \e[33mMETHOD\e[0m  GET/POST/PUT/DELETE   \e[36m-H\e[0m \e[2m'"'"'K: V'"'"'\e[0m  header
+  \e[36m-d\e[0m \e[33mDATA\e[0m    POST body              \e[36m-o\e[0m \e[33mFILE\e[0m   output file
+  \e[36m-L\e[0m         follow redirects       \e[36m-s\e[0m        silent
+  \e[2mcurl -s url    curl -X POST -d "data" url    curl -o file.zip url\e[0m'
   [find]=$'\e[32;1mfind\e[0m \e[2m- search for files\e[0m
-  \e[36m-name\e[0m \e[2m'"'"'X'"'"'\e[0m   filename            \e[36m-type\e[0m f/d  file or dir
-  \e[36m-size\e[0m +10M  larger than         \e[36m-mtime\e[0m -7  last 7 days
-  \e[36m-exec\e[0m CMD {} \\;  run on each   \e[36m-delete\e[0m    remove'
+  \e[36m-name\e[0m \e[2m'"'"'X'"'"'\e[0m   filename            \e[36m-type\e[0m \e[2mf/d\e[0m  file or dir
+  \e[36m-size\e[0m \e[2m+10M\e[0m  larger than         \e[36m-mtime\e[0m \e[2m-7\e[0m  last 7 days
+  \e[36m-exec\e[0m \e[2mCMD {} \\;\e[0m  run on each   \e[36m-delete\e[0m    remove
+  \e[2mfind . -name "*.log"    find / -size +100M    find . -mtime -7 -type f\e[0m'
   [awk]=$'\e[32;1mawk\e[0m \e[2m- pattern scanning\e[0m
   \e[33m'"'"'{print $1}'"'"'\e[0m   first field       \e[33m'"'"'{print $NF}'"'"'\e[0m  last field
   \e[36m-F\e[0m\e[2m'"'"','"'"'\e[0m          delimiter          \e[33mNR\e[0m          line number
-  \e[33m'"'"'/pat/'"'"'\e[0m        match lines        \e[33mBEGIN{} END{}\e[0m'
+  \e[2mawk '"'"'{print $1}'"'"' file    awk -F, '"'"'{print $2}'"'"' data.csv    awk '"'"'/error/'"'"' log\e[0m'
   [sed]=$'\e[32;1msed\e[0m \e[2m- stream editor\e[0m
   \e[33m'"'"'s/old/new/'"'"'\e[0m    replace first     \e[33m'"'"'s/old/new/g'"'"'\e[0m  replace all
-  \e[36m-i\e[0m            edit in place     \e[33m'"'"'/pat/d'"'"'\e[0m       delete lines'
+  \e[36m-i\e[0m            edit in place     \e[33m'"'"'/pat/d'"'"'\e[0m       delete lines
+  \e[2msed '"'"'s/foo/bar/g'"'"' file    sed -i '"'"'/^#/d'"'"' file    sed -n '"'"'5,10p'"'"' file\e[0m'
   [xargs]=$'\e[32;1mxargs\e[0m \e[2m- build commands from stdin\e[0m
-  \e[36m-I\e[0m {}     placeholder            \e[36m-0\e[0m        null delim
-  \e[36m-n\e[0m N      args per command       \e[36m-P\e[0m N      parallel'
+  \e[36m-I\e[0m \e[2m{}\e[0m     placeholder            \e[36m-0\e[0m        null delim
+  \e[36m-n\e[0m \e[33mN\e[0m      args per command       \e[36m-P\e[0m \e[33mN\e[0m      parallel
+  \e[2mfind . -name "*.tmp" | xargs rm    cat urls | xargs -P4 -I{} curl {}\e[0m'
   [tar]=$'\e[32;1mtar\e[0m \e[2m- archive tool\e[0m
-  \e[36m-c\e[0m create   \e[36m-x\e[0m extract   \e[36m-v\e[0m verbose   \e[36m-f\e[0m FILE
-  \e[36m-z\e[0m gzip     \e[36m-j\e[0m bzip2     \e[36m-C\e[0m DIR       \e[36m-t\e[0m list'
+  \e[36m-c\e[0m create   \e[36m-x\e[0m extract   \e[36m-v\e[0m verbose   \e[36m-f\e[0m \e[33mFILE\e[0m
+  \e[36m-z\e[0m gzip     \e[36m-j\e[0m bzip2     \e[36m-C\e[0m \e[33mDIR\e[0m       \e[36m-t\e[0m list
+  \e[2mtar czf archive.tar.gz dir/    tar xzf archive.tar.gz    tar tf archive.tar.gz\e[0m'
   [ssh]=$'\e[32;1mssh\e[0m \e[2m- secure shell\e[0m
-  \e[36m-i\e[0m KEY    identity file          \e[36m-p\e[0m PORT   port
-  \e[36m-L\e[0m P:H:P  local forward          \e[36m-D\e[0m PORT   SOCKS proxy
-  \e[36m-J\e[0m HOST   jump host              \e[36m-N\e[0m        no command'
+  \e[36m-i\e[0m \e[33mKEY\e[0m    identity file          \e[36m-p\e[0m \e[33mPORT\e[0m   port
+  \e[36m-L\e[0m \e[2mP:H:P\e[0m  local forward          \e[36m-D\e[0m \e[33mPORT\e[0m   SOCKS proxy
+  \e[36m-J\e[0m \e[33mHOST\e[0m   jump host              \e[36m-N\e[0m        no command
+  \e[2mssh user@host    ssh -i key.pem user@host    ssh -L 8080:localhost:80 host\e[0m'
   [git]=$'\e[32;1mgit\e[0m \e[2m- version control\e[0m
   \e[33madd\e[0m     stage      \e[33mcommit\e[0m  save       \e[33mpush\e[0m    upload
   \e[33mpull\e[0m    download   \e[33mstatus\e[0m  changes    \e[33mdiff\e[0m    compare
-  \e[33mlog\e[0m     history    \e[33mbranch\e[0m  branches   \e[33mmerge\e[0m   combine'
+  \e[2mgit add .    git commit -m "msg"    git push    git pull    git log --oneline\e[0m'
   [less]=$'\e[32;1mless\e[0m \e[2m- pager (scroll through files)\e[0m
   \e[36m-N\e[0m        show line numbers      \e[36m-S\e[0m        chop long lines
   \e[36m-i\e[0m        ignore case search     \e[36m-F\e[0m        quit if one screen
-  \e[33m/pat\e[0m      search forward         \e[33mn/N\e[0m       next/prev match'
+  \e[2mless file.txt    less -N file.txt    less +F /var/log/syslog\e[0m'
   [cat]=$'\e[32;1mcat\e[0m \e[2m- concatenate and print files\e[0m
   \e[36m-n\e[0m        number all lines       \e[36m-b\e[0m        number non-blank
-  \e[36m-A\e[0m        show all (tabs, ends)  \e[36m-s\e[0m        squeeze blank lines'
+  \e[36m-A\e[0m        show all (tabs, ends)  \e[36m-s\e[0m        squeeze blank lines
+  \e[2mcat file.txt    cat -n file.txt    cat a.txt b.txt > merged.txt\e[0m'
   [head]=$'\e[32;1mhead\e[0m \e[2m- output first part of files\e[0m
-  \e[36m-n\e[0m N      first N lines          \e[36m-c\e[0m N      first N bytes
-  \e[2mdefault: 10 lines\e[0m'
+  \e[36m-n\e[0m \e[33mN\e[0m      first \e[33mN\e[0m lines          \e[36m-c\e[0m \e[33mN\e[0m      first \e[33mN\e[0m bytes
+  \e[2mhead file.txt    head -n 5 file.txt    head -20 file.txt\e[0m'
   [tail]=$'\e[32;1mtail\e[0m \e[2m- output last part of files\e[0m
-  \e[36m-n\e[0m N      last N lines           \e[36m-c\e[0m N      last N bytes
-  \e[36m-f\e[0m        follow (live updates)  \e[36m-F\e[0m        follow + retry'
+  \e[36m-n\e[0m \e[33mN\e[0m      last \e[33mN\e[0m lines           \e[36m-c\e[0m \e[33mN\e[0m      last \e[33mN\e[0m bytes
+  \e[36m-f\e[0m        follow (live updates)  \e[36m-F\e[0m        follow + retry
+  \e[2mtail file.txt    tail -n 20 file.txt    tail -f /var/log/syslog\e[0m'
   [ls]=$'\e[32;1mls\e[0m \e[2m- list directory contents\e[0m
   \e[36m-l\e[0m        long format            \e[36m-a\e[0m        show hidden
   \e[36m-h\e[0m        human sizes            \e[36m-S\e[0m        sort by size
   \e[36m-t\e[0m        sort by time           \e[36m-r\e[0m        reverse order
-  \e[36m-R\e[0m        recursive              \e[36m-1\e[0m        one per line'
+  \e[36m-R\e[0m        recursive              \e[36m-1\e[0m        one per line
+  \e[2mls -la    ls -lh    ls -lS    ls -lt    ls -R /etc\e[0m'
   [grep]=$'\e[32;1mgrep\e[0m \e[2m- search text patterns\e[0m
   \e[36m-i\e[0m        ignore case            \e[36m-v\e[0m        invert match
   \e[36m-r\e[0m        recursive              \e[36m-n\e[0m        line numbers
   \e[36m-c\e[0m        count matches          \e[36m-l\e[0m        files only
-  \e[36m-E\e[0m        extended regex         \e[36m-w\e[0m        whole word'
+  \e[36m-E\e[0m        extended regex         \e[36m-w\e[0m        whole word
+  \e[2mgrep error log.txt    grep -rn TODO .    grep -i "pattern" file\e[0m'
   [sort]=$'\e[32;1msort\e[0m \e[2m- sort lines of text\e[0m
   \e[36m-n\e[0m        numeric                \e[36m-r\e[0m        reverse
-  \e[36m-u\e[0m        unique                 \e[36m-k\e[0m N      by column N
-  \e[36m-t\e[0m C      delimiter              \e[36m-h\e[0m        human numeric'
+  \e[36m-u\e[0m        unique                 \e[36m-k\e[0m \e[33mN\e[0m      by column \e[33mN\e[0m
+  \e[36m-t\e[0m \e[33mC\e[0m      delimiter              \e[36m-h\e[0m        human numeric
+  \e[2msort file.txt    sort -n nums.txt    sort -t, -k2 data.csv\e[0m'
   [uniq]=$'\e[32;1muniq\e[0m \e[2m- filter repeated lines\e[0m
   \e[36m-c\e[0m        count occurrences      \e[36m-d\e[0m        only duplicates
-  \e[36m-u\e[0m        only unique            \e[2m(must sort first!)\e[0m'
+  \e[36m-u\e[0m        only unique            \e[2m(must sort first!)\e[0m
+  \e[2msort file | uniq    sort file | uniq -c    sort file | uniq -d\e[0m'
   [cut]=$'\e[32;1mcut\e[0m \e[2m- extract columns/fields\e[0m
-  \e[36m-d\e[0m C      delimiter              \e[36m-f\e[0m N      field N
-  \e[36m-c\e[0m N      character N            \e[36m--complement\e[0m invert'
+  \e[36m-d\e[0m \e[33mC\e[0m      delimiter              \e[36m-f\e[0m \e[33mN\e[0m      field \e[33mN\e[0m
+  \e[36m-c\e[0m \e[33mN\e[0m      character \e[33mN\e[0m            \e[36m--complement\e[0m invert
+  \e[2mcut -d, -f1 data.csv    cut -d: -f1 /etc/passwd    cut -c1-10 file\e[0m'
   [wc]=$'\e[32;1mwc\e[0m \e[2m- word, line, byte count\e[0m
   \e[36m-l\e[0m        lines                  \e[36m-w\e[0m        words
-  \e[36m-c\e[0m        bytes                  \e[36m-m\e[0m        characters'
+  \e[36m-c\e[0m        bytes                  \e[36m-m\e[0m        characters
+  \e[2mwc -l file.txt    wc -w file.txt    ls | wc -l\e[0m'
   [tr]=$'\e[32;1mtr\e[0m \e[2m- translate characters\e[0m
-  \e[33mtr a-z A-Z\e[0m   lowercase to upper   \e[36m-d\e[0m        delete chars
-  \e[36m-s\e[0m        squeeze repeats        \e[33mtr -d '"'"'\\n'"'"'\e[0m  remove newlines'
+  \e[36m-d\e[0m        delete chars           \e[36m-s\e[0m        squeeze repeats
+  \e[2mtr a-z A-Z < file    tr -d '"'"'\\n'"'"' < file    tr -s '"'"' '"'"' < file\e[0m'
   [chmod]=$'\e[32;1mchmod\e[0m \e[2m- change file permissions\e[0m
   \e[33m+x\e[0m        add execute            \e[33m-x\e[0m        remove execute
   \e[33m755\e[0m       rwxr-xr-x              \e[33m644\e[0m       rw-r--r--
-  \e[33m700\e[0m       rwx------              \e[36m-R\e[0m        recursive'
+  \e[2mchmod +x script.sh    chmod 755 script.sh    chmod -R 644 dir/\e[0m'
   [ps]=$'\e[32;1mps\e[0m \e[2m- list processes\e[0m
   \e[33maux\e[0m       all users, detailed    \e[33m-ef\e[0m       full format
-  \e[36m--sort\e[0m    sort by field          \e[33m-u\e[0m USER   by user'
+  \e[36m--sort\e[0m    sort by field          \e[33m-u\e[0m \e[33mUSER\e[0m   by user
+  \e[2mps aux    ps -ef    ps aux --sort=-%mem | head\e[0m'
   [kill]=$'\e[32;1mkill\e[0m \e[2m- send signal to process\e[0m
   \e[36m-9\e[0m        SIGKILL (force)        \e[36m-15\e[0m       SIGTERM (default)
-  \e[36m-HUP\e[0m      reload config          \e[36m-STOP\e[0m     pause process'
+  \e[36m-HUP\e[0m      reload config          \e[36m-STOP\e[0m     pause process
+  \e[2mkill 1234    kill -9 1234    kill -HUP 1234\e[0m'
   [cp]=$'\e[32;1mcp\e[0m \e[2m- copy files\e[0m
   \e[36m-r\e[0m        recursive (dirs)       \e[36m-i\e[0m        interactive
-  \e[36m-v\e[0m        verbose                \e[36m-p\e[0m        preserve attrs'
+  \e[36m-v\e[0m        verbose                \e[36m-p\e[0m        preserve attrs
+  \e[2mcp file.txt backup.txt    cp -r dir/ newdir/    cp -rp src/ dst/\e[0m'
   [mv]=$'\e[32;1mmv\e[0m \e[2m- move/rename files\e[0m
   \e[36m-i\e[0m        interactive            \e[36m-v\e[0m        verbose
-  \e[36m-n\e[0m        no overwrite           \e[36m-f\e[0m        force'
+  \e[36m-n\e[0m        no overwrite           \e[36m-f\e[0m        force
+  \e[2mmv old.txt new.txt    mv file.txt dir/    mv -i src dst\e[0m'
   [rm]=$'\e[32;1mrm\e[0m \e[2m- remove files\e[0m
   \e[36m-r\e[0m        recursive (dirs)       \e[36m-f\e[0m        force
-  \e[36m-i\e[0m        interactive            \e[31m-rf\e[0m       \e[2mdangerous!\e[0m'
+  \e[36m-i\e[0m        interactive            \e[31m-rf\e[0m       \e[2mdangerous!\e[0m
+  \e[2mrm file.txt    rm -r dir/    rm -i *.tmp\e[0m'
   [du]=$'\e[32;1mdu\e[0m \e[2m- disk usage\e[0m
   \e[36m-h\e[0m        human readable         \e[36m-s\e[0m        summary only
-  \e[36m-d\e[0m N      depth N                \e[36m--max-depth\e[0m=N same'
+  \e[36m-d\e[0m \e[33mN\e[0m      depth \e[33mN\e[0m                \e[36m--max-depth\e[0m=\e[33mN\e[0m same
+  \e[2mdu -sh .    du -sh */    du -h --max-depth=1\e[0m'
   [df]=$'\e[32;1mdf\e[0m \e[2m- disk free space\e[0m
-  \e[36m-h\e[0m        human readable         \e[36m-i\e[0m        inodes'
+  \e[36m-h\e[0m        human readable         \e[36m-i\e[0m        inodes
+  \e[2mdf -h    df -h /home    df -i\e[0m'
   [ss]=$'\e[32;1mss\e[0m \e[2m- socket statistics\e[0m
   \e[36m-t\e[0m        TCP                    \e[36m-u\e[0m        UDP
   \e[36m-l\e[0m        listening              \e[36m-n\e[0m        numeric ports
-  \e[36m-p\e[0m        show process           \e[36m-a\e[0m        all sockets'
+  \e[36m-p\e[0m        show process           \e[36m-a\e[0m        all sockets
+  \e[2mss -tlnp    ss -tunap    ss -t state established\e[0m'
   [journalctl]=$'\e[32;1mjournalctl\e[0m \e[2m- systemd logs\e[0m
-  \e[36m-u\e[0m UNIT   service logs           \e[36m-f\e[0m        follow live
-  \e[36m-n\e[0m N      last N lines           \e[36m-b\e[0m        current boot
-  \e[36m-p\e[0m err    priority level         \e[36m--since\e[0m   time filter'
+  \e[36m-u\e[0m \e[33mUNIT\e[0m   service logs           \e[36m-f\e[0m        follow live
+  \e[36m-n\e[0m \e[33mN\e[0m      last \e[33mN\e[0m lines           \e[36m-b\e[0m        current boot
+  \e[36m-p\e[0m err    priority level         \e[36m--since\e[0m   time filter
+  \e[2mjournalctl -u nginx    journalctl -f    journalctl -b -p err\e[0m'
   [systemctl]=$'\e[32;1msystemctl\e[0m \e[2m- systemd control\e[0m
   \e[33mstart\e[0m     start service          \e[33mstop\e[0m      stop service
   \e[33menable\e[0m    start on boot          \e[33mdisable\e[0m   no auto-start
-  \e[33mstatus\e[0m    show status            \e[33mrestart\e[0m   restart service'
+  \e[33mstatus\e[0m    show status            \e[33mrestart\e[0m   restart service
+  \e[2msystemctl status nginx    systemctl enable sshd    systemctl restart nginx\e[0m'
   [mkdir]=$'\e[32;1mmkdir\e[0m \e[2m- make directories\e[0m
   \e[36m-p\e[0m        create parents         \e[36m-v\e[0m        verbose
-  \e[36m-m\e[0m MODE   set permissions'
+  \e[36m-m\e[0m \e[33mMODE\e[0m   set permissions
+  \e[2mmkdir newdir    mkdir -p path/to/dir    mkdir -m 755 scripts\e[0m'
   [touch]=$'\e[32;1mtouch\e[0m \e[2m- create file or update timestamp\e[0m
   \e[36m-a\e[0m        access time only       \e[36m-m\e[0m        modify time only
-  \e[36m-d\e[0m DATE   use specific date'
+  \e[36m-d\e[0m \e[33mDATE\e[0m   use specific date
+  \e[2mtouch newfile.txt    touch -d "2024-01-01" file    touch *.log\e[0m'
   [tree]=$'\e[32;1mtree\e[0m \e[2m- directory tree\e[0m
-  \e[36m-L\e[0m N      depth limit            \e[36m-d\e[0m        dirs only
-  \e[36m-a\e[0m        show hidden            \e[36m-I\e[0m PAT    ignore pattern'
+  \e[36m-L\e[0m \e[33mN\e[0m      depth limit            \e[36m-d\e[0m        dirs only
+  \e[36m-a\e[0m        show hidden            \e[36m-I\e[0m \e[33mPAT\e[0m    ignore pattern
+  \e[2mtree    tree -L 2    tree -d    tree -I "node_modules|.git"\e[0m'
 )
 
 declare -A EXP=(
@@ -929,12 +957,12 @@ declare -A EXP=(
   [echo]="print text to stdout" [cat]="concatenate and display file contents" [ls]="list directory contents"
   [cd]="change directory" [cp]="copy files" [mv]="move/rename files" [rm]="delete files permanently"
   [mkdir]="create directory" [touch]="create file/update timestamp"
-  [head]="head -N FILE: first N lines (default 10)"
-  [tail]="tail -N FILE: last N lines (-f to follow)"
+  [head]="head -N FILE: first \e[33mN\e[0m lines (default 10)"
+  [tail]="tail -N FILE: last \e[33mN\e[0m lines (-f to follow)"
   [grep]="grep PATTERN FILE: search lines matching pattern"
   [find]="find PATH -name 'x': locate files by name/size/date"
   [wc]="word count: -l lines, -w words, -c bytes"
-  [sort]="sort lines alphabetically (-n numeric, -r reverse, -k N by column N)"
+  [sort]="sort lines alphabetically (-n numeric, -r reverse, -k N by column \e[33mN\e[0m)"
   [uniq]="filter adjacent duplicates (use sort | uniq for all dupes)" [cut]="cut -d',' -fN: extract column N"
   ['--sort=-%cpu']="sort by CPU% descending (- = descending)"
   ['--sort=-%mem']="sort by memory% descending"
@@ -1071,6 +1099,9 @@ explain() {
   if [[ -n "${MANPAGE[$cmd]:-}" ]]; then
     printf '%s\n' "${MANPAGE[$cmd]}"
     printf '%s\n' "${D}────────────────────────────────────────${N}"
+    # Count lines in manpage for clear_hint
+    local mp_lines; mp_lines=$(printf '%s' "${MANPAGE[$cmd]}" | wc -l)
+    EXPLAIN_LINES=$((mp_lines + 3))  # +1 header, +1 footer, +1 wc offset
     return
   fi
   for tok in $1; do
@@ -1228,12 +1259,12 @@ gen_level2() {
   questions+=("Display entire ${W}${txt}${C}|cat ${txt}|#output:~.")
   questions+=("Display ${W}${cfg}${C} with line numbers|cat -n ${cfg}|#output:~^\\s+1")
 
-  # head - first N lines (user figures out -N flag)
+  # head - first \e[33mN\e[0m lines (user figures out -N flag)
   questions+=("First ${n} lines of ${W}${log}${C}|head -${n} ${log}|head -n ${n} ${log}|#output:@${n}")
   questions+=("First 10 lines of ${W}${cfg}${C}|head ${cfg}|head -10 ${cfg}|head -n 10 ${cfg}|#output:@10")
   questions+=("First line only of ${W}${log}${C}|head -1 ${log}|head -n 1 ${log}|#output:@1")
 
-  # tail - last N lines (user figures out -N flag)
+  # tail - last \e[33mN\e[0m lines (user figures out -N flag)
   questions+=("Last ${n2} lines of ${W}${txt}${C}|tail -${n2} ${txt}|tail -n ${n2} ${txt}|#output:@${n2}")
   questions+=("Last 10 lines of ${W}${log}${C}|tail ${log}|tail -10 ${log}|tail -n 10 ${log}|#output:@10")
   questions+=("Last line only of ${W}${txt}${C}|tail -1 ${txt}|tail -n 1 ${txt}|#output:@1")
@@ -3206,7 +3237,7 @@ run() {
         if [[ "$c" == $'\t' ]]; then
           # Toggle hint + explanation
           if ((SHOW_HINT)); then
-            SHOW_HINT=0; clear_hint
+            SHOW_HINT=0; hdr "$lv" "$((qi+1))" "$TOT"; qdisp "$prompt"
           else
             SHOW_HINT=1; HINT=true; draw; echo; explain "$ans"; continue
           fi
@@ -3215,7 +3246,7 @@ run() {
         if [[ "$mode" == "insert" ]]; then
           # Clear hint display if typing
           if ((SHOW_HINT)) && [[ "$c" != $'\x1b' && "$c" != '' ]]; then
-            SHOW_HINT=0; clear_hint
+            SHOW_HINT=0; hdr "$lv" "$((qi+1))" "$TOT"; qdisp "$prompt"
           fi
           case "$c" in
             $'\x04') printf '\n%s\n' "${D}[quit]${N}"; exit 0;;  # Ctrl+D quit
@@ -3246,7 +3277,7 @@ run() {
           esac
         elif ((VI_MODE)); then
           # Clear hint display if any vi command
-          if ((SHOW_HINT)); then SHOW_HINT=0; clear_hint; fi
+          if ((SHOW_HINT)); then SHOW_HINT=0; hdr "$lv" "$((qi+1))" "$TOT"; qdisp "$prompt"; fi
           # Number prefix: accumulate digits
           if [[ "$c" =~ ^[1-9]$ ]] || { [[ "$c" == "0" ]] && [[ -n "$_rep" ]]; }; then _rep+="$c"; continue; fi
           local _n=${_rep:-1}; _rep=""
