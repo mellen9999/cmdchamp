@@ -3181,7 +3181,6 @@ run() {
       done
       if check "$input" "$_qanswers"; then
         [[ -n "$input" ]] && { HIST+=("$input"); HIST_IDX=${#HIST[@]}; HIST_SAVE=""; }
-        ((++PROG))
         # Show sandbox output prominently
         if [[ -n "$_SANDBOX_OUTPUT" ]]; then
           echo -e "\n${W}${_SANDBOX_OUTPUT}${N}"
@@ -3189,9 +3188,9 @@ run() {
         if $HINT; then
           echo -e "\n${D}+0 (hint)${N}"; streak=0; _sset "$prompt" "$tier"
         elif ((streak>=5)); then
-          ((++done)); ((++done)); echo -e "\n${R}${B}🔥 ON FIRE!${N} ${Y}+2${N}"; ((++streak)); _sset "$prompt" "$((tier<2?tier+1:2))"
+          ((++PROG)); ((++PROG)); ((++done)); ((++done)); echo -e "\n${R}${B}🔥 ON FIRE!${N} ${Y}+2${N}"; ((++streak)); _sset "$prompt" "$((tier<2?tier+1:2))"
         else
-          ((++done)); echo -e "\n${G}${B}✓${N}"; ((++streak)); _sset "$prompt" "$((tier<2?tier+1:2))"
+          ((++PROG)); ((++done)); echo -e "\n${G}${B}✓${N}"; ((++streak)); _sset "$prompt" "$((tier<2?tier+1:2))"
         fi
         read -rsp $'\e[2mPress Enter...\e[0m'  # pause to see output
         ((++qi)); QI=$qi; save; break
