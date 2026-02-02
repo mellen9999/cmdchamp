@@ -1123,10 +1123,10 @@ gen_level1() {
   questions+=("Write '${word}' to ${W}${txt}${C} - overwrite (use ${Y}>${C})|echo ${word} > ${txt}|#state:contains:${txt}:${word}")
   questions+=("Append '${word2}' to ${W}${log}${C} - add to end (use ${Y}>>${C})|echo ${word2} >> ${log}|#state:contains:${log}:${word2}")
   questions+=("Save ls to ${W}${outfile}${C} - overwrite (use ${Y}>${C})|ls > ${outfile}|#state:contains:${outfile}:server.log")
-  questions+=("Append timestamp to ${W}${log}${C} (use ${Y}date${C} + ${Y}>>${C})|date >> ${log}|#state:contains:${log}:2026")
+  questions+=("Append timestamp to ${W}${log}${C} (use ${Y}>>${C})|date >> ${log}|#state:contains:${log}:2026")
   questions+=("Save whoami to ${W}${outfile}${C} - overwrite (use ${Y}>${C})|whoami > ${outfile}|#state:exists:${outfile}")
   questions+=("Append hostname to ${W}${log}${C} (use ${Y}>>${C})|hostname >> ${log}|#state:exists:${log}")
-  questions+=("Create empty file ${W}${outfile2}${C} (use ${Y}touch${C})|touch ${outfile2}|#state:exists:${outfile2}")
+  questions+=("Create empty file ${W}${outfile2}${C}|touch ${outfile2}|#state:exists:${outfile2}")
 
   # tee - write to file AND stdout
   questions+=("Echo '${word}' to screen AND save to ${W}${txt}${C} (use ${Y}tee${C})§echo ${word} | tee ${txt}§#output:${word}")
@@ -1145,21 +1145,21 @@ gen_level2() {
   n=$((RANDOM % 6 + 3)); n2=$((RANDOM % 5 + 2)); n3=$((RANDOM % 8 + 5))
 
   # cat - display file (hint base command, user figures out flags)
-  questions+=("Display entire ${W}${txt}${C} (use ${Y}cat${C})|cat ${txt}|#output:~.")
-  questions+=("Display ${W}${cfg}${C} with line numbers (use ${Y}cat${C})|cat -n ${cfg}|#output:~^\\s+1")
+  questions+=("Display entire ${W}${txt}${C}|cat ${txt}|#output:~.")
+  questions+=("Display ${W}${cfg}${C} with line numbers|cat -n ${cfg}|#output:~^\\s+1")
 
   # head - first N lines (user figures out -N flag)
-  questions+=("First ${n} lines of ${W}${log}${C} (use ${Y}head${C})|head -${n} ${log}|head -n ${n} ${log}|#output:@${n}")
-  questions+=("First 10 lines of ${W}${cfg}${C} (use ${Y}head${C})|head ${cfg}|head -10 ${cfg}|head -n 10 ${cfg}|#output:@10")
-  questions+=("First line only of ${W}${log}${C} (use ${Y}head${C})|head -1 ${log}|head -n 1 ${log}|#output:@1")
+  questions+=("First ${n} lines of ${W}${log}${C}|head -${n} ${log}|head -n ${n} ${log}|#output:@${n}")
+  questions+=("First 10 lines of ${W}${cfg}${C}|head ${cfg}|head -10 ${cfg}|head -n 10 ${cfg}|#output:@10")
+  questions+=("First line only of ${W}${log}${C}|head -1 ${log}|head -n 1 ${log}|#output:@1")
 
   # tail - last N lines (user figures out -N flag)
-  questions+=("Last ${n2} lines of ${W}${txt}${C} (use ${Y}tail${C})|tail -${n2} ${txt}|tail -n ${n2} ${txt}|#output:@${n2}")
-  questions+=("Last 10 lines of ${W}${log}${C} (use ${Y}tail${C})|tail ${log}|tail -10 ${log}|tail -n 10 ${log}|#output:@10")
-  questions+=("Last line only of ${W}${txt}${C} (use ${Y}tail${C})|tail -1 ${txt}|tail -n 1 ${txt}|#output:@1")
+  questions+=("Last ${n2} lines of ${W}${txt}${C}|tail -${n2} ${txt}|tail -n ${n2} ${txt}|#output:@${n2}")
+  questions+=("Last 10 lines of ${W}${log}${C}|tail ${log}|tail -10 ${log}|tail -n 10 ${log}|#output:@10")
+  questions+=("Last line only of ${W}${txt}${C}|tail -1 ${txt}|tail -n 1 ${txt}|#output:@1")
 
   # less - scrollable file viewer
-  questions+=("View ${W}${log}${C} with scrolling (use ${Y}less${C})|less ${log}|#text:")
+  questions+=("View ${W}${log}${C} with scrolling|less ${log}|#text:")
   questions+=("View ${W}${txt}${C} with line numbers in less|less -N ${txt}|#text:")
 
   printf '%s\n' "${questions[@]}"
@@ -1253,9 +1253,9 @@ gen_level4() {
   questions+=("Search for ${Y}ERROR${C} in ${W}${log}${C} using ${Y}<${C}|grep ERROR < ${log}|#output:*")
 
   # <<< feeds a string (here-string)
-  questions+=("Uppercase ${Y}'${word}'${C} (use ${Y}<<<${C} with tr)|tr a-z A-Z <<< '${word}'|tr a-z A-Z <<< ${word}|#output:~[A-Z]")
+  questions+=("Uppercase ${Y}'${word}'${C} (use ${Y}<<<${C})|tr a-z A-Z <<< '${word}'|tr a-z A-Z <<< ${word}|#output:~[A-Z]")
   questions+=("Lowercase ${Y}'${word2^^}'${C} (use ${Y}<<<${C})|tr A-Z a-z <<< '${word2^^}'|#output:~[a-z]")
-  questions+=("Reverse ${Y}'${word}'${C} (use ${Y}<<<${C} with rev)|rev <<< '${word}'|rev <<< ${word}|#output:*")
+  questions+=("Reverse ${Y}'${word}'${C} (use ${Y}<<<${C})|rev <<< '${word}'|rev <<< ${word}|#output:*")
   questions+=("Reverse ${Y}'${word2}'${C}|rev <<< '${word2}'|rev <<< ${word2}|#output:*")
 
   # bc calculations (one example)
@@ -1589,45 +1589,45 @@ gen_level11() {
   local searchterm=$(_phrase ERROR WARN INFO DEBUG)
 
   # === PURE: Basic file operations ===
-  questions+=("Display ${cfg} contents (use ${Y}cat${C})|cat ${cfg}|bat ${cfg}")
-  questions+=("Display ${log} with line numbers (use ${Y}cat${C})|cat -n ${log}|bat -n ${log}")
-  questions+=("Display ${txt} and ${txt2} together (use ${Y}cat${C})|cat ${txt} ${txt2}")
+  questions+=("Display ${cfg} contents|cat ${cfg}|bat ${cfg}")
+  questions+=("Display ${log} with line numbers|cat -n ${log}|bat -n ${log}")
+  questions+=("Display ${txt} and ${txt2} together|cat ${txt} ${txt2}")
 
   # Listing files
-  questions+=("Long listing with permissions, size, date (use ${Y}ls${C})|ls -l|ls -la|eza -l")
-  questions+=("List all files including hidden (use ${Y}ls${C})|ls -la|ls -al|eza -la|eza -al")
-  questions+=("List sorted by size, largest first (use ${Y}ls${C})|ls -lS|ls -Sl|eza -l --sort size -r")
-  questions+=("List sorted by time, newest first (use ${Y}ls${C})|ls -lt|ls -tl|eza -l --sort modified")
-  questions+=("List only directories (use ${Y}ls${C})|ls -d */|eza -D")
-  questions+=("Show directory tree (use ${Y}tree${C})|tree|eza -T")
-  questions+=("Tree ${n3} levels deep (use ${Y}tree${C})|tree -L ${n3}|eza -T -L ${n3}")
-  questions+=("Long listing with human sizes (use ${Y}ls${C})|ls -lh|ls -hl|eza -lh")
-  questions+=("List one file per line (use ${Y}ls${C})|ls -1")
-  questions+=("List ${dir}/ recursively (use ${Y}ls${C})|ls -R ${dir}/|eza -R ${dir}/")
+  questions+=("Long listing with permissions, size, date|ls -l|ls -la|eza -l")
+  questions+=("List all files including hidden|ls -la|ls -al|eza -la|eza -al")
+  questions+=("List sorted by size, largest first|ls -lS|ls -Sl|eza -l --sort size -r")
+  questions+=("List sorted by time, newest first|ls -lt|ls -tl|eza -l --sort modified")
+  questions+=("List only directories|ls -d */|eza -D")
+  questions+=("Show directory tree|tree|eza -T")
+  questions+=("Tree ${n3} levels deep|tree -L ${n3}|eza -T -L ${n3}")
+  questions+=("Long listing with human sizes|ls -lh|ls -hl|eza -lh")
+  questions+=("List one file per line|ls -1")
+  questions+=("List ${dir}/ recursively|ls -R ${dir}/|eza -R ${dir}/")
 
   # Head and tail
-  questions+=("First ${n1} lines of ${W}${log}${C} (use ${Y}head${C})|head -n ${n1} ${log}|head -${n1} ${log}")
-  questions+=("Last ${n2} lines of ${W}${log}${C} (use ${Y}tail${C})|tail -n ${n2} ${log}|tail -${n2} ${log}")
+  questions+=("First ${n1} lines of ${W}${log}${C}|head -n ${n1} ${log}|head -${n1} ${log}")
+  questions+=("Last ${n2} lines of ${W}${log}${C}|tail -n ${n2} ${log}|tail -${n2} ${log}")
 
   # File operations
-  questions+=("Count lines in ${csv} (use ${Y}wc${C})|wc -l ${csv}|wc -l < ${csv}")
-  questions+=("Count words in ${txt} (use ${Y}wc${C})|wc -w ${txt}")
-  questions+=("Count bytes in ${txt} (use ${Y}wc${C})|wc -c ${txt}")
-  questions+=("Copy ${cfg} to ${cfg2} (use ${Y}cp${C})|cp ${cfg} ${cfg2}")
-  questions+=("Copy ${dir}/ recursively to ${dir2}/ (use ${Y}cp${C})|cp -r ${dir}/ ${dir2}/|cp -R ${dir}/ ${dir2}/")
-  questions+=("Move ${txt} to ${dir}/ (use ${Y}mv${C})|mv ${txt} ${dir}/")
-  questions+=("Rename ${cfg} to ${cfg2} (use ${Y}mv${C})|mv ${cfg} ${cfg2}")
+  questions+=("Count lines in ${csv}|wc -l ${csv}|wc -l < ${csv}")
+  questions+=("Count words in ${txt}|wc -w ${txt}")
+  questions+=("Count bytes in ${txt}|wc -c ${txt}")
+  questions+=("Copy ${cfg} to ${cfg2}|cp ${cfg} ${cfg2}")
+  questions+=("Copy ${dir}/ recursively to ${dir2}/|cp -r ${dir}/ ${dir2}/|cp -R ${dir}/ ${dir2}/")
+  questions+=("Move ${txt} to ${dir}/|mv ${txt} ${dir}/")
+  questions+=("Rename ${cfg} to ${cfg2}|mv ${cfg} ${cfg2}")
 
   # Disk usage
-  questions+=("Disk usage of current dir, human readable (use ${Y}du${C})|du -sh .|du -hs .|dust")
-  questions+=("Disk usage of each subdir (use ${Y}du${C})|du -sh */|du -hs */|dust -d 1")
-  questions+=("Disk free space (use ${Y}df${C})|df -h")
+  questions+=("Disk usage of current dir, human readable|du -sh .|du -hs .|dust")
+  questions+=("Disk usage of each subdir|du -sh */|du -hs */|dust -d 1")
+  questions+=("Disk free space|df -h")
 
   # Archives (tar)
-  questions+=("Extract ${archive} (use ${Y}tar${C})|tar xzf ${archive}|tar -xzf ${archive}")
-  questions+=("Extract ${archive} to ${dir}/ (use ${Y}tar${C})|tar xzf ${archive} -C ${dir}/|tar -xzf ${archive} -C ${dir}/")
-  questions+=("Create archive.tar.gz from ${dir}/ (use ${Y}tar${C})|tar czf archive.tar.gz ${dir}/|tar -czf archive.tar.gz ${dir}/")
-  questions+=("List contents of ${archive} without extracting (use ${Y}tar${C})|tar tzf ${archive}|tar -tzf ${archive}|tar tf ${archive}")
+  questions+=("Extract ${archive}|tar xzf ${archive}|tar -xzf ${archive}")
+  questions+=("Extract ${archive} to ${dir}/|tar xzf ${archive} -C ${dir}/|tar -xzf ${archive} -C ${dir}/")
+  questions+=("Create archive.tar.gz from ${dir}/|tar czf archive.tar.gz ${dir}/|tar -czf archive.tar.gz ${dir}/")
+  questions+=("List contents of ${archive} without extracting|tar tzf ${archive}|tar -tzf ${archive}|tar tf ${archive}")
 
   # Symlinks
   questions+=("Create symlink 'link' pointing to ${cfg}|ln -s ${cfg} link")
@@ -1665,10 +1665,10 @@ gen_level14() {
   local ctx=$(_rnum 1 10) ctx2=$(_rnum 2 5)
 
   # Basic grep - with flag order alternatives
-  questions+=("Search for '${term}' recursively (use ${Y}grep${C})|grep -r ${term}|grep -r ${term} .|rg ${term}")
-  questions+=("Case-insensitive search for '${term}' (use ${Y}grep${C})|grep -ri ${term}|grep -ir ${term}|rg -i ${term}")
-  questions+=("Search '${term}' with line numbers (use ${Y}grep${C})|grep -rn ${term}|grep -nr ${term}|rg -n ${term}")
-  questions+=("Count '${term}' matches in ${log} (use ${Y}grep${C})|grep -c ${term} ${log}|rg -c ${term} ${log}")
+  questions+=("Search for '${term}' recursively|grep -r ${term}|grep -r ${term} .|rg ${term}")
+  questions+=("Case-insensitive search for '${term}'|grep -ri ${term}|grep -ir ${term}|rg -i ${term}")
+  questions+=("Search '${term}' with line numbers|grep -rn ${term}|grep -nr ${term}|rg -n ${term}")
+  questions+=("Count '${term}' matches in ${log}|grep -c ${term} ${log}|rg -c ${term} ${log}")
   questions+=("Search '${term}' with ${ctx} lines context|grep -C ${ctx} ${term}|rg -C ${ctx} ${term}")
   questions+=("Show ${ctx2} lines before each '${term}' match|grep -B ${ctx2} ${term}|rg -B ${ctx2} ${term}")
   questions+=("Show ${ctx} lines after each '${term}' match|grep -A ${ctx} ${term}|rg -A ${ctx} ${term}")
@@ -1778,12 +1778,12 @@ gen_level16() {
   local proc2=$(_pick PROCS) col2=$(_rnum 1 5) col3=$((col + 1)) chars=$(_rnum 10 80) thresh=$(_rnum 50 500)
 
   # Sorting
-  questions+=("Sort ${txt} alphabetically (use ${Y}sort${C})|sort ${txt}")
-  questions+=("Sort ${txt} in reverse (use ${Y}sort${C})|sort -r ${txt}")
-  questions+=("Sort ${txt} numerically (use ${Y}sort${C})|sort -n ${txt}")
-  questions+=("Sort ${txt} numerically descending (use ${Y}sort${C})|sort -rn ${txt}|sort -nr ${txt}")
-  questions+=("Sort and remove duplicates (use ${Y}sort${C})|sort -u ${txt}")
-  questions+=("Sort ${csv} by column ${col} (use ${Y}sort${C})|sort -t',' -k${col} ${csv}")
+  questions+=("Sort ${txt} alphabetically|sort ${txt}")
+  questions+=("Sort ${txt} in reverse|sort -r ${txt}")
+  questions+=("Sort ${txt} numerically|sort -n ${txt}")
+  questions+=("Sort ${txt} numerically descending|sort -rn ${txt}|sort -nr ${txt}")
+  questions+=("Sort and remove duplicates|sort -u ${txt}")
+  questions+=("Sort ${csv} by column ${col}|sort -t',' -k${col} ${csv}")
   questions+=("Sort ${csv} by column ${col} numerically|sort -t',' -k${col}n ${csv}|sort -t',' -nk${col} ${csv}")
   questions+=("Sort ${csv} by column ${col} descending|sort -t',' -k${col}rn ${csv}|sort -t',' -rnk${col} ${csv}")
   questions+=("Sort by human-readable sizes (1K, 2M, 3G)|sort -h")
@@ -1791,15 +1791,15 @@ gen_level16() {
   questions+=("Sort ${csv} by column ${col} then ${col2}|sort -t',' -k${col},${col} -k${col2},${col2} ${csv}")
 
   # Uniqueness
-  questions+=("Remove adjacent duplicate lines (use ${Y}uniq${C})|uniq ${txt}")
-  questions+=("Count occurrences of each unique line (use ${Y}uniq${C})§sort ${txt} | uniq -c")
+  questions+=("Remove adjacent duplicate lines|uniq ${txt}")
+  questions+=("Count occurrences of each unique line§sort ${txt} | uniq -c")
   questions+=("Show only duplicate lines§sort ${txt} | uniq -d")
   questions+=("Show only unique lines (appear once)§sort ${txt} | uniq -u")
   questions+=("Count unique lines in ${txt}§sort ${txt} | uniq | wc -l§sort -u ${txt} | wc -l")
   questions+=("Show all duplicates (repeated lines)§sort ${txt} | uniq -D")
 
   # Cutting columns
-  questions+=("Extract column ${col} from ${csv} (use ${Y}cut${C})|cut -d',' -f${col} ${csv}")
+  questions+=("Extract column ${col} from ${csv}|cut -d',' -f${col} ${csv}")
   questions+=("Extract columns ${col} and ${col3} from ${csv}|cut -d',' -f${col},${col3} ${csv}")
   questions+=("Extract columns ${col} through ${col3}|cut -d',' -f${col}-${col3} ${csv}")
   questions+=("Extract first ${chars} characters of each line|cut -c1-${chars} ${txt}")
@@ -1809,7 +1809,7 @@ gen_level16() {
   questions+=("Extract using tab delimiter|cut -f${col} ${txt}")
 
   # Basic awk
-  questions+=("Print first column of ${txt} (use ${Y}awk${C})|awk '{print \$1}' ${txt}")
+  questions+=("Print first column of ${txt}|awk '{print \$1}' ${txt}")
   questions+=("Print last column of each line|awk '{print \$NF}' ${txt}")
   questions+=("Print columns ${col} and ${col2}|awk '{print \$${col}, \$${col2}}' ${txt}")
   questions+=("Print lines longer than ${chars} chars|awk 'length > ${chars}' ${txt}")
@@ -1826,7 +1826,7 @@ gen_level16() {
   questions+=("Count records by column ${col} value|awk -F',' '{count[\$${col}]++} END {for(k in count) print k, count[k]}' ${csv}")
 
   # Field manipulation with tr
-  questions+=("Replace spaces with tabs (use ${Y}tr${C})|tr ' ' '\\t' < ${txt}")
+  questions+=("Replace spaces with tabs|tr ' ' '\\t' < ${txt}")
   questions+=("Delete all digits from ${txt}|tr -d '0-9' < ${txt}")
   questions+=("Squeeze multiple spaces to single|tr -s ' ' < ${txt}")
   questions+=("Convert to lowercase|tr 'A-Z' 'a-z' < ${txt}|tr '[:upper:]' '[:lower:]' < ${txt}")
@@ -1844,7 +1844,7 @@ gen_level16() {
   questions+=("Lines only in ${txt}, not ${txt2}|comm -23 <(sort ${txt}) <(sort ${txt2})")
 
   # Process management
-  questions+=("List all processes (use ${Y}ps${C})|ps aux")
+  questions+=("List all processes|ps aux")
   questions+=("$(_phrase "Find" "Show" "List") processes matching '${proc}'§ps aux | grep ${proc}§pgrep -a ${proc}")
   questions+=("Get PID of ${proc}|pgrep ${proc}|pidof ${proc}")
   questions+=("Kill ${proc} process|pkill ${proc}")
@@ -2134,7 +2134,7 @@ gen_level22() {
   questions+=("Extract credentials (FTP, HTTP basic)§tshark -r ${pcap} -Y 'ftp.request.command == PASS || http.authbasic'")
 
   # jq - JSON processing
-  questions+=("Pretty print JSON file (use ${Y}jq${C})|jq '.' data/export.json")
+  questions+=("Pretty print JSON file|jq '.' data/export.json")
   questions+=("Extract '${key}' array from JSON|jq '.${key}' data/export.json")
   questions+=("Extract first item from '${key}' array|jq '.${key}[0]' data/export.json")
   questions+=("Extract 'name' field from each item§jq '.${key}[] | .name' data/export.json")
@@ -2146,7 +2146,7 @@ gen_level22() {
   questions+=("Parse JSON from curl output§curl -s ${url}/api | jq '.${key}'")
 
   # curl - HTTP client
-  questions+=("GET request to ${url} (use ${Y}curl${C})|curl ${url}")
+  questions+=("GET request to ${url}|curl ${url}")
   questions+=("GET request with headers shown|curl -i ${url}")
   questions+=("POST JSON data|curl -X POST -H 'Content-Type: application/json' -d '{\"key\":\"value\"}' ${url}/api")
   questions+=("POST form data|curl -X POST -d 'user=admin&pass=test' ${url}/login")
@@ -2167,7 +2167,7 @@ gen_level22() {
   questions+=("Rsync with progress|rsync -avz --progress file.txt ${user}@${host}:/backup/")
 
   # wget
-  questions+=("Download file (use ${Y}wget${C})|wget ${url}/file.tar.gz")
+  questions+=("Download file|wget ${url}/file.tar.gz")
   questions+=("Continue interrupted download|wget -c ${url}/large.iso")
   questions+=("Mirror website for offline|wget -mk ${url}")
 
@@ -2799,27 +2799,27 @@ gen_level12() {
   local questions=() log log2 cfg cfg2 txt txt2 csv csv2 dir dir2 ext ext2 script archive bin img pcap hash photo wordlist ip subnet port port2 mac url user host term term2 term3 field field2 key old new size iface proc svc sig branch time n1 n2 n3 col; _ctx
 
   # Network diagnostics
-  questions+=("Ping ${ip} 5 times (use ${Y}ping${C})|ping -c 5 ${ip}")
-  questions+=("Ping ${ip} continuously (use ${Y}ping${C})|ping ${ip}")
+  questions+=("Ping ${ip} 5 times|ping -c 5 ${ip}")
+  questions+=("Ping ${ip} continuously|ping ${ip}")
   questions+=("Trace route to ${ip} (use ${Y}traceroute${C})|traceroute ${ip}|tracepath ${ip}")
-  questions+=("DNS lookup for ${host} (use ${Y}dig${C})|dig ${host}|nslookup ${host}|host ${host}")
-  questions+=("Reverse DNS lookup for ${ip} (use ${Y}dig${C})|dig -x ${ip}|host ${ip}")
-  questions+=("Check if port ${port} is open on ${ip} (use ${Y}nc${C})|nc -zv ${ip} ${port}")
-  questions+=("Show listening ports (use ${Y}ss${C})|ss -tlnp|netstat -tlnp")
-  questions+=("Show all network connections (use ${Y}ss${C})|ss -tunapl|netstat -tunapl")
-  questions+=("Show routing table (use ${Y}ip${C})|ip route|ip r")
-  questions+=("Show network interfaces (use ${Y}ip${C})|ip addr|ip a")
+  questions+=("DNS lookup for ${host}|dig ${host}|nslookup ${host}|host ${host}")
+  questions+=("Reverse DNS lookup for ${ip}|dig -x ${ip}|host ${ip}")
+  questions+=("Check if port ${port} is open on ${ip}|nc -zv ${ip} ${port}")
+  questions+=("Show listening ports|ss -tlnp|netstat -tlnp")
+  questions+=("Show all network connections|ss -tunapl|netstat -tunapl")
+  questions+=("Show routing table|ip route|ip r")
+  questions+=("Show network interfaces|ip addr|ip a")
 
   # System monitoring
-  questions+=("Show disk space usage (use ${Y}df${C})|df -h")
-  questions+=("Show memory usage (use ${Y}free${C})|free -h")
-  questions+=("Show system uptime (use ${Y}uptime${C})|uptime")
-  questions+=("Show system info (use ${Y}uname${C})|uname -a")
-  questions+=("Show CPU info (use ${Y}lscpu${C})|lscpu|cat /proc/cpuinfo")
-  questions+=("Show kernel messages (use ${Y}dmesg${C})|dmesg|dmesg -T")
-  questions+=("Interactive process viewer (use ${Y}top${C})|top|htop|btop")
-  questions+=("Show top 10 memory-hungry processes (use ${Y}ps${C})§ps aux --sort=-%mem | head -11")
-  questions+=("Show process tree (use ${Y}pstree${C})|pstree|ps auxf")
+  questions+=("Show disk space usage|df -h")
+  questions+=("Show memory usage|free -h")
+  questions+=("Show system uptime|uptime")
+  questions+=("Show system info|uname -a")
+  questions+=("Show CPU info|lscpu|cat /proc/cpuinfo")
+  questions+=("Show kernel messages|dmesg|dmesg -T")
+  questions+=("Interactive process viewer|top|htop|btop")
+  questions+=("Show top 10 memory-hungry processes§ps aux --sort=-%mem | head -11")
+  questions+=("Show process tree|pstree|ps auxf")
 
   # Service management (systemd)
   questions+=("Check status of ${svc}|systemctl status ${svc}")
@@ -2978,7 +2978,7 @@ check() {
   done; return 1
 }
 
-LVL=0 QI=0 HINT=false PROG=0 TOT=0
+LVL=0 QI=0 HINT=false TOT=0
 load() {
   [[ -f "$DATA/session.json" ]] && {
     local fd t; exec {fd}<"$DATA/session.json"; flock -s "$fd"
@@ -3029,7 +3029,7 @@ hdr() {
   printf '%s\n\n' "${D}[$2/$3]  Tab=hint${N}"
 }
 qdisp() { bar; printf '\n\e[36m%s\e[0m\n\n' "$1"; }
-bar() { local f e; printf -v f '%*s' "$PROG" ''; printf -v e '%*s' "$((TOT-PROG))" ''; printf "${G}[${Y}%s${D}%s${G}]${N}" "${f// /█}" "${e// /░}"; }
+bar() { local f e p=$((qi<TOT?qi:TOT)); printf -v f '%*s' "$p" ''; printf -v e '%*s' "$((TOT-p))" ''; printf "${G}[${Y}%s${D}%s${G}]${N}" "${f// /█}" "${e// /░}"; }
 draw() {
   printf '\e[?25l\r\e[K'  # hide cursor, clear line
   if ((SHOW_HINT)); then
@@ -3084,7 +3084,7 @@ run() {
     echo "$h|$2">>"$DATA/scores"
     exec {fd}>&-
   }
-  TOT=${#CURRENT_QUESTIONS[@]}; PROG=$qi
+  TOT=${#CURRENT_QUESTIONS[@]}
   # Prioritize by tier: 1 (blank) > 2 (recall) - no tier 0 copy mode
   local t1=() t2=()
   for q in "${CURRENT_QUESTIONS[@]}"; do
@@ -3215,9 +3215,11 @@ run() {
           printf '\n%s\n' "${D}+0 (hint)${N}"; streak=0; _sset "$prompt" "$tier"
           read -rsp $'\e[2mPress Enter...\e[0m'; break
         elif ((streak>=FIRE_STREAK)); then
-          ((++PROG)); ((++PROG)); ((++done)); ((++done)); printf '\n%s\n' "${R}${B}🔥 ON FIRE!${N} ${Y}+2${N}"; ((++streak)); _sset "$prompt" "$((tier<2?tier+1:2))"
+          printf '\n%s\n' "${R}${B}🔥 ON FIRE!${N} ${Y}+2${N}"; ((++streak)); _sset "$prompt" "$((tier<2?tier+1:2))"
+          read -rsp $'\e[2mPress Enter...\e[0m'
+          qi=$((qi+2)); QI=$qi; save; break  # Skip ahead
         else
-          ((++PROG)); ((++done)); printf '\n%s\n' "${G}${B}✓${N}"; ((++streak)); _sset "$prompt" "$((tier<2?tier+1:2))"
+          printf '\n%s\n' "${G}${B}✓${N}"; ((++streak)); _sset "$prompt" "$((tier<2?tier+1:2))"
         fi
         read -rsp $'\e[2mPress Enter...\e[0m'
         ((++qi)); QI=$qi; save; break
@@ -3289,7 +3291,7 @@ run() {
       printf '%s  %s %s\n\n' "${R}✗${N}" "${D}expected:${N}" "${Y}${ans}${N}"
       explain "$ans"
     fi
-    sleep 0.8
+    read -rsp $'\e[2mPress Enter...\e[0m'
   done
 
   # Results
