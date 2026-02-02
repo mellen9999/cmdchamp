@@ -3288,7 +3288,7 @@ run() {
     printf '%s\n' "${G}${B}══ ${boss} DEFEATED ══${N}"
     printf '%s\n' "${G}${boss_correct}/${boss_total}${N} correct!"
     printf '%s\n\n' "${C}You acquired: ${LEVEL_NAMES[$lv]}${N}"
-    ((lv<28)) && { printf 'Enter for Level %d...\n' "$((lv+1))"; read -r; LVL=$((lv+1)); QI=0; save; run "$LVL"; } || printf '%s\n' "${G}${B}ALL COMPLETE - ROOT ACCESS GRANTED${N}"
+    ((lv<MAX_LEVEL)) && { printf 'Enter for Level %d...\n' "$((lv+1))"; read -r; LVL=$((lv+1)); QI=0; save; run "$LVL"; } || printf '%s\n' "${G}${B}ALL COMPLETE - ROOT ACCESS GRANTED${N}"
   else
     printf '%s\n' "${R}${B}══ ${boss} PREVAILS ══${N}"
     printf '%s\n\n' "${R}${boss_correct}/${boss_total}${N} - need $BOSS_THRESHOLD to pass"
