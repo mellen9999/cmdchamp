@@ -14,6 +14,8 @@ SANDBOX_TIMEOUT=5      # Seconds before sandbox command times out
 BOSS_THRESHOLD=4       # Correct answers needed to beat boss (out of BOSS_TOTAL)
 BOSS_TOTAL=5           # Number of questions in boss round
 FIRE_STREAK=5          # Streak needed for fire mode (+2 points)
+REVIEW_PER_LEVEL=2     # Review questions to pick from each previous level
+MAX_LEVEL=28           # Highest level number
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # PLAYER PROFILE & BOSS SYSTEM
@@ -556,7 +558,7 @@ _sandbox_check_state() {
 _stty_saved=""
 _cleanup() { printf '\e[?25h'; [[ -n "$_stty_saved" ]] && stty "$_stty_saved" 2>/dev/null; echo; }
 trap '_cleanup; exit 0' INT TERM HUP EXIT
-R=$'\e[31m' G=$'\e[32m' Y=$'\e[33m' Bl=$'\e[34m' M=$'\e[35m' C=$'\e[36m' W=$'\e[97m' D=$'\e[2m' B=$'\e[1m' N=$'\e[0m'
+R=$'\e[31m' G=$'\e[32m' Y=$'\e[33m' BL=$'\e[34m' M=$'\e[35m' C=$'\e[36m' W=$'\e[97m' D=$'\e[2m' B=$'\e[1m' N=$'\e[0m'
 PROMPT_CHAR="${CMD_PROMPT:-$([[ $EUID -eq 0 ]] && echo '# ' || echo '$ ')}"
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -989,7 +991,7 @@ explain() {
       # Choose token color based on type
       tcol="${G}"  # default: green for commands
       case "$tok" in
-        .|..|~|/*) tcol="${Bl}" ;;  # paths = blue
+        .|..|~|/*) tcol="${BL}" ;;  # paths = blue
         '>'|'>>'|'<'|'<<<'|'2>'|'&>'|'2>&1'|'|'|'|&') tcol="${R}" ;;  # redirects/pipes = red
         '&&'|'||'|';'|'&') tcol="${R}" ;;  # operators = red
         -*) tcol="${C}" ;;  # flags = cyan
@@ -2865,35 +2867,46 @@ declare -A LEVEL_DESC=(
   [25]="Hash Cracking" [26]="Forensics" [27]="Privilege Escalation" [28]="Survival"
 )
 
+# Question cache - avoids O(n²) regeneration for review questions
+declare -A _LEVEL_CACHE=()
+
+# Get questions for a level (cached)
+_get_level_questions() {
+  local lv=$1
+  if [[ -z "${_LEVEL_CACHE[$lv]:-}" ]]; then
+    _LEVEL_CACHE[$lv]=$(gen_level${lv})
+  fi
+  printf '%s' "${_LEVEL_CACHE[$lv]}"
+}
+
 # Generate questions for a level (called once per level attempt)
 declare -a CURRENT_QUESTIONS=()
 generate_level() {
   local level=$1
   CURRENT_QUESTIONS=()
-  local raw
 
-  # Main level questions
+  # Main level questions (always fresh for variety)
+  local raw
   raw=$(gen_level${level})
+  _LEVEL_CACHE[$level]="$raw"  # Cache for potential future use
   while IFS= read -r line; do
     [[ -n "$line" ]] && CURRENT_QUESTIONS+=("$line")
   done <<< "$raw"
 
-  # Review: add 1-2 questions from each previous level (skills you've "acquired")
+  # Review: add questions from previous levels (O(n) with cache)
   if ((level > 0)); then
-    local review=()
+    local review=() prev_arr=()
     for ((prev=0; prev<level; prev++)); do
-      local prev_raw prev_arr=()
-      prev_raw=$(gen_level${prev})
+      prev_arr=()
       while IFS= read -r line; do
         [[ -n "$line" ]] && prev_arr+=("$line")
-      done <<< "$prev_raw"
-      # Pick 1-2 random questions from this previous level
+      done <<< "$(_get_level_questions "$prev")"
+      # Pick random questions from this previous level
       if ((${#prev_arr[@]} > 0)); then
-        readarray -t picks < <(printf '%s\n' "${prev_arr[@]}" | shuf | head -2)
+        readarray -t picks < <(printf '%s\n' "${prev_arr[@]}" | shuf | head -$REVIEW_PER_LEVEL)
         review+=("${picks[@]}")
       fi
     done
-    # Add review questions to the mix
     CURRENT_QUESTIONS+=("${review[@]}")
   fi
 }
@@ -3023,7 +3036,7 @@ draw() {
 # Display width using wc -L (handles wide chars, emoji, CJK)
 _dispwidth() { printf '%s' "$1" | wc -L; }
 
-# Vi helpers (byte-indexed; UTF-8 multi-byte chars may cause cursor drift)
+# Vi helpers (requires UTF-8 locale for proper multi-byte char handling)
 _wfwd() { while ((cursor<${#input})) && [[ "${input:cursor:1}" != " " ]]; do ((++cursor)); done; while ((cursor<${#input})) && [[ "${input:cursor:1}" == " " ]]; do ((++cursor)); done; ((cursor>=${#input}&&${#input}>0)) && cursor=$((${#input}-1)); }
 _wbck() { ((cursor>0)) && ((cursor--)); while ((cursor>0)) && [[ "${input:cursor:1}" == " " ]]; do ((cursor--)); done; while ((cursor>0)) && [[ "${input:cursor-1:1}" != " " ]]; do ((cursor--)); done; }
 _wend() { ((cursor<${#input}-1)) && ((++cursor)); while ((cursor<${#input}-1)) && [[ "${input:cursor:1}" == " " ]]; do ((++cursor)); done; while ((cursor<${#input}-1)) && [[ "${input:cursor+1:1}" != " " ]]; do ((++cursor)); done; }
