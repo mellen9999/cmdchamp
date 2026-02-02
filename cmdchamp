@@ -9,7 +9,7 @@ DATA="${XDG_DATA_HOME:-$HOME/.local/share}/cmdchamp"; mkdir -p "$DATA"; touch "$
 # ═══════════════════════════════════════════════════════════════════════════════
 # PLAYER PROFILE & BOSS SYSTEM
 # ═══════════════════════════════════════════════════════════════════════════════
-PLAYER_NAME="" PLAYER_XP=0 BOSS_BEATEN=-1
+PLAYER_NAME="" BOSS_BEATEN=-1
 
 _load_profile() {
   [[ -f "$DATA/profile" ]] && source "$DATA/profile"
@@ -17,7 +17,7 @@ _load_profile() {
 }
 
 _save_profile() {
-  printf 'PLAYER_NAME=%q\nPLAYER_XP=%d\nBOSS_BEATEN=%d\n' "$PLAYER_NAME" "$PLAYER_XP" "$BOSS_BEATEN" > "$DATA/profile"
+  printf 'PLAYER_NAME=%q\nBOSS_BEATEN=%d\n' "$PLAYER_NAME" "$BOSS_BEATEN" > "$DATA/profile"
 }
 
 _first_run() {
@@ -37,7 +37,6 @@ EOF
   echo
   read -rp "    Enter your handle: " PLAYER_NAME
   [[ -z "$PLAYER_NAME" ]] && PLAYER_NAME="anon"
-  PLAYER_XP=0
   BOSS_BEATEN=-1
   _save_profile
   _intro
@@ -2975,7 +2974,7 @@ _hash() { local h; h=$(printf '%s' "$1"|md5sum); echo "${h:0:16}"; }
 
 stats() {
   local -A sc; [[ -f "$DATA/scores" ]] && while IFS='|' read -r k v; do sc[$k]=$v; done < "$DATA/scores"
-  echo -e "${C}${PLAYER_NAME:-anon}${N} | ${Y}${PLAYER_XP:-0} XP${N}"
+  echo -e "${C}${PLAYER_NAME:-anon}${N}"
   echo -e "${D}Stats show unique prompts seen${N}\n"
   local total_seen=0 total_t1=0 total_t2=0
   for k in "${!sc[@]}"; do
@@ -2996,8 +2995,8 @@ _last_cmd="" _last_arg=""  # For dot repeat
 clear_hint() { for ((i=0;i<=EXPLAIN_LINES;i++)); do printf '\e[A\e[2K'; done; printf '\r'; }
 hdr() {
   printf '\e[2J\e[H'
-  local fire=""; ((streak>=5)) && fire="  ${R}🔥${N} ${Y}2x${N}"
-  echo -e "${C}${PLAYER_NAME:-anon}${N} | ${Y}${PLAYER_XP:-0} XP${N}${fire}"
+  local fire=""; ((streak>=5)) && fire="  ${R}🔥${N}"
+  echo -e "${C}${PLAYER_NAME:-anon}${N}${fire}"
   echo -e "${B}Level $1: ${LEVEL_NAMES[$1]:-}${N}"
   echo -e "${D}[$2/$3]  Tab=hint${N}\n"
 }
@@ -3274,8 +3273,6 @@ run() {
   if ((boss_correct >= 4)); then
     echo -e "${G}${B}══ ${boss} DEFEATED ══${N}"
     echo -e "${G}${boss_correct}/${boss_total}${N} correct!"
-    ((PLAYER_XP += 100)); _save_profile
-    echo -e "${Y}+100 XP${N}"
     echo -e "${C}You acquired: ${LEVEL_NAMES[$lv]}${N}\n"
     ((lv<28)) && { echo -e "Enter for Level $((lv+1))..."; read -r; LVL=$((lv+1)); QI=0; save; run "$LVL"; } || echo -e "${G}${B}ALL COMPLETE - ROOT ACCESS GRANTED${N}"
   else
