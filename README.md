@@ -80,8 +80,7 @@ cmdchamp reset   # Clear all progress
 | Key | Action |
 |-----|--------|
 | Tab | Toggle hint + explanations |
-| Ctrl+n | Skip question |
-| Ctrl+d / q | Quit (saves position) |
+| Ctrl+d | Quit (saves position) |
 | ? | Show all keybindings (vi normal mode) |
 | Enter | Submit answer |
 
