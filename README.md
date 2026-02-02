@@ -2,7 +2,7 @@
 
 CLI trainer with spaced repetition. Shell, security tools, infrastructure.
 
-1000+ questions across 19 levels — fundamentals to privesc.
+1000+ questions across 29 levels — fundamentals to privesc.
 
 ## Features
 
@@ -34,7 +34,7 @@ Requires: bash 4.3+, coreutils (shuf, md5sum)
 ```bash
 cmdchamp         # Resume from last position (level + question)
 cmdchamp n       # Start fresh from level 0
-cmdchamp 11      # Start at level 11 (Git)
+cmdchamp 21      # Start at level 21 (Git)
 cmdchamp stats   # Show mastery stats
 cmdchamp reset   # Clear all progress
 ```
@@ -44,26 +44,36 @@ cmdchamp reset   # Clear all progress
 | Level | Focus |
 |-------|-------|
 | **Fundamentals** ||
-| 0 | Shell basics: redirects, pipes, jobs, history, variables |
-| 1 | Core tools: cat, ls, head, tail, tar, ln, chmod, wc, du |
-| 2 | System admin: ping, df, free, top, systemctl, ip, users |
-| 3 | tmux & screen: sessions, windows, panes, copy mode |
-| 4 | Text search: grep, ripgrep, regex |
-| 5 | File finding: find, fd, by name/size/time/type |
-| 6 | Data processing: sort, uniq, cut, awk, ps, ss |
-| 7 | String & arrays: parameter expansion, arrays |
-| 8 | Control flow: if/else, loops, case, functions, traps |
-| 9 | Batch ops: find -exec, xargs |
-| 10 | Advanced regex: lookahead, sed, awk |
+| 0 | First Commands: pwd, ls, echo, cd, mkdir |
+| 1 | Save Output: >, >>, tee |
+| 2 | Read Files: cat, head, tail, less |
+| 3 | Basic Pipes: pipes, grep, wc, sort, uniq |
+| 4 | Input Redirection: <, <<<, here-strings |
+| 5 | Error Redirection: 2>, 2>&1, &>, /dev/null |
+| 6 | Logic Operators: &&, \|\| |
+| 7 | Job Control: bg, fg, jobs, &, Ctrl+Z |
+| 8 | Variables: $VAR, assignment, expansion |
+| 9 | Special Variables: $$, $?, $!, $#, $@, $0 |
+| 10 | Test Operators: -f, -d, -z, -n, -eq, -lt |
+| 11 | Core Tools: cp, ln, chmod, wc, du, file, tar |
+| 12 | System Admin: ping, df, free, top, systemctl, ip |
+| 13 | tmux & Screen: sessions, windows, panes, copy mode |
+| 14 | Text Search: grep, ripgrep, regex |
+| 15 | File Finding: find, fd, by name/size/time/type |
+| 16 | Data Processing: sort, uniq, cut, awk, ps, ss |
+| 17 | String & Arrays: parameter expansion, arrays |
+| 18 | Control Flow: if/else, loops, case, functions |
+| 19 | Batch Ops: find -exec, xargs |
+| 20 | Advanced Regex: lookahead, sed, awk |
 | **DevOps & Security** ||
-| 11 | Git: branches, remotes, rebasing, stashing, bisect |
-| 12 | Network tools: tshark, curl, wget, ssh tunnels, openssl |
-| 13 | Network scanning: nmap, service detection, scripts |
-| 14 | Local network & RF: wifi, smb, netcat, masscan |
-| 15 | Hash cracking: hashcat, john, hydra, encoding |
-| 16 | Forensics: strings, binwalk, exiftool, dd |
-| 17 | Privilege escalation: SUID, GTFOBins, enumeration |
-| 18 | Survival: one-liners, recovery, offline scenarios |
+| 21 | Git: branches, remotes, rebasing, stashing, bisect |
+| 22 | Network Tools: tshark, curl, wget, ssh tunnels, openssl |
+| 23 | Network Scanning: nmap, service detection, scripts |
+| 24 | Local Network & RF: wifi, smb, netcat, masscan |
+| 25 | Hash Cracking: hashcat, john, hydra, encoding |
+| 26 | Forensics: strings, binwalk, exiftool, dd |
+| 27 | Privilege Escalation: SUID, GTFOBins, enumeration |
+| 28 | Survival: one-liners, recovery, offline scenarios |
 
 ## Controls
 

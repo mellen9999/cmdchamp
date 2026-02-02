@@ -739,35 +739,6 @@ _rnum() {
   echo $((lo + r % range))
 }
 
-# Random IP octet variations
-_rip() { echo "$(($RANDOM % 255)).$(($RANDOM % 255)).$(($RANDOM % 255)).$(($RANDOM % 255 + 1))"; }
-
-# Random port (common range)
-_rport() { echo $(( 1024 + RANDOM % 64000 )); }
-
-# Random line count
-_rlines() { echo $(( 5 + RANDOM % 96 )); }  # 5-100
-
-# Shuffle flags: "-la" can become "-al" or "-l -a"
-_shuf_flags() {
-  local flags="$1"
-  [[ ${#flags} -le 2 ]] && { echo "$flags"; return; }
-  # Remove leading dash, shuffle chars, add back
-  local chars="${flags#-}"
-  local shuffled=$(echo "$chars" | fold -w1 | shuf | tr -d '\n')
-  echo "-$shuffled"
-}
-
-# Generate both flag orders for answers: "-la" -> "-la|-al"
-_flag_alts() {
-  local flags="$1"
-  [[ ${#flags} -le 2 ]] && { echo "$flags"; return; }
-  local chars="${flags#-}"
-  local rev=$(echo "$chars" | rev)
-  [[ "$chars" == "$rev" ]] && { echo "$flags"; return; }
-  echo "$flags|-$rev"
-}
-
 # Unbiased pick from phrasings
 _phrase() {
   local -a opts=("$@")
