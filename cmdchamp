@@ -3187,12 +3187,13 @@ run() {
         fi
         if $HINT; then
           echo -e "\n${D}+0 (hint)${N}"; streak=0; _sset "$prompt" "$tier"
+          read -rsp $'\e[2mPress Enter...\e[0m'; break
         elif ((streak>=5)); then
           ((++PROG)); ((++PROG)); ((++done)); ((++done)); echo -e "\n${R}${B}🔥 ON FIRE!${N} ${Y}+2${N}"; ((++streak)); _sset "$prompt" "$((tier<2?tier+1:2))"
         else
           ((++PROG)); ((++done)); echo -e "\n${G}${B}✓${N}"; ((++streak)); _sset "$prompt" "$((tier<2?tier+1:2))"
         fi
-        read -rsp $'\e[2mPress Enter...\e[0m'  # pause to see output
+        read -rsp $'\e[2mPress Enter...\e[0m'
         ((++qi)); QI=$qi; save; break
       else
         # Wrong answer - show expected with full breakdown
