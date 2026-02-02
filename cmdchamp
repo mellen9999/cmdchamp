@@ -105,7 +105,7 @@ EOF
 # Boss names - command/system themed
 declare -a BOSS_NAMES=(
   "n00b" "CopyPasta" "CatMan" "PipeWrench" "Redirect"
-  "DevNull" "AndOr" "BackgroundNoise" "\$VARIABLE" "\$\$"
+  "DevNull" "AndOr" "\$VARIABLE" "\$\$" "BackgroundNoise"
   "TestCase" "SubShell" "Globber" "QuoteMaster" "ArrayLord"
   "TheFork" "Regex" "Cron" "Daemon" "RootKit"
   "KernelPanic" "Segfault" "ZeroDay" "TheFirewall" "Entropy"
@@ -121,9 +121,9 @@ declare -a BOSS_FLAVOR=(
   "I send your output to the grave."
   "Your stderr falls into the void."
   "True or false. Live or die."
-  "I wait in the dark between processes."
   "I hold what you've forgotten."
   "Every process has a death."
+  "I wait in the dark between processes."
   "Pass my test or be terminated."
   "Trapped in shells within shells."
   "I match everything. I consume all."
@@ -395,6 +395,20 @@ _gen_sandbox_files() {
   _gen_ini "$dir/config.ini"
   _gen_yaml "$dir/settings.yaml"
   _gen_txt "$dir/notes.txt"
+  # Second text file - todo list
+  cat > "$dir/todo.txt" <<'EOF'
+Task List
+=========
+
+[ ] Review PR #123
+[ ] Update API docs
+[ ] Fix login timeout
+[x] Deploy v2.1.0
+[x] Merge feature branch
+[ ] Refactor user service
+[ ] Add unit tests
+[ ] Setup CI pipeline
+EOF
   _gen_json "$dir/data/export.json"
 
   # Access/error logs
@@ -409,6 +423,15 @@ echo "Backing up files..."
 echo "Backup complete!"
 EOF
   chmod +x "$dir/backup.sh"
+
+  # Second script - deploy
+  cat > "$dir/deploy.sh" <<'EOF'
+#!/bin/bash
+echo "Deploying application..."
+echo "Version: $(cat VERSION 2>/dev/null || echo 'unknown')"
+echo "Deploy complete!"
+EOF
+  chmod +x "$dir/deploy.sh"
 
   # Python source files
   cat > "$dir/main.py" <<'EOF'
@@ -552,7 +575,7 @@ _sandbox_check_state() {
         local rest="${check#contains:}"
         local file="${rest%%:*}"
         local pattern="${rest#*:}"
-        grep -q "$pattern" "$SANDBOX_DIR/$file" 2>/dev/null || return 1
+        grep -qe "$pattern" -- "$SANDBOX_DIR/$file" 2>/dev/null || return 1
         ;;
       lines:*:*)
         local rest="${check#lines:}"
@@ -566,8 +589,8 @@ _sandbox_check_state() {
   return 0
 }
 # Terminal state management
-_stty_saved=""
-_cleanup() { printf '\e[?25h'; [[ -n "$_stty_saved" ]] && stty "$_stty_saved" 2>/dev/null; echo; }
+_stty_saved="" _interactive=0
+_cleanup() { ((_interactive)) && { printf '\e[?25h'; [[ -n "$_stty_saved" ]] && stty "$_stty_saved" 2>/dev/null; echo; }; }
 trap '_cleanup; exit 0' INT TERM HUP EXIT
 R=$'\e[31m' G=$'\e[32m' Y=$'\e[33m' BL=$'\e[34m' M=$'\e[35m' C=$'\e[36m' W=$'\e[97m' D=$'\e[2m' B=$'\e[1m' N=$'\e[0m'
 PROMPT_CHAR="${CMD_PROMPT:-$([[ $EUID -eq 0 ]] && echo '# ' || echo '$ ')}"
@@ -578,10 +601,10 @@ PROMPT_CHAR="${CMD_PROMPT:-$([[ $EUID -eq 0 ]] && echo '# ' || echo '$ ')}"
 
 # SANDBOX FILES - files that actually exist in sandbox
 declare -a SANDBOX_LOGS=(server.log app.log logs/access.log logs/error.log)
-declare -a SANDBOX_TXTS=(notes.txt)
+declare -a SANDBOX_TXTS=(notes.txt todo.txt)
 declare -a SANDBOX_CSVS=(data.csv users.csv)
 declare -a SANDBOX_CFGS=(config.ini settings.yaml)
-declare -a SANDBOX_SCRIPTS=(backup.sh)
+declare -a SANDBOX_SCRIPTS=(backup.sh deploy.sh)
 declare -a SANDBOX_PY=(main.py src/utils.py src/test/test_utils.py)
 
 # LOGS - 25 options (was 10)
@@ -1291,11 +1314,6 @@ gen_level3() {
   questions+=("Count files in current directory (pipe ${Y}ls${C} to ${Y}wc${C})§ls | wc -l§#output:~^\\s*[0-9]+")
   questions+=("Count items in directory (pipe ${Y}ls -1${C} to ${Y}wc -l${C})§ls -1 | wc -l§#output:~^\\s*[0-9]+")
 
-  # head/tail through pipe
-  questions+=("$(_phrase "Show" "Get") first ${n} lines of ${W}${log}${C}§head -${n} ${log}§cat ${log} | head -${n}§#output:@${n}")
-  questions+=("$(_phrase "Show" "Get") last ${n2} lines of ${W}${cfg}${C}§tail -${n2} ${cfg}§cat ${cfg} | tail -${n2}§#output:@${n2}")
-  questions+=("First ${n3} lines of ${W}${txt}${C}§head -${n3} ${txt}§cat ${txt} | head -${n3}§#output:@${n3}")
-
   # grep basics
   questions+=("$(_phrase "Search for" "Find") ${Y}${term1}${C} in ${W}${log}${C}§grep ${term1} ${log}§#output:*")
   questions+=("Find ${Y}${term2}${C} in ${W}${txt}${C}§grep ${term2} ${txt}§#output:*")
@@ -1716,10 +1734,6 @@ gen_level11() {
   questions+=("List one file per line|ls -1")
   questions+=("List ${dir}/ recursively|ls -R ${dir}/|eza -R ${dir}/")
 
-  # Head and tail
-  questions+=("First ${n1} lines of ${W}${log}${C}|head -n ${n1} ${log}|head -${n1} ${log}")
-  questions+=("Last ${n2} lines of ${W}${log}${C}|tail -n ${n2} ${log}|tail -${n2} ${log}")
-
   # File operations
   questions+=("Count lines in ${csv}|wc -l ${csv}|wc -l < ${csv}")
   questions+=("Count words in ${txt}|wc -w ${txt}")
@@ -1732,7 +1746,6 @@ gen_level11() {
   # Disk usage
   questions+=("Disk usage of current dir, human readable|du -sh .|du -hs .|dust")
   questions+=("Disk usage of each subdir|du -sh */|du -hs */|dust -d 1")
-  questions+=("Disk free space|df -h")
 
   # Archives (tar)
   questions+=("Extract ${archive}|tar xzf ${archive}|tar -xzf ${archive}")
@@ -1953,32 +1966,6 @@ gen_level16() {
   questions+=("Most common words in ${txt}§tr -s ' ' '\\n' < ${txt} | sort | uniq -c | sort -rn | head")
   questions+=("Lines appearing in both ${txt} and ${txt2}§sort ${txt} ${txt2} | uniq -d§comm -12 <(sort ${txt}) <(sort ${txt2})")
   questions+=("Lines only in ${txt}, not ${txt2}|comm -23 <(sort ${txt}) <(sort ${txt2})")
-
-  # Process management
-  questions+=("List all processes|ps aux")
-  questions+=("$(_phrase "Find" "Show" "List") processes matching '${proc}'§ps aux | grep ${proc}§pgrep -a ${proc}")
-  questions+=("Get PID of ${proc}|pgrep ${proc}|pidof ${proc}")
-  questions+=("Kill ${proc} process|pkill ${proc}")
-  questions+=("Kill all processes matching '${proc}'|pkill -f ${proc}")
-  questions+=("Kill ${proc} with SIGKILL|pkill -9 ${proc}|pkill -KILL ${proc}")
-  questions+=("Show process tree|ps auxf|pstree")
-  questions+=("Show process tree for ${proc}|pstree -p \$(pgrep ${proc})")
-  questions+=("Find what's using port ${port}§ss -tlpn | grep ${port}§lsof -i :${port}")
-  questions+=("List processes sorted by CPU usage§ps aux --sort=-%cpu | head")
-  questions+=("List processes sorted by memory usage§ps aux --sort=-%mem | head")
-  questions+=("Show top ${n} processes by memory§ps aux --sort=-%mem | head -${n}")
-  questions+=("Find zombie processes§ps aux | grep -w Z§ps aux | awk '\$8==\"Z\"'")
-
-  # Modern network info (ip/ss)
-  questions+=("$(_phrase "Show" "Display" "List") IP addresses|ip addr|ip a")
-  questions+=("Show routing table|ip route|ip r")
-  questions+=("Show listening TCP ports|ss -tlpn|ss -tlnp")
-  questions+=("Show all TCP connections|ss -ta|ss -at")
-  questions+=("Show UDP listeners|ss -ulpn|ss -ulnp")
-  questions+=("Show connections to port ${port}|ss -tn sport = :${port}")
-  questions+=("Show established connections|ss -t state established")
-  questions+=("Show socket statistics summary|ss -s")
-  questions+=("Show connections by process|ss -tp")
 
   printf '%s\n' "${questions[@]}"
 }
@@ -2980,8 +2967,8 @@ gen_level12() {
 # Level descriptions
 declare -A LEVEL_DESC=(
   [0]="First Commands" [1]="Save Output" [2]="Read Files" [3]="Basic Pipes"
-  [4]="Input Redirection" [5]="Error Redirection" [6]="Logic Operators" [7]="Job Control"
-  [8]="Variables" [9]="Special Variables" [10]="Test Operators"
+  [4]="Input Redirection" [5]="Error Redirection" [6]="Logic Operators" [7]="Variables"
+  [8]="Special Variables" [9]="Job Control" [10]="Test Operators"
   [11]="Core Tools" [12]="System Admin" [13]="tmux & Screen"
   [14]="Text Search" [15]="File Finding" [16]="Data Processing" [17]="String & Arrays"
   [18]="Control Flow" [19]="Batch Ops" [20]="Advanced Regex" [21]="Git"
@@ -3082,7 +3069,7 @@ check() {
     b="${a#"${a%%[![:space:]]*}"}"; b="${b%"${b##*[![:space:]]}"}"
     # ~pattern = regex match
     if [[ "$b" == ~* ]]; then
-      local _pat="${b:1}"; [[ "$inp" =~ $_pat ]] && return 0
+      local _pat="${b:1}"; [[ "$inp" =~ ${_pat} ]] && return 0
     else
       [[ "$inp" == "$b" || "$ninp" == "$(norm "$b")" ]] && return 0
     fi
@@ -3102,7 +3089,8 @@ load() {
 }
 save() {
   local fd; exec {fd}>"$DATA/session.lock"; flock -x "$fd"
-  printf '{"level":%d,"qi":%d}\n' "$LVL" "$QI" > "$DATA/session.json"
+  printf '{"level":%d,"qi":%d}\n' "$LVL" "$QI" > "$DATA/session.json.tmp"
+  mv "$DATA/session.json.tmp" "$DATA/session.json"
   exec {fd}>&-
 }
 # Score tracking: tier 1=blank, 2=recall (md5 hash keys avoid regex issues)
@@ -3130,8 +3118,6 @@ stats() {
 
 input="" cursor=0 mode="insert" SHOW_HINT=0 EXPLAIN_LINES=0 _rep=""
 declare -a UNDO_STACK=()  # Multi-level undo
-_last_cmd="" _last_arg=""  # For dot repeat
-clear_hint() { for ((i=0;i<=EXPLAIN_LINES;i++)); do printf '\e[A\e[2K'; done; printf '\r'; }
 hdr() {
   printf '\e[2J\e[H'
   local fire=""; ((streak>=FIRE_STREAK)) && fire="  ${R}🔥${N}"
@@ -3175,9 +3161,10 @@ _del() { # $1=motion
 }
 
 run() {
-  local lv=$1 shuf=() qi=${QI:-0} done=0 streak=0
+  local lv=$1 shuf=() qi=${QI:-0} streak=0
   local -a HIST=() SEEN_PROMPTS=() ; local HIST_IDX=0 HIST_SAVE=""
   # Save terminal state for clean restoration
+  _interactive=1
   _stty_saved=$(stty -g 2>/dev/null) || _stty_saved=""
 
   # Initialize sandbox for this level
@@ -3328,7 +3315,7 @@ run() {
         elif ((streak>=FIRE_STREAK)); then
           printf '\n%s\n' "${R}${B}🔥 ON FIRE!${N} ${Y}+2${N}"; ((++streak)); _sset "$prompt" "$((tier<2?tier+1:2))"
           read -rsp $'\e[2mPress Enter...\e[0m'
-          qi=$((qi+2)); QI=$qi; save; break  # Skip ahead
+          qi=$((qi+2)); ((qi >= ${#shuf[@]})) && qi=${#shuf[@]}; QI=$qi; save; break  # Skip ahead (clamped)
         else
           printf '\n%s\n' "${G}${B}✓${N}"; ((++streak)); _sset "$prompt" "$((tier<2?tier+1:2))"
         fi
@@ -3478,9 +3465,9 @@ case "${1:-}" in
     fi
     ;;
   r|reset) rm -f "$DATA"/*.json "$DATA/scores" "$DATA/scores.lock" "$DATA/profile"; rm -rf "$DATA/sandbox" "$DATA/sandbox.pristine" 2>/dev/null; echo "Reset.";;
-  c|cleanup) [[ -f "$DATA/scores" ]] && { awk -F'|' '!seen[$1]++' "$DATA/scores" > "$DATA/scores.tmp" && mv "$DATA/scores.tmp" "$DATA/scores"; echo "Deduplicated scores."; } || echo "No scores file.";;
+  c|cleanup) [[ -f "$DATA/scores" ]] && { flock "$DATA/scores.lock" awk -F'|' '!seen[$1]++' "$DATA/scores" > "$DATA/scores.tmp" && mv "$DATA/scores.tmp" "$DATA/scores"; echo "Deduplicated scores."; } || echo "No scores file.";;
   s|stats) _load_profile; stats;;
-  v|version|-v|--version) echo "cmdchamp 0.2";;
+  v|version|-v|--version) echo "cmdchamp $(git -C "${BASH_SOURCE[0]%/*}" describe --tags 2>/dev/null || echo '0.2')";;
   h|help|-h|--help)
     printf '%s\n' "${B}cmdchamp${N} - CLI trainer"
     printf '%s\n' "${D}29 levels, spaced repetition, sandbox execution${N}"
@@ -3512,5 +3499,5 @@ case "${1:-}" in
     ;;
   n|new) _tty; _load_profile; LVL=0; QI=0; save; run "$LVL";;
   "") _tty; _load_profile; load; ((LVL>0||QI>0)) && { read -rp "Continue Level $LVL Q$((QI+1))? [Y/n] " yn; [[ "$yn" =~ ^[Nn] ]] && { LVL=0; QI=0; save; }; }; run "$LVL";;
-  *) echo "Usage: cmdchamp [0-28|reset|stats|help|version]"; exit 1;;
+  *) echo "Usage: cmdchamp [0-28|new|pass|stats|reset|cleanup|help|version]"; exit 1;;
 esac
