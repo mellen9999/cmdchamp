@@ -59,8 +59,8 @@ cmdchamp --no-sandbox   # Disable sandbox (text-match only)
 | 4 | Input & Transform | <, <<<, here-strings, tr, sed |
 | 5 | Error Handling | 2>, 2>&1, &>, /dev/null |
 | 6 | Logic Gates | &&, \|\| |
-| 7 | Variables | $VAR, assignment, expansion |
-| 8 | Special Variables | $$, $?, $!, $#, $@, $0 |
+| 7 | Variables | `$VAR`, assignment, expansion |
+| 8 | Special Variables | `$$`, `$?`, `$!`, `$#`, `$@`, `$0` |
 | 9 | Job Control | bg, fg, jobs, &, Ctrl+Z |
 | 10 | Test Conditions | -f, -d, -z, -n, -eq, -lt |
 | 11 | Core File Tools | cp, ln, chmod, wc, du, file, tar |
