@@ -714,6 +714,7 @@ DELIMS=(',' ':' '\t' '|' ';' '/' '-' '_')
 HASHCAT_MODES=(0 100 1400 1800 3200 1000 5600 13100 18200 22000 500 1700 2500 5500 11300)
 HASH_NAMES=(MD5 SHA1 SHA256 sha512crypt bcrypt NTLM NetNTLMv2 Kerberos5 Kerberos5-etype23 WPA-PBKDF2 md5crypt SHA-512 WPA NetNTLMv1 Bitcoin)
 INTERFACES=(eth0 wlan0 ens33 enp0s3 ens192 enp0s25 wlp2s0 docker0 br0 virbr0)
+WIFI_INTERFACES=(wlan0 wlp2s0 wlp3s0 wlan1)
 REMOTE_HOSTS=(server backup-host db-server web-server jump-host bastion
   prod-01 staging-01 dev-01 ci-runner build-server cache-01 redis-01 postgres-01 monitor)
 PROCS=(nginx apache2 mysqld postgres redis-server mongod node python3 java ruby
@@ -1227,7 +1228,7 @@ gen_level4() {
 
   # <<< feeds a string (here-string)
   questions+=("Uppercase ${Y}'${word}'${C} (use ${Y}<<<${C})|tr a-z A-Z <<< '${word}'|tr a-z A-Z <<< ${word}|#output:~[A-Z]")
-  questions+=("Lowercase ${Y}'${word2^^}'${C} (use ${Y}<<<${C})|tr A-Z a-z <<< '${word2^^}'|#output:~[a-z]")
+  questions+=("Lowercase ${Y}'${word2^^}'${C} (use ${Y}<<<${C})|tr A-Z a-z <<< '${word2^^}'|tr A-Z a-z <<< ${word2^^}|#output:~[a-z]")
   questions+=("Reverse ${Y}'${word}'${C} (use ${Y}<<<${C})|rev <<< '${word}'|rev <<< ${word}|#output:*")
   questions+=("Reverse ${Y}'${word2}'${C}|rev <<< '${word2}'|rev <<< ${word2}|#output:*")
 
@@ -1240,7 +1241,7 @@ gen_level4() {
 
   # wc with <<<
   questions+=("Count words in ${Y}'${word} ${word2} test'${C}|wc -w <<< '${word} ${word2} test'|#output:~3")
-  questions+=("Count chars in ${Y}'${word}'${C}|wc -c <<< '${word}'|wc -m <<< '${word}'|#output:~[0-9]+")
+  questions+=("Count bytes in ${Y}'${word}'${C} (use ${Y}wc -c${C})|wc -c <<< '${word}'|wc -c <<< ${word}|#output:~[0-9]+")
 
   # tr transformations
   questions+=("Replace spaces with underscores in ${Y}'hello world test'${C}|tr ' ' '_' <<< 'hello world test'|#output:~hello_world_test")
@@ -1303,6 +1304,7 @@ gen_level6() {
   script=$(_pick SANDBOX_SCRIPTS)
   n=$((RANDOM % 5 + 3))
   local term=$(_phrase ERROR WARN INFO DEBUG)
+  local sdir=$(_phrase src data logs backup temp config test)
 
   # === PURE: Just && and || basics ===
   questions+=("Create ${W}${dir}${C} and cd into it (use ${Y}&&${C})|mkdir ${dir} && cd ${dir}")
@@ -1327,7 +1329,7 @@ gen_level6() {
   questions+=("Run ${W}./${script}${C}, save output or log error§./${script} > output.txt || echo 'failed' >> errors.log")
 
   # === COMPOUND: Uses ls (L0), test + cat/head combo ===
-  questions+=("If ${W}${dir}${C} exists, list contents|test -d ${dir} && ls ${dir}|[[ -d ${dir} ]] && ls ${dir}")
+  questions+=("If ${W}${sdir}${C} exists, list contents|test -d ${sdir} && ls ${sdir}|[[ -d ${sdir} ]] && ls ${sdir}")
   questions+=("List ${W}${dir}${C} or create it if missing§ls ${dir} || mkdir ${dir}")
   questions+=("Create ${W}${dir}${C} and save listing to files.txt§mkdir -p ${dir} && ls ${dir} > files.txt")
   questions+=("If ${W}${cfg}${C} is readable, cat it; else echo 'denied'§test -r ${cfg} && cat ${cfg} || echo 'denied'§[[ -r ${cfg} ]] && cat ${cfg} || echo 'denied'")
@@ -1393,7 +1395,7 @@ gen_level7() {
   # === COMPOUND: Variable with earlier skills ===
   questions+=("Store sorted unique lines in variable§${var}=\$(sort -u ${txt})")
   questions+=("Store first ${n} lines of ${W}${log}${C}|${var}=\$(head -${n} ${log})")
-  questions+=("Echo path: /home/\$USER|echo \"/home/\$USER\"")
+  questions+=("Echo path: /home/\$USER|echo \"/home/\$USER\"|echo /home/\$USER")
 
   # === export and unset ===
   questions+=("Export ${var} for child processes|export ${var}|export ${var}=${val}")
@@ -1416,7 +1418,7 @@ gen_level8() {
   questions+=("Print PID of last background process (use ${Y}\$!${C})|echo \$!")
   questions+=("Print exit status of last command (use ${Y}\$?${C})|echo \$?")
   questions+=("Print number of script arguments (use ${Y}\$#${C})|echo \$#")
-  questions+=("Print all script arguments (use ${Y}\$@${C})|echo \"\$@\"")
+  questions+=("Print all script arguments (use ${Y}\$@${C})|echo \"\$@\"|echo \$@")
   questions+=("Print script name (use ${Y}\$0${C})|echo \$0")
   questions+=("Print first argument (use ${Y}\$1${C})|echo \$1")
   questions+=("Print random number (use ${Y}\$RANDOM${C})|echo \$RANDOM")
@@ -1521,8 +1523,8 @@ gen_level10() {
   questions+=("If ${W}${cfg}${C} exists and readable, show with line numbers|[[ -f ${cfg} && -r ${cfg} ]] && cat -n ${cfg}")
 
   # === COMPOUND: Uses head/tail (L2) ===
-  questions+=("If ${W}${log}${C} exists, show first ${n3} lines|[[ -f ${log} ]] && head -${n3} ${log}")
-  questions+=("If ${W}${log}${C} has content, show last ${n3} lines|[[ -s ${log} ]] && tail -${n3} ${log}")
+  questions+=("If ${W}${log}${C} exists, show first ${n3} lines|[[ -f ${log} ]] && head -${n3} ${log}|[[ -f ${log} ]] && head -n ${n3} ${log}")
+  questions+=("If ${W}${log}${C} has content, show last ${n3} lines|[[ -s ${log} ]] && tail -${n3} ${log}|[[ -s ${log} ]] && tail -n ${n3} ${log}")
 
   # === COMPOUND: Uses grep (L3), pipes (L3) ===
   questions+=("If ${W}${log}${C} exists, search for ${Y}${term}${C}|[[ -f ${log} ]] && grep ${term} ${log}")
@@ -1557,6 +1559,8 @@ gen_level11() {
   eval "local questions=() $_QV"; _ctx
   local perm1=$((RANDOM % 8))$((RANDOM % 8))$((RANDOM % 8))
   local searchterm=$(_phrase ERROR WARN INFO DEBUG)
+  [[ "$cfg2" == "$cfg" ]] && { _fpick CONFIGS; cfg2=$REPLY; }
+  [[ "$txt2" == "$txt" ]] && { _fpick TXTS; txt2=$REPLY; }
 
   # === PURE: Basic file operations ===
   questions+=("Display ${cfg} contents|cat ${cfg}|bat ${cfg}")
@@ -1608,7 +1612,7 @@ gen_level11() {
   questions+=("Make ${script} executable|chmod +x ${script}")
   questions+=("Set ${script} to rwxr-xr-x (755)|chmod 755 ${script}")
   questions+=("Set ${cfg} to rw-r--r-- (644)|chmod 644 ${cfg}")
-  questions+=("Set permissions to ${perm1}|chmod ${perm1} ${txt}")
+  questions+=("Set ${txt} permissions to ${perm1}|chmod ${perm1} ${txt}")
   questions+=("Add write permission for group|chmod g+w ${cfg}")
   questions+=("Remove all permissions for others|chmod o-rwx ${cfg}|chmod o= ${cfg}")
   questions+=("Make ${dir}/ and contents readable by all|chmod -R a+r ${dir}/")
@@ -1706,7 +1710,7 @@ gen_level15() {
 
   # By time
   questions+=("Find files modified in last ${time} minutes|find . -mmin -${time}|fd --changed-within ${time}m")
-  questions+=("Find files NOT modified in last 7 days|find . -mtime +7|fd --changed-before 7d")
+  questions+=("Find files NOT modified in last 7 days|find . -not -mtime -7|find . ! -mtime -7|fd --changed-before 7d")
   questions+=("Find files modified in last hour|find . -mmin -60|fd --changed-within 1h")
 
   # By type
@@ -1742,7 +1746,7 @@ gen_level15() {
 # Level 16: Data Processing
 gen_level16() {
   eval "local questions=() $_QV"; _ctx
-  local proc2=$(_pick PROCS) col2=$(_rnum 1 5) col3=$((col + 1)) chars=$(_rnum 10 80) thresh=$(_rnum 50 500)
+  local proc2=$(_pick PROCS) col2=$(_rnum 1 5) col3=$((col < 5 ? col + 1 : col)) chars=$(_rnum 10 80) thresh=$(_rnum 1 25)
   ((n > n2)) && { local t=$n; n=$n2; n2=$t; }
 
   # Sorting
@@ -1782,7 +1786,7 @@ gen_level16() {
   questions+=("Print columns ${col} and ${col2}|awk '{print \$${col}, \$${col2}}' ${txt}")
   questions+=("Print lines longer than ${chars} chars|awk 'length > ${chars}' ${txt}")
   questions+=("Print line numbers with content|awk '{print NR, \$0}' ${txt}")
-  local _statuses=(active pending disabled error); _fpick _statuses; local _status=$REPLY
+  local _statuses=(active inactive pending); _fpick _statuses; local _status=$REPLY
   questions+=("Sum numbers in column 1 of ${csv} (skip header)|awk -F',' 'NR>1{sum+=\$1} END {print sum}' ${csv}")
   questions+=("Print lines where column 1 > ${thresh} (skip header)|awk -F',' 'NR>1 && \$1 > ${thresh}' ${csv}")
   questions+=("Print lines where status equals \"${_status}\"|awk -F',' '\$4 == \"${_status}\"' ${csv}")
@@ -1829,7 +1833,7 @@ gen_level19() {
   questions+=("Show size of files larger than ${size}|find . -size +${size} -exec du -h {} \\;|fd -S +${size} -x du -h {}")
   questions+=("Copy all .${ext} files to ${dir}/|find . -name '*.${ext}' -exec cp {} ${dir}/ \\;|fd -e ${ext} -x cp {} ${dir}/")
   questions+=("Move all .${ext2} files to ${dir}/|find . -name '*.${ext2}' -exec mv {} ${dir}/ \\;|fd -e ${ext2} -x mv {} ${dir}/")
-  questions+=("Change owner of all files in ${dir}/|find ${dir}/ -exec chown user:group {} \\;")
+  questions+=("Change owner of all files in ${dir}/ to ${user}|find ${dir}/ -exec chown ${user}:${user} {} \\;")
   questions+=("Gzip all .${ext} files|find . -name '*.${ext}' -exec gzip {} \\;|fd -e ${ext} -x gzip {}")
 
   # Batch with + (more efficient)
@@ -1848,7 +1852,7 @@ gen_level19() {
   questions+=("Print only lines matching '${term}'|sed -n '/${term}/p' ${log}")
 
   # xargs - building commands from stdin
-  questions+=("Delete files listed in ${txt}§cat ${txt} | xargs rm§xargs rm < ${txt}")
+  questions+=("Delete files listed in filelist.txt§cat filelist.txt | xargs rm§xargs rm < filelist.txt")
   questions+=("Run grep on files from find§find . -name '*.${ext}' | xargs grep ${term}")
   questions+=("Process files with spaces in names§find . -name '*.${ext}' -print0 | xargs -0 wc -l")
   questions+=("Grep in parallel (${parallel} jobs)§find . -name '*.${ext}' -print0 | xargs -0 -P ${parallel} grep ${term}")
@@ -1886,14 +1890,15 @@ gen_level19() {
   questions+=("List your cron jobs|crontab -l")
   questions+=("Remove all your cron jobs|crontab -r")
   questions+=("Edit root's crontab|sudo crontab -e")
-  questions+=("Run ${script} every 5 minutes|*/5 * * * * ${script}")
-  questions+=("Run ${script} at midnight daily|0 0 * * * ${script}")
-  questions+=("Run ${script} every Monday at 3am|0 3 * * 1 ${script}")
-  questions+=("Run ${script} on the 1st of each month|0 0 1 * * ${script}")
-  questions+=("Run ${script} every hour|0 * * * * ${script}|@hourly ${script}")
-  questions+=("Run ${script} at reboot|@reboot ${script}")
-  questions+=("Cron: redirect output to log§*/5 * * * * ${script} >> ${log} 2>&1")
-  questions+=("Cron: silence all output§0 * * * * ${script} > /dev/null 2>&1")
+  local cron_path="/usr/local/bin/${script}"
+  questions+=("Run ${script} every 5 minutes|*/5 * * * * ${cron_path}")
+  questions+=("Run ${script} at midnight daily|0 0 * * * ${cron_path}")
+  questions+=("Run ${script} every Monday at 3am|0 3 * * 1 ${cron_path}")
+  questions+=("Run ${script} on the 1st of each month|0 0 1 * * ${cron_path}")
+  questions+=("Run ${script} every hour|0 * * * * ${cron_path}|@hourly ${cron_path}")
+  questions+=("Run ${script} at reboot|@reboot ${cron_path}")
+  questions+=("Cron: redirect output to log§*/5 * * * * ${cron_path} >> /var/log/${script%.sh}.log 2>&1")
+  questions+=("Cron: silence all output§0 * * * * ${cron_path} > /dev/null 2>&1")
 
   # === COMPOUND: Uses grep (L14), pipes (L3), logic (L6), find (L15) ===
   questions+=("Replace '${old}' in all .${ext} files, confirm changes§find . -name '*.${ext}' -exec grep -l ${old} {} \\; | xargs sed -i 's/${old}/${new}/g'")
@@ -2040,10 +2045,12 @@ gen_level26() {
   questions+=("Analyze entropy of ${bin}|binwalk -E ${bin}")
 
   # Memory forensics (volatility3) - most common
-  questions+=("List processes from memory dump|vol -f ${img} windows.pslist")
-  questions+=("List network connections from memory|vol -f ${img} windows.netscan")
-  questions+=("Show command lines of processes|vol -f ${img} windows.cmdline")
-  questions+=("Scan for files in memory dump|vol -f ${img} windows.filescan")
+  local -a _MEM_IMGS=(memory.dmp vmcore.dmp pagefile.sys)
+  _fpick _MEM_IMGS; local memimg=$REPLY
+  questions+=("List processes from memory dump|vol -f ${memimg} windows.pslist")
+  questions+=("List network connections from memory|vol -f ${memimg} windows.netscan")
+  questions+=("Show command lines of processes|vol -f ${memimg} windows.cmdline")
+  questions+=("Scan for files in memory dump|vol -f ${memimg} windows.filescan")
 
   # File metadata
   questions+=("Extract all metadata from ${photo}|exiftool ${photo}")
@@ -2071,6 +2078,7 @@ gen_level26() {
 # Level 22: Network Tools
 gen_level22() {
   eval "local questions=() $_QV"; _ctx
+  local key=data  # export.json only has .data array
 
   # tshark - packet capture & analysis
   questions+=("Capture traffic on ${iface} to ${pcap}|tshark -i ${iface} -w ${pcap}")
@@ -2140,12 +2148,13 @@ gen_level22() {
 # Level 24: WiFi & RF
 gen_level24() {
   eval "local questions=() $_QV"; _ctx
+  _fpick WIFI_INTERFACES; local wiface=$REPLY
 
   # WiFi attacks
-  questions+=("Enable monitor mode on ${iface}|airmon-ng start ${iface}")
-  questions+=("Scan for WiFi networks|airodump-ng ${iface}mon")
-  questions+=("Capture handshake from specific AP|airodump-ng -c 6 --bssid ${mac} -w capture ${iface}mon")
-  questions+=("Send deauth packets to force handshake|aireplay-ng -0 5 -a ${mac} ${iface}mon")
+  questions+=("Enable monitor mode on ${wiface}|airmon-ng start ${wiface}")
+  questions+=("Scan for WiFi networks|airodump-ng ${wiface}mon")
+  questions+=("Capture handshake from specific AP|airodump-ng -c 6 --bssid ${mac} -w capture ${wiface}mon")
+  questions+=("Send deauth packets to force handshake|aireplay-ng -0 5 -a ${mac} ${wiface}mon")
   questions+=("Crack WPA handshake with wordlist|aircrack-ng -w ${wordlist} capture.cap")
 
   # Netcat
@@ -2159,9 +2168,9 @@ gen_level24() {
   questions+=("Masscan specific ports|masscan -p 22,80,443 ${ip%.*}.0/24 --rate 1000")
 
   # WPS attacks
-  questions+=("Scan for WPS-enabled APs|wash -i ${iface}mon")
-  questions+=("Attack WPS PIN on target AP|reaver -i ${iface}mon -b ${mac} -vv")
-  questions+=("Reaver with Pixie Dust attack|reaver -i ${iface}mon -b ${mac} -K")
+  questions+=("Scan for WPS-enabled APs|wash -i ${wiface}mon")
+  questions+=("Attack WPS PIN on target AP|reaver -i ${wiface}mon -b ${mac} -vv")
+  questions+=("Reaver with Pixie Dust attack|reaver -i ${wiface}mon -b ${mac} -K")
 
   # Packet capture
   questions+=("Capture packets on ${iface}|tcpdump -i ${iface}")
@@ -2188,8 +2197,8 @@ gen_level24() {
   questions+=("Show wireless interfaces|iw dev")
   questions+=("Scan for nearby APs|iw dev ${iface} scan|iwlist ${iface} scan")
   questions+=("Show connected WiFi info|iw dev ${iface} link")
-  questions+=("Set WiFi channel to 6|iw dev ${iface}mon set channel 6")
-  questions+=("Disable monitor mode|airmon-ng stop ${iface}mon")
+  questions+=("Set WiFi channel to 6|iw dev ${wiface}mon set channel 6")
+  questions+=("Disable monitor mode|airmon-ng stop ${wiface}mon")
 
   printf '%s\n' "${questions[@]}"
 }
@@ -2315,7 +2324,7 @@ gen_level18() {
   questions+=("Function returning string via stdout|func() { echo result; }; var=\$(func)")
   questions+=("Function with all args|func() { echo \"all args: \$@\"; }")
   questions+=("Function with arg count|func() { echo \"got \$# args\"; }")
-  questions+=("Check function exists|type -t func &>/dev/null && echo exists")
+  questions+=("Check function exists|declare -F func &>/dev/null && echo exists")
   questions+=("Unset function|unset -f func")
 
   # trap and signals
@@ -2588,7 +2597,7 @@ gen_level27() {
 
   # SUID/SGID enumeration
   questions+=("Find all SUID binaries|find / -perm -4000 -type f 2>/dev/null")
-  questions+=("Find SUID/SGID combined|find / -perm /6000 -type f 2>/dev/null")
+  questions+=("Find SUID or SGID binaries|find / -perm /6000 -type f 2>/dev/null")
   questions+=("Find files with capabilities|getcap -r / 2>/dev/null")
 
   # User enumeration
@@ -2637,7 +2646,7 @@ gen_level27() {
 
   # NFS
   questions+=("Check NFS exports|showmount -e ${ip}|cat /etc/exports")
-  questions+=("Mount NFS with no_root_squash|mount -t nfs ${ip}:/share /mnt")
+  questions+=("Mount NFS share from ${ip}|mount -t nfs ${ip}:/share /mnt")
   questions+=("Create SUID on NFS|cp /bin/bash /mnt && chmod +s /mnt/bash")
 
   printf '%s\n' "${questions[@]}"
@@ -2703,8 +2712,8 @@ gen_level20() {
   questions+=("Print unique values from column|awk -F',' '!seen[\$1]++' ${csv}")
   questions+=("Sum column values|awk -F',' '{sum+=\$2} END{print sum}' ${csv}")
   questions+=("Calculate average|awk -F',' '{sum+=\$2; n++} END{print sum/n}' ${csv}")
-  questions+=("Find max value in column|awk -F',' 'NR==1{max=\$1} \$1>max{max=\$1} END{print max}' ${csv}")
-  questions+=("Find min value in column|awk -F',' 'NR==1{min=\$1} \$1<min{min=\$1} END{print min}' ${csv}")
+  questions+=("Find max value in column (skip header)|awk -F',' 'NR==2{max=\$1} NR>1 && \$1>max{max=\$1} END{print max}' ${csv}")
+  questions+=("Find min value in column (skip header)|awk -F',' 'NR==2{min=\$1} NR>1 && \$1<min{min=\$1} END{print min}' ${csv}")
   questions+=("Group by and count|awk -F',' '{count[\$1]++} END{for(k in count) print k, count[k]}' ${csv}")
   questions+=("Conditional print|awk -F',' '\$3==\"active\" {print \$1, \$2}' ${csv}")
   questions+=("Print with custom separator|awk -F',' 'BEGIN{OFS=\"|\"} {print \$1,\$2}' ${csv}")
@@ -2734,6 +2743,8 @@ gen_level20() {
 # Level 12: System Admin
 gen_level12() {
   eval "local questions=() $_QV"; _ctx
+  local pkg=$(_phrase git vim tmux htop curl wget rsync jq)
+  local sysbin=$(_phrase ls cat grep find sort awk sed head)
 
   # Network diagnostics
   questions+=("Ping ${ip} 5 times|ping -c 5 ${ip}")
@@ -2789,12 +2800,12 @@ gen_level12() {
   questions+=("Show user id info|id")
 
   # Package management (common patterns)
-  questions+=("Update package lists (Arch)|pacman -Sy|paru -Sy")
+  questions+=("Install package (Arch)|pacman -S ${pkg}|paru -S ${pkg}")
   questions+=("Upgrade all packages (Arch)|pacman -Syu|paru -Syu")
   questions+=("Search for package|pacman -Ss ${term}|paru -Ss ${term}")
-  questions+=("Show package info|pacman -Qi ${term}|paru -Qi ${term}")
+  questions+=("Show package info (Arch)|pacman -Qi ${pkg}|paru -Qi ${pkg}")
   questions+=("List installed packages|pacman -Q|paru -Q")
-  questions+=("Which package owns a file|pacman -Qo /usr/bin/${bin}|paru -Qo /usr/bin/${bin}")
+  questions+=("Which package owns a file (Arch)|pacman -Qo /usr/bin/${sysbin}|paru -Qo /usr/bin/${sysbin}")
 
   # Security audit
   questions+=("Run full system security audit|lynis audit system")
