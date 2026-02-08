@@ -1,7 +1,5 @@
 # cmdchamp
 
-The networks are dead. The sky is ash. Master the command line or be forgotten.
-
 Pure bash CLI trainer. 1000+ questions across 29 levels — fundamentals to privilege escalation — with spaced repetition, sandbox execution, boss fights, and vi keybindings.
 
 ## Features
