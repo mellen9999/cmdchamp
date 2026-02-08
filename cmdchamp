@@ -562,7 +562,7 @@ _SANDBOX_DESTRUCTIVE=0
 _is_destructive() {
   local cmd="$1"
   # File modifiers, redirects, partition tools, truncation patterns
-  [[ "$cmd" =~ (^|[[:space:]])(rm|mv|cp|dd|truncate|shred|unlink|tee|chmod|chown|mkfs|fdisk|parted)[[:space:]]|[[:space:]](\>|\>\>)[[:space:]]|sed[[:space:]]+-i|:[[:space:]]*\> ]] && return 0
+  [[ "$cmd" =~ (^|[[:space:]])(rm|mv|cp|dd|truncate|shred|unlink|tee|chmod|chown|mkfs|fdisk|parted)[[:space:]]|[[:space:]](\>|\>\>)[[:space:]]|sed[[:space:]]+-i|:[[:space:]]*\>|-delete[[:space:]]*$ ]] && return 0
   return 1
 }
 
