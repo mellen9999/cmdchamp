@@ -712,7 +712,7 @@ NUMBERS=(5 10 15 20 25 30 40 50 75 100 150 200 500)
 COLUMNS=(1 2 3 4 5 6 7 8)
 DELIMS=(',' ':' '\t' '|' ';' '/' '-' '_')
 HASHCAT_MODES=(0 100 1400 1800 3200 1000 5600 13100 18200 22000 500 1700 2500 5500 11300)
-HASH_NAMES=(MD5 SHA1 SHA256 SHA512 bcrypt NTLM NetNTLMv2 Kerberos5 Kerberos5-etype23 WPA-PBKDF2 md5crypt SHA512crypt WPA Kerberos5-RC4 Bitcoin)
+HASH_NAMES=(MD5 SHA1 SHA256 sha512crypt bcrypt NTLM NetNTLMv2 Kerberos5 Kerberos5-etype23 WPA-PBKDF2 md5crypt SHA-512 WPA NetNTLMv1 Bitcoin)
 INTERFACES=(eth0 wlan0 ens33 enp0s3 ens192 enp0s25 wlp2s0 docker0 br0 virbr0)
 REMOTE_HOSTS=(server backup-host db-server web-server jump-host bastion
   prod-01 staging-01 dev-01 ci-runner build-server cache-01 redis-01 postgres-01 monitor)
@@ -1157,7 +1157,7 @@ gen_level3() {
   cfg=$(_pick SANDBOX_CFGS); cfg2=$(_pick SANDBOX_CFGS)
   csv=$(_pick SANDBOX_CSVS)
   term1=$(_phrase ERROR WARN INFO GET POST); term2=$(_phrase debug error warning failed success)
-  term3=$(_phrase active pending completed running started)
+  term3=$(_phrase server database logging cache enabled redis localhost admin info daily)
 
   # ls | wc variants (hint at pipe since this level teaches pipes)
   questions+=("Count files in current directory (pipe ${Y}ls${C} to ${Y}wc${C})§ls | wc -l§#output:~^\\s*[0-9]+")
@@ -1220,10 +1220,10 @@ gen_level4() {
   questions+=("Sort ${W}${txt}${C} using ${Y}<${C}|sort < ${txt}|#output:*")
   questions+=("Show first ${n} lines of ${W}${log}${C} using ${Y}<${C}|head -${n} < ${log}|#output:@${n}")
   questions+=("Show last ${n2} lines of ${W}${cfg}${C} using ${Y}<${C}|tail -${n2} < ${cfg}|#output:@${n2}")
-  questions+=("Search for ${Y}GET${C} in ${W}${log}${C} using ${Y}<${C}|grep GET < ${log}|#output:~GET")
+  questions+=("Search for ${Y}GET${C} in ${W}server.log${C} using ${Y}<${C}|grep GET < server.log|#output:~GET")
   questions+=("Count words in ${W}${txt}${C} using ${Y}<${C}|wc -w < ${txt}|#output:~[0-9]+")
   questions+=("Reverse sort ${W}${txt2}${C} using ${Y}<${C}|sort -r < ${txt2}|#output:*")
-  questions+=("Search for ${Y}ERROR${C} in ${W}${log}${C} using ${Y}<${C}|grep ERROR < ${log}|#output:*")
+  questions+=("Search for ${Y}ERROR${C} in ${W}app.log${C} using ${Y}<${C}|grep ERROR < app.log|#output:~ERROR")
 
   # <<< feeds a string (here-string)
   questions+=("Uppercase ${Y}'${word}'${C} (use ${Y}<<<${C})|tr a-z A-Z <<< '${word}'|tr a-z A-Z <<< ${word}|#output:~[A-Z]")
@@ -1423,7 +1423,7 @@ gen_level8() {
 
   # === COMPOUND: Uses && || (L6) with exit status ===
   questions+=("Run grep, check exit status if found§grep -q ${term} ${log} ; echo \$?")
-  questions+=("Run command, echo 'success' if \$? is 0§ls && echo 'exit: '\$?")
+  questions+=("Run command, echo 'success' if \$? is 0§ls && echo success")
   questions+=("Test if last command succeeded (exit 0)|[[ \$? -eq 0 ]] && echo success")
 
   # === COMPOUND: Uses variables (L7) with special vars ===
@@ -1460,8 +1460,8 @@ gen_level9() {
   questions+=("Run sleep ${n} in background (use ${Y}&${C})|sleep ${n} &")
   questions+=("Run ${W}${script}${C} in background (use ${Y}&${C})|./${script} &")
   questions+=("$(_phrase "List" "Show" "View") background jobs|jobs")
-  questions+=("Bring job ${n2} to foreground|fg %${n2}|fg ${n2}")
-  questions+=("$(_phrase "Send" "Move" "Put") job ${n2} to background|bg %${n2}|bg ${n2}")
+  questions+=("Bring job ${n2} to foreground|fg %${n2}")
+  questions+=("$(_phrase "Send" "Move" "Put") job ${n2} to background|bg %${n2}")
   questions+=("Kill job ${n2}|kill %${n2}")
   questions+=("$(_phrase "Wait for" "Wait until") all background jobs finish|wait")
 
@@ -1637,9 +1637,9 @@ gen_level14() {
   questions+=("Case-insensitive search for '${term}'|grep -ri ${term}|grep -ir ${term}|rg -i ${term}")
   questions+=("Search '${term}' with line numbers|grep -rn ${term}|grep -nr ${term}|rg -n ${term}")
   questions+=("Count '${term}' matches in ${log}|grep -c ${term} ${log}|rg -c ${term} ${log}")
-  questions+=("Search '${term}' with ${ctx} lines context|grep -C ${ctx} ${term}|rg -C ${ctx} ${term}")
-  questions+=("Show ${ctx2} lines before each '${term}' match|grep -B ${ctx2} ${term}|rg -B ${ctx2} ${term}")
-  questions+=("Show ${ctx} lines after each '${term}' match|grep -A ${ctx} ${term}|rg -A ${ctx} ${term}")
+  questions+=("Search '${term}' with ${ctx} lines context in ${log}|grep -C ${ctx} ${term} ${log}|rg -C ${ctx} ${term} ${log}")
+  questions+=("Show ${ctx2} lines before each '${term}' match in ${log}|grep -B ${ctx2} ${term} ${log}|rg -B ${ctx2} ${term} ${log}")
+  questions+=("Show ${ctx} lines after each '${term}' match in ${log}|grep -A ${ctx} ${term} ${log}|rg -A ${ctx} ${term} ${log}")
 
   # Filtering - more variations
   questions+=("$(_phrase "List" "Show") only filenames containing '${term}'|grep -rl ${term}|grep -lr ${term}|rg -l ${term}")
@@ -1702,12 +1702,12 @@ gen_level15() {
   # By size
   questions+=("Find files larger than ${size}|find . -size +${size}|fd -S +${size}")
   questions+=("Find files smaller than ${size}|find . -size -${size}|fd -S -${size}")
-  questions+=("Find empty files|find . -type f -empty|fd -t e -t f")
+  questions+=("Find empty files|find . -type f -empty|fd -t f -S 0")
 
   # By time
   questions+=("Find files modified in last ${time} minutes|find . -mmin -${time}|fd --changed-within ${time}m")
   questions+=("Find files NOT modified in last 7 days|find . -mtime +7|fd --changed-before 7d")
-  questions+=("Find files accessed in last hour|find . -amin -60|fd --changed-within 1h")
+  questions+=("Find files modified in last hour|find . -mmin -60|fd --changed-within 1h")
 
   # By type
   questions+=("Find directories only|find . -type d|fd -t d")
@@ -1743,6 +1743,7 @@ gen_level15() {
 gen_level16() {
   eval "local questions=() $_QV"; _ctx
   local proc2=$(_pick PROCS) col2=$(_rnum 1 5) col3=$((col + 1)) chars=$(_rnum 10 80) thresh=$(_rnum 50 500)
+  ((n > n2)) && { local t=$n; n=$n2; n2=$t; }
 
   # Sorting
   questions+=("Sort ${txt} alphabetically|sort ${txt}")
@@ -1787,7 +1788,7 @@ gen_level16() {
   questions+=("Print every ${col}th line|awk 'NR % ${col} == 0' ${txt}")
   questions+=("Print lines ${n} through ${n2}|awk 'NR>=${n} && NR<=${n2}' ${txt}|sed -n '${n},${n2}p' ${txt}")
   questions+=("Average of column ${col}|awk -F',' '{sum+=\$${col}; count++} END {print sum/count}' ${csv}")
-  questions+=("Maximum value in column ${col}|awk -F',' 'BEGIN{max=0} \$${col}>max{max=\$${col}} END{print max}' ${csv}")
+  questions+=("Maximum value in column ${col}|awk -F',' 'NR==1{max=\$${col}} \$${col}>max{max=\$${col}} END{print max}' ${csv}")
   questions+=("Swap columns 1 and 2 in output|awk '{print \$2, \$1}' ${txt}")
   questions+=("Print unique values from column ${col}|awk -F',' '!seen[\$${col}]++' ${csv}")
   questions+=("Count records by column ${col} value|awk -F',' '{count[\$${col}]++} END {for(k in count) print k, count[k]}' ${csv}")
@@ -1852,7 +1853,7 @@ gen_level19() {
   questions+=("Grep in parallel (${parallel} jobs)§find . -name '*.${ext}' -print0 | xargs -0 -P ${parallel} grep ${term}")
   questions+=("Confirm before each delete (interactive)§find . -name '*.${ext2}' -print0 | xargs -0 -p rm")
   questions+=("Copy files in batches of ${n}§find . -name '*.${ext}' -print0 | xargs -0 -n ${n} cp -t ${dir}/")
-  questions+=("Rename each file with prefix§find . -name '*.${ext}' | xargs -I {} mv {} backup_{}")
+  questions+=("Rename files in current dir with prefix§find . -maxdepth 1 -name '*.${ext}' | xargs -I {} mv {} backup_{}")
   questions+=("Preview what xargs would run (-t flag)§find . -name '*.${ext}' -print0 | xargs -0 -t wc -l")
 
   # Combined operations
@@ -1925,7 +1926,7 @@ gen_level23() {
   # Scan types
   questions+=("UDP scan top 20 ports on ${ip}|nmap -sU --top-ports 20 ${ip}")
   questions+=("TCP connect scan on ${ip} (full handshake)|nmap -sT ${ip}")
-  questions+=("TCP SYN scan on ${ip} (stealth, default)|nmap -sS ${ip}")
+  questions+=("TCP SYN scan on ${ip} (stealth)|nmap -sS ${ip}")
   questions+=("Scan ${ip}, skip host discovery (treat as up)|nmap -Pn ${ip}")
 
   # Network discovery
@@ -2204,7 +2205,7 @@ gen_level17() {
   questions+=("Create backup with .bak extension|cp ${cfg}{,.bak}")
   questions+=("Strip leading 'v' from version string \$ver (e.g., v1.2.3)|echo \${ver#v}")
   questions+=("Remove protocol from URL \$url (e.g., https://)|echo \${url#*://}")
-  questions+=("Get domain from URL \$url (remove path)|echo \${url%%/*}")
+  questions+=("Get domain from \$url (e.g., host.com/path/file)|echo \${url%%/*}")
   questions+=("Strip all leading directories from \$path|echo \${path##*/}")
 
   # Parameter expansion - substitution
@@ -2283,9 +2284,9 @@ gen_level18() {
   # for loops (practical examples)
   questions+=("Process all .${ext} files in current dir|for f in *.${ext}; do echo \"Processing \$f\"; done")
   questions+=("Rename all .txt to .bak|for f in *.txt; do mv \"\$f\" \"\${f%.txt}.bak\"; done")
-  questions+=("Retry curl until success (max ${n} tries)|for i in {1..${n}}; do curl -s url && break; sleep 1; done")
+  questions+=("Retry curl until success (max ${n} tries)|for i in \$(seq 1 ${n}); do curl -s url && break; sleep 1; done")
   questions+=("Loop over servers and check SSH|for h in srv1 srv2 srv3; do ssh -o ConnectTimeout=2 \$h uptime; done")
-  questions+=("Process numbered files file1 to file${n}|for i in {1..${n}}; do cat file\$i; done")
+  questions+=("Process numbered files file1 to file${n}|for i in \$(seq 1 ${n}); do cat file\$i; done")
   questions+=("C-style countdown from ${n}|for ((i=${n}; i>0; i--)); do echo \$i; done")
   questions+=("Loop over array elements|for item in \"\${arr[@]}\"; do echo \"\$item\"; done")
   questions+=("Loop over files in ${dir}/, skip dirs|for f in ${dir}/*; do [[ -f \"\$f\" ]] && echo \"\$f\"; done")
@@ -2348,7 +2349,7 @@ gen_level28() {
   questions+=("Chroot into system mounted at /mnt|chroot /mnt /bin/bash")
   questions+=("Regenerate initramfs (Arch)|mkinitcpio -P")
   questions+=("Regenerate GRUB config|grub-mkconfig -o /boot/grub/grub.cfg")
-  questions+=("Fix broken sudo (as root)|chmod 4755 /usr/bin/sudo; chown root:root /usr/bin/sudo")
+  questions+=("Fix broken sudo (as root)|chown root:root /usr/bin/sudo; chmod 4755 /usr/bin/sudo")
   questions+=("Reset root password from recovery|passwd root")
   questions+=("Reinstall bootloader to MBR|grub-install /dev/sda")
   questions+=("Check and repair filesystem|fsck -y /dev/sda1")
@@ -2390,7 +2391,7 @@ gen_level28() {
   # === DEFENSIVE HARDENING ===
   questions+=("Block IP with iptables|iptables -A INPUT -s ${ip} -j DROP")
   questions+=("Block IP with nftables|nft add rule inet filter input ip saddr ${ip} drop")
-  questions+=("Rate limit SSH connections|iptables -A INPUT -p tcp --dport 22 -m limit --limit 3/min -j ACCEPT")
+  questions+=("Rate limit SSH connections|iptables -A INPUT -p tcp --dport 22 -m connlimit --connlimit-above 3 -j DROP")
   questions+=("Enable SYN cookies|echo 1 > /proc/sys/net/ipv4/tcp_syncookies")
   questions+=("Disable IP forwarding|echo 0 > /proc/sys/net/ipv4/ip_forward")
   questions+=("Flush all firewall rules|iptables -F; iptables -X")
@@ -2610,7 +2611,7 @@ gen_level27() {
   # GTFOBins-style exploits (representative examples)
   questions+=("SUID find shell escape|find . -exec /bin/sh -p \\; -quit")
   questions+=("SUID vim shell escape|vim -c ':!/bin/sh'")
-  questions+=("SUID python shell|python -c 'import os; os.execl(\"/bin/sh\", \"sh\", \"-p\")'")
+  questions+=("SUID python3 shell|python3 -c 'import os; os.execl(\"/bin/sh\", \"sh\", \"-p\")'")
   questions+=("Sudo env privesc|sudo env /bin/sh")
 
   # Kernel exploits prep
@@ -2697,12 +2698,12 @@ gen_level20() {
   questions+=("Capitalize first letter|sed 's/.*/\\u&/' ${txt}")
 
   # Advanced awk
-  questions+=("Print lines where field > value|awk -F',' '\$3 > 100' ${csv}")
+  questions+=("Print lines where field > value|awk -F',' '\$1 > 100' ${csv}")
   questions+=("Print unique values from column|awk -F',' '!seen[\$1]++' ${csv}")
   questions+=("Sum column values|awk -F',' '{sum+=\$2} END{print sum}' ${csv}")
   questions+=("Calculate average|awk -F',' '{sum+=\$2; n++} END{print sum/n}' ${csv}")
-  questions+=("Find max value in column|awk -F',' 'BEGIN{max=0} \$2>max{max=\$2} END{print max}' ${csv}")
-  questions+=("Find min value in column|awk -F',' 'BEGIN{min=999999} \$2<min{min=\$2} END{print min}' ${csv}")
+  questions+=("Find max value in column|awk -F',' 'BEGIN{max=0} \$1>max{max=\$1} END{print max}' ${csv}")
+  questions+=("Find min value in column|awk -F',' 'BEGIN{min=999999} \$1<min{min=\$1} END{print min}' ${csv}")
   questions+=("Group by and count|awk -F',' '{count[\$1]++} END{for(k in count) print k, count[k]}' ${csv}")
   questions+=("Conditional print|awk -F',' '\$3==\"active\" {print \$1, \$2}' ${csv}")
   questions+=("Print with custom separator|awk -F',' 'BEGIN{OFS=\"|\"} {print \$1,\$2}' ${csv}")
