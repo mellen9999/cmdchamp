@@ -1204,7 +1204,7 @@ gen_level3() {
 
   # Combined pipes
   questions+=("First ${n} ${Y}${term1}${C} matches in ${W}${log}${C}§grep ${term1} ${log} | head -${n}§#output:*")
-  questions+=("Last ${n2} lines of ${W}${log}${C} containing ${Y}${term2}${C}§grep ${term2} ${log} | tail -${n2}§#output:*")
+  questions+=("Last ${n2} ${Y}${term1}${C} lines in ${W}${log}${C}§grep ${term1} ${log} | tail -${n2}§#output:*")
   questions+=("Count unique lines in ${W}${txt}${C}§sort ${txt} | uniq | wc -l§sort -u ${txt} | wc -l§#output:~[0-9]+")
   questions+=("Sort ${W}${log}${C} and show first ${n}§sort ${log} | head -${n}§#output:@${n}")
   questions+=("Show last ${n2} sorted lines of ${W}${cfg}${C}§sort ${cfg} | tail -${n2}§#output:@${n2}")
@@ -1434,7 +1434,7 @@ gen_level8() {
 
   # === COMPOUND: Uses && || (L6) with exit status ===
   questions+=("Run grep, check exit status if found§grep -q ${term} ${log} ; echo \$?")
-  questions+=("Run command, echo 'success' if \$? is 0§ls && echo success")
+  questions+=("Run ls, then echo 'success' if it succeeds§ls && echo success")
   questions+=("Test if last command succeeded (exit 0)|[[ \$? -eq 0 ]] && echo success")
 
   # === COMPOUND: Uses variables (L7) with special vars ===
@@ -1756,6 +1756,7 @@ gen_level15() {
 gen_level16() {
   eval "local questions=() $_QV"; _ctx
   local proc2=$(_pick PROCS) col2=$(_rnum 1 5) col3=$((col % 5 + 1)) chars=$(_rnum 10 80) thresh=$(_rnum 1 25)
+  ((col3 < col)) && { local _t=$col; col=$col3; col3=$_t; }  # ensure col <= col3 for ranges
   ((n > n2)) && { local t=$n; n=$n2; n2=$t; }
 
   # Sorting
@@ -1796,13 +1797,14 @@ gen_level16() {
   questions+=("Print lines longer than ${chars} chars|awk 'length > ${chars}' ${txt}")
   questions+=("Print line numbers with content|awk '{print NR, \$0}' ${txt}")
   local _statuses=(active inactive pending); _fpick _statuses; local _status=$REPLY
-  questions+=("Sum numbers in column 1 of ${csv} (skip header)|awk -F',' 'NR>1{sum+=\$1} END {print sum}' ${csv}")
-  questions+=("Print lines where column 1 > ${thresh} (skip header)|awk -F',' 'NR>1 && \$1 > ${thresh}' ${csv}")
-  questions+=("Print lines where status equals \"${_status}\"|awk -F',' '\$4 == \"${_status}\"' ${csv}")
+  # data.csv has numeric id in $1 and status in $4; use it for type-specific queries
+  questions+=("Sum column 1 of data.csv (skip header)|awk -F',' 'NR>1{sum+=\$1} END {print sum}' data.csv")
+  questions+=("Print lines where column 1 > ${thresh} (skip header)|awk -F',' 'NR>1 && \$1 > ${thresh}' data.csv")
+  questions+=("Print lines where column 4 equals \"${_status}\" in data.csv|awk -F',' '\$4 == \"${_status}\"' data.csv")
   questions+=("Print every ${col}th line|awk 'NR % ${col} == 0' ${txt}")
   questions+=("Print lines ${n} through ${n2}|awk 'NR>=${n} && NR<=${n2}' ${txt}|sed -n '${n},${n2}p' ${txt}")
-  questions+=("Average of column 1 (skip header)|awk -F',' 'NR>1{sum+=\$1; count++} END {print sum/count}' ${csv}")
-  questions+=("Maximum value in column 1|awk -F',' 'NR==2{max=\$1} NR>1 && \$1>max{max=\$1} END{print max}' ${csv}")
+  questions+=("Average of column 1 (skip header)|awk -F',' 'NR>1{sum+=\$1; count++} END {print sum/count}' data.csv")
+  questions+=("Maximum value in column 1|awk -F',' 'NR==2{max=\$1} NR>1 && \$1>max{max=\$1} END{print max}' data.csv")
   questions+=("Swap columns 1 and 2 in output|awk '{print \$2, \$1}' ${txt}")
   questions+=("Print unique values from column ${col} (skip header)|awk -F',' 'NR>1 && !seen[\$${col}]++ {print \$${col}}' ${csv}")
   questions+=("Count records by column ${col} value|awk -F',' 'NR>1{count[\$${col}]++} END {for(k in count) print k, count[k]}' ${csv}")
@@ -2644,7 +2646,7 @@ gen_level27() {
   # Weak permissions
   questions+=("Check /etc/passwd writeable|ls -la /etc/passwd")
   questions+=("Check /etc/shadow readable|ls -la /etc/shadow")
-  questions+=("Add user to /etc/passwd|echo \"hacker:\\\$(openssl passwd -6 pass):0:0::/root:/bin/bash\" >> /etc/passwd")
+  questions+=("Add user to /etc/passwd|echo \"hacker:\$(openssl passwd -6 pass):0:0::/root:/bin/bash\" >> /etc/passwd")
   questions+=("Check writable /etc/sudoers|ls -la /etc/sudoers")
 
   # Path hijacking
