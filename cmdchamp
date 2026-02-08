@@ -386,7 +386,7 @@ EOF
 # Generate all sandbox files
 _gen_sandbox_files() {
   local dir="$1"
-  mkdir -p "$dir"/{src/test,logs,data}
+  mkdir -p "$dir"/{src/test,logs,data,backup,temp,config,test}
 
   _gen_log "$dir/server.log" 50
   _gen_app_log "$dir/app.log" 40
@@ -1205,6 +1205,7 @@ VI_MODE=${CMD_VI:-1}
 gen_level0() {
   local questions=() dir dir2 word num; _ctx
   dir=$(_phrase src data logs); dir2=$(_phrase backup temp config test)
+  local newdir=$(_phrase projects demos tools assets)
   word=$(_phrase hello ready done test ping); num=$((RANDOM % 50 + 1))
 
   # pwd variations
@@ -1236,8 +1237,8 @@ gen_level0() {
   questions+=("Go to filesystem root (/)|cd /|#output:*")
 
   # mkdir
-  questions+=("Create directory ${W}${dir2}${C}|mkdir ${dir2}|#output:*")
-  questions+=("Create nested directories ${W}${dir}/${dir2}${C} (parents too)|mkdir -p ${dir}/${dir2}|#output:*")
+  questions+=("Create directory ${W}${newdir}${C}|mkdir ${newdir}|#output:*")
+  questions+=("Create nested directories ${W}${dir}/${newdir}${C} (parents too)|mkdir -p ${dir}/${newdir}|#output:*")
 
   printf '%s\n' "${questions[@]}"
 }
@@ -1449,8 +1450,8 @@ gen_level5() {
 # Level 6: Logic Operators (&&, ||)
 gen_level6() {
   local questions=() dir dir2 cfg cfg2 txt txt2 log msg msg2 script n; _ctx
-  dir=$(_phrase temp backup new test work build output cache)
-  dir2=$(_phrase archive old data staging release deploy results)
+  dir=$(_phrase new work build output cache proj dist bundle)
+  dir2=$(_phrase archive old staging release deploy results)
   cfg=$(_pick SANDBOX_CFGS); cfg2=$(_pick SANDBOX_CFGS)
   txt=$(_pick SANDBOX_TXTS); txt2=$(_pick SANDBOX_TXTS)
   log=$(_pick SANDBOX_LOGS)
