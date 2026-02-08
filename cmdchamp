@@ -76,21 +76,21 @@ EOF
 
 _intro() {
   printf '\e[2J\e[H'
-  # Padding: inner width 66, fixed text 44 chars ("      You are " + ". You have only your terminal.")
-  local pad=$((22 - ${#PLAYER_NAME}))
+  # Padding: inner width 66, fixed text 41 chars ("      You are " + ". You have only your shell.")
+  local pad=$((25 - ${#PLAYER_NAME}))
   local spaces; printf -v spaces '%*s' "$pad" ''
   cat <<EOF
 
 
     ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
     ░░                                                                  ░░
-    ░░      The networks are dead. The cloud is ash.                    ░░
+    ░░      The networks are dead. The sky is ash.                      ░░
     ░░      What remains runs on bone and silicon.                      ░░
     ░░                                                                  ░░
-    ░░      You are ${C}${PLAYER_NAME}${N}. You have only your terminal.${spaces}░░
+    ░░      You are ${C}${PLAYER_NAME}${N}. You have only your shell.${spaces}░░
     ░░                                                                  ░░
-    ░░      29 gatekeepers guard the path to ROOT.                      ░░
-    ░░      Learn their commands. Speak their language.                 ░░
+    ░░      29 daemons guard the descent to ROOT.                       ░░
+    ░░      They yield only to those who know the words.                ░░
     ░░                                                                  ░░
     ░░                         ${D}Or be forgotten.${N}                         ░░
     ░░                                                                  ░░
@@ -98,7 +98,7 @@ _intro() {
 
 
 EOF
-  read -rsn1 -p "                        Press Enter to begin..."
+  read -rsn1 -p "                            Press Enter to begin..."
   echo
 }
 
@@ -129,15 +129,20 @@ _boss_splash() {
   local lv=$1
   local boss="${BOSS_NAMES[$lv]}"
   local flavor="${BOSS_FLAVOR[$lv]}"
-  printf '\e[2J\e[H'
+  printf '\e[2J\e[H\n\n'
+  local s info
+  printf -v s '%*s' $(( (80 - 12) / 2 )) ''
+  printf '%s%s\n\n' "$s" "${R}${B}═══ BOSS ═══${N}"
+  printf -v s '%*s' $(( (80 - ${#boss}) / 2 )) ''
+  printf '%s%s\n\n' "$s" "${Y}${B}${boss}${N}"
+  printf -v s '%*s' $(( (80 - ${#flavor} - 2) / 2 )) ''
+  printf '%s%s\n\n' "$s" "${D}\"${flavor}\"${N}"
+  printf -v info 'No hints. %d/%d to pass.' "$BOSS_THRESHOLD" "$BOSS_TOTAL"
+  printf -v s '%*s' $(( (80 - ${#info}) / 2 )) ''
+  printf '%s%s\n' "$s" "${D}${info}${N}"
   echo
-  echo
-  printf "                         ${R}${B}═══ BOSS ═══${N}\n\n"
-  printf "                           ${Y}${B}%s${N}\n\n" "$boss"
-  printf "                       ${D}\"%s\"${N}\n\n" "$flavor"
-  printf "                    ${D}No hints. %d/%d to pass.${N}\n" "$BOSS_THRESHOLD" "$BOSS_TOTAL"
-  echo
-  read -rsn1 -p "                     Press Enter to continue..."
+  printf -v s '%*s' $(( (80 - 26) / 2 )) ''
+  read -rsn1 -p "${s}Press Enter to continue..."
   echo
 }
 
