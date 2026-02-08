@@ -2893,7 +2893,7 @@ input="" cursor=0 mode="insert" SHOW_HINT=0 EXPLAIN_LINES=0 _rep=""
 declare -a UNDO_STACK=()  # Multi-level undo
 hdr() {
   printf '\e[2J\e[H'
-  local fire=""; ((streak>=FIRE_STREAK)) && fire="  ${Y}🔥${N}"
+  local fire=""; ((streak>=FIRE_STREAK)) && fire="  ${Y}*${N}"
   printf '%s\n' "${C}${PLAYER_NAME:-anon}${N}${fire}"
   printf '%s\n' "${B}Level $1: ${LEVEL_NAMES[$1]:-}${N}"
   printf '%s\n\n' "${D}[$2/$3]  Tab=hint${N}"
@@ -3073,7 +3073,7 @@ run() {
           printf '\n%s\n' "${D}+0 (hint)${N}"; streak=0; _sset "$prompt" "$tier"
           read -rsp "${D}Press Enter...${N}"; break
         elif ((streak>=FIRE_STREAK)); then
-          printf '\n%s\n' "${Y}${B}🔥 ON FIRE! +2${N}"; ((++streak)); _sset "$prompt" "$((tier<2?tier+1:2))"
+          printf '\n%s\n' "${Y}${B}* ON FIRE! +2${N}"; ((++streak)); _sset "$prompt" "$((tier<2?tier+1:2))"
           read -rsp "${D}Press Enter...${N}"
           qi=$((qi+2)); ((qi >= ${#shuf[@]})) && qi=${#shuf[@]}; QI=$qi; save; break
         else
