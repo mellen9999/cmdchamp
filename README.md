@@ -65,7 +65,7 @@ cmdchamp --no-sandbox   # Disable sandbox (text-match only)
 | 10 | Test Conditions | -f, -d, -z, -n, -eq, -lt |
 | 11 | Core File Tools | cp, ln, chmod, wc, du, file, tar |
 | 12 | System Admin | ping, df, free, ss, systemctl, ip |
-| 13 | Multiplexers | tmux, screen: sessions, windows, panes |
+| 13 | Multiplexers | tmux: sessions, windows, panes |
 | 14 | Text Search | grep, ripgrep, regex |
 | 15 | File Finding | find, fd, by name/size/time/type |
 | 16 | Data Processing | sort, uniq, cut, awk, ps, ss |

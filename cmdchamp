@@ -792,7 +792,6 @@ declare -A MANPAGE=(
   [journalctl]=$'systemd logs\n  \e[36m-u\e[0m \e[33mUNIT\e[0m   service logs           \e[36m-f\e[0m        follow live\n  \e[36m-n\e[0m \e[33mN\e[0m      last \e[33mN\e[0m lines           \e[36m-b\e[0m        current boot\n  \e[36m-p\e[0m \e[33mLEVEL\e[0m  priority (err/warn)    \e[36m-k\e[0m        kernel messages\n  \e[36m-o\e[0m \e[33mFMT\e[0m    output format          \e[36m--since\e[0m   time filter\n  \e[36m--disk-usage\e[0m   journal size      \e[36m--vacuum-size\e[0m=\e[33mN\e[0m  shrink to\n  \e[36m--no-pager\e[0m     no less/more\n  \e[2mjournalctl -u nginx -f    journalctl -b -p err    journalctl --disk-usage\e[0m'
   [crontab]=$'scheduled tasks\n  \e[36m-e\e[0m        edit crontab           \e[36m-l\e[0m        list jobs\n  \e[36m-r\e[0m        remove all jobs\n  \e[2mcrontab -e    crontab -l    sudo crontab -e\e[0m'
   [tmux]=$'terminal multiplexer\n  \e[33mnew\e[0m \e[36m-s\e[0m \e[33mNAME\e[0m   new session     \e[33mattach\e[0m \e[36m-t\e[0m \e[33mNAME\e[0m  reattach\n  \e[33mls\e[0m              list sessions   \e[33mkill-session\e[0m \e[36m-t\e[0m \e[33mNAME\e[0m\n  \e[2mtmux new -s work    tmux attach -t work    tmux ls\e[0m'
-  [screen]=$'terminal multiplexer\n  \e[36m-S\e[0m \e[33mNAME\e[0m   session name           \e[36m-r\e[0m        reattach\n  \e[36m-ls\e[0m       list sessions\n  \e[2mscreen -S work    screen -ls    screen -r work\e[0m'
   [nmap]=$'network scanner\n  \e[36m-sS\e[0m       SYN (stealth)          \e[36m-sT\e[0m       TCP connect\n  \e[36m-sU\e[0m       UDP scan               \e[36m-sV\e[0m       version detect\n  \e[36m-sC\e[0m       default scripts        \e[36m-O\e[0m        OS detection\n  \e[36m-A\e[0m        aggressive (all)       \e[36m-F\e[0m        fast (top 100)\n  \e[36m-p\e[0m \e[33mPORTS\e[0m  specific ports         \e[36m-p-\e[0m       all 65535 ports\n  \e[36m-Pn\e[0m       skip discovery         \e[36m-sn\e[0m       ping sweep\n  \e[36m-sL\e[0m       list targets           \e[36m-PR\e[0m       ARP scan\n  \e[36m-oA\e[0m \e[33mPFX\e[0m   all output formats     \e[36m-oG\e[0m \e[33mFILE\e[0m  greppable output\n  \e[36m-T1\e[0m       slow (evasion)         \e[36m-T4\e[0m       fast timing\n  \e[36m--top-ports\e[0m \e[33mN\e[0m  top N ports       \e[36m--script\e[0m \e[33mNAME\e[0m  NSE script\n  \e[2mnmap -sV -sC host    nmap -A -p- host    nmap -sn 192.168.1.0/24\e[0m'
   [hydra]=$'network login cracker\n  \e[36m-l\e[0m \e[33mUSER\e[0m   single username        \e[36m-L\e[0m \e[33mFILE\e[0m   username list\n  \e[36m-P\e[0m \e[33mFILE\e[0m   password list          \e[36m-t\e[0m \e[33mN\e[0m      threads per target\n  \e[2mhydra -l admin -P pass.txt ssh://192.168.1.1\e[0m'
   [hashcat]=$'GPU hash cracker\n  \e[36m-m\e[0m \e[33mTYPE\e[0m   hash type \e[2m(0=MD5 100=SHA1 1000=NTLM 1800=SHA512)\e[0m\n  \e[36m-a\e[0m \e[33mMODE\e[0m   attack \e[2m(0=dict, 3=brute)\e[0m     \e[36m--show\e[0m   show cracked\n  \e[36m-r\e[0m \e[33mFILE\e[0m   rules file             \e[36m--restore\e[0m resume session\n  \e[2mhashcat -m 0 hash.txt wordlist.txt    hashcat -m 1000 -a 3 hash ?a?a?a?a\e[0m'
@@ -907,7 +906,7 @@ declare -A EXP=(
   [reset]="undo commits" [revert]="undo with new commit" [cherry-pick]="apply specific commit"
   [bisect]="binary search for bug" [reflog]="reference logs" [blame]="show line authors"
   [tag]="mark releases" [remote]="manage remotes" [log]="show history"
-  [tmux]="terminal multiplexer" [screen]="terminal multiplexer" [attach]="connect to session"
+  [tmux]="terminal multiplexer" [attach]="connect to session"
   [detach]="disconnect from session" [new-session]="create session" [kill-session]="destroy session"
   [split-window]="create pane" [select-pane]="switch pane" [resize-pane]="change pane size"
   [send-keys]="type in pane" [capture-pane]="copy pane content" [source-file]="reload config"
@@ -2503,7 +2502,7 @@ gen_level21() {
   printf '%s\n' "${questions[@]}"
 }
 
-# Level 13: Multiplexers (tmux & screen)
+# Level 13: Multiplexers (tmux)
 gen_level13() {
   eval "local questions=() $_QV"; _ctx
 
@@ -2548,13 +2547,6 @@ gen_level13() {
   # CLI commands
   questions+=("Send keys to session|tmux send-keys -t mysession 'ls -la' Enter")
   questions+=("Capture pane output|tmux capture-pane -t mysession -p")
-
-  # Screen (alternative)
-  questions+=("Start screen session|screen")
-  questions+=("Start screen session named 'mysession'|screen -S mysession")
-  questions+=("List screen sessions|screen -ls")
-  questions+=("Attach to screen|screen -r|screen -r mysession")
-  questions+=("Detach from screen|Ctrl+a d")
 
   printf '%s\n' "${questions[@]}"
 }
