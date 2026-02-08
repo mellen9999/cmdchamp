@@ -124,6 +124,50 @@ LEVEL_NAMES=(
   "Advanced Regex" "Git" "Network Tools" "Network Scanning" "WiFi & RF"
   "Hash Cracking" "Forensics" "Privilege Escalation" "ROOT")
 
+# Victory screen - displayed after beating the final boss (ROOT)
+_victory() {
+  printf '\e[2J\e[H'
+  local -A sc; [[ -f "$DATA/scores" ]] && while IFS='|' read -r k v; do sc[$k]=$v; done < "$DATA/scores"
+  local total=0 mastered=0
+  for k in "${!sc[@]}"; do
+    ((++total))
+    [[ "${sc[$k]}" != 1 ]] && ((++mastered))
+  done
+  local s
+  cat <<'EOF'
+
+    ██████╗  ██████╗  ██████╗ ████████╗
+    ██╔══██╗██╔═══██╗██╔═══██╗╚══██╔══╝
+    ██████╔╝██║   ██║██║   ██║   ██║
+    ██╔══██╗██║   ██║██║   ██║   ██║
+    ██║  ██║╚██████╔╝╚██████╔╝   ██║
+    ╚═╝  ╚═╝ ╚═════╝  ╚═════╝    ╚═╝
+
+EOF
+  printf -v s '%*s' $(( (70 - 20 - ${#PLAYER_NAME}) / 2 )) ''
+  printf '%s%s\n\n' "$s" "${G}${B}ACCESS GRANTED: ${C}${PLAYER_NAME}${N}"
+  local stat_text pad_len stat_pad
+  printf -v stat_text '%s prompts seen. %s mastered.' "$total" "$mastered"
+  pad_len=$((56 - ${#stat_text}))
+  printf -v stat_pad '%*s' "$pad_len" ''
+  local br="${D}░░${N}" edge="${D}░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░${N}"
+  printf '\n'
+  printf '    %s\n' "$edge"
+  printf '    %s                                                              %s\n' "$br" "$br"
+  printf '    %s      The daemons are silent. The descent is complete.        %s\n' "$br" "$br"
+  printf '    %s      You spoke the words. They yielded.                     %s\n' "$br" "$br"
+  printf '    %s                                                              %s\n' "$br" "$br"
+  printf '    %s      29 bosses defeated. The shell is yours.                %s\n' "$br" "$br"
+  printf '    %s      %s%s%s\n' "$br" "$stat_text" "$stat_pad" "$br"
+  printf '    %s                                                              %s\n' "$br" "$br"
+  printf '    %s                      %sYou are ROOT.%s                          %s\n' "$br" "${B}" "${N}" "$br"
+  printf '    %s                                                              %s\n' "$br" "$br"
+  printf '    %s\n' "$edge"
+  echo
+  read -rsn1 -p "                          Press any key to exit..."
+  echo
+}
+
 # Boss splash screen
 _boss_splash() {
   local lv=$1
@@ -3143,7 +3187,7 @@ run() {
       printf 'Enter for Level %d...\n' "$((lv+1))"; read -r
       LVL=$((lv+1)); QI=0; save; _NEXT_LV=$LVL _NEXT_BOSS=0; return 0
     else
-      printf '%s\n' "${G}${B}ALL COMPLETE - ROOT ACCESS GRANTED${N}"
+      _victory
       return 1
     fi
   else
