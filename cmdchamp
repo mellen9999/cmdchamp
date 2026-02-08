@@ -3164,7 +3164,7 @@ _del() { # $1=motion
 }
 
 run() {
-  local lv=$1 shuf=() qi=${QI:-0} streak=0
+  local lv=$1 boss_only=${2:-0} shuf=() qi=${QI:-0} streak=0
   local -a HIST=() SEEN_PROMPTS=() ; local HIST_IDX=0 HIST_SAVE=""
   # Save terminal state for clean restoration
   _interactive=1
@@ -3203,11 +3203,15 @@ run() {
     elif ((i2 < ${#_shuf2[@]})); then shuf+=("${_shuf2[$i2]}"); ((++i2))
     fi
   done
+  if ((boss_only)); then
+    printf '%s\n' "${Y}Straight to boss!${N}"
+    sleep 1
   # Safety check: if no questions to practice, skip to boss
-  if ((${#shuf[@]} == 0)); then
+  elif ((${#shuf[@]} == 0)); then
     printf '%s\n' "${Y}No questions to practice. Straight to boss!${N}"
     sleep 1
   fi
+  if ((!boss_only)); then
   while ((qi < ${#shuf[@]})); do
     # Reset sandbox if previous command was destructive
     ((SANDBOX_MODE && _SANDBOX_DESTRUCTIVE)) && { _sandbox_reset; _SANDBOX_DESTRUCTIVE=0; }
@@ -3272,7 +3276,7 @@ run() {
           if [[ "$c" =~ ^[1-9]$ ]] || { [[ "$c" == "0" ]] && [[ -n "$_rep" ]]; }; then _rep+="$c"; continue; fi
           local _n=${_rep:-1}; _rep=""
           # Push to undo stack before destructive operations
-          case "$c" in s|S|x|X|D|C|d|c|r) UNDO_STACK+=("$input:$cursor");; esac
+          case "$c" in s|S|x|X|D|C|d|c|r) UNDO_STACK+=("$cursor:$input");; esac
           case "$c" in
             i) mode="insert"; draw;; a) mode="insert"; ((cursor<${#input})) && ((++cursor)); draw;;
             A) mode="insert"; cursor=${#input}; draw;; I) mode="insert"; cursor=0; draw;;
@@ -3297,7 +3301,7 @@ run() {
             r) IFS= read -rsn1 c2; [[ -n "$c2" && "$c2" != $'\x1b' ]] && { input="${input:0:cursor}${c2}${input:cursor+1}"; draw; };;
             d) IFS= read -rsn1 c2; for ((_i=0;_i<_n;_i++)); do _del "$c2"; done; draw;;
             c) IFS= read -rsn1 c2; for ((_i=0;_i<_n;_i++)); do _del "$c2"; done; mode="insert"; draw;;
-            u) ((${#UNDO_STACK[@]}>0)) && { local _u="${UNDO_STACK[-1]}"; unset 'UNDO_STACK[-1]'; input="${_u%:*}"; cursor="${_u#*:}"; draw; };;  # multi-level undo
+            u) ((${#UNDO_STACK[@]}>0)) && { local _u="${UNDO_STACK[-1]}"; unset 'UNDO_STACK[-1]'; cursor="${_u%%:*}"; input="${_u#*:}"; draw; };;  # multi-level undo
             g) IFS= read -rsn1 c2; [[ "$c2" == "g" ]] && { cursor=0; draw; };;  # gg = start
             G) cursor=$((${#input}>0?${#input}-1:0)); draw;;  # G = end
             q) printf '\n%s\n' "${D}[quit]${N}"; exit 0;;  # quit
@@ -3336,6 +3340,7 @@ run() {
       tier=$(_sget "$prompt"); hdr "$lv" "$((qi+1))" "$TOT"; qdisp "$prompt"
     done
   done
+  fi  # !boss_only
   # === BOSS ROUND ===
   _boss_splash "$lv"
 
@@ -3360,7 +3365,7 @@ run() {
     printf '\e[2J\e[H'
     printf '%s\n\n%s\n\n' "${R}${B}═══ BOSS $((bi+1))/${boss_total} ═══${N}" "${C}${prompt}${N}"
 
-    input="" cursor=0 mode="insert"
+    input="" cursor=0 mode="insert" _rep=""; UNDO_STACK=()
     draw
     while IFS= read -rsn1 c; do
       if [[ "$c" == $'\t' ]]; then
@@ -3369,18 +3374,50 @@ run() {
       fi
       if [[ "$mode" == "insert" ]]; then
         case "$c" in
-          $'\x1b') ((VI_MODE)) && { mode="normal"; ((cursor>0)) && ((cursor--)); draw; } ;;
-          $'\x7f'|$'\b') ((cursor>0)) && { input="${input:0:cursor-1}${input:cursor}"; ((cursor--)); draw; } ;;
-          '') echo; break ;;
-          *) input="${input:0:cursor}${c}${input:cursor}"; ((++cursor)); draw ;;
+          $'\x04') printf '\n%s\n' "${D}[quit]${N}"; exit 0;;
+          $'\x1b')
+            local _e1 _e2; read -rsn1 -t 0.01 _e1 || _e1=""
+            if [[ "$_e1" == "[" ]]; then
+              read -rsn1 -t 0.01 _e2 || _e2=""
+              # Consume and ignore arrow sequences in boss insert mode
+            elif [[ -z "$_e1" ]] && ((VI_MODE)); then
+              mode="normal"; ((cursor>0)) && ((cursor--)); draw
+            fi;;
+          $'\x7f'|$'\b') ((cursor>0)) && { input="${input:0:cursor-1}${input:cursor}"; ((cursor--)); draw; };;
+          '') echo; break;;
+          *) input="${input:0:cursor}${c}${input:cursor}"; ((++cursor)); draw;;
         esac
       elif ((VI_MODE)); then
+        if [[ "$c" =~ ^[1-9]$ ]] || { [[ "$c" == "0" ]] && [[ -n "$_rep" ]]; }; then _rep+="$c"; continue; fi
+        local _n=${_rep:-1}; _rep=""
+        case "$c" in s|S|x|X|D|C|d|c|r) UNDO_STACK+=("$cursor:$input");; esac
         case "$c" in
           i) mode="insert"; draw;; a) mode="insert"; ((cursor<${#input})) && ((++cursor)); draw;;
-          h) ((cursor>0)) && ((cursor--)); draw;; l) ((cursor<${#input}-1)) && ((++cursor)); draw;;
+          A) mode="insert"; cursor=${#input}; draw;; I) mode="insert"; cursor=0; draw;;
+          s) ((${#input}>0)) && input="${input:0:cursor}${input:cursor+1}"; mode="insert"; draw;;
+          S) input="" cursor=0 mode="insert"; draw;;
+          h) for ((_i=0;_i<_n&&cursor>0;_i++)); do ((cursor--)); done; draw;;
+          l) for ((_i=0;_i<_n&&cursor<${#input}-1;_i++)); do ((++cursor)); done; draw;;
           0) cursor=0; draw;; \$) cursor=$((${#input}>0?${#input}-1:0)); draw;;
-          x) ((${#input}>0)) && { input="${input:0:cursor}${input:cursor+1}"; }; draw;;
-          '') echo; break ;;
+          w) for ((_i=0;_i<_n;_i++)); do _wfwd; done; draw;;
+          b) for ((_i=0;_i<_n;_i++)); do _wbck; done; draw;;
+          e) for ((_i=0;_i<_n;_i++)); do _wend; done; draw;;
+          f) IFS= read -rsn1 c2; for ((_i=0;_i<_n;_i++)); do for ((p=cursor+1;p<${#input};p++)); do [[ "${input:p:1}" == "$c2" ]] && { cursor=$p; break; }; done; done; draw;;
+          F) IFS= read -rsn1 c2; for ((_i=0;_i<_n;_i++)); do for ((p=cursor-1;p>=0;p--)); do [[ "${input:p:1}" == "$c2" ]] && { cursor=$p; break; }; done; done; draw;;
+          t) IFS= read -rsn1 c2; for ((_i=0;_i<_n;_i++)); do for ((p=cursor+1;p<${#input};p++)); do [[ "${input:p:1}" == "$c2" ]] && { cursor=$((p-1)); break; }; done; done; draw;;
+          T) IFS= read -rsn1 c2; for ((_i=0;_i<_n;_i++)); do for ((p=cursor-1;p>=0;p--)); do [[ "${input:p:1}" == "$c2" ]] && { cursor=$((p+1)); break; }; done; done; draw;;
+          x) for ((_i=0;_i<_n&&${#input}>0&&cursor<${#input};_i++)); do input="${input:0:cursor}${input:cursor+1}"; done; _clamp; draw;;
+          X) for ((_i=0;_i<_n&&cursor>0;_i++)); do input="${input:0:cursor-1}${input:cursor}"; ((cursor--)); done; draw;;
+          D) input="${input:0:cursor}"; ((cursor>0)) && ((cursor--)); draw;;
+          C) input="${input:0:cursor}"; mode="insert"; draw;;
+          r) IFS= read -rsn1 c2; [[ -n "$c2" && "$c2" != $'\x1b' ]] && { input="${input:0:cursor}${c2}${input:cursor+1}"; draw; };;
+          d) IFS= read -rsn1 c2; for ((_i=0;_i<_n;_i++)); do _del "$c2"; done; draw;;
+          c) IFS= read -rsn1 c2; for ((_i=0;_i<_n;_i++)); do _del "$c2"; done; mode="insert"; draw;;
+          u) ((${#UNDO_STACK[@]}>0)) && { local _u="${UNDO_STACK[-1]}"; unset 'UNDO_STACK[-1]'; cursor="${_u%%:*}"; input="${_u#*:}"; draw; };;
+          g) IFS= read -rsn1 c2; [[ "$c2" == "g" ]] && { cursor=0; draw; };;
+          G) cursor=$((${#input}>0?${#input}-1:0)); draw;;
+          q) printf '\n%s\n' "${D}[quit]${N}"; exit 0;;
+          '') echo; break;;
         esac
       fi
     done
@@ -3417,7 +3454,7 @@ run() {
     printf '%s\n' "${D}r = retry, p = practice${N}"
     read -rsn1 choice
     case "$choice" in
-      r) QI=0; save; run "$lv" ;;
+      r) QI=0; save; run "$lv" 1 ;;
       *) QI=0; save; run "$lv" ;;
     esac
   fi
