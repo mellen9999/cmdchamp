@@ -11,6 +11,10 @@ Pure bash CLI trainer. 1000+ questions across 29 levels — fundamentals to priv
 - **Dynamic generation** — Variable pools make every session different
 - **Vi keybindings** — Full vi-style line editing with motions, operators, and undo stack
 - **Mid-level resume** — Quit anytime, continue exactly where you left off
+- **Session summary** — Ctrl+d shows answered, accuracy, best streak, time
+- **Per-level mastery bars** — `stats` shows color-coded progress per level
+- **Review mode** — Drills weak levels below 80% mastery
+- **Post-ROOT modes** — Gauntlet (3 lives) and Timed (60/120/300s) after beating all bosses
 - **Tab hints** — Reveals answer + inline manpage explanations
 - **Modern + POSIX** — Accepts both `rg`/`fd` and `grep`/`find` answers
 
@@ -41,9 +45,12 @@ cmdchamp n              # Start fresh from level 0
 cmdchamp 14             # Jump to level (password required if locked)
 cmdchamp pass           # Show earned passwords
 cmdchamp pass CODE      # Jump to level using password
-cmdchamp stats          # Show mastery statistics
+cmdchamp stats          # Show mastery statistics (per-level bars)
+cmdchamp review         # Practice weak levels (< 80% mastery)
+cmdchamp gauntlet       # 3 lives, escalating difficulty (post-ROOT)
+cmdchamp timed          # Race the clock, default 120s (post-ROOT)
+cmdchamp timed 60       # Timed mode: 60, 120, or 300 seconds
 cmdchamp reset          # Clear all progress
-cmdchamp cleanup        # Deduplicate score file
 cmdchamp --no-sandbox   # Disable sandbox (text-match only)
 ```
 
@@ -89,13 +96,15 @@ Each level ends with a **boss fight** — a named daemon with no hints. Score 4/
 
 Hit a 5-answer streak for **fire mode**: double points, forced pure recall.
 
+After beating all 29 bosses, **Gauntlet** and **Timed** modes unlock for endgame practice. Use **Review** mode anytime to drill weak levels.
+
 ## Controls
 
 | Key | Action |
 |-----|--------|
 | Enter | Submit answer |
 | Tab | Toggle hint + command explanation |
-| Ctrl+d | Quit (saves position) |
+| Ctrl+d | Quit (shows session summary) |
 | Esc | Enter vi normal mode |
 | ? | Show all keybindings (normal mode) |
 
