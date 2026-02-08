@@ -712,7 +712,7 @@ NUMBERS=(5 10 15 20 25 30 40 50 75 100 150 200 500)
 COLUMNS=(1 2 3 4 5 6 7 8)
 DELIMS=(',' ':' '\t' '|' ';' '/' '-' '_')
 HASHCAT_MODES=(0 100 1400 1800 3200 1000 5600 13100 18200 22000 500 1700 2500 5500 11300)
-HASH_NAMES=(MD5 SHA1 SHA256 sha512crypt bcrypt NTLM NetNTLMv2 Kerberos5 Kerberos5-etype23 WPA-PBKDF2 md5crypt SHA-512 WPA NetNTLMv1 Bitcoin)
+HASH_NAMES=(MD5 SHA1 SHA256 sha512crypt bcrypt NTLM NetNTLMv2 Kerberoast-TGS ASREPRoast WPA-PBKDF2 md5crypt SHA-512 WPA NetNTLMv1 Bitcoin)
 INTERFACES=(eth0 wlan0 ens33 enp0s3 ens192 enp0s25 wlp2s0 docker0 br0 virbr0)
 WIFI_INTERFACES=(wlan0 wlp2s0 wlp3s0 wlan1)
 REMOTE_HOSTS=(server backup-host db-server web-server jump-host bastion
@@ -2016,7 +2016,7 @@ gen_level25() {
   questions+=("Encode string 'secret' to base64§echo -n 'secret' | base64")
   questions+=("Decode base64 file encoded.txt|base64 -d encoded.txt")
   questions+=("Generate MD5 hash of string 'password'§echo -n 'password' | md5sum")
-  questions+=("Generate SHA256 hash of string§echo -n 'password' | sha256sum")
+  questions+=("Generate SHA256 hash of string 'password'§echo -n 'password' | sha256sum")
   questions+=("Generate SHA256 hash of file ${hash}|sha256sum ${hash}")
 
   # Hex operations
