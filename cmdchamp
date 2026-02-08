@@ -1071,22 +1071,22 @@ gen_level0() {
   questions+=("Print ${Y}hello world${C}|echo hello world|echo 'hello world'|#output:hello world")
   questions+=("Print ${Y}${word}${C}|echo ${word}|#output:${word}")
   questions+=("Print your username using ${Y}\$USER${C}|echo \$USER|#output:~.")
-  questions+=("Print your home directory using ${Y}\$HOME${C}|echo \$HOME|#output:~home")
+  questions+=("Print your home directory using ${Y}\$HOME${C}|echo \$HOME|#output:~/sandbox")
   questions+=("Print current shell using ${Y}\$SHELL${C}|echo \$SHELL|#output:~sh")
   questions+=("Print the number ${Y}${num}${C}|echo ${num}|#output:${num}")
   questions+=("Print: ${Y}${word} ${word} ${word}${C}|echo ${word} ${word} ${word}|#output:${word} ${word} ${word}")
 
   # cd variations
-  questions+=("$(_phrase "Change to" "Go to" "Enter") ${W}${dir}${C} directory|cd ${dir}|#output:*")
-  questions+=("$(_phrase "Change to" "Go to") ${W}${dir2}${C}|cd ${dir2}|#output:*")
-  questions+=("Go to home directory|cd|cd ~|#output:*")
-  questions+=("Go up one directory|cd ..|#output:*")
-  questions+=("Go up two directories|cd ../..|#output:*")
-  questions+=("Go to filesystem root (/)|cd /|#output:*")
+  questions+=("$(_phrase "Change to" "Go to" "Enter") ${W}${dir}${C} directory|cd ${dir}")
+  questions+=("$(_phrase "Change to" "Go to") ${W}${dir2}${C}|cd ${dir2}")
+  questions+=("Go to home directory|cd|cd ~")
+  questions+=("Go up one directory|cd ..")
+  questions+=("Go up two directories|cd ../..")
+  questions+=("Go to filesystem root (/)|cd /")
 
   # mkdir
-  questions+=("Create directory ${W}${newdir}${C}|mkdir ${newdir}|#output:*")
-  questions+=("Create nested directories ${W}${dir}/${newdir}${C} (parents too)|mkdir -p ${dir}/${newdir}|#output:*")
+  questions+=("Create directory ${W}${newdir}${C}|mkdir ${newdir}")
+  questions+=("Create nested directories ${W}${dir}/${newdir}${C} (parents too)|mkdir -p ${dir}/${newdir}")
 
   printf '%s\n' "${questions[@]}"
 }
@@ -1160,7 +1160,7 @@ gen_level3() {
   term3=$(_phrase server database logging cache enabled redis localhost admin info daily)
 
   # ls | wc variants (hint at pipe since this level teaches pipes)
-  questions+=("Count files in current directory (pipe ${Y}ls${C} to ${Y}wc${C})§ls | wc -l§#output:~^\\s*[0-9]+")
+  questions+=("Count items in current directory (pipe ${Y}ls${C} to ${Y}wc${C})§ls | wc -l§#output:~^\\s*[0-9]+")
   questions+=("Count items in directory (pipe ${Y}ls -1${C} to ${Y}wc -l${C})§ls -1 | wc -l§#output:~^\\s*[0-9]+")
 
   # grep basics
@@ -1307,7 +1307,7 @@ gen_level6() {
   # === PURE: Just && and || basics ===
   questions+=("Create ${W}${dir}${C} and cd into it (use ${Y}&&${C})|mkdir ${dir} && cd ${dir}")
   questions+=("Create ${W}${dir}${C} or echo '${msg}' if fails (use ${Y}||${C})§mkdir ${dir} || echo '${msg}'")
-  questions+=("cd to ${W}${dir}${C}, create it if missing§cd ${dir} || mkdir ${dir}")
+  questions+=("Try cd to ${W}${dir}${C}, create if it doesn't exist§cd ${dir} || mkdir ${dir}")
 
   # === COMPOUND: Uses cat (L2), head (L2), tail (L2) ===
   questions+=("If ${W}${txt}${C} exists, display it (use ${Y}&&${C})|test -f ${txt} && cat ${txt}|[[ -f ${txt} ]] && cat ${txt}")
@@ -1477,13 +1477,13 @@ gen_level9() {
   questions+=("Kill job ${n2}, echo 'killed' on success|kill %${n2} && echo killed")
 
   # === COMPOUND: Uses special vars (L8) with job control ===
-  questions+=("Run ${W}${script}${C} in background, save its PID§./${script} & ; echo \"PID: \$!\"")
-  questions+=("Start sleep in background, show PID|sleep 60 & ; echo \$!")
-  questions+=("Run in background and wait for it by PID§./${script} & pid=\$! ; wait \$pid")
-  questions+=("Save PID to file after starting background job§./${script} & ; echo \$! > pid.txt")
+  questions+=("Run ${W}${script}${C} in background, save its PID§./${script} & echo \"PID: \$!\"")
+  questions+=("Start sleep in background, show PID|sleep 60 & echo \$!")
+  questions+=("Run in background and wait for it by PID§./${script} & pid=\$! && wait \$pid")
+  questions+=("Save PID to file after starting background job§./${script} & echo \$! > pid.txt")
 
   # === COMPOUND: Uses cat/grep (L2, L3) with job control ===
-  questions+=("Run ${W}${script}${C} in background, later grep its output§./${script} > ${outfile} & ; sleep 1 ; grep ${term} ${outfile}")
+  questions+=("Run ${W}${script}${C} in background, later grep its output§./${script} > ${outfile} & sleep 1 && grep ${term} ${outfile}")
   questions+=("Tail ${W}${log}${C} in background|tail -f ${log} &")
   questions+=("Run grep in background, save matches|grep ${term} ${log} > matches.txt &")
 
@@ -1644,8 +1644,8 @@ gen_level14() {
   # Filtering - more variations
   questions+=("$(_phrase "List" "Show") only filenames containing '${term}'|grep -rl ${term}|grep -lr ${term}|rg -l ${term}")
   questions+=("Lines WITHOUT '${term}' in ${log}|grep -v ${term} ${log}|rg -v ${term} ${log}")
-  questions+=("Search '${term}' in .${ext} files only|grep -r --include='*.${ext}' ${term}|rg -t ${ext} ${term}|rg -g '*.${ext}' ${term}")
-  questions+=("Search '${term}' in .${ext} and .${ext2} files|grep -r --include='*.${ext}' --include='*.${ext2}' ${term}|rg -t ${ext} -t ${ext2} ${term}")
+  questions+=("Search '${term}' in .${ext} files only|grep -r --include='*.${ext}' ${term}|rg -g '*.${ext}' ${term}")
+  questions+=("Search '${term}' in .${ext} and .${ext2} files|grep -r --include='*.${ext}' --include='*.${ext2}' ${term}|rg -g '*.${ext}' -g '*.${ext2}' ${term}")
   questions+=("Search '${term}' excluding .git directory|grep -r --exclude-dir=.git ${term}|rg ${term} -g '!.git'")
   questions+=("Search '${term}' excluding ${dir}/ directory|grep -r --exclude-dir=${dir} ${term}|rg ${term} -g '!${dir}'")
   questions+=("Search '${term}' in ${dir}/ only|grep -r ${term} ${dir}/|rg ${term} ${dir}/")
@@ -1702,7 +1702,7 @@ gen_level15() {
   # By size
   questions+=("Find files larger than ${size}|find . -size +${size}|fd -S +${size}")
   questions+=("Find files smaller than ${size}|find . -size -${size}|fd -S -${size}")
-  questions+=("Find empty files|find . -type f -empty|fd -t f -S 0")
+  questions+=("Find empty files|find . -type f -empty|fd -t f --size 0b")
 
   # By time
   questions+=("Find files modified in last ${time} minutes|find . -mmin -${time}|fd --changed-within ${time}m")
@@ -1782,16 +1782,17 @@ gen_level16() {
   questions+=("Print columns ${col} and ${col2}|awk '{print \$${col}, \$${col2}}' ${txt}")
   questions+=("Print lines longer than ${chars} chars|awk 'length > ${chars}' ${txt}")
   questions+=("Print line numbers with content|awk '{print NR, \$0}' ${txt}")
-  questions+=("Sum numbers in column ${col} of ${csv}|awk -F',' '{sum+=\$${col}} END {print sum}' ${csv}")
-  questions+=("Print lines where column ${col} > ${thresh}|awk -F',' '\$${col} > ${thresh}' ${csv}")
-  questions+=("Print lines where column ${col} equals \"${field}\"|awk -F',' '\$${col} == \"${field}\"' ${csv}")
+  local _statuses=(active pending disabled error); _fpick _statuses; local _status=$REPLY
+  questions+=("Sum numbers in column 1 of ${csv} (skip header)|awk -F',' 'NR>1{sum+=\$1} END {print sum}' ${csv}")
+  questions+=("Print lines where column 1 > ${thresh} (skip header)|awk -F',' 'NR>1 && \$1 > ${thresh}' ${csv}")
+  questions+=("Print lines where status equals \"${_status}\"|awk -F',' '\$4 == \"${_status}\"' ${csv}")
   questions+=("Print every ${col}th line|awk 'NR % ${col} == 0' ${txt}")
   questions+=("Print lines ${n} through ${n2}|awk 'NR>=${n} && NR<=${n2}' ${txt}|sed -n '${n},${n2}p' ${txt}")
-  questions+=("Average of column ${col}|awk -F',' '{sum+=\$${col}; count++} END {print sum/count}' ${csv}")
-  questions+=("Maximum value in column ${col}|awk -F',' 'NR==1{max=\$${col}} \$${col}>max{max=\$${col}} END{print max}' ${csv}")
+  questions+=("Average of column 1 (skip header)|awk -F',' 'NR>1{sum+=\$1; count++} END {print sum/count}' ${csv}")
+  questions+=("Maximum value in column 1|awk -F',' 'NR==2{max=\$1} NR>1 && \$1>max{max=\$1} END{print max}' ${csv}")
   questions+=("Swap columns 1 and 2 in output|awk '{print \$2, \$1}' ${txt}")
-  questions+=("Print unique values from column ${col}|awk -F',' '!seen[\$${col}]++' ${csv}")
-  questions+=("Count records by column ${col} value|awk -F',' '{count[\$${col}]++} END {for(k in count) print k, count[k]}' ${csv}")
+  questions+=("Print unique values from column ${col} (skip header)|awk -F',' 'NR>1 && !seen[\$${col}]++' ${csv}")
+  questions+=("Count records by column ${col} value|awk -F',' 'NR>1{count[\$${col}]++} END {for(k in count) print k, count[k]}' ${csv}")
 
   # Field manipulation with tr
   questions+=("Replace spaces with tabs|tr ' ' '\\t' < ${txt}")
@@ -1853,7 +1854,7 @@ gen_level19() {
   questions+=("Grep in parallel (${parallel} jobs)§find . -name '*.${ext}' -print0 | xargs -0 -P ${parallel} grep ${term}")
   questions+=("Confirm before each delete (interactive)§find . -name '*.${ext2}' -print0 | xargs -0 -p rm")
   questions+=("Copy files in batches of ${n}§find . -name '*.${ext}' -print0 | xargs -0 -n ${n} cp -t ${dir}/")
-  questions+=("Rename files in current dir with prefix§find . -maxdepth 1 -name '*.${ext}' | xargs -I {} mv {} backup_{}")
+  questions+=("Rename files with backup_ prefix§find . -maxdepth 1 -name '*.${ext}' -printf '%f\\n' | xargs -I {} mv {} backup_{}")
   questions+=("Preview what xargs would run (-t flag)§find . -name '*.${ext}' -print0 | xargs -0 -t wc -l")
 
   # Combined operations
@@ -2179,7 +2180,7 @@ gen_level24() {
   questions+=("Record raw IQ data at 433MHz|rtl_sdr -f 433920000 -s 250000 capture.bin")
   questions+=("Decode 433MHz sensor data|rtl_433")
   questions+=("Decode with specific protocol|rtl_433 -R 1")
-  questions+=("Listen to FM radio at 100.3MHz|rtl_fm -f 100300000 -M wbfm -s 200000 - | aplay -r 48000 -f S16_LE")
+  questions+=("Listen to FM radio at 100.3MHz|rtl_fm -f 100300000 -M wbfm -s 200000 -r 48000 - | aplay -r 48000 -f S16_LE")
   questions+=("Scan frequency range for signals|rtl_power -f 400M:450M:100k -g 50 scan.csv")
   questions+=("Set RTL-SDR gain to 40dB|rtl_sdr -f 433920000 -g 40 capture.bin")
 
@@ -2384,7 +2385,7 @@ gen_level28() {
   questions+=("Find hidden files in home dirs|find /home -name '.*' -type f 2>/dev/null")
   questions+=("Check for rootkits|chkrootkit|rkhunter --check")
   questions+=("Dump all environment variables§env; cat /proc/*/environ 2>/dev/null | tr '\\0' '\\n'")
-  questions+=("Show all listening processes with full path§ss -tlpn | awk 'NR>1 {print \$6}' | sed 's/.*:\\([0-9]*\\).*/\\1/' | xargs -I{} lsof -i:{}")
+  questions+=("Show all listening processes with full path§ss -tlpn | awk 'NR>1 {print \$4}' | sed 's/.*://' | xargs -I{} lsof -i:{}")
   questions+=("Find processes with deleted binaries§ls -la /proc/*/exe 2>/dev/null | grep deleted")
   questions+=("Memory dump of process|gcore -o dump \$(pgrep -f process)")
 
@@ -2437,7 +2438,6 @@ gen_level28() {
 # Level 21: Git
 gen_level21() {
   eval "local questions=() $_QV"; _ctx
-  local remote=$(_pick REMOTE_HOSTS)
 
   # Basics
   questions+=("Initialize new git repo|git init")
@@ -2550,13 +2550,14 @@ gen_level13() {
   questions+=("Create new window|Ctrl+b c")
   questions+=("Next window|Ctrl+b n")
   questions+=("Previous window|Ctrl+b p")
-  questions+=("Switch to window ${n}|Ctrl+b ${n}")
+  local wn=$((RANDOM % 10))
+  questions+=("Switch to window ${wn}|Ctrl+b ${wn}")
   questions+=("Rename current window|Ctrl+b ,")
   questions+=("List windows|Ctrl+b w")
 
   # Panes (splits)
-  questions+=("Split pane horizontally|Ctrl+b %")
-  questions+=("Split pane vertically|Ctrl+b \"")
+  questions+=("Split pane left/right|Ctrl+b %")
+  questions+=("Split pane top/bottom|Ctrl+b \"")
   questions+=("Switch to next pane|Ctrl+b o")
   questions+=("Switch pane by direction|Ctrl+b arrow")
   questions+=("Toggle pane zoom|Ctrl+b z")
@@ -2625,13 +2626,13 @@ gen_level27() {
   # Weak permissions
   questions+=("Check /etc/passwd writeable|ls -la /etc/passwd")
   questions+=("Check /etc/shadow readable|ls -la /etc/shadow")
-  questions+=("Add user to /etc/passwd|echo 'hacker:\$(openssl passwd -6 pass):0:0::/root:/bin/bash' >> /etc/passwd")
+  questions+=("Add user to /etc/passwd|echo \"hacker:\\\$(openssl passwd -6 pass):0:0::/root:/bin/bash\" >> /etc/passwd")
   questions+=("Check writable /etc/sudoers|ls -la /etc/sudoers")
 
   # Path hijacking
   questions+=("Check current PATH|echo \$PATH")
   questions+=("Prepend current dir to PATH|export PATH=.:\$PATH")
-  questions+=("Create malicious binary|echo '/bin/bash' > /tmp/ls && chmod +x /tmp/ls")
+  questions+=("Create malicious binary|echo '#!/bin/bash' > /tmp/ls && echo '/bin/bash' >> /tmp/ls && chmod +x /tmp/ls")
   questions+=("Exploit relative path in SUID|export PATH=/tmp:\$PATH && ./vulnerable_suid")
 
   # NFS
@@ -2658,7 +2659,7 @@ gen_level20() {
   questions+=("Extract first word after colon|grep -oP ':\\s*\\K\\S+' ${log}")
 
   # Word boundaries and anchors
-  questions+=("Match whole word 'error' only|grep -w 'error' ${log}|grep '\\berror\\b' ${log}")
+  questions+=("Match whole word 'error' only|grep -w 'error' ${log}|grep -P '\\berror\\b' ${log}")
   questions+=("Match 'error' at word boundary|grep -P '\\berror' ${log}")
   questions+=("Match lines starting with digit|grep '^[0-9]' ${txt}")
   questions+=("Match lines ending with digit|grep '[0-9]$' ${txt}")
@@ -2667,8 +2668,8 @@ gen_level20() {
   # Character classes
   questions+=("Match any vowel|grep '[aeiou]' ${txt}")
   questions+=("Match non-digit|grep '[^0-9]' ${txt}")
-  questions+=("Match word character|grep '\\w' ${txt}")
-  questions+=("Match whitespace|grep '\\s' ${txt}")
+  questions+=("Match word character|grep -P '\\w' ${txt}")
+  questions+=("Match whitespace|grep -P '\\s' ${txt}")
   questions+=("Match hex character|grep '[0-9a-fA-F]' ${txt}")
 
   # Quantifiers
@@ -2687,9 +2688,9 @@ gen_level20() {
   questions+=("Delete lines matching pattern|sed '/pattern/d' ${txt}")
   questions+=("Print only lines matching|sed -n '/pattern/p' ${txt}")
   questions+=("Replace only on lines matching|sed '/error/s/foo/bar/g' ${log}")
-  questions+=("Insert line before match|sed '/pattern/i\\new line' ${txt}")
-  questions+=("Insert line after match|sed '/pattern/a\\new line' ${txt}")
-  questions+=("Change entire matching line|sed '/pattern/c\\replacement line' ${txt}")
+  questions+=("Insert line before match|sed '/pattern/i inserted line' ${txt}")
+  questions+=("Insert line after match|sed '/pattern/a inserted line' ${txt}")
+  questions+=("Change entire matching line|sed '/pattern/c replacement line' ${txt}")
   questions+=("Multiple sed commands|sed -e 's/a/b/' -e 's/c/d/' ${txt}")
   questions+=("Sed with address range|sed '5,10s/old/new/g' ${txt}")
   questions+=("Delete from line 5 to pattern|sed '5,/pattern/d' ${txt}")
@@ -2702,8 +2703,8 @@ gen_level20() {
   questions+=("Print unique values from column|awk -F',' '!seen[\$1]++' ${csv}")
   questions+=("Sum column values|awk -F',' '{sum+=\$2} END{print sum}' ${csv}")
   questions+=("Calculate average|awk -F',' '{sum+=\$2; n++} END{print sum/n}' ${csv}")
-  questions+=("Find max value in column|awk -F',' 'BEGIN{max=0} \$1>max{max=\$1} END{print max}' ${csv}")
-  questions+=("Find min value in column|awk -F',' 'BEGIN{min=999999} \$1<min{min=\$1} END{print min}' ${csv}")
+  questions+=("Find max value in column|awk -F',' 'NR==1{max=\$1} \$1>max{max=\$1} END{print max}' ${csv}")
+  questions+=("Find min value in column|awk -F',' 'NR==1{min=\$1} \$1<min{min=\$1} END{print min}' ${csv}")
   questions+=("Group by and count|awk -F',' '{count[\$1]++} END{for(k in count) print k, count[k]}' ${csv}")
   questions+=("Conditional print|awk -F',' '\$3==\"active\" {print \$1, \$2}' ${csv}")
   questions+=("Print with custom separator|awk -F',' 'BEGIN{OFS=\"|\"} {print \$1,\$2}' ${csv}")
@@ -2793,7 +2794,7 @@ gen_level12() {
   questions+=("Search for package|pacman -Ss ${term}|paru -Ss ${term}")
   questions+=("Show package info|pacman -Qi ${term}|paru -Qi ${term}")
   questions+=("List installed packages|pacman -Q|paru -Q")
-  questions+=("Which package owns a file|pacman -Qo /usr/bin/${term}|paru -Qo /usr/bin/${term}")
+  questions+=("Which package owns a file|pacman -Qo /usr/bin/${bin}|paru -Qo /usr/bin/${bin}")
 
   # Security audit
   questions+=("Run full system security audit|lynis audit system")
