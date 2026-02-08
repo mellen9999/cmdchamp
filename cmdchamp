@@ -102,58 +102,27 @@ EOF
   echo
 }
 
-# Boss names - command/system themed
-declare -a BOSS_NAMES=(
-  "n00b" "CopyPasta" "CatMan" "PipeWrench" "Redirect"
-  "DevNull" "AndOr" "\$VARIABLE" "\$\$" "BackgroundNoise"
-  "TestCase" "SubShell" "Globber" "QuoteMaster" "ArrayLord"
-  "TheFork" "Regex" "Cron" "Daemon" "RootKit"
-  "KernelPanic" "Segfault" "ZeroDay" "TheFirewall" "Entropy"
-  "Singularity" "Void" "Omega" "ROOT"
-)
-
-# Boss flavor text - dark + command themed
-declare -a BOSS_FLAVOR=(
-  "We all die as n00bs first."
-  "Your keystrokes echo in empty halls."
-  "I read the bones of dead files."
-  "Data flows through me like blood."
-  "I send your output to the grave."
-  "Your stderr falls into the void."
-  "True or false. Live or die."
-  "I hold what you've forgotten."
-  "Every process has a death."
-  "I wait in the dark between processes."
-  "Pass my test or be terminated."
-  "Trapped in shells within shells."
-  "I match everything. I consume all."
-  "Escape is just another cage."
-  "Count from zero. End at null."
-  "I birth processes that outlive you."
-  "I see patterns in your ashes."
-  "I wake the dead at midnight."
-  "I run while you sleep forever."
-  "I take what isn't given."
-  "The kernel screams. No one hears."
-  "Your memory is already corrupted."
-  "No patch saves you from me."
-  "Nothing enters. Nothing leaves."
-  "Chaos is the only certainty."
-  "All threads end here."
-  "I am where data goes to die."
-  "Everything ends. I am the proof."
-  "I am ROOT. Bow or break."
-)
-
-# Level names
-declare -a LEVEL_NAMES=(
+BOSS_NAMES=("n00b" "CopyPasta" "CatMan" "PipeWrench" "Redirect" "DevNull" "AndOr" "\$VARIABLE" "\$\$" "BackgroundNoise"
+  "TestCase" "SubShell" "Globber" "QuoteMaster" "ArrayLord" "TheFork" "Regex" "Cron" "Daemon" "RootKit"
+  "KernelPanic" "Segfault" "ZeroDay" "TheFirewall" "Entropy" "Singularity" "Void" "Omega" "ROOT")
+BOSS_FLAVOR=(
+  "We all die as n00bs first." "Your keystrokes echo in empty halls." "I read the bones of dead files."
+  "Data flows through me like blood." "I send your output to the grave." "Your stderr falls into the void."
+  "True or false. Live or die." "I hold what you've forgotten." "Every process has a death."
+  "I wait in the dark between processes." "Pass my test or be terminated." "Trapped in shells within shells."
+  "I match everything. I consume all." "Escape is just another cage." "Count from zero. End at null."
+  "I birth processes that outlive you." "I see patterns in your ashes." "I wake the dead at midnight."
+  "I run while you sleep forever." "I take what isn't given." "The kernel screams. No one hears."
+  "Your memory is already corrupted." "No patch saves you from me." "Nothing enters. Nothing leaves."
+  "Chaos is the only certainty." "All threads end here." "I am where data goes to die."
+  "Everything ends. I am the proof." "I am ROOT. Bow or break.")
+LEVEL_NAMES=(
   "First Steps" "Save Your Work" "Reading Files" "Basic Pipes" "Input & Transform"
   "Error Handling" "Logic Gates" "Variables" "Special Variables" "Job Control"
   "Test Conditions" "Core File Tools" "System Admin" "Multiplexers" "Text Search"
   "File Finding" "Data Processing" "String & Arrays" "Control Flow" "Batch Ops"
   "Advanced Regex" "Git" "Network Tools" "Network Scanning" "WiFi & RF"
-  "Hash Cracking" "Forensics" "Privilege Escalation" "ROOT"
-)
+  "Hash Cracking" "Forensics" "Privilege Escalation" "ROOT")
 
 # Boss splash screen
 _boss_splash() {
@@ -200,15 +169,12 @@ _gen_log() {
   local now; printf -v now '%(%s)T' -1
   > "$f"
   for ((i=0; i<lines; i++)); do
-    local ip="${ips[$((RANDOM % ${#ips[@]}))]}"
-    local code="${codes[$((RANDOM % ${#codes[@]}))]}"
-    local method="${methods[$((RANDOM % ${#methods[@]}))]}"
-    local path="${paths[$((RANDOM % ${#paths[@]}))]}"
-    local agent="${agents[$((RANDOM % ${#agents[@]}))]}"
-    local size=$((RANDOM % 50000 + 100))
+    _fpick ips; local ip=$REPLY; _fpick codes; local code=$REPLY
+    _fpick methods; local method=$REPLY; _fpick paths; local path=$REPLY
+    _fpick agents; local agent=$REPLY; local size=$((RANDOM % 50000 + 100))
     local ts; printf -v ts '%(%d/%b/%Y:%H:%M:%S +0000)T' "$((now - RANDOM % 86400))"
-    printf '%s - - [%s] "%s %s HTTP/1.1" %s %d "%s"\n' "$ip" "$ts" "$method" "$path" "$code" "$size" "$agent" >> "$f"
-  done
+    printf '%s - - [%s] "%s %s HTTP/1.1" %s %d "%s"\n' "$ip" "$ts" "$method" "$path" "$code" "$size" "$agent"
+  done >> "$f"
 }
 
 # Generate app log with ERROR/WARN/INFO levels
@@ -221,16 +187,16 @@ _gen_app_log() {
   local now; printf -v now '%(%s)T' -1
   > "$f"
   for ((i=0; i<lines; i++)); do
-    local level="${levels[$((RANDOM % ${#levels[@]}))]}"
+    _fpick levels; local level=$REPLY
     local ts; printf -v ts '%(%Y-%m-%d %H:%M:%S)T' "$((now - RANDOM % 86400))"
     local msg
     case "$level" in
-      INFO|DEBUG) msg="${msgs_info[$((RANDOM % ${#msgs_info[@]}))]}";;
-      WARN) msg="${msgs_warn[$((RANDOM % ${#msgs_warn[@]}))]}";;
-      ERROR) msg="${msgs_error[$((RANDOM % ${#msgs_error[@]}))]}";;
+      INFO|DEBUG) _fpick msgs_info; msg=$REPLY;;
+      WARN) _fpick msgs_warn; msg=$REPLY;;
+      ERROR) _fpick msgs_error; msg=$REPLY;;
     esac
-    printf '[%s] %s: %s\n' "$ts" "$level" "$msg" >> "$f"
-  done
+    printf '[%s] %s: %s\n' "$ts" "$level" "$msg"
+  done >> "$f"
 }
 
 # Generate CSV with headers and typed data
@@ -242,12 +208,11 @@ _gen_csv() {
   local now; printf -v now '%(%s)T' -1
   echo "id,name,email,status,timestamp" > "$f"
   for ((i=1; i<=rows; i++)); do
-    local name="${names[$((RANDOM % ${#names[@]}))]}"
-    local domain="${domains[$((RANDOM % ${#domains[@]}))]}"
-    local status="${statuses[$((RANDOM % ${#statuses[@]}))]}"
+    _fpick names; local name=$REPLY; _fpick domains; local domain=$REPLY
+    _fpick statuses; local status=$REPLY
     local ts; printf -v ts '%(%Y-%m-%d)T' "$((now - RANDOM % 2592000))"
-    printf '%d,%s,%s@%s,%s,%s\n' "$i" "$name" "${name,,}" "$domain" "$status" "$ts" >> "$f"
-  done
+    printf '%d,%s,%s@%s,%s,%s\n' "$i" "$name" "${name,,}" "$domain" "$status" "$ts"
+  done >> "$f"
 }
 
 # Generate INI config
@@ -358,13 +323,11 @@ _gen_users_csv() {
   local now; printf -v now '%(%s)T' -1
   echo "username,fullname,role,created,logins" > "$f"
   for ((i=1; i<=rows; i++)); do
-    local fn="${fnames[$((RANDOM % ${#fnames[@]}))]}"
-    local ln="${lnames[$((RANDOM % ${#lnames[@]}))]}"
-    local role="${roles[$((RANDOM % ${#roles[@]}))]}"
-    local logins=$((RANDOM % 500))
+    _fpick fnames; local fn=$REPLY; _fpick lnames; local ln=$REPLY
+    _fpick roles; local role=$REPLY; local logins=$((RANDOM % 500))
     local ts; printf -v ts '%(%Y-%m-%d)T' "$((now - RANDOM % 31536000))"
-    printf '%s_%s,%s %s,%s,%s,%d\n' "$fn" "$ln" "${fn^}" "${ln^}" "$role" "$ts" "$logins" >> "$f"
-  done
+    printf '%s_%s,%s %s,%s,%s,%d\n' "$fn" "$ln" "${fn^}" "${ln^}" "$role" "$ts" "$logins"
+  done >> "$f"
 }
 
 # Generate JSON data
@@ -603,157 +566,84 @@ PROMPT_CHAR="${CMD_PROMPT:-$([[ $EUID -eq 0 ]] && echo '# ' || echo '$ ')}"
 # VARIABLE POOLS
 # ═══════════════════════════════════════════════════════════════════════════════
 
-# SANDBOX FILES - files that actually exist in sandbox
-declare -a SANDBOX_LOGS=(server.log app.log logs/access.log logs/error.log)
-declare -a SANDBOX_TXTS=(notes.txt todo.txt)
-declare -a SANDBOX_CSVS=(data.csv users.csv)
-declare -a SANDBOX_CFGS=(config.ini settings.yaml)
-declare -a SANDBOX_SCRIPTS=(backup.sh deploy.sh)
-declare -a SANDBOX_PY=(main.py src/utils.py src/test/test_utils.py)
-
-# LOGS - 25 options (was 10)
-declare -a LOGS=(server.log app.log system.log auth.log access.log error.log debug.log nginx.log apache.log syslog
+SANDBOX_LOGS=(server.log app.log logs/access.log logs/error.log)
+SANDBOX_TXTS=(notes.txt todo.txt)
+SANDBOX_CSVS=(data.csv users.csv)
+SANDBOX_CFGS=(config.ini settings.yaml)
+SANDBOX_SCRIPTS=(backup.sh deploy.sh)
+SANDBOX_PY=(main.py src/utils.py src/test/test_utils.py)
+LOGS=(server.log app.log system.log auth.log access.log error.log debug.log nginx.log apache.log syslog
   messages kern.log daemon.log mail.log secure dpkg.log pacman.log audit.log boot.log faillog lastlog
   wtmp btmp cron.log yum.log dmesg)
-
-# CONFIGS - 20 options (was 8)
-declare -a CONFIGS=(config.ini settings.conf app.yaml server.conf nginx.conf httpd.conf my.cnf pg.conf
+CONFIGS=(config.ini settings.conf app.yaml server.conf nginx.conf httpd.conf my.cnf pg.conf
   redis.conf sshd_config sudoers fstab hosts resolv.conf profile bashrc vimrc tmux.conf gitconfig
   docker-compose.yml)
-
-# SCRIPTS - 20 options (was 8)
-declare -a SCRIPTS=(backup.sh deploy.sh build.sh test.sh cleanup.sh migrate.sh sync.sh init.sh
+SCRIPTS=(backup.sh deploy.sh build.sh test.sh cleanup.sh migrate.sh sync.sh init.sh
   setup.sh install.sh update.sh monitor.sh healthcheck.sh rotate.sh fetch.sh push.sh start.sh stop.sh
   restart.sh validate.sh)
-
-# TXTS - 15 options (was 7)
-declare -a TXTS=(data.txt notes.txt output.txt report.txt dump.txt results.txt temp.txt
+TXTS=(data.txt notes.txt output.txt report.txt dump.txt results.txt temp.txt
   readme.txt todo.txt changelog.txt manifest.txt inventory.txt urls.txt hosts.txt targets.txt)
-
-# CSVS - 12 options (was 6)
-declare -a CSVS=(data.csv users.csv logs.csv export.csv report.csv stats.csv
+CSVS=(data.csv users.csv logs.csv export.csv report.csv stats.csv
   metrics.csv transactions.csv inventory.csv orders.csv customers.csv events.csv)
-
-# BINS - 12 options (was 6)
-declare -a BINS=(binary.exe program.elf app.bin firmware.bin malware.exe sample.bin
+BINS=(binary.exe program.elf app.bin firmware.bin malware.exe sample.bin
   payload.dll trojan.exe rootkit.so agent.bin dropper.exe beacon.bin)
-
-# IMGS - 10 options (was 4)
-declare -a IMGS=(disk.img backup.img system.img evidence.img
+IMGS=(disk.img backup.img system.img evidence.img
   memory.dmp vmcore.dmp hiberfil.sys pagefile.sys snapshot.raw forensic.dd)
-
-# PCAPS - 10 options (was 4)
-declare -a PCAPS=(capture.pcap traffic.pcap network.pcap dump.pcap
+PCAPS=(capture.pcap traffic.pcap network.pcap dump.pcap
   scan.pcap attack.pcap session.pcap handshake.pcap dns.pcap http.pcap)
-
-# HASHES - 12 options (was 6)
-declare -a HASHES=(hash.txt hashes.txt md5.txt sha256.txt passwd.txt shadow.txt
+HASHES=(hash.txt hashes.txt md5.txt sha256.txt passwd.txt shadow.txt
   ntlm.txt cracked.txt potfile.txt wordlist.hash lm.txt bcrypt.txt)
-
-# WORDLISTS - 12 options (was 4)
-declare -a WORDLISTS=(wordlist.txt rockyou.txt passwords.txt dict.txt
+WORDLISTS=(wordlist.txt rockyou.txt passwords.txt dict.txt
   common.txt custom.txt leaked.txt company.txt names.txt cities.txt hybrid.txt rules.txt)
-
-# ARCHIVES - 12 options (was 5)
-declare -a ARCHIVES=(backup.tar.gz archive.tar.gz files.tgz data.tar.bz2 export.zip
+ARCHIVES=(backup.tar.gz archive.tar.gz files.tgz data.tar.bz2 export.zip
   snapshot.tar.xz bundle.tar release.tar.gz package.tar.gz source.tar.bz2 logs.tar.gz dump.tar.zst)
-
-# PHOTOS - 12 options (was 5)
-declare -a PHOTOS=(photo.jpg image.png screenshot.png evidence.jpg document.pdf
+PHOTOS=(photo.jpg image.png screenshot.png evidence.jpg document.pdf
   scan.tiff capture.bmp diagram.svg icon.ico avatar.webp thumbnail.gif render.raw)
-
-# DIRS - 20 options (was 10)
-declare -a DIRS=(src lib bin tmp logs data config backup output cache
+DIRS=(src lib bin tmp logs data config backup output cache
   build dist vendor node_modules target public static assets uploads downloads)
-
-# EXTS - 25 options (was 15)
-declare -a EXTS=(py js ts go rs c cpp java rb sh log txt conf yaml json
+EXTS=(py js ts go rs c cpp java rb sh log txt conf yaml json
   toml md html css sql xml csv ini env php pl lua zig swift)
-
-# SEARCH_TERMS - 25 options (was 11)
-declare -a SEARCH_TERMS=(error warning panic fatal timeout exception failed invalid denied refused connection
+SEARCH_TERMS=(error warning panic fatal timeout exception failed invalid denied refused connection
   unauthorized forbidden crash segfault nullptr overflow leak abort reject throttle blocked suspend
   corrupt missing expired revoked)
-
-# USERNAMES - 20 options (was 10)
-declare -a USERNAMES=(admin root user guest test deploy www-data nginx postgres mysql
+USERNAMES=(admin root user guest test deploy www-data nginx postgres mysql
   git jenkins ansible prometheus grafana redis mongodb elastic backup operator service)
-
-# IPS - Dynamic generation + pool of 15 (was 7)
-declare -a IPS=(10.0.0.1 10.0.0.5 10.10.10.10 192.168.1.1 192.168.1.100 172.16.0.1 10.0.0.50
+IPS=(10.0.0.1 10.0.0.5 10.10.10.10 192.168.1.1 192.168.1.100 172.16.0.1 10.0.0.50
   192.168.0.1 172.16.1.1 10.10.10.50 192.168.100.1 10.20.30.40 172.31.0.1 192.168.50.50 10.0.1.1)
-
-# SUBNETS - 10 options (was 4)
-declare -a SUBNETS=(10.0.0.0/24 192.168.1.0/24 172.16.0.0/16 10.10.10.0/24
+SUBNETS=(10.0.0.0/24 192.168.1.0/24 172.16.0.0/16 10.10.10.0/24
   192.168.0.0/24 172.17.0.0/16 10.20.0.0/16 192.168.100.0/24 10.0.0.0/8 172.31.0.0/16)
-
-# PORTS - 25 options (was 11)
-declare -a PORTS=(22 80 443 8080 3000 5000 8000 3306 5432 6379 27017
+PORTS=(22 80 443 8080 3000 5000 8000 3306 5432 6379 27017
   21 23 25 53 110 143 389 445 993 995 1433 1521 5900 8443)
-
-# MACS - 10 options (was 3)
-declare -a MACS=(AA:BB:CC:DD:EE:FF 11:22:33:44:55:66 DE:AD:BE:EF:CA:FE
+MACS=(AA:BB:CC:DD:EE:FF 11:22:33:44:55:66 DE:AD:BE:EF:CA:FE
   00:11:22:33:44:55 A1:B2:C3:D4:E5:F6 12:34:56:78:9A:BC FE:DC:BA:98:76:54
   CA:FE:BA:BE:00:01 01:23:45:67:89:AB AB:CD:EF:12:34:56)
-
-# URLS - 12 options (was 4)
-declare -a URLS=(http://10.0.0.1 http://192.168.1.100 http://target.local http://10.10.10.10
+URLS=(http://10.0.0.1 http://192.168.1.100 http://target.local http://10.10.10.10
   http://192.168.0.1 http://172.16.1.1 http://dev.local http://staging.local
   http://app.local http://api.local http://admin.local http://internal.local)
-
-# FIELDS - 15 options (was 10)
-declare -a FIELDS=(name id status email timestamp user_id created_at value count type
+FIELDS=(name id status email timestamp user_id created_at value count type
   updated_at deleted_at version priority level source target duration size)
-
-# JSON_KEYS - 12 options (was 6)
-declare -a JSON_KEYS=(data items results users records entries
+JSON_KEYS=(data items results users records entries
   events messages logs errors nodes objects resources payload)
-
-# REPLACE_OLD/NEW - 15 pairs each (was 8)
-declare -a REPLACE_OLD=(foo old debug localhost http TODO FIXME tmp
+REPLACE_OLD=(foo old debug localhost http TODO FIXME tmp
   dev staging test alpha beta v1 deprecated warn error secret)
-declare -a REPLACE_NEW=(bar new prod 10.0.0.1 https DONE RESOLVED cache
+REPLACE_NEW=(bar new prod 10.0.0.1 https DONE RESOLVED cache
   prod production live release stable v2 current info success masked)
-
-# SIZES - 10 options (was 5)
-declare -a SIZES=(10M 50M 100M 500M 1G 5G 10G 100K 500K 2G)
-
-# TIMES - 10 options (was 4)
-declare -a TIMES=(5 15 30 60 120 180 360 720 1440 10080)  # minutes (up to 1 week)
-
-# NUMBERS - dynamic, use _rnum for truly random
-declare -a NUMBERS=(5 10 15 20 25 30 40 50 75 100 150 200 500)
-
-# COLUMNS - 8 options (was 5)
-declare -a COLUMNS=(1 2 3 4 5 6 7 8)
-
-# DELIMS - 8 options (was 5)
-declare -a DELIMS=(',' ':' '\t' '|' ';' '/' '-' '_')
-
-# HASHCAT_MODES - 15 options with names (was 5)
-declare -a HASHCAT_MODES=(0 100 1400 1800 3200 1000 5600 13100 18200 22000 500 1700 2500 5500 11300)
-declare -a HASH_NAMES=(MD5 SHA1 SHA256 SHA512 bcrypt NTLM NetNTLMv2 Kerberos5 Kerberos5-etype23 WPA-PBKDF2 md5crypt SHA512crypt WPA Kerberos5-RC4 Bitcoin)
-
-# INTERFACES - 10 options (was 4)
-declare -a INTERFACES=(eth0 wlan0 ens33 enp0s3 ens192 enp0s25 wlp2s0 docker0 br0 virbr0)
-
-# REMOTE_HOSTS - 15 options (was 6)
-declare -a REMOTE_HOSTS=(server backup-host db-server web-server jump-host bastion
+SIZES=(10M 50M 100M 500M 1G 5G 10G 100K 500K 2G)
+TIMES=(5 15 30 60 120 180 360 720 1440 10080)
+NUMBERS=(5 10 15 20 25 30 40 50 75 100 150 200 500)
+COLUMNS=(1 2 3 4 5 6 7 8)
+DELIMS=(',' ':' '\t' '|' ';' '/' '-' '_')
+HASHCAT_MODES=(0 100 1400 1800 3200 1000 5600 13100 18200 22000 500 1700 2500 5500 11300)
+HASH_NAMES=(MD5 SHA1 SHA256 SHA512 bcrypt NTLM NetNTLMv2 Kerberos5 Kerberos5-etype23 WPA-PBKDF2 md5crypt SHA512crypt WPA Kerberos5-RC4 Bitcoin)
+INTERFACES=(eth0 wlan0 ens33 enp0s3 ens192 enp0s25 wlp2s0 docker0 br0 virbr0)
+REMOTE_HOSTS=(server backup-host db-server web-server jump-host bastion
   prod-01 staging-01 dev-01 ci-runner build-server cache-01 redis-01 postgres-01 monitor)
-
-# NEW: Process names for ps/kill questions
-declare -a PROCS=(nginx apache2 mysqld postgres redis-server mongod node python3 java ruby
+PROCS=(nginx apache2 mysqld postgres redis-server mongod node python3 java ruby
   docker containerd systemd sshd cron cups NetworkManager pulseaudio pipewire)
-
-# NEW: Services for systemctl
-declare -a SERVICES=(nginx apache2 mysql postgresql redis docker containerd sshd
+SERVICES=(nginx apache2 mysql postgresql redis docker containerd sshd
   NetworkManager bluetooth cups cronie fail2ban ufw firewalld syncthing)
-
-# NEW: Signals for kill
-declare -a SIGNALS=(SIGTERM SIGKILL SIGHUP SIGINT SIGUSR1 SIGUSR2 SIGSTOP SIGCONT)
-
-# NEW: Git branches
-declare -a BRANCHES=(main master develop feature/auth feature/api fix/login hotfix/security release/v2)
+SIGNALS=(SIGTERM SIGKILL SIGHUP SIGINT SIGUSR1 SIGUSR2 SIGSTOP SIGCONT)
+BRANCHES=(main master develop feature/auth feature/api fix/login hotfix/security release/v2)
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # DYNAMIC GENERATION HELPERS - True infinite variation
@@ -793,7 +683,7 @@ _phrase() {
 _fpick() { local -n _a=$1; REPLY="${_a[$((RANDOM % ${#_a[@]}))]}"; }
 _frnum() { REPLY=$(($1 + RANDOM % ($2 - $1 + 1))); }
 
-# Context helper: sets all common vars in caller's scope (use with: local log cfg txt ... ; _ctx)
+_QV='log log2 cfg cfg2 txt txt2 csv csv2 dir dir2 ext ext2 script archive bin img pcap hash photo wordlist ip subnet port port2 mac url user host term term2 term3 field field2 key old new size iface proc svc sig branch time n1 n2 n3 col'
 _ctx() {
   _fpick LOGS; log=$REPLY; _fpick LOGS; log2=$REPLY; _fpick CONFIGS; cfg=$REPLY; _fpick CONFIGS; cfg2=$REPLY
   _fpick TXTS; txt=$REPLY; _fpick TXTS; txt2=$REPLY; _fpick CSVS; csv=$REPLY; _fpick CSVS; csv2=$REPLY
@@ -815,173 +705,54 @@ _ctx() {
 # COMMAND EXPLANATIONS (shown on TAB)
 # ═══════════════════════════════════════════════════════════════════════════════
 
-# Mini manpages for complex commands (shown as block when command is first token)
+# Compact manpage data: first line=desc, body lines already ANSI-formatted, stored pre-rendered
+# Each entry: header\nbody lines (already formatted with escape codes)
 declare -A MANPAGE=(
-  [hydra]=$'\e[32;1mhydra\e[0m \e[2m- network login cracker\e[0m
-  \e[36m-l\e[0m \e[33mUSER\e[0m   single username        \e[36m-L\e[0m \e[33mFILE\e[0m   username list
-  \e[36m-p\e[0m \e[33mPASS\e[0m   single password        \e[36m-P\e[0m \e[33mFILE\e[0m   password list
-  \e[36m-t\e[0m \e[33mN\e[0m      threads per target     \e[36m-s\e[0m \e[33mPORT\e[0m   target port
-  \e[33mPROTOCOLS:\e[0m ssh ftp http-get http-post-form mysql smb rdp
-  \e[2mhydra -l admin -P pass.txt ssh://192.168.1.1\e[0m'
-  [nmap]=$'\e[32;1mnmap\e[0m \e[2m- network scanner\e[0m
-  \e[36m-sS\e[0m       SYN scan (stealth)     \e[36m-sT\e[0m       TCP connect
-  \e[36m-sU\e[0m       UDP scan               \e[36m-sV\e[0m       version detect
-  \e[36m-sC\e[0m       default scripts        \e[36m-O\e[0m        OS detection
-  \e[36m-p\e[0m 22,80  specific ports         \e[36m-p-\e[0m       all 65535 ports
-  \e[2mnmap -sV 192.168.1.1    nmap -A -p- 10.0.0.1    nmap -sn 192.168.1.0/24\e[0m'
-  [hashcat]=$'\e[32;1mhashcat\e[0m \e[2m- GPU hash cracker\e[0m
-  \e[36m-m\e[0m \e[33mTYPE\e[0m   hash type \e[2m(0=MD5 100=SHA1 1000=NTLM 1800=SHA512)\e[0m
-  \e[36m-a\e[0m \e[33mMODE\e[0m   attack \e[2m(0=dict, 3=brute)\e[0m     \e[36m--show\e[0m   show cracked
-  \e[2mhashcat -m 0 hash.txt wordlist.txt    hashcat -m 1000 -a 3 hash ?a?a?a?a\e[0m'
-  [john]=$'\e[32;1mjohn\e[0m \e[2m- password cracker\e[0m
-  \e[36m--wordlist\e[0m=\e[33mFILE\e[0m   dictionary     \e[36m--format\e[0m=\e[33mTYPE\e[0m   hash type
-  \e[36m--show\e[0m            cracked        \e[36m--list\e[0m=formats  list types
-  \e[2mjohn --wordlist=rockyou.txt hash.txt    john --show hash.txt\e[0m'
-  [tshark]=$'\e[32;1mtshark\e[0m \e[2m- terminal packet analyzer\e[0m
-  \e[36m-r\e[0m \e[33mFILE\e[0m   read pcap              \e[36m-i\e[0m \e[33mIFACE\e[0m  capture live
-  \e[36m-Y\e[0m \e[33mFILTER\e[0m display filter         \e[36m-T\e[0m fields output format
-  \e[2mtshark -i eth0    tshark -r cap.pcap -Y "http"    tshark -i eth0 -w out.pcap\e[0m'
-  [curl]=$'\e[32;1mcurl\e[0m \e[2m- HTTP client\e[0m
-  \e[36m-X\e[0m \e[33mMETHOD\e[0m  GET/POST/PUT/DELETE   \e[36m-H\e[0m \e[2m'"'"'K: V'"'"'\e[0m  header
-  \e[36m-d\e[0m \e[33mDATA\e[0m    POST body              \e[36m-o\e[0m \e[33mFILE\e[0m   output file
-  \e[36m-L\e[0m         follow redirects       \e[36m-s\e[0m        silent
-  \e[2mcurl -s url    curl -X POST -d "data" url    curl -o file.zip url\e[0m'
-  [find]=$'\e[32;1mfind\e[0m \e[2m- search for files\e[0m
-  \e[36m-name\e[0m \e[2m'"'"'X'"'"'\e[0m   filename            \e[36m-type\e[0m \e[2mf/d\e[0m  file or dir
-  \e[36m-size\e[0m \e[2m+10M\e[0m  larger than         \e[36m-mtime\e[0m \e[2m-7\e[0m  last 7 days
-  \e[36m-exec\e[0m \e[2mCMD {} \\;\e[0m  run on each   \e[36m-delete\e[0m    remove
-  \e[2mfind . -name "*.log"    find / -size +100M    find . -mtime -7 -type f\e[0m'
-  [awk]=$'\e[32;1mawk\e[0m \e[2m- pattern scanning\e[0m
-  \e[33m'"'"'{print $1}'"'"'\e[0m   first field       \e[33m'"'"'{print $NF}'"'"'\e[0m  last field
-  \e[36m-F\e[0m\e[2m'"'"','"'"'\e[0m          delimiter          \e[33mNR\e[0m          line number
-  \e[2mawk '"'"'{print $1}'"'"' file    awk -F, '"'"'{print $2}'"'"' data.csv    awk '"'"'/error/'"'"' log\e[0m'
-  [sed]=$'\e[32;1msed\e[0m \e[2m- stream editor\e[0m
-  \e[33m'"'"'s/old/new/'"'"'\e[0m    replace first     \e[33m'"'"'s/old/new/g'"'"'\e[0m  replace all
-  \e[36m-i\e[0m            edit in place     \e[33m'"'"'/pat/d'"'"'\e[0m       delete lines
-  \e[2msed '"'"'s/foo/bar/g'"'"' file    sed -i '"'"'/^#/d'"'"' file    sed -n '"'"'5,10p'"'"' file\e[0m'
-  [xargs]=$'\e[32;1mxargs\e[0m \e[2m- build commands from stdin\e[0m
-  \e[36m-I\e[0m \e[2m{}\e[0m     placeholder            \e[36m-0\e[0m        null delim
-  \e[36m-n\e[0m \e[33mN\e[0m      args per command       \e[36m-P\e[0m \e[33mN\e[0m      parallel
-  \e[2mfind . -name "*.tmp" | xargs rm    cat urls | xargs -P4 -I{} curl {}\e[0m'
-  [tar]=$'\e[32;1mtar\e[0m \e[2m- archive tool\e[0m
-  \e[36m-c\e[0m create   \e[36m-x\e[0m extract   \e[36m-v\e[0m verbose   \e[36m-f\e[0m \e[33mFILE\e[0m
-  \e[36m-z\e[0m gzip     \e[36m-j\e[0m bzip2     \e[36m-C\e[0m \e[33mDIR\e[0m       \e[36m-t\e[0m list
-  \e[2mtar czf archive.tar.gz dir/    tar xzf archive.tar.gz    tar tf archive.tar.gz\e[0m'
-  [ssh]=$'\e[32;1mssh\e[0m \e[2m- secure shell\e[0m
-  \e[36m-i\e[0m \e[33mKEY\e[0m    identity file          \e[36m-p\e[0m \e[33mPORT\e[0m   port
-  \e[36m-L\e[0m \e[2mP:H:P\e[0m  local forward          \e[36m-D\e[0m \e[33mPORT\e[0m   SOCKS proxy
-  \e[36m-J\e[0m \e[33mHOST\e[0m   jump host              \e[36m-N\e[0m        no command
-  \e[2mssh user@host    ssh -i key.pem user@host    ssh -L 8080:localhost:80 host\e[0m'
-  [git]=$'\e[32;1mgit\e[0m \e[2m- version control\e[0m
-  \e[33madd\e[0m     stage      \e[33mcommit\e[0m  save       \e[33mpush\e[0m    upload
-  \e[33mpull\e[0m    download   \e[33mstatus\e[0m  changes    \e[33mdiff\e[0m    compare
-  \e[2mgit add .    git commit -m "msg"    git push    git pull    git log --oneline\e[0m'
-  [less]=$'\e[32;1mless\e[0m \e[2m- pager (scroll through files)\e[0m
-  \e[36m-N\e[0m        show line numbers      \e[36m-S\e[0m        chop long lines
-  \e[36m-i\e[0m        ignore case search     \e[36m-F\e[0m        quit if one screen
-  \e[2mless file.txt    less -N file.txt    less +F /var/log/syslog\e[0m'
-  [cat]=$'\e[32;1mcat\e[0m \e[2m- concatenate and print files\e[0m
-  \e[36m-n\e[0m        number all lines       \e[36m-b\e[0m        number non-blank
-  \e[36m-A\e[0m        show all (tabs, ends)  \e[36m-s\e[0m        squeeze blank lines
-  \e[2mcat file.txt    cat -n file.txt    cat a.txt b.txt > merged.txt\e[0m'
-  [head]=$'\e[32;1mhead\e[0m \e[2m- output first part of files\e[0m
-  \e[36m-n\e[0m \e[33mN\e[0m      first \e[33mN\e[0m lines          \e[36m-c\e[0m \e[33mN\e[0m      first \e[33mN\e[0m bytes
-  \e[2mhead file.txt    head -n 5 file.txt    head -20 file.txt\e[0m'
-  [tail]=$'\e[32;1mtail\e[0m \e[2m- output last part of files\e[0m
-  \e[36m-n\e[0m \e[33mN\e[0m      last \e[33mN\e[0m lines           \e[36m-c\e[0m \e[33mN\e[0m      last \e[33mN\e[0m bytes
-  \e[36m-f\e[0m        follow (live updates)  \e[36m-F\e[0m        follow + retry
-  \e[2mtail file.txt    tail -n 20 file.txt    tail -f /var/log/syslog\e[0m'
-  [ls]=$'\e[32;1mls\e[0m \e[2m- list directory contents\e[0m
-  \e[36m-l\e[0m        long format            \e[36m-a\e[0m        show hidden
-  \e[36m-h\e[0m        human sizes            \e[36m-S\e[0m        sort by size
-  \e[36m-t\e[0m        sort by time           \e[36m-r\e[0m        reverse order
-  \e[36m-R\e[0m        recursive              \e[36m-1\e[0m        one per line
-  \e[2mls -la    ls -lh    ls -lS    ls -lt    ls -R /etc\e[0m'
-  [grep]=$'\e[32;1mgrep\e[0m \e[2m- search text patterns\e[0m
-  \e[36m-i\e[0m        ignore case            \e[36m-v\e[0m        invert match
-  \e[36m-r\e[0m        recursive              \e[36m-n\e[0m        line numbers
-  \e[36m-c\e[0m        count matches          \e[36m-l\e[0m        files only
-  \e[36m-E\e[0m        extended regex         \e[36m-w\e[0m        whole word
-  \e[2mgrep error log.txt    grep -rn TODO .    grep -i "pattern" file\e[0m'
-  [sort]=$'\e[32;1msort\e[0m \e[2m- sort lines of text\e[0m
-  \e[36m-n\e[0m        numeric                \e[36m-r\e[0m        reverse
-  \e[36m-u\e[0m        unique                 \e[36m-k\e[0m \e[33mN\e[0m      by column \e[33mN\e[0m
-  \e[36m-t\e[0m \e[33mC\e[0m      delimiter              \e[36m-h\e[0m        human numeric
-  \e[2msort file.txt    sort -n nums.txt    sort -t, -k2 data.csv\e[0m'
-  [uniq]=$'\e[32;1muniq\e[0m \e[2m- filter repeated lines\e[0m
-  \e[36m-c\e[0m        count occurrences      \e[36m-d\e[0m        only duplicates
-  \e[36m-u\e[0m        only unique            \e[2m(must sort first!)\e[0m
-  \e[2msort file | uniq    sort file | uniq -c    sort file | uniq -d\e[0m'
-  [cut]=$'\e[32;1mcut\e[0m \e[2m- extract columns/fields\e[0m
-  \e[36m-d\e[0m \e[33mC\e[0m      delimiter              \e[36m-f\e[0m \e[33mN\e[0m      field \e[33mN\e[0m
-  \e[36m-c\e[0m \e[33mN\e[0m      character \e[33mN\e[0m            \e[36m--complement\e[0m invert
-  \e[2mcut -d, -f1 data.csv    cut -d: -f1 /etc/passwd    cut -c1-10 file\e[0m'
-  [wc]=$'\e[32;1mwc\e[0m \e[2m- word, line, byte count\e[0m
-  \e[36m-l\e[0m        lines                  \e[36m-w\e[0m        words
-  \e[36m-c\e[0m        bytes                  \e[36m-m\e[0m        characters
-  \e[2mwc -l file.txt    wc -w file.txt    ls | wc -l\e[0m'
-  [tr]=$'\e[32;1mtr\e[0m \e[2m- translate characters\e[0m
-  \e[36m-d\e[0m        delete chars           \e[36m-s\e[0m        squeeze repeats
-  \e[2mtr a-z A-Z < file    tr -d '"'"'\\n'"'"' < file    tr -s '"'"' '"'"' < file\e[0m'
-  [chmod]=$'\e[32;1mchmod\e[0m \e[2m- change file permissions\e[0m
-  \e[33m+x\e[0m        add execute            \e[33m-x\e[0m        remove execute
-  \e[33m755\e[0m       rwxr-xr-x              \e[33m644\e[0m       rw-r--r--
-  \e[2mchmod +x script.sh    chmod 755 script.sh    chmod -R 644 dir/\e[0m'
-  [ps]=$'\e[32;1mps\e[0m \e[2m- list processes\e[0m
-  \e[33maux\e[0m       all users, detailed    \e[33m-ef\e[0m       full format
-  \e[36m--sort\e[0m    sort by field          \e[33m-u\e[0m \e[33mUSER\e[0m   by user
-  \e[2mps aux    ps -ef    ps aux --sort=-%mem | head\e[0m'
-  [kill]=$'\e[32;1mkill\e[0m \e[2m- send signal to process\e[0m
-  \e[36m-9\e[0m        SIGKILL (force)        \e[36m-15\e[0m       SIGTERM (default)
-  \e[36m-HUP\e[0m      reload config          \e[36m-STOP\e[0m     pause process
-  \e[2mkill 1234    kill -9 1234    kill -HUP 1234\e[0m'
-  [cp]=$'\e[32;1mcp\e[0m \e[2m- copy files\e[0m
-  \e[36m-r\e[0m        recursive (dirs)       \e[36m-i\e[0m        interactive
-  \e[36m-v\e[0m        verbose                \e[36m-p\e[0m        preserve attrs
-  \e[2mcp file.txt backup.txt    cp -r dir/ newdir/    cp -rp src/ dst/\e[0m'
-  [mv]=$'\e[32;1mmv\e[0m \e[2m- move/rename files\e[0m
-  \e[36m-i\e[0m        interactive            \e[36m-v\e[0m        verbose
-  \e[36m-n\e[0m        no overwrite           \e[36m-f\e[0m        force
-  \e[2mmv old.txt new.txt    mv file.txt dir/    mv -i src dst\e[0m'
-  [rm]=$'\e[32;1mrm\e[0m \e[2m- remove files\e[0m
-  \e[36m-r\e[0m        recursive (dirs)       \e[36m-f\e[0m        force
-  \e[36m-i\e[0m        interactive            \e[31m-rf\e[0m       \e[2mdangerous!\e[0m
-  \e[2mrm file.txt    rm -r dir/    rm -i *.tmp\e[0m'
-  [du]=$'\e[32;1mdu\e[0m \e[2m- disk usage\e[0m
-  \e[36m-h\e[0m        human readable         \e[36m-s\e[0m        summary only
-  \e[36m-d\e[0m \e[33mN\e[0m      depth \e[33mN\e[0m                \e[36m--max-depth\e[0m=\e[33mN\e[0m same
-  \e[2mdu -sh .    du -sh */    du -h --max-depth=1\e[0m'
-  [df]=$'\e[32;1mdf\e[0m \e[2m- disk free space\e[0m
-  \e[36m-h\e[0m        human readable         \e[36m-i\e[0m        inodes
-  \e[2mdf -h    df -h /home    df -i\e[0m'
-  [ss]=$'\e[32;1mss\e[0m \e[2m- socket statistics\e[0m
-  \e[36m-t\e[0m        TCP                    \e[36m-u\e[0m        UDP
-  \e[36m-l\e[0m        listening              \e[36m-n\e[0m        numeric ports
-  \e[36m-p\e[0m        show process           \e[36m-a\e[0m        all sockets
-  \e[2mss -tlnp    ss -tunap    ss -t state established\e[0m'
-  [journalctl]=$'\e[32;1mjournalctl\e[0m \e[2m- systemd logs\e[0m
-  \e[36m-u\e[0m \e[33mUNIT\e[0m   service logs           \e[36m-f\e[0m        follow live
-  \e[36m-n\e[0m \e[33mN\e[0m      last \e[33mN\e[0m lines           \e[36m-b\e[0m        current boot
-  \e[36m-p\e[0m err    priority level         \e[36m--since\e[0m   time filter
-  \e[2mjournalctl -u nginx    journalctl -f    journalctl -b -p err\e[0m'
-  [systemctl]=$'\e[32;1msystemctl\e[0m \e[2m- systemd control\e[0m
-  \e[33mstart\e[0m     start service          \e[33mstop\e[0m      stop service
-  \e[33menable\e[0m    start on boot          \e[33mdisable\e[0m   no auto-start
-  \e[33mstatus\e[0m    show status            \e[33mrestart\e[0m   restart service
-  \e[2msystemctl status nginx    systemctl enable sshd    systemctl restart nginx\e[0m'
-  [mkdir]=$'\e[32;1mmkdir\e[0m \e[2m- make directories\e[0m
-  \e[36m-p\e[0m        create parents         \e[36m-v\e[0m        verbose
-  \e[36m-m\e[0m \e[33mMODE\e[0m   set permissions
-  \e[2mmkdir newdir    mkdir -p path/to/dir    mkdir -m 755 scripts\e[0m'
-  [touch]=$'\e[32;1mtouch\e[0m \e[2m- create file or update timestamp\e[0m
-  \e[36m-a\e[0m        access time only       \e[36m-m\e[0m        modify time only
-  \e[36m-d\e[0m \e[33mDATE\e[0m   use specific date
-  \e[2mtouch newfile.txt    touch -d "2024-01-01" file    touch *.log\e[0m'
-  [tree]=$'\e[32;1mtree\e[0m \e[2m- directory tree\e[0m
-  \e[36m-L\e[0m \e[33mN\e[0m      depth limit            \e[36m-d\e[0m        dirs only
-  \e[36m-a\e[0m        show hidden            \e[36m-I\e[0m \e[33mPAT\e[0m    ignore pattern
-  \e[2mtree    tree -L 2    tree -d    tree -I "node_modules|.git"\e[0m'
+  [hydra]=$'network login cracker\n  \e[36m-l\e[0m \e[33mUSER\e[0m   single username        \e[36m-L\e[0m \e[33mFILE\e[0m   username list\n  \e[36m-p\e[0m \e[33mPASS\e[0m   single password        \e[36m-P\e[0m \e[33mFILE\e[0m   password list\n  \e[36m-t\e[0m \e[33mN\e[0m      threads per target     \e[36m-s\e[0m \e[33mPORT\e[0m   target port\n  \e[33mPROTOCOLS:\e[0m ssh ftp http-get http-post-form mysql smb rdp\n  \e[2mhydra -l admin -P pass.txt ssh://192.168.1.1\e[0m'
+  [nmap]=$'network scanner\n  \e[36m-sS\e[0m       SYN scan (stealth)     \e[36m-sT\e[0m       TCP connect\n  \e[36m-sU\e[0m       UDP scan               \e[36m-sV\e[0m       version detect\n  \e[36m-sC\e[0m       default scripts        \e[36m-O\e[0m        OS detection\n  \e[36m-p\e[0m 22,80  specific ports         \e[36m-p-\e[0m       all 65535 ports\n  \e[2mnmap -sV 192.168.1.1    nmap -A -p- 10.0.0.1    nmap -sn 192.168.1.0/24\e[0m'
+  [hashcat]=$'GPU hash cracker\n  \e[36m-m\e[0m \e[33mTYPE\e[0m   hash type \e[2m(0=MD5 100=SHA1 1000=NTLM 1800=SHA512)\e[0m\n  \e[36m-a\e[0m \e[33mMODE\e[0m   attack \e[2m(0=dict, 3=brute)\e[0m     \e[36m--show\e[0m   show cracked\n  \e[2mhashcat -m 0 hash.txt wordlist.txt    hashcat -m 1000 -a 3 hash ?a?a?a?a\e[0m'
+  [john]=$'password cracker\n  \e[36m--wordlist\e[0m=\e[33mFILE\e[0m   dictionary     \e[36m--format\e[0m=\e[33mTYPE\e[0m   hash type\n  \e[36m--show\e[0m            cracked        \e[36m--list\e[0m=formats  list types\n  \e[2mjohn --wordlist=rockyou.txt hash.txt    john --show hash.txt\e[0m'
+  [tshark]=$'terminal packet analyzer\n  \e[36m-r\e[0m \e[33mFILE\e[0m   read pcap              \e[36m-i\e[0m \e[33mIFACE\e[0m  capture live\n  \e[36m-Y\e[0m \e[33mFILTER\e[0m display filter         \e[36m-T\e[0m fields output format\n  \e[2mtshark -i eth0    tshark -r cap.pcap -Y "http"    tshark -i eth0 -w out.pcap\e[0m'
+  [curl]=$'HTTP client\n  \e[36m-X\e[0m \e[33mMETHOD\e[0m  GET/POST/PUT/DELETE   \e[36m-H\e[0m \e[2m'\''K: V'\''\e[0m  header\n  \e[36m-d\e[0m \e[33mDATA\e[0m    POST body              \e[36m-o\e[0m \e[33mFILE\e[0m   output file\n  \e[36m-L\e[0m         follow redirects       \e[36m-s\e[0m        silent\n  \e[2mcurl -s url    curl -X POST -d "data" url    curl -o file.zip url\e[0m'
+  [find]=$'search for files\n  \e[36m-name\e[0m \e[2m'\''X'\''\e[0m   filename            \e[36m-type\e[0m \e[2mf/d\e[0m  file or dir\n  \e[36m-size\e[0m \e[2m+10M\e[0m  larger than         \e[36m-mtime\e[0m \e[2m-7\e[0m  last 7 days\n  \e[36m-exec\e[0m \e[2mCMD {} \\;\e[0m  run on each   \e[36m-delete\e[0m    remove\n  \e[2mfind . -name "*.log"    find / -size +100M    find . -mtime -7 -type f\e[0m'
+  [awk]=$'pattern scanning\n  \e[33m'\''{print $1}'\''\e[0m   first field       \e[33m'\''{print $NF}'\''\e[0m  last field\n  \e[36m-F\e[0m\e[2m'\'','\''\e[0m          delimiter          \e[33mNR\e[0m          line number\n  \e[2mawk '\''{print $1}'\'' file    awk -F, '\''{print $2}'\'' data.csv    awk '\''/error/'\'' log\e[0m'
+  [sed]=$'stream editor\n  \e[33m'\''s/old/new/'\''\e[0m    replace first     \e[33m'\''s/old/new/g'\''\e[0m  replace all\n  \e[36m-i\e[0m            edit in place     \e[33m'\''/pat/d'\''\e[0m       delete lines\n  \e[2msed '\''s/foo/bar/g'\'' file    sed -i '\''/^#/d'\'' file    sed -n '\''5,10p'\'' file\e[0m'
+  [xargs]=$'build commands from stdin\n  \e[36m-I\e[0m \e[2m{}\e[0m     placeholder            \e[36m-0\e[0m        null delim\n  \e[36m-n\e[0m \e[33mN\e[0m      args per command       \e[36m-P\e[0m \e[33mN\e[0m      parallel\n  \e[2mfind . -name "*.tmp" | xargs rm    cat urls | xargs -P4 -I{} curl {}\e[0m'
+  [tar]=$'archive tool\n  \e[36m-c\e[0m create   \e[36m-x\e[0m extract   \e[36m-v\e[0m verbose   \e[36m-f\e[0m \e[33mFILE\e[0m\n  \e[36m-z\e[0m gzip     \e[36m-j\e[0m bzip2     \e[36m-C\e[0m \e[33mDIR\e[0m       \e[36m-t\e[0m list\n  \e[2mtar czf archive.tar.gz dir/    tar xzf archive.tar.gz    tar tf archive.tar.gz\e[0m'
+  [ssh]=$'secure shell\n  \e[36m-i\e[0m \e[33mKEY\e[0m    identity file          \e[36m-p\e[0m \e[33mPORT\e[0m   port\n  \e[36m-L\e[0m \e[2mP:H:P\e[0m  local forward          \e[36m-D\e[0m \e[33mPORT\e[0m   SOCKS proxy\n  \e[36m-J\e[0m \e[33mHOST\e[0m   jump host              \e[36m-N\e[0m        no command\n  \e[2mssh user@host    ssh -i key.pem user@host    ssh -L 8080:localhost:80 host\e[0m'
+  [git]=$'version control\n  \e[33madd\e[0m     stage      \e[33mcommit\e[0m  save       \e[33mpush\e[0m    upload\n  \e[33mpull\e[0m    download   \e[33mstatus\e[0m  changes    \e[33mdiff\e[0m    compare\n  \e[2mgit add .    git commit -m "msg"    git push    git pull    git log --oneline\e[0m'
+  [less]=$'pager (scroll through files)\n  \e[36m-N\e[0m        show line numbers      \e[36m-S\e[0m        chop long lines\n  \e[36m-i\e[0m        ignore case search     \e[36m-F\e[0m        quit if one screen\n  \e[2mless file.txt    less -N file.txt    less +F /var/log/syslog\e[0m'
+  [cat]=$'concatenate and print files\n  \e[36m-n\e[0m        number all lines       \e[36m-b\e[0m        number non-blank\n  \e[36m-A\e[0m        show all (tabs, ends)  \e[36m-s\e[0m        squeeze blank lines\n  \e[2mcat file.txt    cat -n file.txt    cat a.txt b.txt > merged.txt\e[0m'
+  [head]=$'output first part of files\n  \e[36m-n\e[0m \e[33mN\e[0m      first \e[33mN\e[0m lines          \e[36m-c\e[0m \e[33mN\e[0m      first \e[33mN\e[0m bytes\n  \e[2mhead file.txt    head -n 5 file.txt    head -20 file.txt\e[0m'
+  [tail]=$'output last part of files\n  \e[36m-n\e[0m \e[33mN\e[0m      last \e[33mN\e[0m lines           \e[36m-c\e[0m \e[33mN\e[0m      last \e[33mN\e[0m bytes\n  \e[36m-f\e[0m        follow (live updates)  \e[36m-F\e[0m        follow + retry\n  \e[2mtail file.txt    tail -n 20 file.txt    tail -f /var/log/syslog\e[0m'
+  [ls]=$'list directory contents\n  \e[36m-l\e[0m        long format            \e[36m-a\e[0m        show hidden\n  \e[36m-h\e[0m        human sizes            \e[36m-S\e[0m        sort by size\n  \e[36m-t\e[0m        sort by time           \e[36m-r\e[0m        reverse order\n  \e[36m-R\e[0m        recursive              \e[36m-1\e[0m        one per line\n  \e[2mls -la    ls -lh    ls -lS    ls -lt    ls -R /etc\e[0m'
+  [grep]=$'search text patterns\n  \e[36m-i\e[0m        ignore case            \e[36m-v\e[0m        invert match\n  \e[36m-r\e[0m        recursive              \e[36m-n\e[0m        line numbers\n  \e[36m-c\e[0m        count matches          \e[36m-l\e[0m        files only\n  \e[36m-E\e[0m        extended regex         \e[36m-w\e[0m        whole word\n  \e[2mgrep error log.txt    grep -rn TODO .    grep -i "pattern" file\e[0m'
+  [sort]=$'sort lines of text\n  \e[36m-n\e[0m        numeric                \e[36m-r\e[0m        reverse\n  \e[36m-u\e[0m        unique                 \e[36m-k\e[0m \e[33mN\e[0m      by column \e[33mN\e[0m\n  \e[36m-t\e[0m \e[33mC\e[0m      delimiter              \e[36m-h\e[0m        human numeric\n  \e[2msort file.txt    sort -n nums.txt    sort -t, -k2 data.csv\e[0m'
+  [uniq]=$'filter repeated lines\n  \e[36m-c\e[0m        count occurrences      \e[36m-d\e[0m        only duplicates\n  \e[36m-u\e[0m        only unique            \e[2m(must sort first!)\e[0m\n  \e[2msort file | uniq    sort file | uniq -c    sort file | uniq -d\e[0m'
+  [cut]=$'extract columns/fields\n  \e[36m-d\e[0m \e[33mC\e[0m      delimiter              \e[36m-f\e[0m \e[33mN\e[0m      field \e[33mN\e[0m\n  \e[36m-c\e[0m \e[33mN\e[0m      character \e[33mN\e[0m            \e[36m--complement\e[0m invert\n  \e[2mcut -d, -f1 data.csv    cut -d: -f1 /etc/passwd    cut -c1-10 file\e[0m'
+  [wc]=$'word, line, byte count\n  \e[36m-l\e[0m        lines                  \e[36m-w\e[0m        words\n  \e[36m-c\e[0m        bytes                  \e[36m-m\e[0m        characters\n  \e[2mwc -l file.txt    wc -w file.txt    ls | wc -l\e[0m'
+  [tr]=$'translate characters\n  \e[36m-d\e[0m        delete chars           \e[36m-s\e[0m        squeeze repeats\n  \e[2mtr a-z A-Z < file    tr -d '\''\\n'\'' < file    tr -s '\'' '\'' < file\e[0m'
+  [chmod]=$'change file permissions\n  \e[33m+x\e[0m        add execute            \e[33m-x\e[0m        remove execute\n  \e[33m755\e[0m       rwxr-xr-x              \e[33m644\e[0m       rw-r--r--\n  \e[2mchmod +x script.sh    chmod 755 script.sh    chmod -R 644 dir/\e[0m'
+  [ps]=$'list processes\n  \e[33maux\e[0m       all users, detailed    \e[33m-ef\e[0m       full format\n  \e[36m--sort\e[0m    sort by field          \e[33m-u\e[0m \e[33mUSER\e[0m   by user\n  \e[2mps aux    ps -ef    ps aux --sort=-%mem | head\e[0m'
+  [kill]=$'send signal to process\n  \e[36m-9\e[0m        SIGKILL (force)        \e[36m-15\e[0m       SIGTERM (default)\n  \e[36m-HUP\e[0m      reload config          \e[36m-STOP\e[0m     pause process\n  \e[2mkill 1234    kill -9 1234    kill -HUP 1234\e[0m'
+  [cp]=$'copy files\n  \e[36m-r\e[0m        recursive (dirs)       \e[36m-i\e[0m        interactive\n  \e[36m-v\e[0m        verbose                \e[36m-p\e[0m        preserve attrs\n  \e[2mcp file.txt backup.txt    cp -r dir/ newdir/    cp -rp src/ dst/\e[0m'
+  [mv]=$'move/rename files\n  \e[36m-i\e[0m        interactive            \e[36m-v\e[0m        verbose\n  \e[36m-n\e[0m        no overwrite           \e[36m-f\e[0m        force\n  \e[2mmv old.txt new.txt    mv file.txt dir/    mv -i src dst\e[0m'
+  [rm]=$'remove files\n  \e[36m-r\e[0m        recursive (dirs)       \e[36m-f\e[0m        force\n  \e[36m-i\e[0m        interactive            \e[31m-rf\e[0m       \e[2mdangerous!\e[0m\n  \e[2mrm file.txt    rm -r dir/    rm -i *.tmp\e[0m'
+  [du]=$'disk usage\n  \e[36m-h\e[0m        human readable         \e[36m-s\e[0m        summary only\n  \e[36m-d\e[0m \e[33mN\e[0m      depth \e[33mN\e[0m                \e[36m--max-depth\e[0m=\e[33mN\e[0m same\n  \e[2mdu -sh .    du -sh */    du -h --max-depth=1\e[0m'
+  [df]=$'disk free space\n  \e[36m-h\e[0m        human readable         \e[36m-i\e[0m        inodes\n  \e[2mdf -h    df -h /home    df -i\e[0m'
+  [ss]=$'socket statistics\n  \e[36m-t\e[0m        TCP                    \e[36m-u\e[0m        UDP\n  \e[36m-l\e[0m        listening              \e[36m-n\e[0m        numeric ports\n  \e[36m-p\e[0m        show process           \e[36m-a\e[0m        all sockets\n  \e[2mss -tlnp    ss -tunap    ss -t state established\e[0m'
+  [journalctl]=$'systemd logs\n  \e[36m-u\e[0m \e[33mUNIT\e[0m   service logs           \e[36m-f\e[0m        follow live\n  \e[36m-n\e[0m \e[33mN\e[0m      last \e[33mN\e[0m lines           \e[36m-b\e[0m        current boot\n  \e[36m-p\e[0m err    priority level         \e[36m--since\e[0m   time filter\n  \e[2mjournalctl -u nginx    journalctl -f    journalctl -b -p err\e[0m'
+  [systemctl]=$'systemd control\n  \e[33mstart\e[0m     start service          \e[33mstop\e[0m      stop service\n  \e[33menable\e[0m    start on boot          \e[33mdisable\e[0m   no auto-start\n  \e[33mstatus\e[0m    show status            \e[33mrestart\e[0m   restart service\n  \e[2msystemctl status nginx    systemctl enable sshd    systemctl restart nginx\e[0m'
+  [mkdir]=$'make directories\n  \e[36m-p\e[0m        create parents         \e[36m-v\e[0m        verbose\n  \e[36m-m\e[0m \e[33mMODE\e[0m   set permissions\n  \e[2mmkdir newdir    mkdir -p path/to/dir    mkdir -m 755 scripts\e[0m'
+  [touch]=$'create file or update timestamp\n  \e[36m-a\e[0m        access time only       \e[36m-m\e[0m        modify time only\n  \e[36m-d\e[0m \e[33mDATE\e[0m   use specific date\n  \e[2mtouch newfile.txt    touch -d "2024-01-01" file    touch *.log\e[0m'
+  [tree]=$'directory tree\n  \e[36m-L\e[0m \e[33mN\e[0m      depth limit            \e[36m-d\e[0m        dirs only\n  \e[36m-a\e[0m        show hidden            \e[36m-I\e[0m \e[33mPAT\e[0m    ignore pattern\n  \e[2mtree    tree -L 2    tree -d    tree -I "node_modules|.git"\e[0m'
 )
+# Render manpage: first line as header, rest as body
+_mp_show() {
+  local cmd=$1; local data="${MANPAGE[$cmd]}"
+  printf '\e[32;1m%s\e[0m \e[2m- %s\e[0m\n' "$cmd" "${data%%$'\n'*}"
+  printf '%s\n' "${data#*$'\n'}"
+}
 
 declare -A EXP=(
   [pwd]="print working directory (where you are)"
@@ -1024,62 +795,36 @@ declare -A EXP=(
   ['$$']="current shell PID" ['$?']="last exit code" ['$!']="last background PID"
   ['$#']="argument count" ['$@']="all arguments" ['$0']="script name"
   ['!!']="repeat last command" ['!$']="last arg of prev cmd" ['!^']="first arg of prev cmd" ['!*']="all args of prev cmd"
-  ['>']="write stdout to file (overwrite)"
-  ['>>']="append stdout to file"
-  ['2>']="redirect stderr to file"
-  ['&>']="redirect stdout+stderr to file"
-  ['/dev/null']="black hole: discards anything written to it"
-  ['2>&1']="merge stderr into stdout"
+  ['>']="write stdout to file (overwrite)" ['>>']="append stdout to file"
+  ['2>']="redirect stderr to file" ['&>']="redirect stdout+stderr to file"
+  ['/dev/null']="black hole: discards anything written to it" ['2>&1']="merge stderr into stdout"
   ['<']="input redirect: feed file contents INTO command (like typing it)"
   ['<<<']="here-string: feed text INTO command (like typing it)"
-  # Path symbols
-  ['.']="current directory"
-  ['..']="parent directory"
-  ['~']="home directory"
-  ['/']="root directory (or path separator)"
-  # Globs/wildcards
-  ['*']="wildcard: matches any characters"
-  ['?']="wildcard: matches single character"
-  ['*.py']="glob: all files ending in .py"
-  ['*.log']="glob: all files ending in .log"
-  ['*.txt']="glob: all files ending in .txt"
-  ['*.sh']="glob: all files ending in .sh"
-  ['*.conf']="glob: all files ending in .conf"
-  # Quoted versions (as they appear in commands)
-  ["'*.py'"]="glob: all .py files (quoted to prevent shell expansion)"
-  ["'*.log'"]="glob: all .log files (quoted to prevent shell expansion)"
-  ["'*.txt'"]="glob: all .txt files (quoted to prevent shell expansion)"
-  ["'*.sh'"]="glob: all .sh files (quoted to prevent shell expansion)"
-  ["'*.conf'"]="glob: all .conf files (quoted to prevent shell expansion)"
-  ["'*'"]="glob: all files (quoted to prevent shell expansion)"
-  # Quoting
-  ["'...'"]="single quotes: literal string, no expansion"
-  ['"..."']="double quotes: allows \$var expansion"
+  ['.']="current directory" ['..']="parent directory" ['~']="home directory" ['/']="root directory (or path separator)"
+  ['*']="wildcard: matches any characters" ['?']="wildcard: matches single character"
+  ['*.py']="glob: all .py files" ['*.log']="glob: all .log files" ['*.txt']="glob: all .txt files"
+  ['*.sh']="glob: all .sh files" ['*.conf']="glob: all .conf files"
+  ["'*.py'"]="glob: all .py files (quoted)" ["'*.log'"]="glob: all .log files (quoted)"
+  ["'*.txt'"]="glob: all .txt files (quoted)" ["'*.sh'"]="glob: all .sh files (quoted)"
+  ["'*.conf'"]="glob: all .conf files (quoted)" ["'*'"]="glob: all files (quoted)"
+  ["'...'"]="single quotes: literal string, no expansion" ['"..."']="double quotes: allows \$var expansion"
   ["'hello'"]="literal string 'hello'"
-  ['|']="pipe: cmd1 | cmd2 (stdout→stdin)"
-  ['|&']="pipe stdout+stderr"
-  ['&&']="run next only if previous succeeds"
-  ['||']="run next only if previous fails"
+  ['|']="pipe: cmd1 | cmd2 (stdout→stdin)" ['|&']="pipe stdout+stderr"
+  ['&&']="run next only if previous succeeds" ['||']="run next only if previous fails"
   ['&']="run in background (returns immediately)"
-  ['a-z']="character range: all lowercase letters"
-  ['A-Z']="character range: all uppercase letters"
-  ['0-9']="character range: all digits"
-  # Parameter expansion
+  ['a-z']="character range: all lowercase letters" ['A-Z']="character range: all uppercase letters" ['0-9']="character range: all digits"
   ['${#var}']="string length" ['${var:-}']="default if unset" ['${var:=}']="set if unset"
   ['${var:?}']="error if unset" ['${var:+}']="alt if set" ['${var#}']="remove prefix (short)"
   ['${var##}']="remove prefix (long)" ['${var%}']="remove suffix (short)" ['${var%%}']="remove suffix (long)"
   ['${var/}']="replace first" ['${var//}']="replace all" ['${var:n}']="substring from n"
   ['${var:n:m}']="substring n to m" ['${var,,}']="lowercase" ['${var^^}']="uppercase"
-  # Arrays
   [declare]="declare variable type" [mapfile]="read lines into array" [readarray]="read lines into array"
   ['${arr[@]}']="all array elements" ['${#arr[@]}']="array length" ['${!arr[@]}']="array indices"
-  # Control flow
   [if]="conditional execution" [then]="if body start" [else]="if alternative" [elif]="else if"
   [fi]="end if" [for]="loop over items" [while]="loop while true" [until]="loop until true"
   [do]="loop body start" [done]="end loop" [case]="pattern matching" [esac]="end case"
   [function]="define function" [local]="local variable" [return]="function return"
   [trap]="handle signals" [set]="shell options" [shopt]="bash options"
-  # Advanced tools
   [strace]="trace syscalls" [ltrace]="trace library calls" [watch]="run command repeatedly"
   [inotifywait]="watch filesystem events" [parallel]="run jobs in parallel" [flock]="file locking"
   [timeout]="limit command runtime" [chroot]="change root dir" [fsck]="filesystem check"
@@ -1087,12 +832,11 @@ declare -A EXP=(
   [shred]="secure file delete" [smartctl]="disk SMART info" [gcore]="dump process memory"
   [coproc]="coprocess (bidirectional pipe)" [mkfifo]="create named pipe" [fuser]="find process using file"
   [renice]="change process priority" [cgcreate]="create cgroup" [cgexec]="run in cgroup"
-  [enum4linux]="SMB enumeration" [wash]="WPS scanner"
-  [reaver]="WPS attack tool" [chkrootkit]="rootkit checker" [rkhunter]="rootkit hunter"
+  [enum4linux]="SMB enumeration" [wash]="WPS scanner" [reaver]="WPS attack tool"
+  [chkrootkit]="rootkit checker" [rkhunter]="rootkit hunter"
   [bc]="calculator" [rev]="reverse lines" [docker]="container runtime" [crontab]="schedule tasks"
   [tcpdump]="packet capture" [rtl_sdr]="RTL-SDR receiver" [rtl_433]="433MHz decoder" [rtl_fm]="FM demodulator"
   [rtl_power]="frequency scanner" [iw]="wireless config"
-  # Git
   [git]="version control" [clone]="copy repository" [commit]="save changes" [push]="upload to remote"
   [pull]="download from remote" [fetch]="download without merge" [merge]="combine branches"
   [rebase]="reapply commits" [stash]="save changes temporarily" [branch]="manage branches"
@@ -1100,29 +844,22 @@ declare -A EXP=(
   [reset]="undo commits" [revert]="undo with new commit" [cherry-pick]="apply specific commit"
   [bisect]="binary search for bug" [reflog]="reference logs" [blame]="show line authors"
   [tag]="mark releases" [remote]="manage remotes" [log]="show history"
-  # tmux
   [tmux]="terminal multiplexer" [screen]="terminal multiplexer" [attach]="connect to session"
   [detach]="disconnect from session" [new-session]="create session" [kill-session]="destroy session"
   [split-window]="create pane" [select-pane]="switch pane" [resize-pane]="change pane size"
   [send-keys]="type in pane" [capture-pane]="copy pane content" [source-file]="reload config"
-  # Privesc
   [getcap]="show capabilities" [setcap]="set capabilities" [whoami]="current user"
   [id]="user/group IDs" [sudo]="run as root" [su]="switch user" [passwd]="change password"
   [useradd]="create user" [usermod]="modify user" [chown]="change owner" [chgrp]="change group"
   [mount]="attach filesystem" [umount]="detach filesystem" [showmount]="list NFS exports"
   [lxc]="LXD container tool" [searchsploit]="exploit database search"
-  # nmap flags (specific enough to be useful)
   ['-sV']="nmap version detection" ['-sC']="nmap default scripts" ['-A']="nmap aggressive scan"
   ['-sU']="nmap UDP scan" ['-sn']="nmap ping scan" ['-sT']="nmap TCP connect" ['-Pn']="nmap skip ping"
   ['-p-']="nmap all ports" ['-oN']="nmap normal output" ['-oG']="nmap greppable" ['-oA']="nmap all formats"
-  # find flags
   ['{}']="filename placeholder" ['\;']="end -exec" ['-exec']="run on each" ['-delete']="delete matches"
   ['-name']="match filename" ['-size']="match size" ['-type']="match type" ['-mmin']="match time" ['-path']="match path" ['-not']="negate"
-  # awk variables
   ['NR']="awk line number" ['NF']="awk field count" ['$1']="first field" ['$NF']="last field" ['FS']="field separator"
-  # hydra
-  ['http-post-form']="POST login (hydra): '/path:user=^USER^&pass=^PASS^:fail_text'"
-  ['http-get']="GET auth (hydra)"
+  ['http-post-form']="POST login (hydra): '/path:user=^USER^&pass=^PASS^:fail_text'" ['http-get']="GET auth (hydra)"
 )
 explain() {
   local tok n=0 exp label desc tcol cmd
@@ -1131,11 +868,10 @@ explain() {
   for tok in $1; do [[ "$tok" != *=* ]] && { cmd="$tok"; break; }; done
   # Show mini manpage if available (skip token breakdown - manpage is comprehensive)
   if [[ -n "${MANPAGE[$cmd]:-}" ]]; then
-    printf '%s\n' "${MANPAGE[$cmd]}"
+    _mp_show "$cmd"
     printf '%s\n' "${D}────────────────────────────────────────${N}"
-    # Count lines in manpage for clear_hint
     local mp_lines; mp_lines=$(printf '%s' "${MANPAGE[$cmd]}" | wc -l)
-    EXPLAIN_LINES=$((mp_lines + 3))  # +1 header, +1 footer, +1 wc offset
+    EXPLAIN_LINES=$((mp_lines + 3))
     return
   fi
   for tok in $1; do
@@ -1717,7 +1453,7 @@ gen_level10() {
 
 # Level 11: Core File Tools
 gen_level11() {
-  local questions=() log log2 cfg cfg2 txt txt2 csv csv2 dir dir2 ext ext2 script archive bin img pcap hash photo wordlist ip subnet port port2 mac url user host term term2 term3 field field2 key old new size iface proc svc sig branch time n1 n2 n3 col; _ctx
+  eval "local questions=() $_QV"; _ctx
   local perm1=$((RANDOM % 8))$((RANDOM % 8))$((RANDOM % 8))
   local searchterm=$(_phrase ERROR WARN INFO DEBUG)
 
@@ -1792,7 +1528,7 @@ gen_level11() {
 
 # Level 14: Text Search (grep, rg)
 gen_level14() {
-  local questions=() log log2 cfg cfg2 txt txt2 csv csv2 dir dir2 ext ext2 script archive bin img pcap hash photo wordlist ip subnet port port2 mac url user host term term2 term3 field field2 key old new size iface proc svc sig branch time n1 n2 n3 col; _ctx
+  eval "local questions=() $_QV"; _ctx
   local ctx=$(_rnum 1 10) ctx2=$(_rnum 2 5)
 
   # Basic grep - with flag order alternatives
@@ -1854,7 +1590,7 @@ gen_level14() {
 
 # Level 15: File Finding (find, fd)
 gen_level15() {
-  local questions=() log log2 cfg cfg2 txt txt2 csv csv2 dir dir2 ext ext2 script archive bin img pcap hash photo wordlist ip subnet port port2 mac url user host term term2 term3 field field2 key old new size iface proc svc sig branch time n1 n2 n3 col; _ctx
+  eval "local questions=() $_QV"; _ctx
 
   # By name
   questions+=("Find all .${ext} files|find . -name '*.${ext}'|fd -e ${ext}")
@@ -1904,7 +1640,7 @@ gen_level15() {
 
 # Level 16: Data Processing
 gen_level16() {
-  local questions=() log log2 cfg cfg2 txt txt2 csv csv2 dir dir2 ext ext2 script archive bin img pcap hash photo wordlist ip subnet port port2 mac url user host term term2 term3 field field2 key old new size iface proc svc sig branch time n1 n2 n3 col; _ctx
+  eval "local questions=() $_QV"; _ctx
   local proc2=$(_pick PROCS) col2=$(_rnum 1 5) col3=$((col + 1)) chars=$(_rnum 10 80) thresh=$(_rnum 50 500)
 
   # Sorting
@@ -1978,7 +1714,7 @@ gen_level16() {
 
 # Level 19: Batch Operations
 gen_level19() {
-  local questions=() log log2 cfg cfg2 txt txt2 csv csv2 dir dir2 ext ext2 script archive bin img pcap hash photo wordlist ip subnet port port2 mac url user host term term2 term3 field field2 key old new size iface proc svc sig branch time n1 n2 n3 col; _ctx
+  eval "local questions=() $_QV"; _ctx
   local svc2=$(_pick SERVICES) parallel=$(_rnum 2 8) linenum=$(_rnum 1 20)
 
   # find -exec - with flag alternatives
@@ -2068,7 +1804,7 @@ gen_level19() {
 
 # Level 23: Network Scanning (nmap)
 gen_level23() {
-  local questions=() log log2 cfg cfg2 txt txt2 csv csv2 dir dir2 ext ext2 script archive bin img pcap hash photo wordlist ip subnet port port2 mac url user host term term2 term3 field field2 key old new size iface proc svc sig branch time n1 n2 n3 col; _ctx
+  eval "local questions=() $_QV"; _ctx
   port2=$((port + 1000))
 
   # Basic scans
@@ -2119,7 +1855,7 @@ gen_level23() {
 
 # Level 25: Hash Cracking
 gen_level25() {
-  local questions=() log log2 cfg cfg2 txt txt2 csv csv2 dir dir2 ext ext2 script archive bin img pcap hash photo wordlist ip subnet port port2 mac url user host term term2 term3 field field2 key old new size iface proc svc sig branch time n1 n2 n3 col; _ctx
+  eval "local questions=() $_QV"; _ctx
   local hidx=$((RANDOM % ${#HASHCAT_MODES[@]}))
   local hmode=${HASHCAT_MODES[$hidx]} hname=${HASH_NAMES[$hidx]}
 
@@ -2175,7 +1911,7 @@ gen_level25() {
 
 # Level 26: Forensics
 gen_level26() {
-  local questions=() log log2 cfg cfg2 txt txt2 csv csv2 dir dir2 ext ext2 script archive bin img pcap hash photo wordlist ip subnet port port2 mac url user host term term2 term3 field field2 key old new size iface proc svc sig branch time n1 n2 n3 col; _ctx
+  eval "local questions=() $_QV"; _ctx
 
   # String extraction
   questions+=("Extract ASCII strings from ${bin}|strings ${bin}")
@@ -2231,7 +1967,7 @@ gen_level26() {
 
 # Level 22: Network Tools
 gen_level22() {
-  local questions=() log log2 cfg cfg2 txt txt2 csv csv2 dir dir2 ext ext2 script archive bin img pcap hash photo wordlist ip subnet port port2 mac url user host term term2 term3 field field2 key old new size iface proc svc sig branch time n1 n2 n3 col; _ctx
+  eval "local questions=() $_QV"; _ctx
 
   # tshark - packet capture & analysis
   questions+=("Capture traffic on ${iface} to ${pcap}|tshark -i ${iface} -w ${pcap}")
@@ -2300,7 +2036,7 @@ gen_level22() {
 
 # Level 24: WiFi & RF
 gen_level24() {
-  local questions=() log log2 cfg cfg2 txt txt2 csv csv2 dir dir2 ext ext2 script archive bin img pcap hash photo wordlist ip subnet port port2 mac url user host term term2 term3 field field2 key old new size iface proc svc sig branch time n1 n2 n3 col; _ctx
+  eval "local questions=() $_QV"; _ctx
 
   # WiFi attacks
   questions+=("Enable monitor mode on ${iface}|airmon-ng start ${iface}")
@@ -2357,7 +2093,7 @@ gen_level24() {
 
 # Level 17: String & Arrays
 gen_level17() {
-  local questions=() log log2 cfg cfg2 txt txt2 csv csv2 dir dir2 ext ext2 script archive bin img pcap hash photo wordlist ip subnet port port2 mac url user host term term2 term3 field field2 key old new size iface proc svc sig branch time n1 n2 n3 col; _ctx
+  eval "local questions=() $_QV"; _ctx
 
   # Parameter expansion - removal (practical examples)
   questions+=("Extract filename from /path/to/${txt} (stored in \$path)|echo \${path##*/}")
@@ -2431,7 +2167,7 @@ gen_level17() {
 
 # Level 18: Control Flow & Functions
 gen_level18() {
-  local questions=() log log2 cfg cfg2 txt txt2 csv csv2 dir dir2 ext ext2 script archive bin img pcap hash photo wordlist ip subnet port port2 mac url user host term term2 term3 field field2 key old new size iface proc svc sig branch time n1 n2 n3 col; _ctx
+  eval "local questions=() $_QV"; _ctx
 
   # if/else
   questions+=("Basic if statement|if [[ condition ]]; then cmd; fi")
@@ -2503,7 +2239,7 @@ gen_level18() {
 
 # Level 28: ROOT (Apocalypse Mode)
 gen_level28() {
-  local questions=() log log2 cfg cfg2 txt txt2 csv csv2 dir dir2 ext ext2 script archive bin img pcap hash photo wordlist ip subnet port port2 mac url user host term term2 term3 field field2 key old new size iface proc svc sig branch time n1 n2 n3 col; _ctx
+  eval "local questions=() $_QV"; _ctx
 
   # === EMERGENCY RECOVERY ===
   questions+=("Remount root filesystem read-write|mount -o remount,rw /")
@@ -2598,7 +2334,7 @@ gen_level28() {
 
 # Level 21: Git
 gen_level21() {
-  local questions=() log log2 cfg cfg2 txt txt2 csv csv2 dir dir2 ext ext2 script archive bin img pcap hash photo wordlist ip subnet port port2 mac url user host term term2 term3 field field2 key old new size iface proc svc sig branch time n1 n2 n3 col; _ctx
+  eval "local questions=() $_QV"; _ctx
   local remote=$(_pick REMOTE_HOSTS)
 
   # Basics
@@ -2696,7 +2432,7 @@ gen_level21() {
 
 # Level 13: Multiplexers (tmux & screen)
 gen_level13() {
-  local questions=() log log2 cfg cfg2 txt txt2 csv csv2 dir dir2 ext ext2 script archive bin img pcap hash photo wordlist ip subnet port port2 mac url user host term term2 term3 field field2 key old new size iface proc svc sig branch time n1 n2 n3 col; _ctx
+  eval "local questions=() $_QV"; _ctx
 
   # Session management
   questions+=("Start new tmux session|tmux|tmux new")
@@ -2752,7 +2488,7 @@ gen_level13() {
 
 # Level 27: Privilege Escalation
 gen_level27() {
-  local questions=() log log2 cfg cfg2 txt txt2 csv csv2 dir dir2 ext ext2 script archive bin img pcap hash photo wordlist ip subnet port port2 mac url user host term term2 term3 field field2 key old new size iface proc svc sig branch time n1 n2 n3 col; _ctx
+  eval "local questions=() $_QV"; _ctx
 
   # SUID/SGID enumeration
   questions+=("Find all SUID binaries|find / -perm -4000 -type f 2>/dev/null")
@@ -2813,7 +2549,7 @@ gen_level27() {
 
 # Level 20: Advanced Regex
 gen_level20() {
-  local questions=() log log2 cfg cfg2 txt txt2 csv csv2 dir dir2 ext ext2 script archive bin img pcap hash photo wordlist ip subnet port port2 mac url user host term term2 term3 field field2 key old new size iface proc svc sig branch time n1 n2 n3 col; _ctx
+  eval "local questions=() $_QV"; _ctx
 
   # Regex lookahead/lookbehind (grep -P for PCRE)
   questions+=("Match 'error' followed by number|grep -P 'error(?=\\d)' ${log}")
@@ -2901,7 +2637,7 @@ gen_level20() {
 
 # Level 12: System Admin
 gen_level12() {
-  local questions=() log log2 cfg cfg2 txt txt2 csv csv2 dir dir2 ext ext2 script archive bin img pcap hash photo wordlist ip subnet port port2 mac url user host term term2 term3 field field2 key old new size iface proc svc sig branch time n1 n2 n3 col; _ctx
+  eval "local questions=() $_QV"; _ctx
 
   # Network diagnostics
   questions+=("Ping ${ip} 5 times|ping -c 5 ${ip}")
@@ -3148,14 +2884,12 @@ draw() {
     ((VI_MODE)) && [[ $mode != insert ]] && printf '\e[91m%s\e[0m' "$PROMPT_CHAR" || printf '\e[97m%s\e[0m' "$PROMPT_CHAR"
     printf '%s' "$input"
     # Use display width for UTF-8 correct cursor positioning
-    local disp_len=$(_dispwidth "$input") disp_cur=$(_dispwidth "${input:0:cursor}")
+    local _pre="${input:0:cursor}" disp_len=${#input} disp_cur; disp_cur=${#_pre}
     ((disp_cur < disp_len)) && printf '\e[%dD' "$((disp_len - disp_cur))"
   fi
   printf '\e[?25h'  # show cursor
 }
 
-# Display width (ASCII sufficient for command input)
-_dispwidth() { echo ${#1}; }
 
 # Vi helpers (requires UTF-8 locale for proper multi-byte char handling)
 _wfwd() { while ((cursor<${#input})) && [[ "${input:cursor:1}" != " " ]]; do ((++cursor)); done; while ((cursor<${#input})) && [[ "${input:cursor:1}" == " " ]]; do ((++cursor)); done; ((cursor>=${#input}&&${#input}>0)) && cursor=$((${#input}-1)); }
@@ -3464,33 +3198,32 @@ case "${1:-}" in
   s|stats) _load_profile; stats;;
   v|version|-v|--version) echo "cmdchamp $(git -C "${BASH_SOURCE[0]%/*}" describe --tags 2>/dev/null || echo '0.2')";;
   h|help|-h|--help)
-    printf '%s\n' "${B}cmdchamp${N} - CLI trainer"
-    printf '%s\n' "${D}29 levels, spaced repetition, sandbox execution${N}"
-    echo
-    echo "Usage: cmdchamp [--no-sandbox] [level|command]"
-    echo
-    echo "Options:"
-    echo "  --no-sandbox  Disable sandbox (text-match only)"
-    echo
-    echo "Commands:"
-    echo "  0-28          Start level (password required if locked)"
-    echo "  p|pass        Show your earned passwords"
-    echo "  p|pass CODE   Jump to level using password"
-    echo "  n|new         Start fresh from level 0"
-    echo "  s|stats       Show mastery statistics"
-    echo "  r|reset       Reset all progress"
-    echo "  c|cleanup     Deduplicate score file"
-    echo "  h|help        Show this help"
-    echo
-    echo "Controls:"
-    echo "  Tab      Toggle hint + explanations"
-    echo "  Ctrl+d   Quit"
-    echo "  ?        Show vi keybindings (in vi mode)"
-    echo
-    echo "Levels:"
-    for lv in {0..28}; do
-      printf "  %2d - %s\n" "$lv" "${LEVEL_NAMES[$lv]}"
-    done
+    cat <<EOF
+${B}cmdchamp${N} - CLI trainer
+${D}29 levels, spaced repetition, sandbox execution${N}
+
+Usage: cmdchamp [--no-sandbox] [level|command]
+
+Options:
+  --no-sandbox  Disable sandbox (text-match only)
+
+Commands:
+  0-28          Start level (password required if locked)
+  p|pass        Show your earned passwords
+  p|pass CODE   Jump to level using password
+  n|new         Start fresh from level 0
+  s|stats       Show mastery statistics
+  r|reset       Reset all progress
+  c|cleanup     Deduplicate score file
+  h|help        Show this help
+
+Controls:
+  Tab      Toggle hint + explanations
+  Ctrl+d   Quit
+  ?        Show vi keybindings (in vi mode)
+
+EOF
+    for lv in {0..28}; do printf "  %2d - %s\n" "$lv" "${LEVEL_NAMES[$lv]}"; done
     ;;
   n|new) _tty; _load_profile; LVL=0; QI=0; save; _run_loop;;
   "") _tty; _load_profile; load; ((LVL>0||QI>0)) && { read -rp "Continue Level $LVL Q$((QI+1))? [Y/n] " yn; [[ "$yn" =~ ^[Nn] ]] && { LVL=0; QI=0; save; }; }; _run_loop;;
