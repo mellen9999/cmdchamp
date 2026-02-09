@@ -3235,26 +3235,26 @@ run() {
         ((_S_STREAK > _S_BEST_STREAK)) && _S_BEST_STREAK=$_S_STREAK
         if $HINT; then
           printf '\n%s\n' "${D}+0 (hint)${N}"; streak=0; _S_STREAK=0; _sset "$prompt" "$tier"
-          read -rsp "${D}Press Enter...${N}"; break
+          read -rsp "${D}Press Enter to continue...${N}"; break
         elif ((streak>=FIRE_STREAK)); then
           local _new_tier=$((tier<2?tier+1:2))
           ((tier < 2 && _new_tier >= 2)) && ((_S_MASTERED++))
           printf '\n%s\n' "${Y}${B}* ON FIRE! +2${N}"; ((++streak)); _sset "$prompt" "$_new_tier"
-          read -rsp "${D}Press Enter...${N}"
+          read -rsp "${D}Press Enter to continue...${N}"
           qi=$((qi+2)); ((qi >= ${#shuf[@]})) && qi=${#shuf[@]}; QI=$qi; save; break
         else
           local _new_tier=$((tier<2?tier+1:2))
           ((tier < 2 && _new_tier >= 2)) && ((_S_MASTERED++))
           printf '\n%s\n' "${G}${B}+${N}"; ((++streak)); _sset "$prompt" "$_new_tier"
         fi
-        read -rsp "${D}Press Enter...${N}"
+        read -rsp "${D}Press Enter to continue...${N}"
         ((++qi)); QI=$qi; save; break
       else
         ((_S_ANSWERED++)); _S_STREAK=0
         if [[ -n "$_SANDBOX_OUTPUT" ]]; then printf '\n%s %s\n' "${D}output:${N}" "$_SANDBOX_OUTPUT"; fi
         printf '%s  %s %s\n\n' "${R}x${N}" "${D}expected:${N}" "${Y}${ans}${N}"
         explain "$ans"
-        streak=0; _sset "$prompt" "$((tier>0?tier-1:0))"; read -rsp "${D}Press Enter...${N}"
+        streak=0; _sset "$prompt" "$((tier>0?tier-1:0))"; read -rsp "${D}Press Enter to continue...${N}"
       fi
       _sget "$prompt"; tier=$REPLY; _REDRAW_HDR
     done
@@ -3293,7 +3293,7 @@ run() {
       printf '%s  %s %s\n\n' "${R}x${N}" "${D}expected:${N}" "${Y}${ans}${N}"
       explain "$ans"
     fi
-    read -rsp "${D}Press Enter...${N}"
+    read -rsp "${D}Press Enter to continue...${N}"
   done
 
   # Results
@@ -3307,7 +3307,7 @@ run() {
     if ((lv<MAX_LEVEL)); then
       local next_pass; next_pass=$(_level_pass "$((lv+1))")
       printf '%s\n' "${Y}PASSWORD: ${B}${next_pass}${N}"
-      printf 'Enter for Level %d...\n' "$((lv+1))"; read -r
+      printf "${D}Press Enter for Level %d...${N}\n" "$((lv+1))"; read -r
       LVL=$((lv+1)); QI=0; save; _NEXT_LV=$LVL _NEXT_BOSS=0; return 0
     else
       _victory
@@ -3388,7 +3388,7 @@ gauntlet() {
       printf '%s  %s %s\n\n' "${R}x${N}" "${D}expected:${N}" "${Y}${ans}${N}"
       ((lives--)); streak=0
     fi
-    read -rsp "${D}Press Enter...${N}"
+    read -rsp "${D}Press Enter to continue...${N}"
   done
 
   printf '\e[2J\e[H'
@@ -3560,13 +3560,13 @@ review() {
           ((++streak)); _sset "$prompt" "$_new_tier"
           printf '\n%s\n' "${G}${B}+${N}"
         fi
-        read -rsp "${D}Press Enter...${N}"; ((++qi)); break
+        read -rsp "${D}Press Enter to continue...${N}"; ((++qi)); break
       else
         ((_S_ANSWERED++)); _S_STREAK=0
         [[ -n "$_SANDBOX_OUTPUT" ]] && printf '\n%s %s\n' "${D}output:${N}" "$_SANDBOX_OUTPUT"
         printf '%s  %s %s\n\n' "${R}x${N}" "${D}expected:${N}" "${Y}${ans}${N}"
         explain "$ans"
-        streak=0; _sset "$prompt" "$((tier>0?tier-1:0))"; read -rsp "${D}Press Enter...${N}"
+        streak=0; _sset "$prompt" "$((tier>0?tier-1:0))"; read -rsp "${D}Press Enter to continue...${N}"
       fi
       _sget "$prompt"; tier=$REPLY; _REDRAW_HDR
     done
