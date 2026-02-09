@@ -1165,7 +1165,11 @@ gen_level3() {
   else
     term1=$(_phrase ERROR WARN INFO DEBUG)
   fi
-  term2=$(_phrase TODO Review Deploy Update Schedule)
+  if [[ $txt == todo.txt ]]; then
+    term2=$(_phrase Review Deploy Update)
+  else
+    term2=$(_phrase TODO Review Deploy Update Schedule)
+  fi
   # Terms present in both config.ini and settings.yaml
   term3=$(_phrase server database logging cache host port localhost info enabled)
 
@@ -1804,7 +1808,7 @@ gen_level16() {
   questions+=("Print every ${col}th line|awk 'NR % ${col} == 0' ${txt}")
   questions+=("Print lines ${n} through ${n2}|awk 'NR>=${n} && NR<=${n2}' ${txt}|sed -n '${n},${n2}p' ${txt}")
   questions+=("Average of column 1 (skip header)|awk -F',' 'NR>1{sum+=\$1; count++} END {print sum/count}' data.csv")
-  questions+=("Maximum value in column 1|awk -F',' 'NR==2{max=\$1} NR>1 && \$1>max{max=\$1} END{print max}' data.csv")
+  questions+=("Maximum value in column 1 (skip header)|awk -F',' 'NR==2{max=\$1} NR>1 && \$1>max{max=\$1} END{print max}' data.csv")
   questions+=("Swap columns 1 and 2 in output|awk '{print \$2, \$1}' ${txt}")
   questions+=("Print unique values from column ${col} (skip header)|awk -F',' 'NR>1 && !seen[\$${col}]++ {print \$${col}}' ${csv}")
   questions+=("Count records by column ${col} value|awk -F',' 'NR>1{count[\$${col}]++} END {for(k in count) print k, count[k]}' ${csv}")
@@ -1893,7 +1897,8 @@ gen_level19() {
   questions+=("View logs from last ${n} minutes|journalctl --since '${n} minutes ago'")
   questions+=("View errors only|journalctl -p err|journalctl -p 3")
   questions+=("Disk usage of journal|journalctl --disk-usage")
-  questions+=("Vacuum journal to ${size}|journalctl --vacuum-size=${size}|sudo journalctl --vacuum-size=${size}")
+  local jsize=${size/k/K}
+  questions+=("Vacuum journal to ${jsize}|journalctl --vacuum-size=${jsize}|sudo journalctl --vacuum-size=${jsize}")
   questions+=("Output as JSON|journalctl -u ${svc} -o json")
 
   # Cron / crontab - scheduling
@@ -2097,7 +2102,7 @@ gen_level22() {
   questions+=("Read and display ${pcap}|tshark -r ${pcap}")
   questions+=("Filter HTTP traffic from ${pcap}|tshark -r ${pcap} -Y http")
   questions+=("Filter traffic to/from ${ip}|tshark -r ${pcap} -Y 'ip.addr == ${ip}'")
-  questions+=("Show only DNS queries|tshark -r ${pcap} -Y 'dns.qry.name'")
+  questions+=("Show DNS traffic|tshark -r ${pcap} -Y 'dns.qry.name'")
   questions+=("Extract HTTP POST data|tshark -r ${pcap} -Y 'http.request.method == POST' -T fields -e http.file_data")
   questions+=("Extract all URLs from capture|tshark -r ${pcap} -Y 'http.request' -T fields -e http.host -e http.request.uri")
   questions+=("Show TCP conversations|tshark -r ${pcap} -q -z conv,tcp")
