@@ -976,9 +976,19 @@ explain() {
     EXPLAIN_LINES=$((_ml + 2))
     return
   fi
+  local _cp=1  # command position: 1=expecting command, 0=in arguments
   for tok in $1; do
+    # Operators/pipes reset to command position
+    case "$tok" in '|'|'|&'|'&&'|'||'|';') _cp=1 ;; esac
     exp="${EXP[$tok]:-}"
     if [[ -n "$exp" ]]; then
+      # Skip plain words (like 'done') when they're arguments, not commands
+      if ((!_cp)); then
+        case "$tok" in
+          -*|'>'|'>>'|'<'|'<<<'|'2>'|'&>'|'2>&1'|'|'|'|&'|'&&'|'||'|';'|'&') ;;  # always show these
+          *) continue ;;  # skip plain words in argument position
+        esac
+      fi
       # Choose token color based on type
       tcol="${G}"  # default: green for commands
       case "$tok" in
@@ -1006,6 +1016,8 @@ explain() {
       fi
       ((++n))
     fi
+    # After seeing a non-operator token, we're past command position
+    case "$tok" in '|'|'|&'|'&&'|'||'|';'|'>'|'>>'|'<'|'<<<'|'2>'|'&>'|'2>&1') ;; *) _cp=0 ;; esac
   done
   # Show full answer if no explanations found
   ((n == 0)) && { printf '  %s\n' "${Y}$1${N}"; ((++n)); }
