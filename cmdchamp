@@ -3054,7 +3054,7 @@ input="" cursor=0 mode="insert" SHOW_HINT=0 EXPLAIN_LINES=0 _rep=""
 declare -a UNDO_STACK=()  # Multi-level undo
 hdr() {
   printf '\e[2J\e[H'
-  local fire=""; ((streak>=FIRE_STREAK)) && fire="  ${Y}*${N}"
+  local fire=""; ((streak>=FIRE_STREAK)) && fire="  ${Y}${B}*${N}"
   printf '%s\n' "${C}${PLAYER_NAME:-anon}${N}${fire}"
   printf '%s\n' "${B}Level $1: ${LEVEL_NAMES[$1]:-}${N}"
   printf '%s\n\n' "${D}[$2/$3]  Tab=hint${N}"
