@@ -94,8 +94,6 @@ cmdchamp --no-sandbox   # Disable sandbox (text-match only)
 | Esc | Vi normal mode |
 | ? | All keybindings (normal mode) |
 
-`?` in normal mode shows all keybindings.
-
 ## Data
 
 Progress saves to `${XDG_DATA_HOME:-~/.local/share}/cmdchamp/`.
