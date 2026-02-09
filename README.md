@@ -4,11 +4,11 @@ Pure bash CLI trainer — 29 levels from `ls` to privilege escalation.
 
 ![demo](demo.gif)
 
-Questions randomize each run. Get one wrong and it comes back sooner — spaced repetition keeps weak spots in rotation. Each level ends with a boss fight (no hints, 4/5 to pass) that gates the next. Clear all 29 to unlock gauntlet and timed modes.
+Questions change every run. Miss one and it comes back. Each level has a boss at the end — no hints, 4/5 to pass. Beat all 29 and the endgame modes open up.
 
-With bubblewrap installed, your answers execute in a sandbox against generated files. Without it, text-matched. Accepts both modern (`rg`, `fd`) and POSIX (`grep`, `find`) answers.
+If you have bubblewrap, commands run in a real sandbox. Without it, answers are text-matched. Takes both modern (`rg`, `fd`) and classic (`grep`, `find`) syntax.
 
-Full vi-style line editing with motions, operators, counts, and undo.
+Vi line editing built in. Motions, operators, counts, undo — the works.
 
 ## Install
 
