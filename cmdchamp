@@ -114,7 +114,7 @@ _tutorial() {
     ${C}Tab${N}       Toggle hint + explanation
     ${C}Enter${N}     Submit answer
     ${C}Ctrl+d${N}    Quit (shows session summary)
-    ${C}↑ / ↓${N}     Browse answer history
+    ${C}Up/Down${N}   Browse answer history
 
     ${B}Vi Mode${N} ${D}(on by default, CMD_VI=0 to disable)${N}
 
@@ -758,7 +758,7 @@ _phrase() {
   echo "${opts[$((r % len))]}"
 }
 
-# Fast pick/rnum - set REPLY, no subshell (40 forks → 0 in _ctx)
+# Fast pick/rnum - set REPLY, no subshell (40 forks -> 0 in _ctx)
 _fpick() { local -n _a=$1; REPLY="${_a[$((RANDOM % ${#_a[@]}))]}"; }
 _frnum() { REPLY=$(($1 + RANDOM % ($2 - $1 + 1))); }
 
@@ -860,7 +860,7 @@ declare -A EXP=(
   [uniq]="filter adjacent duplicates (use sort | uniq for all dupes)" [cut]="cut -d',' -fN: extract column N"
   ['--sort=-%cpu']="sort by CPU% descending (- = descending)"
   ['--sort=-%mem']="sort by memory% descending"
-  [tr]="tr FROM TO: map chars (tr a-z A-Z = lowercase→uppercase)"
+  [tr]="tr FROM TO: map chars (tr a-z A-Z = lowercase->uppercase)"
   [diff]="compare files" [tar]="archive tool" [tee]="copy stdin to file AND stdout" [xargs]="build commands from stdin"
   [chmod]="change permissions" [kill]="send signal to process (default: terminate)" [jobs]="list background jobs" [fg]="foreground job"
   [bg]="background job" [sleep]="pause N seconds" [make]="build tool" [gcc]="C compiler"
@@ -901,7 +901,7 @@ declare -A EXP=(
   ["'*.conf'"]="glob: all .conf files (quoted)" ["'*'"]="glob: all files (quoted)"
   ["'...'"]="single quotes: literal string, no expansion" ['"..."']="double quotes: allows \$var expansion"
   ["'hello'"]="literal string 'hello'"
-  ['|']="pipe: cmd1 | cmd2 (stdout→stdin)" ['|&']="pipe stdout+stderr"
+  ['|']="pipe: cmd1 | cmd2 (stdout->stdin)" ['|&']="pipe stdout+stderr"
   ['&&']="run next only if previous succeeds" ['||']="run next only if previous fails"
   ['&']="run in background (returns immediately)"
   ['a-z']="character range: all lowercase letters" ['A-Z']="character range: all uppercase letters" ['0-9']="character range: all digits"
@@ -955,7 +955,7 @@ declare -A EXP=(
 )
 explain() {
   local tok n=0 exp label desc tcol cmds=() _ap=1
-  printf '%s\n' "${D}────────────────────────────────────────${N}"
+  printf '%s\n' "${D}----------------------------------------${N}"
   # Collect all pipeline commands (skip env vars like VAR=val)
   for tok in $1; do
     case "$tok" in '|'|'|&') _ap=1; continue ;; esac
@@ -972,7 +972,7 @@ explain() {
     fi
   done
   if ((_mc)); then
-    printf '%s\n' "${D}────────────────────────────────────────${N}"
+    printf '%s\n' "${D}----------------------------------------${N}"
     EXPLAIN_LINES=$((_ml + 2))
     return
   fi
@@ -997,19 +997,19 @@ explain() {
         desc="${exp#*: }"
         # If label has spaces, it's an example - use magenta
         if [[ "$label" == *" "* ]]; then
-          printf '  %s%s %s  %s%s %s\n' "${tcol}${tok}${N}" "$sp" "${D}→${N}" "${Y}${label}${D}:${N}" "${W}${desc}${N}" ""
+          printf '  %s%s %s  %s%s %s\n' "${tcol}${tok}${N}" "$sp" "${D}->${N}" "${Y}${label}${D}:${N}" "${W}${desc}${N}" ""
         else
-          printf '  %s%s %s  %s%s %s\n' "${tcol}${tok}${N}" "$sp" "${D}→${N}" "${Y}${label}${D}:${N}" "${W}${desc}${N}" ""
+          printf '  %s%s %s  %s%s %s\n' "${tcol}${tok}${N}" "$sp" "${D}->${N}" "${Y}${label}${D}:${N}" "${W}${desc}${N}" ""
         fi
       else
-        printf '  %s%s %s  %s\n' "${tcol}${tok}${N}" "$sp" "${D}→${N}" "${W}${exp}${N}"
+        printf '  %s%s %s  %s\n' "${tcol}${tok}${N}" "$sp" "${D}->${N}" "${W}${exp}${N}"
       fi
       ((++n))
     fi
   done
   # Show full answer if no explanations found
   ((n == 0)) && { printf '  %s\n' "${Y}$1${N}"; ((++n)); }
-  printf '%s\n' "${D}────────────────────────────────────────${N}"
+  printf '%s\n' "${D}----------------------------------------${N}"
   EXPLAIN_LINES=$((n + 2))
 }
 
@@ -3002,7 +3002,7 @@ stats() {
   for lv in {0..28}; do
     local lt=${lv_total[$lv]:-0} lm=${lv_mastered[$lv]:-0}
     local boss_mark=""
-    ((lv <= BOSS_BEATEN)) && boss_mark="${G}✓${N}" || boss_mark="${D}·${N}"
+    ((lv <= BOSS_BEATEN)) && boss_mark="${G}+${N}" || boss_mark="${D}·${N}"
     if ((lt > 0)); then
       local pct=$((lm * 100 / lt)) filled=$((lm * BAR_W / lt)); local empty=$((BAR_W - filled))
       local bar_f bar_e; printf -v bar_f '%*s' "$filled" ''; printf -v bar_e '%*s' "$empty" ''
@@ -3023,7 +3023,7 @@ _quit() {
     local elapsed=$(( $(printf '%(%s)T' -1) - _S_START ))
     local m=$((elapsed / 60)) s=$((elapsed % 60))
     printf '%s\n' "${B}Session Summary${N}"
-    printf '%s\n' "${D}────────────────────────────────────────${N}"
+    printf '%s\n' "${D}----------------------------------------${N}"
     printf '  Answered:    %s\n' "${B}${_S_ANSWERED}${N}"
     printf '  Correct:     %s' "${G}${_S_CORRECT}${N}"
     ((_S_ANSWERED > 0)) && printf ' (%d%%)' $((_S_CORRECT * 100 / _S_ANSWERED))
@@ -3031,7 +3031,7 @@ _quit() {
     printf '  Best streak: %s\n' "${Y}${_S_BEST_STREAK}${N}"
     ((_S_MASTERED > 0)) && printf '  Mastered:    %s\n' "${C}${_S_MASTERED}${N}"
     printf '  Time:        %dm %ds\n' "$m" "$s"
-    printf '%s\n' "${D}────────────────────────────────────────${N}"
+    printf '%s\n' "${D}----------------------------------------${N}"
   else
     printf '%s\n' "${D}[quit]${N}"
   fi
@@ -3233,14 +3233,14 @@ run() {
         else
           local _new_tier=$((tier<2?tier+1:2))
           ((tier < 2 && _new_tier >= 2)) && ((_S_MASTERED++))
-          printf '\n%s\n' "${G}${B}✓${N}"; ((++streak)); _sset "$prompt" "$_new_tier"
+          printf '\n%s\n' "${G}${B}+${N}"; ((++streak)); _sset "$prompt" "$_new_tier"
         fi
         read -rsp "${D}Press Enter...${N}"
         ((++qi)); QI=$qi; save; break
       else
         ((_S_ANSWERED++)); _S_STREAK=0
         if [[ -n "$_SANDBOX_OUTPUT" ]]; then printf '\n%s %s\n' "${D}output:${N}" "$_SANDBOX_OUTPUT"; fi
-        printf '%s  %s %s\n\n' "${R}✗${N}" "${D}expected:${N}" "${Y}${ans}${N}"
+        printf '%s  %s %s\n\n' "${R}x${N}" "${D}expected:${N}" "${Y}${ans}${N}"
         explain "$ans"
         streak=0; _sset "$prompt" "$((tier>0?tier-1:0))"; read -rsp "${D}Press Enter...${N}"
       fi
@@ -3275,10 +3275,10 @@ run() {
     if check "$input" "$_qanswers"; then
       ((++boss_correct)); ((_S_CORRECT++)); ((_S_STREAK++))
       ((_S_STREAK > _S_BEST_STREAK)) && _S_BEST_STREAK=$_S_STREAK
-      printf '%s\n' "${G}${B}✓${N}"
+      printf '%s\n' "${G}${B}+${N}"
     else
       _S_STREAK=0
-      printf '%s  %s %s\n\n' "${R}✗${N}" "${D}expected:${N}" "${Y}${ans}${N}"
+      printf '%s  %s %s\n\n' "${R}x${N}" "${D}expected:${N}" "${Y}${ans}${N}"
       explain "$ans"
     fi
     read -rsp "${D}Press Enter...${N}"
@@ -3370,10 +3370,10 @@ gauntlet() {
       [[ -n "$_SANDBOX_OUTPUT" ]] && printf '\n%s\n' "${W}${_SANDBOX_OUTPUT}${N}"
       ((++score)); ((++streak))
       ((streak % 5 == 0 && difficulty <= MAX_LEVEL)) && ((++difficulty))
-      printf '\n%s\n' "${G}${B}✓${N} +1"
+      printf '\n%s\n' "${G}${B}+${N} +1"
     else
       [[ -n "$_SANDBOX_OUTPUT" ]] && printf '\n%s %s\n' "${D}output:${N}" "$_SANDBOX_OUTPUT"
-      printf '%s  %s %s\n\n' "${R}✗${N}" "${D}expected:${N}" "${Y}${ans}${N}"
+      printf '%s  %s %s\n\n' "${R}x${N}" "${D}expected:${N}" "${Y}${ans}${N}"
       ((lives--)); streak=0
     fi
     read -rsp "${D}Press Enter...${N}"
@@ -3449,10 +3449,10 @@ timed() {
       [[ -n "$input" ]] && { HIST+=("$input"); HIST_IDX=${#HIST[@]}; HIST_SAVE=""; }
       [[ -n "$_SANDBOX_OUTPUT" ]] && printf '\n%s\n' "${W}${_SANDBOX_OUTPUT}${N}"
       ((++score))
-      printf '\n%s\n' "${G}${B}✓${N} +1"
+      printf '\n%s\n' "${G}${B}+${N} +1"
     else
       [[ -n "$_SANDBOX_OUTPUT" ]] && printf '\n%s %s\n' "${D}output:${N}" "$_SANDBOX_OUTPUT"
-      printf '%s  %s %s\n' "${R}✗${N}" "${D}expected:${N}" "${Y}${ans}${N}"
+      printf '%s  %s %s\n' "${R}x${N}" "${D}expected:${N}" "${Y}${ans}${N}"
     fi
     read -rsn1 -t 1 || true
   done
@@ -3546,13 +3546,13 @@ review() {
           local _new_tier=$((tier<2?tier+1:2))
           ((tier < 2 && _new_tier >= 2)) && ((_S_MASTERED++))
           ((++streak)); _sset "$prompt" "$_new_tier"
-          printf '\n%s\n' "${G}${B}✓${N}"
+          printf '\n%s\n' "${G}${B}+${N}"
         fi
         read -rsp "${D}Press Enter...${N}"; ((++qi)); break
       else
         ((_S_ANSWERED++)); _S_STREAK=0
         [[ -n "$_SANDBOX_OUTPUT" ]] && printf '\n%s %s\n' "${D}output:${N}" "$_SANDBOX_OUTPUT"
-        printf '%s  %s %s\n\n' "${R}✗${N}" "${D}expected:${N}" "${Y}${ans}${N}"
+        printf '%s  %s %s\n\n' "${R}x${N}" "${D}expected:${N}" "${Y}${ans}${N}"
         explain "$ans"
         streak=0; _sset "$prompt" "$((tier>0?tier-1:0))"; read -rsp "${D}Press Enter...${N}"
       fi
