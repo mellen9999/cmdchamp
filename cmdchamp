@@ -2999,7 +2999,7 @@ stats() {
     local boss_mark=""
     ((lv <= BOSS_BEATEN)) && boss_mark="${G}✓${N}" || boss_mark="${D}·${N}"
     if ((lt > 0)); then
-      local pct=$((lm * 100 / lt)) filled=$((lm * BAR_W / lt)) empty=$((BAR_W - filled))
+      local pct=$((lm * 100 / lt)) filled=$((lm * BAR_W / lt)); local empty=$((BAR_W - filled))
       local bar_f bar_e; printf -v bar_f '%*s' "$filled" ''; printf -v bar_e '%*s' "$empty" ''
       local col; ((pct >= 80)) && col=$G || { ((pct >= 40)) && col=$Y || col=$R; }
       printf "  %s ${C}%2d${N} %-22s ${col}%s${D}%s${N} %3d%% (%d/%d)\n" "$boss_mark" "$lv" "${LEVEL_NAMES[$lv]:-}" "${bar_f// /█}" "${bar_e// /░}" "$pct" "$lm" "$lt"
