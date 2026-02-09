@@ -1,24 +1,14 @@
 # cmdchamp
 
-Pure bash CLI trainer. 1000+ questions across 29 levels — fundamentals to privilege escalation — with spaced repetition, sandbox execution, boss fights, and vi keybindings.
+Pure bash CLI trainer — 29 levels from `ls` to privilege escalation.
 
 ![demo](demo.gif)
 
-## Features
+Questions randomize each run. Get one wrong and it comes back sooner — spaced repetition keeps weak spots in rotation. Each level ends with a boss fight (no hints, 4/5 to pass) that gates the next. Clear all 29 to unlock gauntlet and timed modes.
 
-- **Spaced repetition** — Two-tier system (blank → recall), prioritizes weak spots
-- **Sandbox execution** — Commands run in bubblewrap isolation against real files
-- **Boss fights** — Named daemons gate each level. No hints. 4/5 to pass.
-- **Fire mode** — 5-answer streak earns double points and forces pure recall
-- **Dynamic generation** — Variable pools make every session different
-- **Vi keybindings** — Full vi-style line editing with motions, operators, and undo stack
-- **Mid-level resume** — Quit anytime, continue exactly where you left off
-- **Session summary** — Ctrl+d shows answered, accuracy, best streak, time
-- **Per-level mastery bars** — `stats` shows color-coded progress per level
-- **Review mode** — Drills weak levels below 80% mastery
-- **Post-ROOT modes** — Gauntlet (3 lives) and Timed (60/120/300s) after beating all bosses
-- **Tab hints** — Reveals answer + inline manpage explanations
-- **Modern + POSIX** — Accepts both `rg`/`fd` and `grep`/`find` answers
+With bubblewrap installed, your answers execute in a sandbox against generated files. Without it, text-matched. Accepts both modern (`rg`, `fd`) and POSIX (`grep`, `find`) answers.
+
+Full vi-style line editing with motions, operators, counts, and undo.
 
 ## Install
 
@@ -39,7 +29,7 @@ git clone https://github.com/mellen9999/cmdchamp.git
 
 **macOS:** Ships with bash 3.2 — install modern bash first: `brew install bash`
 
-**Optional:** [bubblewrap](https://github.com/containers/bubblewrap) for sandbox mode (Linux only) — without it, answers are text-matched only
+**Optional:** [bubblewrap](https://github.com/containers/bubblewrap) (`bwrap`) for sandbox mode (Linux only) — most desktop distros include it. Without it, answers are text-matched only
 
 ## Usage
 
@@ -49,7 +39,7 @@ cmdchamp n              # Start fresh from level 0
 cmdchamp 14             # Jump to level (password required if locked)
 cmdchamp pass           # Show earned passwords
 cmdchamp pass CODE      # Jump to level using password
-cmdchamp stats          # Show mastery statistics (per-level bars)
+cmdchamp stats          # Show mastery statistics
 cmdchamp review         # Practice weak levels (< 80% mastery)
 cmdchamp gauntlet       # 3 lives, escalating difficulty (post-ROOT)
 cmdchamp timed          # Race the clock, default 120s (post-ROOT)
@@ -94,42 +84,17 @@ cmdchamp --no-sandbox   # Disable sandbox (text-match only)
 | 27 | Privilege Escalation | SUID, GTFOBins, enumeration |
 | 28 | ROOT | emergency recovery, chroot, offline survival |
 
-## Progression
-
-Each level ends with a **boss fight** — a named daemon with no hints. Score 4/5 to defeat the boss and earn a **password** that unlocks the next level.
-
-Hit a 5-answer streak for **fire mode**: double points, forced pure recall.
-
-After beating all 29 bosses, **Gauntlet** and **Timed** modes unlock for endgame practice. Use **Review** mode anytime to drill weak levels.
-
 ## Controls
 
 | Key | Action |
 |-----|--------|
 | Enter | Submit answer |
-| Tab | Toggle hint + command explanation |
-| Ctrl+d | Quit (shows session summary) |
-| Esc | Enter vi normal mode |
-| ? | Show all keybindings (normal mode) |
+| Tab | Show hint + manpage excerpt |
+| Ctrl+d | Quit (session summary) |
+| Esc | Vi normal mode |
+| ? | All keybindings (normal mode) |
 
-**Vi normal mode:**
-
-| Key | Action |
-|-----|--------|
-| `h` `l` | Move left/right |
-| `k` `j` / ↑↓ | History prev/next |
-| `w` `b` `e` | Word forward/back/end |
-| `f` `F` `t` `T` + char | Find char |
-| `0` `$` / `gg` `G` | Line start/end |
-| `x` `X` | Delete char forward/back |
-| `dw` `db` `dd` / `D` | Delete word/back/line/to-end |
-| `cw` `cb` `cc` / `C` | Change word/back/line/to-end |
-| `r` + char | Replace char |
-| `s` `S` | Substitute char/line |
-| `i` `a` `I` `A` | Insert at/after cursor, line start/end |
-| `u` | Undo (multi-level stack) |
-| `[num]cmd` | Repeat (e.g. `3w`, `2x`) |
-| `q` | Quit |
+Vi normal mode supports full motions (`w b e f`), operators (`d c`), counts (`3w`), undo (`u`), and history (`k`/`j`). Press `?` for the complete list.
 
 ## Data
 
