@@ -705,7 +705,7 @@ JSON_KEYS=(data items results users records entries
 REPLACE_OLD=(foo old debug localhost http TODO FIXME tmp
   dev staging test alpha beta v1 deprecated warn error secret)
 REPLACE_NEW=(bar new prod 10.0.0.1 https DONE RESOLVED cache
-  prod production live release stable v2 current info success masked)
+  main production live release stable v2 current info success masked)
 SIZES=(10M 50M 100M 500M 1G 5G 10G 100k 500k 2G)
 TIMES=(5 15 30 60 120 180 360 720 1440 10080)
 NUMBERS=(5 10 15 20 25 30 40 50 75 100 150 200 500)
@@ -952,6 +952,27 @@ declare -A EXP=(
   ['-name']="match filename" ['-size']="match size" ['-type']="match type" ['-mmin']="match time" ['-path']="match path" ['-not']="negate"
   ['NR']="awk line number" ['NF']="awk field count" ['$1']="first field" ['$NF']="last field" ['FS']="field separator"
   ['http-post-form']="POST login (hydra): '/path:user=^USER^&pass=^PASS^:fail_text'" ['http-get']="GET auth (hydra)"
+  [paru]="AUR helper (pacman wrapper)" [env]="show/set environment variables"
+  [dmesg]="kernel ring buffer messages" [netstat]="network stats (legacy, use ss)"
+  [comm]="compare two sorted files line by line" [python3]="Python 3 interpreter"
+  [nft]="nftables firewall CLI" [uname]="system info (-a for all)"
+  [ping]="test network connectivity" [dig]="DNS lookup" [host]="DNS lookup (simple)"
+  [userdel]="delete user account" [hostname]="show/set hostname"
+  [unshadow]="combine passwd+shadow for cracking" [ldd]="list shared library dependencies"
+  [rtl_test]="test RTL-SDR device" [iwlist]="wireless scan (legacy)"
+  [mkinitcpio]="generate initramfs (Arch)" [grub-mkconfig]="generate GRUB config"
+  [grub-install]="install GRUB bootloader" [ssh-keygen]="generate SSH key pair"
+  [gpg]="GNU Privacy Guard (encrypt/sign)" [vim]="text editor"
+  [paste]="merge lines of files" [traceroute]="trace packet route"
+  [tracepath]="trace path to host (no root)" [nslookup]="DNS query (legacy, use dig)"
+  [free]="show memory usage" [uptime]="system uptime and load"
+  [lscpu]="CPU architecture info" [top]="live process viewer"
+  [htop]="interactive process viewer" [btop]="modern resource monitor"
+  [groups]="show user group memberships"
+  [test]="evaluate conditional expression" [export]="set environment variable"
+  [wait]="wait for background process" [exit]="exit shell with status"
+  [disown]="detach job from shell" [exec]="replace shell with command"
+  [unset]="remove variable or function"
 )
 explain() {
   local tok n=0 exp label desc tcol cmds=() _ap=1
@@ -1241,15 +1262,11 @@ gen_level4() {
   local num1=$((RANDOM % 50 + 10)) num2=$((RANDOM % 20 + 5))
   local num3=$((RANDOM % 100 + 50)) num4=$((RANDOM % 30 + 10))
 
-  # < reads file as input
-  questions+=("Count lines in ${W}${csv}${C} using ${Y}<${C}|wc -l < ${csv}|#output:~^\\s*[0-9]+")
-  questions+=("Sort ${W}${txt}${C} using ${Y}<${C}|sort < ${txt}|#output:*")
-  questions+=("Show first ${n} lines of ${W}${log}${C} using ${Y}<${C}|head -${n} < ${log}|#output:@${n}")
-  questions+=("Show last ${n2} lines of ${W}${cfg}${C} using ${Y}<${C}|tail -${n2} < ${cfg}|#output:@${n2}")
-  questions+=("Search for ${Y}GET${C} in ${W}server.log${C} using ${Y}<${C}|grep GET < server.log|#output:~GET")
-  questions+=("Count words in ${W}${txt}${C} using ${Y}<${C}|wc -w < ${txt}|#output:~[0-9]+")
-  questions+=("Reverse sort ${W}${txt2}${C} using ${Y}<${C}|sort -r < ${txt2}|#output:*")
-  questions+=("Search for ${Y}ERROR${C} in ${W}app.log${C} using ${Y}<${C}|grep ERROR < app.log|#output:~ERROR")
+  # < stdin redirection (only where it matters)
+  questions+=("Count lines in ${W}${csv}${C} without filename in output (use ${Y}<${C})|wc -l < ${csv}|#output:~^\\s*[0-9]+")
+  questions+=("Count words in ${W}${txt}${C} — just the number, no filename (use ${Y}<${C})|wc -w < ${txt}|#output:~^\\s*[0-9]+")
+  questions+=("Uppercase contents of ${W}${txt}${C} (${Y}tr${C} needs ${Y}<${C}, no file arg)|tr a-z A-Z < ${txt}|#output:~[A-Z]")
+  questions+=("Delete blank lines from ${W}${log}${C} (${Y}tr${C} needs ${Y}<${C})|tr -s '\\n' < ${log}|#output:*")
 
   # <<< feeds a string (here-string)
   questions+=("Uppercase ${Y}'${word}'${C} (use ${Y}<<<${C})|tr a-z A-Z <<< '${word}'|tr a-z A-Z <<< ${word}|#output:~[A-Z]")
@@ -1290,7 +1307,7 @@ gen_level5() {
 
   # 2> = stderr to file
   questions+=("Save stderr from ${W}./${script}${C} to ${W}${errfile}${C} (use ${Y}2>${C})|./${script} 2> ${errfile}")
-  questions+=("${C}cat${C} ${W}${missing}${C}, save error to ${W}${errfile}${C} (use ${Y}2>${C})|cat ${missing} 2> ${errfile}|~^cat [^ ]+ 2> ?${errfile}$")
+  questions+=("${Y}cat${C} ${W}${missing}${C}, save error to ${W}${errfile}${C} (use ${Y}2>${C})|cat ${missing} 2> ${errfile}|~^cat [^ ]+ 2> ?${errfile}$")
 
   # 2> /dev/null = hide errors
   questions+=("Find ${Y}*.${ext}${C} files, hide errors (use ${Y}2> /dev/null${C})|find . -name '*.${ext}' 2> /dev/null|#output:*")
@@ -1302,7 +1319,7 @@ gen_level5() {
 
   # 2>&1 = merge stderr into stdout
   questions+=("Run ${W}./${script}${C}, search ALL output for 'error'§./${script} 2>&1 | grep -i error§~^\\./[^ ]+ 2>&1 \\| grep")
-  questions+=("Run ${W}./${script2}${C}, pipe all output to ${C}less${C}§./${script2} 2>&1 | less§#text:")
+  questions+=("Run ${W}./${script2}${C}, pipe all output to ${Y}less${C}§./${script2} 2>&1 | less§#text:")
   questions+=("Run ${W}./${script}${C}, count total lines (stdout+stderr)§./${script} 2>&1 | wc -l§#output:~[0-9]+")
 
   # Separate files for stdout and stderr
@@ -1440,35 +1457,31 @@ gen_level8() {
 
   # === PURE: Special variables basics ===
   questions+=("Print current shell PID (use ${Y}\$\$${C})|echo \$\$")
-  questions+=("Print PID of last background process (use ${Y}\$!${C})|echo \$!")
   questions+=("Print exit status of last command (use ${Y}\$?${C})|echo \$?")
-  questions+=("Print number of script arguments (use ${Y}\$#${C})|echo \$#")
-  questions+=("Print all script arguments (use ${Y}\$@${C})|echo \"\$@\"|echo \$@")
-  questions+=("Print script name (use ${Y}\$0${C})|echo \$0")
-  questions+=("Print first argument (use ${Y}\$1${C})|echo \$1")
   questions+=("Print random number (use ${Y}\$RANDOM${C})|echo \$RANDOM")
+  questions+=("Show user and hostname together|echo \"\$USER@\$HOSTNAME\"")
 
-  # === COMPOUND: Uses && || (L6) with exit status ===
-  questions+=("Run grep on ${W}${log}${C}, check exit status if found§grep -q ${term} ${log} ; echo \$?")
-  questions+=("Run ls, then echo 'success' if it succeeds§ls && echo success")
+  # === PURE: Script-context variables ===
+  # These are meaningful inside scripts, tested as knowledge recall
+  questions+=("In a script, print the script's own name|echo \$0")
+  questions+=("In a script, print argument count|echo \$#")
+  questions+=("In a script, print all arguments|echo \"\$@\"|echo \$@")
+  questions+=("In a script, print the first argument|echo \$1")
+
+  # === COMPOUND: Background PID + exit status ===
+  questions+=("Start ${W}./${script}${C} in background, save its PID§./${script} & echo \$!")
+  questions+=("Run grep on ${W}${log}${C}, check exit status§grep -q ${term} ${log} ; echo \$?")
+  questions+=("Store exit status before it gets clobbered§status=\$? ; [[ \$status -eq 0 ]] && echo ok")
   questions+=("Test if last command succeeded (exit 0)|[[ \$? -eq 0 ]] && echo success")
-
-  # === COMPOUND: Uses variables (L7) with special vars ===
-  questions+=("Store exit status in variable, then check it§status=\$? ; [[ \$status -eq 0 ]] && echo ok")
-  questions+=("Store PID in variable for later use|mypid=\$\$")
 
   # === COMPOUND: Uses redirection (L1, L5) ===
   questions+=("Log exit status after command in ${W}${log}${C}§grep ${term} ${log} ; echo \$? >> status.log")
-  questions+=("Print 'failed' to stderr using exit status check§ls /nonexistent 2>/dev/null ; [[ \$? -ne 0 ]] && echo failed >&2")
+  questions+=("Print 'failed' to stderr if command fails§ls /nonexistent 2>/dev/null ; [[ \$? -ne 0 ]] && echo failed >&2")
 
   # === COMPOUND: Environment variables with commands ===
   questions+=("List files in home directory using \$HOME|ls \$HOME")
   questions+=("Create file in home using \$HOME|touch \$HOME/test.txt")
   questions+=("Search in user's home for ${Y}${term}${C}§grep -r ${term} \$HOME 2>/dev/null | head -5")
-  questions+=("Show user and hostname together|echo \"\$USER@\$HOSTNAME\"")
-
-  # === COMPOUND: Using $RANDOM ===
-  questions+=("Create file with random name|touch file_\$RANDOM.txt")
 
   printf '%s\n' "${questions[@]}"
 }
@@ -1879,9 +1892,9 @@ gen_level19() {
   questions+=("Print only lines matching '${term}' in ${W}${log}${C}|sed -n '/${term}/p' ${log}")
 
   # xargs - building commands from stdin
-  questions+=("Delete files listed in filelist.txt§cat filelist.txt | xargs rm§xargs rm < filelist.txt")
-  questions+=("Run grep on files from find§find . -name '*.${ext}' | xargs grep ${term}")
-  questions+=("Process files with spaces in names§find . -name '*.${ext}' -print0 | xargs -0 wc -l")
+  questions+=("Delete files listed in filelist.txt|xargs rm < filelist.txt")
+  questions+=("Grep in found files (safe with spaces)§find . -name '*.${ext}' -print0 | xargs -0 grep ${term}")
+  questions+=("Count lines in found files (safe with spaces)§find . -name '*.${ext}' -print0 | xargs -0 wc -l")
   questions+=("Grep in parallel (${parallel} jobs)§find . -name '*.${ext}' -print0 | xargs -0 -P ${parallel} grep ${term}")
   questions+=("Confirm before each delete (interactive)§find . -name '*.${ext2}' -print0 | xargs -0 -p rm")
   questions+=("Copy files in batches of ${n}§find . -name '*.${ext}' -print0 | xargs -0 -n ${n} cp -t ${dir}/")
@@ -2195,10 +2208,9 @@ gen_level24() {
   questions+=("Mass scan all ports on subnet at 10k rate|masscan -p1-65535 ${ip%.*}.0/24 --rate 10000")
   questions+=("Masscan specific ports|masscan -p 22,80,443 ${ip%.*}.0/24 --rate 1000")
 
-  # WPS attacks
+  # WPS attacks (legacy — most modern APs disable WPS)
   questions+=("Scan for WPS-enabled APs|wash -i ${wiface}mon")
-  questions+=("Attack WPS PIN on target AP|reaver -i ${wiface}mon -b ${mac} -vv")
-  questions+=("Reaver with Pixie Dust attack|reaver -i ${wiface}mon -b ${mac} -K")
+  questions+=("Reaver with Pixie Dust attack (fast WPS crack)|reaver -i ${wiface}mon -b ${mac} -K")
 
   # Packet capture
   questions+=("Capture packets on ${iface}|tcpdump -i ${iface}")
@@ -2212,14 +2224,12 @@ gen_level24() {
   questions+=("Capture HTTP traffic only|tcpdump -i ${iface} port 80")
   questions+=("Don't resolve hostnames in capture|tcpdump -i ${iface} -n")
 
-  # SDR / RF basics
+  # SDR / RF basics (requires RTL-SDR hardware)
   questions+=("List connected RTL-SDR devices|rtl_test")
   questions+=("Record raw IQ data at 433MHz|rtl_sdr -f 433920000 -s 250000 capture.bin")
-  questions+=("Decode 433MHz sensor data|rtl_433")
-  questions+=("Decode with specific protocol|rtl_433 -R 1")
-  questions+=("Listen to FM radio at 100.3MHz|rtl_fm -f 100300000 -M wbfm -s 200000 -r 48000 - | aplay -r 48000 -f S16_LE")
+  questions+=("Decode 433MHz sensor data (weather stations, doorbells)|rtl_433")
+  questions+=("Decode specific protocol only|rtl_433 -R 1")
   questions+=("Scan frequency range for signals|rtl_power -f 400M:450M:100k -g 50 scan.csv")
-  questions+=("Set RTL-SDR gain to 40dB|rtl_sdr -f 433920000 -g 40 capture.bin")
 
   # Wireless recon
   questions+=("Show wireless interfaces|iw dev")
@@ -2573,48 +2583,51 @@ gen_level21() {
 gen_level13() {
   eval "local questions=() $_QV"; _ctx
 
-  # Session management
+  # Session management (CLI)
   questions+=("Start new tmux session|tmux|tmux new")
-  questions+=("Start tmux session named 'mysession'|tmux new -s mysession|tmux new-session -s mysession")
+  questions+=("Start tmux session named 'work'|tmux new -s work|tmux new-session -s work")
   questions+=("List sessions|tmux ls|tmux list-sessions")
-  questions+=("Attach to session|tmux attach|tmux a")
-  questions+=("Attach to tmux session 'mysession'|tmux attach -t mysession|tmux a -t mysession")
-  questions+=("Detach from session|Ctrl+b d")
-  questions+=("Kill tmux session 'mysession'|tmux kill-session -t mysession")
-  questions+=("Rename session|Ctrl+b \$|tmux rename-session newname")
+  questions+=("Attach to last session|tmux attach|tmux a")
+  questions+=("Attach to session 'work'|tmux attach -t work|tmux a -t work")
+  questions+=("Kill session 'work'|tmux kill-session -t work")
+  questions+=("Kill tmux server (all sessions)|tmux kill-server")
+  questions+=("Rename session 'work' to 'dev'|tmux rename-session -t work dev")
 
-  # Windows (tabs)
-  questions+=("Create new window|Ctrl+b c")
-  questions+=("Next window|Ctrl+b n")
-  questions+=("Previous window|Ctrl+b p")
-  local wn=$((RANDOM % 10))
-  questions+=("Switch to window ${wn}|Ctrl+b ${wn}")
-  questions+=("Rename current window|Ctrl+b ,")
-  questions+=("List windows|Ctrl+b w")
+  # Window management (CLI)
+  questions+=("Create new window in session|tmux new-window|tmux neww")
+  questions+=("Create named window 'logs'|tmux new-window -n logs")
+  questions+=("Split pane left/right|tmux split-window -h")
+  questions+=("Split pane top/bottom|tmux split-window -v")
+  questions+=("List all windows|tmux list-windows")
+  questions+=("Select window 0|tmux select-window -t 0")
+  questions+=("Swap current window with window 0|tmux swap-window -t 0")
 
-  # Panes (splits)
-  questions+=("Split pane left/right|Ctrl+b %")
-  questions+=("Split pane top/bottom|Ctrl+b \"")
-  questions+=("Switch to next pane|Ctrl+b o")
-  questions+=("Switch pane by direction|Ctrl+b arrow")
-  questions+=("Toggle pane zoom|Ctrl+b z")
-  questions+=("Close current pane|Ctrl+b x")
-  questions+=("Resize pane|Ctrl+b Ctrl+arrow")
-  questions+=("Show pane numbers|Ctrl+b q")
+  # Pane management (CLI)
+  questions+=("List all panes|tmux list-panes")
+  questions+=("Select pane to the right|tmux select-pane -R")
+  questions+=("Select pane below|tmux select-pane -D")
+  questions+=("Zoom/unzoom pane|tmux resize-pane -Z")
+  questions+=("Kill current pane|tmux kill-pane")
+  questions+=("Resize pane down by 10 lines|tmux resize-pane -D 10")
+  questions+=("Resize pane right by 20 columns|tmux resize-pane -R 20")
+  questions+=("Swap with next pane|tmux swap-pane -D")
 
-  # Copy mode
-  questions+=("Enter copy mode|Ctrl+b [")
-  questions+=("Paste buffer|Ctrl+b ]")
-  questions+=("Search forward in copy mode|/")
-  questions+=("Search backward in copy mode|?")
+  # Scripting / automation (the real power)
+  questions+=("Send keys to session 'work'|tmux send-keys -t work 'ls -la' Enter")
+  questions+=("Capture pane output to stdout|tmux capture-pane -p")
+  questions+=("Save pane output to file§tmux capture-pane -p > output.txt")
+  questions+=("Run command in new window§tmux new-window 'htop'")
+  questions+=("Create session with command§tmux new -s monitor 'htop'")
+  questions+=("Pipe pane output to log file|tmux pipe-pane -t work 'cat >> session.log'")
 
-  # Misc
-  questions+=("Show key bindings|Ctrl+b ?")
-  questions+=("Enter command mode|Ctrl+b :")
-
-  # CLI commands
-  questions+=("Send keys to session|tmux send-keys -t mysession 'ls -la' Enter")
-  questions+=("Capture pane output|tmux capture-pane -t mysession -p")
+  # Essential keybindings (recall, not drills)
+  questions+=("Keybinding: detach from session|Ctrl+b d")
+  questions+=("Keybinding: split pane horizontally|Ctrl+b %")
+  questions+=("Keybinding: split pane vertically|Ctrl+b \"")
+  questions+=("Keybinding: cycle to next pane|Ctrl+b o")
+  questions+=("Keybinding: toggle pane zoom|Ctrl+b z")
+  questions+=("Keybinding: enter copy mode|Ctrl+b [")
+  questions+=("Keybinding: show all keybindings|Ctrl+b ?")
 
   printf '%s\n' "${questions[@]}"
 }
@@ -2744,7 +2757,7 @@ gen_level20() {
   questions+=("Find min value in column (skip header) in ${W}${csv}${C}|awk -F',' 'NR==2{min=\$1} NR>1 && \$1<min{min=\$1} END{print min}' ${csv}")
   questions+=("Group by and count in ${W}${csv}${C}|awk -F',' '{count[\$1]++} END{for(k in count) print k, count[k]}' ${csv}")
   questions+=("Conditional print in ${W}${csv}${C}|awk -F',' '\$3==\"active\" {print \$1, \$2}' ${csv}")
-  questions+=("Print with custom separator in ${W}${csv}${C}|awk -F',' 'BEGIN{OFS=\"|\"} {print \$1,\$2}' ${csv}")
+  questions+=("Print with custom separator in ${W}${csv}${C}§awk -F',' 'BEGIN{OFS=\"|\"} {print \$1,\$2}' ${csv}")
   questions+=("String functions: length in ${W}${txt}${C}|awk '{print length(\$0)}' ${txt}")
   questions+=("String functions: substr in ${W}${txt}${C}|awk '{print substr(\$0,1,10)}' ${txt}")
   questions+=("String functions: gsub in ${W}${txt}${C}|awk '{gsub(/old/,\"new\"); print}' ${txt}")
@@ -3222,6 +3235,7 @@ run() {
     SEEN_PROMPTS+=("$prompt")  # Track for boss exclusion
     _sget "$prompt"; local tier=$REPLY
     # Fire mode: force tier 2 (pure recall, no hints)
+    local _real_tier=$REPLY
     ((streak>=FIRE_STREAK)) && tier=2
     HINT=false SHOW_HINT=0 EXPLAIN_LINES=0 HIST=()
     _REDRAW_HDR() { hdr "$lv" "$((qi+1))" "$TOT"; qdisp "$prompt"; }
@@ -3237,8 +3251,8 @@ run() {
           printf '\n%s\n' "${D}+0 (hint)${N}"; streak=0; _S_STREAK=0; _sset "$prompt" "$tier"
           read -rsp "${D}Press Enter to continue...${N}"; break
         elif ((streak>=FIRE_STREAK)); then
-          local _new_tier=$((tier<2?tier+1:2))
-          ((tier < 2 && _new_tier >= 2)) && ((_S_MASTERED++))
+          local _new_tier=$((_real_tier<2?_real_tier+1:2))
+          ((_real_tier < 2 && _new_tier >= 2)) && ((_S_MASTERED++))
           printf '\n%s\n' "${Y}${B}* ON FIRE! +2${N}"; ((++streak)); _sset "$prompt" "$_new_tier"
           read -rsp "${D}Press Enter to continue...${N}"
           qi=$((qi+2)); ((qi >= ${#shuf[@]})) && qi=${#shuf[@]}; QI=$qi; save; break
