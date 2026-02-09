@@ -8,7 +8,7 @@ Questions change every run. Miss one and it comes back. Each level has a boss at
 
 If you have bubblewrap, commands run in a real sandbox. Without it, answers are text-matched. Takes both modern (`rg`, `fd`) and classic (`grep`, `find`) syntax.
 
-Vi line editing built in. Motions, operators, counts, undo — the works.
+Vi line editing.
 
 ## Install
 
@@ -89,16 +89,16 @@ cmdchamp --no-sandbox   # Disable sandbox (text-match only)
 | Key | Action |
 |-----|--------|
 | Enter | Submit answer |
-| Tab | Show hint + manpage excerpt |
+| Tab | Show hint |
 | Ctrl+d | Quit (session summary) |
 | Esc | Vi normal mode |
 | ? | All keybindings (normal mode) |
 
-Vi normal mode supports full motions (`w b e f`), operators (`d c`), counts (`3w`), undo (`u`), and history (`k`/`j`). Press `?` for the complete list.
+`?` in normal mode shows all keybindings.
 
 ## Data
 
-Progress stored in `${XDG_DATA_HOME:-~/.local/share}/cmdchamp/` (XDG compliant).
+Progress saves to `${XDG_DATA_HOME:-~/.local/share}/cmdchamp/`.
 
 ## License
 
