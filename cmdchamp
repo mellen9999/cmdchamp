@@ -1162,7 +1162,7 @@ gen_level1() {
   # tee - write to file AND stdout
   questions+=("Echo '${word}' to screen AND save to ${W}${txt}${C} (use ${Y}tee${C})§echo ${word} | tee ${txt}§#output:${word}")
   questions+=("Echo '${word2}' and append to ${W}${log}${C} (use ${Y}tee -a${C})§echo ${word2} | tee -a ${log}§#output:${word2}")
-  questions+=("Run ls, show output AND save to ${W}${outfile}${C}§ls | tee ${outfile}§#output:~server.log")
+  questions+=("Run ls, show output AND save to ${W}${outfile}${C} (use ${Y}tee${C})§ls | tee ${outfile}§#output:~server.log")
 
   printf '%s\n' "${questions[@]}"
 }
@@ -1190,8 +1190,8 @@ gen_level2() {
   questions+=("Last line only of ${W}${txt}${C}|tail -1 ${txt}|tail -n 1 ${txt}|#output:@1")
 
   # less - scrollable file viewer
-  questions+=("View ${W}${log}${C} with scrolling|less ${log}|#text:")
-  questions+=("View ${W}${txt}${C} with line numbers in less|less -N ${txt}|#text:")
+  questions+=("Page through ${W}${log}${C} interactively|less ${log}|#text:")
+  questions+=("View ${W}${txt}${C} with line numbers in a pager (use ${Y}less -N${C})|less -N ${txt}|#text:")
 
   printf '%s\n' "${questions[@]}"
 }
@@ -1221,8 +1221,7 @@ gen_level3() {
   term3=$(_phrase server database logging cache host port localhost info enabled)
 
   # ls | wc variants (hint at pipe since this level teaches pipes)
-  questions+=("Count items in current directory (pipe ${Y}ls${C} to ${Y}wc${C})§ls | wc -l§#output:~^\\s*[0-9]+")
-  questions+=("Count items in directory (pipe ${Y}ls -1${C} to ${Y}wc -l${C})§ls -1 | wc -l§#output:~^\\s*[0-9]+")
+  questions+=("Count items in current directory (pipe ${Y}ls${C} to ${Y}wc${C})§ls | wc -l§ls -1 | wc -l§#output:~^\\s*[0-9]+")
 
   # grep basics
   questions+=("$(_phrase "Search for" "Find") ${Y}${term1}${C} in ${W}${log}${C}§grep ${term1} ${log}§#output:*")
@@ -1247,11 +1246,6 @@ gen_level3() {
   questions+=("Sort ${W}${csv}${C} numerically§sort -n ${csv}§#output:*")
   questions+=("Sort ${W}${txt2}${C} and remove duplicates§sort ${txt2} | uniq§sort -u ${txt2}§#output:*")
   questions+=("Unique sorted lines from ${W}${txt}${C}§sort -u ${txt}§sort ${txt} | uniq§#output:*")
-
-  # wc variants
-  questions+=("Count lines in ${W}${csv}${C}§wc -l ${csv}§#output:~[0-9]+")
-  questions+=("Count words in ${W}${txt}${C}§wc -w ${txt}§#output:~[0-9]+")
-  questions+=("Count characters in ${W}${cfg}${C}§wc -m ${cfg}§#output:~[0-9]+")
 
   # Combined pipes
   questions+=("First ${n} ${Y}${term1}${C} matches in ${W}${log}${C}§grep ${term1} ${log} | head -${n}§#output:*")
@@ -1286,7 +1280,7 @@ gen_level4() {
   questions+=("Uppercase ${Y}'${word}'${C} (use ${Y}<<<${C})|tr a-z A-Z <<< '${word}'|tr a-z A-Z <<< ${word}|#output:~[A-Z]")
   questions+=("Lowercase ${Y}'${word2^^}'${C} (use ${Y}<<<${C})|tr A-Z a-z <<< '${word2^^}'|tr A-Z a-z <<< ${word2^^}|#output:~[a-z]")
   questions+=("Reverse ${Y}'${word}'${C} (use ${Y}<<<${C})|rev <<< '${word}'|rev <<< ${word}|#output:*")
-  questions+=("Reverse ${Y}'${word2}'${C}|rev <<< '${word2}'|rev <<< ${word2}|#output:*")
+  questions+=("Reverse ${Y}'${word2}'${C} (use ${Y}<<<${C})|rev <<< '${word2}'|rev <<< ${word2}|#output:*")
 
   # bc calculations (one example)
   questions+=("Calculate ${Y}${num1}+${num2}${C} with bc|bc <<< '${num1}+${num2}'|bc <<< ${num1}+${num2}|#output:~$((num1+num2))")
@@ -1296,7 +1290,7 @@ gen_level4() {
   questions+=("Get username from ${Y}'john:x:1000:1000:John:/home/john:/bin/bash'${C}|cut -d: -f1 <<< 'john:x:1000:1000:John:/home/john:/bin/bash'|#output:~john")
 
   # wc with <<<
-  questions+=("Count words in ${Y}'${word} ${word2} test'${C}|wc -w <<< '${word} ${word2} test'|#output:~3")
+  questions+=("Count words in ${Y}'${word} ${word2} test'${C}|wc -w <<< '${word} ${word2} test'|#output:~^\\s*3$")
   questions+=("Count bytes in ${Y}'${word}'${C} (use ${Y}wc -c${C})|wc -c <<< '${word}'|wc -c <<< ${word}|#output:~[0-9]+")
 
   # tr transformations
@@ -1414,7 +1408,7 @@ gen_level7() {
   term=$(_phrase ERROR WARN INFO DEBUG); n=$((RANDOM % 5 + 3))
 
   # === PURE: Just variables and substitution basics ===
-  questions+=("Store '${val}' in variable ${var}|${var}=${val}|${var}='${val}'")
+  questions+=("Store '${val}' in variable ${var}|${var}=${val}|${var}='${val}'|${var}=\"${val}\"")
   questions+=("$(_phrase "Print" "Echo" "Show") variable \$${var}|echo \$${var}")
   questions+=("Store date output in ${var2} (use ${Y}\$()${C})|${var2}=\$(date)")
   questions+=("Store hostname in variable (use ${Y}\$()${C})|${var}=\$(hostname)")
@@ -1457,7 +1451,7 @@ gen_level7() {
   questions+=("Export ${var} for child processes|export ${var}|export ${var}=${val}")
   questions+=("Set and export ${var2} in one command|export ${var2}='${val2}'")
   questions+=("Remove variable ${var} (use ${Y}unset${C})|unset ${var}")
-  questions+=("Show all exported variables|export|env")
+  questions+=("Show all exported variables|export|env|printenv")
 
   printf '%s\n' "${questions[@]}"
 }
@@ -1615,13 +1609,9 @@ gen_level11() {
   [[ "$txt2" == "$txt" ]] && { _fpick TXTS; txt2=$REPLY; }
 
   # === PURE: Basic file operations ===
-  questions+=("Display ${cfg} contents|cat ${cfg}|bat ${cfg}")
-  questions+=("Display ${log} with line numbers|cat -n ${log}|bat -n ${log}")
-  questions+=("Display ${txt} and ${txt2} together|cat ${txt} ${txt2}")
+  questions+=("Concatenate ${txt} and ${txt2} together|cat ${txt} ${txt2}")
 
   # Listing files
-  questions+=("Long listing with permissions, size, date|ls -l|ls -la|eza -l")
-  questions+=("List all files including hidden|ls -la|ls -al|eza -la|eza -al")
   questions+=("List sorted by size, largest first|ls -lS|ls -Sl|eza -l --sort size -r")
   questions+=("List sorted by time, newest first|ls -lt|ls -tl|eza -l --sort modified -r")
   questions+=("List only directories|ls -d */|eza -D")
@@ -1811,7 +1801,7 @@ gen_level16() {
   questions+=("Sort ${csv} by column ${col}|sort -t',' -k${col} ${csv}")
   questions+=("Sort ${csv} by column ${col} numerically|sort -t',' -k${col}n ${csv}|sort -t',' -nk${col} ${csv}")
   questions+=("Sort ${csv} by column ${col} descending|sort -t',' -k${col}rn ${csv}|sort -t',' -rnk${col} ${csv}")
-  questions+=("Sort by human-readable sizes (1K, 2M, 3G)|sort -h")
+  questions+=("Sort ${txt} by human-readable sizes (1K, 2M, 3G)|sort -h ${txt}")
   questions+=("Sort ${txt} case-insensitively|sort -f ${txt}|sort --ignore-case ${txt}")
   questions+=("Sort ${csv} by column ${col} then ${col2}|sort -t',' -k${col},${col} -k${col2},${col2} ${csv}")
 
@@ -2141,7 +2131,7 @@ gen_level22() {
   questions+=("Read and display ${pcap}|tshark -r ${pcap}")
   questions+=("Filter HTTP traffic from ${pcap}|tshark -r ${pcap} -Y http")
   questions+=("Filter traffic to/from ${ip} in ${W}${pcap}${C}|tshark -r ${pcap} -Y 'ip.addr == ${ip}'")
-  questions+=("Show DNS traffic in ${W}${pcap}${C}|tshark -r ${pcap} -Y 'dns.qry.name'")
+  questions+=("Show DNS queries in ${W}${pcap}${C}|tshark -r ${pcap} -Y dns|tshark -r ${pcap} -Y 'dns.qry.name'")
   questions+=("Extract HTTP POST data in ${W}${pcap}${C}|tshark -r ${pcap} -Y 'http.request.method == POST' -T fields -e http.file_data")
   questions+=("Extract all URLs from ${W}${pcap}${C}|tshark -r ${pcap} -Y 'http.request' -T fields -e http.host -e http.request.uri")
   questions+=("Show TCP conversations in ${W}${pcap}${C}|tshark -r ${pcap} -q -z conv,tcp")
@@ -2157,7 +2147,7 @@ gen_level22() {
   questions+=("Get keys of JSON object|jq 'keys' data/export.json")
   questions+=("Compact JSON (remove whitespace)|jq -c '.' data/export.json")
   questions+=("Create new object from fields§jq '.${key}[] | {name: .name, id: .id}' data/export.json")
-  questions+=("Parse JSON from curl output§curl -s ${url}/api | jq '.${key}'")
+  questions+=("Fetch ${url}/api and extract '${key}' array with ${Y}jq${C}§curl -s ${url}/api | jq '.${key}'")
 
   # curl - HTTP client
   questions+=("GET request to ${url}|curl ${url}")
@@ -2260,14 +2250,14 @@ gen_level17() {
   eval "local questions=() $_QV"; _ctx
 
   # Parameter expansion - removal (practical examples)
-  questions+=("Extract filename from /path/to/${txt} (stored in \$path)|echo \${path##*/}")
+  questions+=("Extract filename from /path/to/${txt} (stored in \$path)|echo \${path##*/}|basename \$path")
   questions+=("Get parent directory from \$fullpath|echo \${fullpath%/*}")
   questions+=("Get extension from ${cfg} (stored in \$file)|echo \${file##*.}")
-  questions+=("Remove extension from ${log} to get basename|echo \${file%.*}")
+  questions+=("Remove extension from ${log} (stored in \$file)|echo \${file%.*}")
   questions+=("Create backup of ${W}${cfg}${C} with .bak extension|cp ${cfg}{,.bak}")
   questions+=("Strip leading 'v' from version string \$ver (e.g., v1.2.3)|echo \${ver#v}")
   questions+=("Remove protocol from URL \$url (e.g., https://)|echo \${url#*://}")
-  questions+=("Get domain from \$url (e.g., host.com/path/file)|echo \${url%%/*}")
+  questions+=("Get domain from \$url (e.g., ${Y}host.com/path/file${C}, no protocol)|echo \${url%%/*}")
   questions+=("Strip all leading directories from \$path|echo \${path##*/}")
 
   # Parameter expansion - substitution
@@ -2337,7 +2327,7 @@ gen_level18() {
   questions+=("Basic if statement|if [[ condition ]]; then cmd; fi")
   questions+=("if/else statement|if [[ cond ]]; then cmd1; else cmd2; fi")
   questions+=("if/elif/else|if [[ c1 ]]; then cmd1; elif [[ c2 ]]; then cmd2; else cmd3; fi")
-  questions+=("Test if ${W}${txt}${C} exists and run|[[ -f ${txt} ]] && cat ${txt}")
+  questions+=("Test if ${W}${txt}${C} exists and display it|[[ -f ${txt} ]] && cat ${txt}")
   questions+=("Test if grep succeeds on ${W}${log}${C}|if grep -q error ${log}; then echo found; fi")
   questions+=("Negate condition in ${W}${txt}${C}|if ! [[ -f ${txt} ]]; then echo missing; fi")
   questions+=("Compound AND condition in ${W}${txt}${C}|if [[ -f ${txt} && -r ${txt} ]]; then cat ${txt}; fi")
@@ -2819,7 +2809,7 @@ gen_level12() {
   questions+=("Show system uptime|uptime")
   questions+=("Show system info|uname -a")
   questions+=("Show CPU info|lscpu|cat /proc/cpuinfo")
-  questions+=("Show kernel messages|dmesg|dmesg -T")
+  questions+=("Show kernel messages|dmesg|dmesg -T|journalctl -k")
   questions+=("Interactive process viewer|top|htop|btop")
   questions+=("Show top 10 memory-hungry processes§ps aux --sort=-%mem | head -11")
   questions+=("Show process tree|pstree|ps auxf")
@@ -2841,7 +2831,7 @@ gen_level12() {
 
   # User/permission management
   questions+=("Run ${script} as root|sudo ${script}")
-  questions+=("Switch to root shell|sudo -i|su -")
+  questions+=("Switch to root shell|sudo -i|su -|sudo su|sudo -s|sudo bash")
   questions+=("Switch to user ${user}|su - ${user}")
   questions+=("Add user ${user}|useradd -m ${user}|sudo useradd -m ${user}")
   questions+=("Delete user ${user}|userdel -r ${user}|sudo userdel -r ${user}")
