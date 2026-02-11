@@ -117,7 +117,7 @@ _tutorial() {
   cat <<EOF
     ${B}Controls${N}
 
-    ${C}Tab${N}       Show answer + skip (+0)
+    ${C}Tab${N}       Show manpage for the command
     ${C}Enter${N}     Submit answer
     ${C}Ctrl+d${N}    Quit (shows session summary)
     ${C}Up/Down${N}   Browse answer history
@@ -214,7 +214,7 @@ _boss_splash() {
   printf '%s%s\n\n' "$s" "${Y}${B}${boss}${N}"
   printf -v s '%*s' $(( (80 - ${#flavor} - 2) / 2 )) ''
   printf '%s%s\n\n' "$s" "${D}\"${flavor}\"${N}"
-  printf -v info 'No hints. %d/%d to pass.' "$BOSS_THRESHOLD" "$BOSS_TOTAL"
+  printf -v info 'No manpages. %d/%d to pass.' "$BOSS_THRESHOLD" "$BOSS_TOTAL"
   printf -v s '%*s' $(( (80 - ${#info}) / 2 )) ''
   printf '%s%s\n' "$s" "${D}${info}${N}"
   echo
@@ -3006,7 +3006,7 @@ check() {
   done; return 1
 }
 
-LVL=1 QI=0 HINT=false TOT=0
+LVL=1 QI=0 TOT=0
 load() {
   [[ -f "$DATA/session.json" ]] && {
     local fd t; exec {fd}<"$DATA/session.json"; flock -s "$fd"
@@ -3105,28 +3105,23 @@ _quit() {
   exit 0
 }
 
-input="" cursor=0 mode="insert" SHOW_HINT=0 EXPLAIN_LINES=0 _rep=""
+input="" cursor=0 mode="insert" EXPLAIN_LINES=0 _rep=""
 declare -a UNDO_STACK=()  # Multi-level undo
 hdr() {
   printf '\e[2J\e[H'
   local fire=""; ((streak>=FIRE_STREAK)) && fire="  ${Y}${B}*${N}"
   printf '%s\n' "${C}${PLAYER_NAME:-anon}${N}${fire}"
   printf '%s\n' "${B}Level $1: ${LEVEL_NAMES[$1]:-}${N}"
-  printf '%s\n\n' "${D}[$2/$3]  Tab=hint${N}"
+  printf '%s\n\n' "${D}[$2/$3]  Tab=man${N}"
 }
 qdisp() { bar; printf "\n${C}%s${N}\n\n" "$1"; }
 bar() { local f e p=$((qi<TOT?qi:TOT)); printf -v f '%*s' "$p" ''; printf -v e '%*s' "$((TOT-p))" ''; printf "${B}[${G}%s${D}%s${B}]${N}" "${f// /█}" "${e// /░}"; }
 draw() {
   printf '\e[?25l\r\e[K'  # hide cursor, clear line
-  if ((SHOW_HINT)); then
-    printf '%s' "${D}$PROMPT_CHAR${ans}${N}"
-  else
-    ((VI_MODE)) && [[ $mode != insert ]] && printf '%s' "${R}${PROMPT_CHAR}${N}" || printf '%s' "${W}${PROMPT_CHAR}${N}"
-    printf '%s' "$input"
-    # Use display width for UTF-8 correct cursor positioning
-    local _pre="${input:0:cursor}" disp_len=${#input} disp_cur; disp_cur=${#_pre}
-    ((disp_cur < disp_len)) && printf '\e[%dD' "$((disp_len - disp_cur))"
-  fi
+  ((VI_MODE)) && [[ $mode != insert ]] && printf '%s' "${R}${PROMPT_CHAR}${N}" || printf '%s' "${W}${PROMPT_CHAR}${N}"
+  printf '%s' "$input"
+  local _pre="${input:0:cursor}" disp_len=${#input} disp_cur; disp_cur=${#_pre}
+  ((disp_cur < disp_len)) && printf '\e[%dD' "$((disp_len - disp_cur))"
   printf '\e[?25h'  # show cursor
 }
 
@@ -3148,11 +3143,11 @@ _del() { # $1=motion
 }
 
 # Read one line of input with vi/insert mode (shared by practice + boss)
-# $1: 1=allow hints, 0=boss mode  $2: 1=allow history, 0=no history
+# $1: 1=allow manpages, 0=boss mode  $2: 1=allow history, 0=no history
 # Caller defines _REDRAW_HDR(). Uses dynamic scoping for ans, HIST, etc.
 _read_line() {
   local _rl_hints=${1:-1} _rl_hist=${2:-1}
-  input="" cursor=0 mode="insert" SHOW_HINT=0 _rep=""
+  input="" cursor=0 mode="insert" _rep=""
   UNDO_STACK=()
   ((_rl_hist)) && { HIST_IDX=${#HIST[@]}; HIST_SAVE=""; }
   read -t 0.01 -rsn 1000 ||:
@@ -3160,14 +3155,12 @@ _read_line() {
   while IFS= read -rsn1 c; do
     if [[ "$c" == $'\t' ]]; then
       if ((_rl_hints)); then
-        if ((SHOW_HINT)); then SHOW_HINT=0; _REDRAW_HDR
-        else SHOW_HINT=1; HINT=true; draw; echo; explain "$ans"
-          read -rsp "${D}Press Enter to continue...${N}"; read -t 0.01 -rsn 1000 ||:; SHOW_HINT=0; input="" cursor=0; _REDRAW_HDR; fi
-      else printf '\n%s\n' "${R}No hints in boss mode!${N}"; sleep 0.5; printf '\e[A\e[2K'; fi
+        echo; explain "$ans"
+        read -rsp "${D}Press Enter to continue...${N}"; read -t 0.01 -rsn 1000 ||:; _REDRAW_HDR
+      else printf '\n%s\n' "${R}No manpages in boss mode!${N}"; sleep 0.5; printf '\e[A\e[2K'; fi
       draw; continue
     fi
     if [[ "$mode" == "insert" ]]; then
-      if ((SHOW_HINT)) && [[ "$c" != $'\x1b' && "$c" != '' ]]; then SHOW_HINT=0; _REDRAW_HDR; fi
       case "$c" in
         $'\x04') _quit;;
         $'\x1b')
@@ -3188,7 +3181,6 @@ _read_line() {
         *) input="${input:0:cursor}${c}${input:cursor}"; ((++cursor)); draw;;
       esac
     elif ((VI_MODE)); then
-      if ((SHOW_HINT)); then SHOW_HINT=0; _REDRAW_HDR; fi
       if [[ "$c" =~ ^[1-9]$ ]] || { [[ "$c" == "0" ]] && [[ -n "$_rep" ]]; }; then _rep+="$c"; continue; fi
       local _n=${_rep:-1}; _rep=""
       case "$c" in s|S|x|X|D|C|d|c|r) UNDO_STACK+=("$cursor:$input");; esac
@@ -3226,7 +3218,7 @@ _read_line() {
               B) ((HIST_IDX<${#HIST[@]})) && { ((++HIST_IDX)); ((HIST_IDX==${#HIST[@]})) && input="$HIST_SAVE" || input="${HIST[$HIST_IDX]}"; cursor=${#input}; _clamp; draw; };;
             esac; fi; fi;;
         q) _quit;;
-        \?) ((_rl_hints)) && { printf '\n%s\n%s\n%s\n%s\n' "${D}hl${N} move  ${D}kj${N}/↑↓ history  ${D}wb${N} word  ${D}fFtT${N}+char find  ${D}0\$/gg/G${N} line" "${D}x/X${N} del char  ${D}dw/db/dd${N} del  ${D}cw/cb/cc${N} change  ${D}r${N} replace" "${D}s/S${N} subst  ${D}i/a/I/A${N} insert  ${D}u${N} undo(stack)  ${D}q${N} quit" "${D}Tab${N} hint  ${D}Ctrl+d${N} quit  ${D}[num]cmd${N} repeat"; read -rsn1; _REDRAW_HDR; draw; };;
+        \?) ((_rl_hints)) && { printf '\n%s\n%s\n%s\n%s\n' "${D}hl${N} move  ${D}kj${N}/↑↓ history  ${D}wb${N} word  ${D}fFtT${N}+char find  ${D}0\$/gg/G${N} line" "${D}x/X${N} del char  ${D}dw/db/dd${N} del  ${D}cw/cb/cc${N} change  ${D}r${N} replace" "${D}s/S${N} subst  ${D}i/a/I/A${N} insert  ${D}u${N} undo(stack)  ${D}q${N} quit" "${D}Tab${N} man  ${D}Ctrl+d${N} quit  ${D}[num]cmd${N} repeat"; read -rsn1; _REDRAW_HDR; draw; };;
         '') echo; return;;
       esac
     fi
@@ -3283,10 +3275,10 @@ run() {
     _qparse "${shuf[$qi]}"; local prompt=$_qprompt ans=$_qans
     SEEN_PROMPTS+=("$prompt")  # Track for boss exclusion
     _sget "$prompt"; local tier=$REPLY
-    # Fire mode: force tier 2 (pure recall, no hints)
+    # Fire mode: force tier 2 (pure recall)
     local _real_tier=$REPLY
     ((streak>=FIRE_STREAK)) && tier=2
-    HINT=false SHOW_HINT=0 EXPLAIN_LINES=0 HIST=()
+    EXPLAIN_LINES=0 HIST=()
     _REDRAW_HDR() { hdr "$lv" "$((qi+1))" "$TOT"; qdisp "$prompt"; }
     _REDRAW_HDR
     while true; do
@@ -3294,15 +3286,10 @@ run() {
       [[ -z "$input" ]] && { draw; continue; }
       if check "$input" "$_qanswers"; then
         [[ -n "$input" ]] && { HIST+=("$input"); HIST_IDX=${#HIST[@]}; HIST_SAVE=""; }
-        ((_S_ANSWERED++))
-        if $HINT; then
-          _S_STREAK=0; streak=0
-        else
-          ((_S_CORRECT++)); ((_S_STREAK++))
-          ((_S_STREAK > _S_BEST_STREAK)) && _S_BEST_STREAK=$_S_STREAK
-        fi
+        ((_S_ANSWERED++)); ((_S_CORRECT++)); ((_S_STREAK++))
+        ((_S_STREAK > _S_BEST_STREAK)) && _S_BEST_STREAK=$_S_STREAK
         if [[ -n "$_SANDBOX_OUTPUT" ]]; then printf '\n%s\n' "${W}${_SANDBOX_OUTPUT}${N}"; fi
-        if ! $HINT && ((streak>=FIRE_STREAK)); then
+        if ((streak>=FIRE_STREAK)); then
           local _new_tier=$((_real_tier<2?_real_tier+1:2))
           ((_real_tier < 2 && _new_tier >= 2)) && ((_S_MASTERED++))
           printf '\n%s\n' "${Y}${B}* ON FIRE! +2${N}"; ((++streak)); _sset "$prompt" "$_new_tier"
@@ -3311,13 +3298,8 @@ run() {
         else
           local _new_tier=$((tier<2?tier+1:2))
           ((tier < 2 && _new_tier >= 2)) && ((_S_MASTERED++))
-          if $HINT; then
-            printf '\n%s\n' "${Y}~${D} (hint)${N}"
-            _sset "$prompt" "$tier"
-          else
-            printf '\n%s\n' "${G}${B}+${N}"; ((++streak))
-            _sset "$prompt" "$_new_tier"
-          fi
+          printf '\n%s\n' "${G}${B}+${N}"; ((++streak))
+          _sset "$prompt" "$_new_tier"
         fi
         read -rsp "${D}Press Enter to continue...${N}"
         ((++qi)); QI=$qi; save; break
@@ -3436,7 +3418,7 @@ gauntlet() {
     ((${#q_arr[@]} == 0)) && break
     local q_idx=$((RANDOM % ${#q_arr[@]}))
     _qparse "${q_arr[$q_idx]}"; local prompt=$_qprompt ans=$_qans
-    HINT=false SHOW_HINT=0 EXPLAIN_LINES=0
+    EXPLAIN_LINES=0
 
     local hearts=""; for ((h=0;h<lives;h++)); do hearts+="${R}♥${N} "; done
     _REDRAW_HDR() {
@@ -3509,7 +3491,7 @@ timed() {
     ((${#q_arr[@]} == 0)) && continue
     local q_idx=$((RANDOM % ${#q_arr[@]}))
     _qparse "${q_arr[$q_idx]}"; local prompt=$_qprompt ans=$_qans
-    HINT=false SHOW_HINT=0 EXPLAIN_LINES=0
+    EXPLAIN_LINES=0
 
     _REDRAW_HDR() {
       local _now; printf -v _now '%(%s)T' -1; local _rem=$((end_t - _now))
@@ -3608,12 +3590,12 @@ review() {
     ((SANDBOX_MODE && _SANDBOX_DESTRUCTIVE)) && { _sandbox_reset; _SANDBOX_DESTRUCTIVE=0; }
     _qparse "${all_q[$qi]}"; local prompt=$_qprompt ans=$_qans
     _sget "$prompt"; local tier=$REPLY
-    HINT=false SHOW_HINT=0 EXPLAIN_LINES=0 HIST=()
+    EXPLAIN_LINES=0 HIST=()
     _REDRAW_HDR() {
       printf '\e[2J\e[H'
       printf '%s\n' "${C}${PLAYER_NAME:-anon}${N}"
       printf '%s\n' "${B}Review${N}"
-      printf '%s\n\n' "${D}[$((qi+1))/$TOT]  Tab=hint${N}"
+      printf '%s\n\n' "${D}[$((qi+1))/$TOT]  Tab=man${N}"
       qdisp "$prompt"
     }
     _REDRAW_HDR
@@ -3621,13 +3603,7 @@ review() {
       _read_line 1 1
       if check "$input" "$_qanswers"; then
         [[ -n "$input" ]] && { HIST+=("$input"); HIST_IDX=${#HIST[@]}; HIST_SAVE=""; }
-        ((_S_ANSWERED++))
-        if $HINT; then
-          _S_STREAK=0; streak=0; _sset "$prompt" "$tier"
-          printf '\n%s\n' "${D}(hint)${N}"
-          read -rsp "${D}Press Enter to continue...${N}"; break
-        fi
-        ((_S_CORRECT++)); ((_S_STREAK++))
+        ((_S_ANSWERED++)); ((_S_CORRECT++)); ((_S_STREAK++))
         ((_S_STREAK > _S_BEST_STREAK)) && _S_BEST_STREAK=$_S_STREAK
         [[ -n "$_SANDBOX_OUTPUT" ]] && printf '\n%s\n' "${W}${_SANDBOX_OUTPUT}${N}"
         local _new_tier=$((tier<2?tier+1:2))
@@ -3739,7 +3715,7 @@ Commands:
   h|help        Show this help
 
 Controls:
-  Tab      Show answer + skip (+0)
+  Tab      Show manpage for the command
   Ctrl+d   Quit (shows session summary)
   ?        Show vi keybindings (in vi mode)
 
