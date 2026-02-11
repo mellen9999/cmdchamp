@@ -3129,7 +3129,6 @@ _del() { # $1=motion
 # Caller defines _REDRAW_HDR(). Uses dynamic scoping for ans, HIST, etc.
 _read_line() {
   local _rl_hints=${1:-1} _rl_hist=${2:-1}
-  $HINT && _rl_hints=0
   input="" cursor=0 mode="insert" SHOW_HINT=0 _rep=""
   UNDO_STACK=()
   ((_rl_hist)) && { HIST_IDX=${#HIST[@]}; HIST_SAVE=""; }
@@ -3140,8 +3139,7 @@ _read_line() {
       if ((_rl_hints)); then
         if ((SHOW_HINT)); then SHOW_HINT=0; _REDRAW_HDR
         else SHOW_HINT=1; HINT=true; draw; echo; explain "$ans"
-          read -rsp "${D}Press Enter to continue...${N}"; read -t 0.01 -rsn 1000 ||:; SHOW_HINT=0; input="" cursor=0; _rl_hints=0; _REDRAW_HDR; fi
-      elif $HINT; then :
+          read -rsp "${D}Press Enter to continue...${N}"; read -t 0.01 -rsn 1000 ||:; SHOW_HINT=0; input="" cursor=0; _REDRAW_HDR; fi
       else printf '\n%s\n' "${R}No hints in boss mode!${N}"; sleep 0.5; printf '\e[A\e[2K'; fi
       draw; continue
     fi
