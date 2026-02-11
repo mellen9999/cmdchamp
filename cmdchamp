@@ -101,9 +101,8 @@ _intro() {
     ░░      You are ${C}${PLAYER_NAME}${N}. You have only your shell.${spaces}░░
     ░░                                                                  ░░
     ░░      30 daemons guard the descent to ROOT.                       ░░
-    ░░      They yield only to those who know the words.                ░░
     ░░                                                                  ░░
-    ░░                         ${D}Or be forgotten.${N}                         ░░
+    ░░      ${D}Know the words, or be forgotten.${N}                            ░░
     ░░                                                                  ░░
     ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
 
@@ -792,6 +791,14 @@ _ctx() {
 # Compact manpage data: first line=desc, body lines already ANSI-formatted, stored pre-rendered
 # Each entry: header\nbody lines (already formatted with escape codes)
 declare -A MANPAGE=(
+  [cd]=$'change directory\n  \e[33m.\e[0m         current directory      \e[33m..\e[0m        parent directory\n  \e[33m~\e[0m         home directory         \e[33m-\e[0m         previous directory\n  \e[33m../..\e[0m     up two levels\n  \e[2mcd /tmp    cd ..    cd ../..    cd ~    cd -\e[0m'
+  [echo]=$'print text to stdout\n  \e[36m-n\e[0m        no trailing newline    \e[36m-e\e[0m        enable escapes (\\n \\t)\n  \e[33m"$VAR"\e[0m    expands variables      \e[33m'\''text'\''\e[0m   literal (no expansion)\n  \e[2mecho hello    echo "$HOME"    echo -n "no newline"    echo -e "line1\\nline2"\e[0m'
+  [pwd]=$'print working directory\n  \e[2mpwd\e[0m'
+  [touch]=$'create empty file or update timestamp\n  \e[36m-t\e[0m \e[33mSTAMP\e[0m  set specific time\n  \e[2mtouch newfile    touch -t 202301010000 file\e[0m'
+  [mv]=$'move or rename files\n  \e[36m-i\e[0m        confirm before overwrite\n  \e[36m-n\e[0m        never overwrite\n  \e[2mmv old.txt new.txt    mv file.txt dir/    mv *.log archive/\e[0m'
+  [rm]=$'delete files permanently\n  \e[36m-r\e[0m        recursive (dirs)       \e[36m-f\e[0m        force (no prompt)\n  \e[36m-i\e[0m        confirm each file\n  \e[2mrm file.txt    rm -r dir/    rm -rf dir/    rm -i *.log\e[0m'
+  [ln]=$'create links\n  \e[36m-s\e[0m        symbolic (soft) link   \e[2m(without -s: hard link)\e[0m\n  \e[33mhard\e[0m      same inode, same disk  \e[33msoft\e[0m      path pointer, cross-disk\n  \e[2mln file hardlink    ln -s target symlink    ln -sf target link\e[0m'
+  [test]=$'evaluate conditional expression\n  \e[36m-f\e[0m \e[33mFILE\e[0m   is regular file        \e[36m-d\e[0m \e[33mFILE\e[0m   is directory\n  \e[36m-e\e[0m \e[33mFILE\e[0m   exists                 \e[36m-r\e[0m \e[33mFILE\e[0m   is readable\n  \e[36m-z\e[0m \e[33mSTR\e[0m    string is empty        \e[36m-n\e[0m \e[33mSTR\e[0m    string not empty\n  \e[36m-eq\e[0m       equal (numeric)        \e[36m-lt\e[0m       less than\n  \e[36m-gt\e[0m       greater than           \e[36m-ne\e[0m       not equal\n  \e[2m[[ -f file ]] && echo yes    [[ -z "$var" ]]    [[ $a -eq $b ]]\e[0m'
   [ls]=$'list directory contents\n  \e[36m-l\e[0m        long format            \e[36m-a\e[0m        show hidden\n  \e[36m-h\e[0m        human sizes            \e[36m-S\e[0m        sort by size\n  \e[36m-t\e[0m        sort by time           \e[36m-d\e[0m        dirs themselves\n  \e[36m-R\e[0m        recursive              \e[36m-1\e[0m        one per line\n  \e[2mls -la    ls -lh    ls -lS    ls -lt    ls -d */\e[0m'
   [cat]=$'concatenate and print files\n  \e[36m-n\e[0m        number all lines\n  \e[2mcat file.txt    cat -n file.txt    cat a.txt b.txt > merged.txt\e[0m'
   [head]=$'output first part of files\n  \e[36m-n\e[0m \e[33mN\e[0m      first \e[33mN\e[0m lines \e[2m(or head -N)\e[0m\n  \e[2mhead file.txt    head -n 5 file.txt    head -20 file.txt\e[0m'
