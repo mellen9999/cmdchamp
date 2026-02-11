@@ -12,7 +12,7 @@ With [bubblewrap](https://github.com/containers/bubblewrap), commands run in a r
 
 ### How scoring works
 
-Each question has a mastery tier (0→1→2). Get it right to promote, wrong to demote. Tier 2 = mastered. Hints show the answer, then you retype it from memory — but the question doesn't advance. You have to answer without a hint to move the progress bar forward. No shortcutting to the boss.
+Each question has a mastery tier (0→1→2). Get it right to promote, wrong to demote. Tier 2 = mastered. Tab opens the manpage for the relevant command — a reference, not a spoiler. You still have to figure out the answer yourself.
 
 ## Install
 
@@ -94,7 +94,7 @@ cmdchamp --no-sandbox   # Disable sandbox (text-match only)
 | Key | Action |
 |-----|--------|
 | Enter | Submit answer |
-| Tab | Show hint |
+| Tab | Show manpage |
 | Ctrl+d | Quit (session summary) |
 | Esc | Vi normal mode |
 | ? | All keybindings (normal mode) |
