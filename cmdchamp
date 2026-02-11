@@ -993,6 +993,20 @@ explain() {
     fi
   done
   if ((_mc)); then
+    # Still show EXP entries for operators/redirects alongside manpages
+    for tok in $1; do
+      case "$tok" in '>'|'>>'|'<'|'<<<'|'2>'|'&>'|'2>&1') ;; *) continue ;; esac
+      exp="${EXP[$tok]:-}"; [[ -z "$exp" ]] && continue
+      local pad=$((8 - ${#tok})); ((pad < 0)) && pad=0
+      local sp; printf -v sp '%*s' "$pad" ''
+      if [[ "$exp" == *:* ]]; then
+        label="${exp%%:*}"; desc="${exp#*: }"
+        printf '  %s%s %s  %s%s %s\n' "${Y}${tok}${N}" "$sp" "${D}->${N}" "${Y}${label}${D}:${N}" "${W}${desc}${N}" ""
+      else
+        printf '  %s%s %s  %s\n' "${Y}${tok}${N}" "$sp" "${D}->${N}" "${W}${exp}${N}"
+      fi
+      ((_ml++))
+    done
     printf '%s\n' "${D}----------------------------------------${N}"
     EXPLAIN_LINES=$((_ml + 2))
     return
