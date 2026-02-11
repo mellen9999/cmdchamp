@@ -111,7 +111,7 @@ _tutorial() {
   cat <<EOF
     ${B}Controls${N}
 
-    ${C}Tab${N}       Toggle hint + explanation
+    ${C}Tab${N}       Show answer + skip (+0)
     ${C}Enter${N}     Submit answer
     ${C}Ctrl+d${N}    Quit (shows session summary)
     ${C}Up/Down${N}   Browse answer history
@@ -3126,7 +3126,8 @@ _read_line() {
     if [[ "$c" == $'\t' ]]; then
       if ((_rl_hints)); then
         if ((SHOW_HINT)); then SHOW_HINT=0; _REDRAW_HDR
-        else SHOW_HINT=1; HINT=true; draw; echo; explain "$ans"; continue; fi
+        else SHOW_HINT=1; HINT=true; draw; echo; explain "$ans"
+          read -rsp "${D}Press Enter to continue...${N}"; input="$ans"; echo; return; fi
       else printf '\n%s\n' "${R}No hints in boss mode!${N}"; sleep 0.5; printf '\e[A\e[2K'; fi
       draw; continue
     fi
@@ -3183,6 +3184,12 @@ _read_line() {
         u) ((${#UNDO_STACK[@]}>0)) && { local _u="${UNDO_STACK[-1]}"; unset 'UNDO_STACK[-1]'; cursor="${_u%%:*}"; input="${_u#*:}"; draw; };;
         g) IFS= read -rsn1 c2; [[ "$c2" == "g" ]] && { cursor=0; draw; };;
         G) cursor=$((${#input}>0?${#input}-1:0)); draw;;
+        $'\x1b') local _e1 _e2; read -rsn1 -t 0.01 _e1 || _e1=""
+          if [[ "$_e1" == "[" ]]; then read -rsn1 -t 0.01 _e2 || _e2=""
+            if ((_rl_hist)); then case "$_e2" in
+              A) ((${#HIST[@]}>0&&HIST_IDX>0)) && { ((HIST_IDX==${#HIST[@]})) && HIST_SAVE="$input"; ((HIST_IDX--)); input="${HIST[$HIST_IDX]}"; cursor=${#input}; _clamp; draw; };;
+              B) ((HIST_IDX<${#HIST[@]})) && { ((++HIST_IDX)); ((HIST_IDX==${#HIST[@]})) && input="$HIST_SAVE" || input="${HIST[$HIST_IDX]}"; cursor=${#input}; _clamp; draw; };;
+            esac; fi; fi;;
         q) _quit;;
         \?) ((_rl_hints)) && { printf '\n%s\n%s\n%s\n%s\n' "${D}hl${N} move  ${D}kj${N}/↑↓ history  ${D}wb${N} word  ${D}fFtT${N}+char find  ${D}0\$/gg/G${N} line" "${D}x/X${N} del char  ${D}dw/db/dd${N} del  ${D}cw/cb/cc${N} change  ${D}r${N} replace" "${D}s/S${N} subst  ${D}i/a/I/A${N} insert  ${D}u${N} undo(stack)  ${D}q${N} quit" "${D}Tab${N} hint  ${D}Ctrl+d${N} quit  ${D}[num]cmd${N} repeat"; read -rsn1; _REDRAW_HDR; draw; };;
         '') echo; return;;
@@ -3256,7 +3263,7 @@ run() {
         ((_S_STREAK > _S_BEST_STREAK)) && _S_BEST_STREAK=$_S_STREAK
         if $HINT; then
           printf '\n%s\n' "${D}+0 (hint)${N}"; streak=0; _S_STREAK=0; _sset "$prompt" "$tier"
-          read -rsp "${D}Press Enter to continue...${N}"; break
+          break
         elif ((streak>=FIRE_STREAK)); then
           local _new_tier=$((_real_tier<2?_real_tier+1:2))
           ((_real_tier < 2 && _new_tier >= 2)) && ((_S_MASTERED++))
@@ -3575,6 +3582,7 @@ review() {
         ((_S_STREAK > _S_BEST_STREAK)) && _S_BEST_STREAK=$_S_STREAK
         if $HINT; then
           printf '\n%s\n' "${D}+0 (hint)${N}"; streak=0; _S_STREAK=0; _sset "$prompt" "$tier"
+          ((++qi)); break
         else
           local _new_tier=$((tier<2?tier+1:2))
           ((tier < 2 && _new_tier >= 2)) && ((_S_MASTERED++))
@@ -3686,7 +3694,7 @@ Commands:
   h|help        Show this help
 
 Controls:
-  Tab      Toggle hint + explanations
+  Tab      Show answer + skip (+0)
   Ctrl+d   Quit (shows session summary)
   ?        Show vi keybindings (in vi mode)
 
