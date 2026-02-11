@@ -3139,7 +3139,7 @@ _read_line() {
       if ((_rl_hints)); then
         if ((SHOW_HINT)); then SHOW_HINT=0; _REDRAW_HDR
         else SHOW_HINT=1; HINT=true; draw; echo; explain "$ans"
-          read -rsp "${D}Press Enter to continue...${N}"; SHOW_HINT=0; _REDRAW_HDR; fi
+          read -rsp "${D}Press Enter to continue...${N}"; read -t 0.01 -rsn 1000 ||:; SHOW_HINT=0; input="" cursor=0; _rl_hints=0; _REDRAW_HDR; fi
       else printf '\n%s\n' "${R}No hints in boss mode!${N}"; sleep 0.5; printf '\e[A\e[2K'; fi
       draw; continue
     fi
@@ -3271,18 +3271,15 @@ run() {
       if check "$input" "$_qanswers"; then
         [[ -n "$input" ]] && { HIST+=("$input"); HIST_IDX=${#HIST[@]}; HIST_SAVE=""; }
         ((_S_ANSWERED++))
+        ((_S_CORRECT++))
         if $HINT; then
-          _S_STREAK=0; streak=0; _sset "$prompt" "$tier"
+          _S_STREAK=0; streak=0
         else
-          ((_S_CORRECT++)); ((_S_STREAK++))
+          ((_S_STREAK++))
           ((_S_STREAK > _S_BEST_STREAK)) && _S_BEST_STREAK=$_S_STREAK
         fi
-        if $HINT; then
-          printf '\n%s\n' "${D}(hint)${N}"
-          read -rsp "${D}Press Enter to continue...${N}"; break
-        fi
         if [[ -n "$_SANDBOX_OUTPUT" ]]; then printf '\n%s\n' "${W}${_SANDBOX_OUTPUT}${N}"; fi
-        if ((streak>=FIRE_STREAK)); then
+        if ! $HINT && ((streak>=FIRE_STREAK)); then
           local _new_tier=$((_real_tier<2?_real_tier+1:2))
           ((_real_tier < 2 && _new_tier >= 2)) && ((_S_MASTERED++))
           printf '\n%s\n' "${Y}${B}* ON FIRE! +2${N}"; ((++streak)); _sset "$prompt" "$_new_tier"
@@ -3291,7 +3288,12 @@ run() {
         else
           local _new_tier=$((tier<2?tier+1:2))
           ((tier < 2 && _new_tier >= 2)) && ((_S_MASTERED++))
-          printf '\n%s\n' "${G}${B}+${N}"; ((++streak)); _sset "$prompt" "$_new_tier"
+          if $HINT; then
+            printf '\n%s\n' "${G}+${D} (recalled)${N}"
+          else
+            printf '\n%s\n' "${G}${B}+${N}"; ((++streak))
+          fi
+          _sset "$prompt" "$_new_tier"
         fi
         read -rsp "${D}Press Enter to continue...${N}"
         ((++qi)); QI=$qi; save; break
