@@ -620,7 +620,7 @@ _sandbox_check_state() {
         local rest="${check#contains:}"
         local file="${rest%%:*}"
         local pattern="${rest#*:}"
-        grep -qe "$pattern" -- "$SANDBOX_DIR/$file" 2>/dev/null || return 1
+        grep -qF "$pattern" -- "$SANDBOX_DIR/$file" 2>/dev/null || return 1
         ;;
       lines:*:*)
         local rest="${check#lines:}"
@@ -1075,7 +1075,7 @@ explain() {
 _qoutput="" _qstate="" _qtext=0
 _qparse() {
   local q=$1
-  _qoutput="" _qstate="" _qtext=0
+  _qoutput="" _qstate="" _qtext=0 _qdelim='|'
 
   # Extract sandbox markers from end
   if [[ $q == *"#text:"* ]]; then
@@ -1094,8 +1094,10 @@ _qparse() {
 
   # Parse prompt and answers
   if [[ $q == *§* ]]; then
+    _qdelim='§'
     _qprompt="${q%%§*}"; _qanswers="${q#*§}"; _qans="${_qanswers%%§*}"
   else
+    _qdelim='|'
     _qprompt="${q%%|*}"; _qanswers="${q#*|}"; _qans="${_qanswers%%|*}"
   fi
 }
@@ -1120,15 +1122,16 @@ gen_level0() {
 
   # ls variations
   questions+=("$(_phrase "List" "Show") files in current directory|ls|#output:~server.log")
-  questions+=("List $(_phrase "all files" "files") including hidden|ls -a|#output:~\\.")
-  questions+=("List files with $(_phrase "details" "permissions" "long format")|ls -l|#output:~^[-drwx]")
-  questions+=("List files in ${W}${dir}${C} directory|ls ${dir}|#output:*")
-  questions+=("List ${W}${dir}${C} with details|ls -l ${dir}|#output:~^[-drwx]")
+  questions+=("List $(_phrase "all files" "files") including hidden|ls -a|#output:~\\.\\.")
+  questions+=("List files with $(_phrase "details" "permissions" "long format")|ls -l|#output:~^total")
+  local _dir_pat; case "$dir" in src) _dir_pat="utils" ;; data) _dir_pat="export" ;; logs) _dir_pat="access" ;; *) _dir_pat="." ;; esac
+  questions+=("List files in ${W}${dir}${C} directory|ls ${dir}|#output:~${_dir_pat}")
+  questions+=("List ${W}${dir}${C} with details|ls -l ${dir}|#output:~^total")
 
   # echo variations
   questions+=("Print ${Y}hello world${C}|echo hello world|echo 'hello world'|#output:hello world")
   questions+=("Print ${Y}${word}${C}|echo ${word}|#output:${word}")
-  questions+=("Print your username using ${Y}\$USER${C}|echo \$USER|#output:~.")
+  questions+=("Print your username using ${Y}\$USER${C}|echo \$USER|#output:sandbox")
   questions+=("Print your home directory using ${Y}\$HOME${C}|echo \$HOME|#output:~/sandbox")
   questions+=("Print current shell using ${Y}\$SHELL${C}|echo \$SHELL|#output:~sh")
   questions+=("Print the number ${Y}${num}${C}|echo ${num}|#output:${num}")
@@ -1161,18 +1164,18 @@ gen_level1() {
   num=$((RANDOM % 100 + 1))
 
   # Output redirection: > overwrites, >> appends (mixed to teach the difference)
-  questions+=("Write '${word}' to ${W}${txt}${C} - overwrite (use ${Y}>${C})|echo ${word} > ${txt}|#state:contains:${txt}:${word}")
-  questions+=("Append '${word2}' to ${W}${log}${C} - add to end (use ${Y}>>${C})|echo ${word2} >> ${log}|#state:contains:${log}:${word2}")
-  questions+=("Save ls to ${W}${outfile}${C} - overwrite (use ${Y}>${C})|ls > ${outfile}|#state:contains:${outfile}:server.log")
-  questions+=("Append timestamp to ${W}${log}${C} (use ${Y}>>${C})|date >> ${log}|#state:exists:${log}")
-  questions+=("Save whoami to ${W}${outfile}${C} - overwrite (use ${Y}>${C})|whoami > ${outfile}|#state:exists:${outfile}")
-  questions+=("Append hostname to ${W}${log}${C} (use ${Y}>>${C})|hostname >> ${log}|#state:exists:${log}")
+  questions+=("Write '${word}' to ${W}${txt}${C} - overwrite (use ${Y}>${C})|echo ${word} > ${txt}|#state:contains:${txt}:${word},lines:${txt}:1")
+  questions+=("Append '${word2}' to ${W}${log}${C} - add to end (use ${Y}>>${C})|echo ${word2} >> ${log}|#state:contains:${log}:${word2},contains:${log}:[")
+  questions+=("Save ls to ${W}${outfile}${C} - overwrite (use ${Y}>${C})|ls > ${outfile}")
+  questions+=("Append timestamp to ${W}${log}${C} (use ${Y}>>${C})|date >> ${log}")
+  questions+=("Save whoami to ${W}${outfile}${C} - overwrite (use ${Y}>${C})|whoami > ${outfile}")
+  questions+=("Append hostname to ${W}${log}${C} (use ${Y}>>${C})|hostname >> ${log}")
   questions+=("Create empty file ${W}${outfile2}${C}|touch ${outfile2}|#state:exists:${outfile2}")
 
   # tee - write to file AND stdout
   questions+=("Echo '${word}' to screen AND save to ${W}${txt}${C} (use ${Y}tee${C})§echo ${word} | tee ${txt}§#output:${word}")
   questions+=("Echo '${word2}' and append to ${W}${log}${C} (use ${Y}tee${C}, append mode)§echo ${word2} | tee -a ${log}§#output:${word2}")
-  questions+=("Run ls, show output AND save to ${W}${outfile}${C} (use ${Y}tee${C})§ls | tee ${outfile}§#output:~server.log")
+  questions+=("Run ls, show output AND save to ${W}${outfile}${C} (use ${Y}tee${C})§ls | tee ${outfile}§#state:contains:${outfile}:server.log")
 
   printf '%s\n' "${questions[@]}"
 }
@@ -1186,18 +1189,19 @@ gen_level2() {
   n=$((RANDOM % 6 + 3)); n2=$((RANDOM % 5 + 2)); n3=$((RANDOM % 8 + 5))
 
   # cat - display file (hint base command, user figures out flags)
-  questions+=("Display entire ${W}${txt}${C}|cat ${txt}|#output:~.")
+  local _cat_lc; case "$txt" in notes.txt) _cat_lc=29 ;; todo.txt) _cat_lc=11 ;; *) _cat_lc=1 ;; esac
+  questions+=("Display entire ${W}${txt}${C}|cat ${txt}|#output:@${_cat_lc}")
   questions+=("Display ${W}${cfg}${C} with line numbers|cat -n ${cfg}|#output:~^\\s+1")
 
   # head - first N lines (user figures out -N flag)
-  questions+=("First ${n} lines of ${W}${log}${C}|head -${n} ${log}|head -n ${n} ${log}|#output:@${n}")
-  questions+=("First 10 lines of ${W}${cfg}${C}|head ${cfg}|head -10 ${cfg}|head -n 10 ${cfg}|#output:@10")
-  questions+=("First line only of ${W}${log}${C}|head -1 ${log}|head -n 1 ${log}|#output:@1")
+  questions+=("First ${n} lines of ${W}${log}${C}|head -${n} ${log}|head -n ${n} ${log}")
+  questions+=("First 10 lines of ${W}${cfg}${C}|head ${cfg}|head -10 ${cfg}|head -n 10 ${cfg}")
+  questions+=("First line only of ${W}${log}${C}|head -1 ${log}|head -n 1 ${log}")
 
   # tail - last N lines (user figures out -N flag)
-  questions+=("Last ${n2} lines of ${W}${txt}${C}|tail -${n2} ${txt}|tail -n ${n2} ${txt}|#output:@${n2}")
-  questions+=("Last 10 lines of ${W}${log}${C}|tail ${log}|tail -10 ${log}|tail -n 10 ${log}|#output:@10")
-  questions+=("Last line only of ${W}${txt}${C}|tail -1 ${txt}|tail -n 1 ${txt}|#output:@1")
+  questions+=("Last ${n2} lines of ${W}${txt}${C}|tail -${n2} ${txt}|tail -n ${n2} ${txt}")
+  questions+=("Last 10 lines of ${W}${log}${C}|tail ${log}|tail -10 ${log}|tail -n 10 ${log}")
+  questions+=("Last line only of ${W}${txt}${C}|tail -1 ${txt}|tail -n 1 ${txt}")
 
   # less - scrollable file viewer
   questions+=("Page through ${W}${log}${C} interactively|less ${log}|#text:")
@@ -1231,39 +1235,39 @@ gen_level3() {
   term3=$(_phrase server database logging cache host port localhost info enabled)
 
   # ls | wc variants (hint at pipe since this level teaches pipes)
-  questions+=("Count items in current directory (pipe ${Y}ls${C} to ${Y}wc${C})§ls | wc -l§ls -1 | wc -l§#output:~^\\s*[0-9]+")
+  questions+=("Count items in current directory (pipe ${Y}ls${C} to ${Y}wc${C})§ls | wc -l§ls -1 | wc -l")
 
   # grep basics
-  questions+=("$(_phrase "Search for" "Find") ${Y}${term1}${C} in ${W}${log}${C}§grep ${term1} ${log}§#output:*")
-  questions+=("Find ${Y}${term2}${C} in ${W}${txt}${C}§grep ${term2} ${txt}§#output:*")
-  questions+=("Search ${W}${cfg}${C} for ${Y}${term3}${C}§grep ${term3} ${cfg}§#output:*")
+  questions+=("$(_phrase "Search for" "Find") ${Y}${term1}${C} in ${W}${log}${C}§grep ${term1} ${log}§#output:~${term1}")
+  questions+=("Find ${Y}${term2}${C} in ${W}${txt}${C}§grep ${term2} ${txt}§#output:~${term2}")
+  questions+=("Search ${W}${cfg}${C} for ${Y}${term3}${C}§grep ${term3} ${cfg}§#output:~${term3}")
 
   # grep -c (count)
-  questions+=("Count ${Y}${term2}${C} matches in ${W}${txt}${C}§grep -c ${term2} ${txt}§#output:~^\\s*[0-9]+")
-  questions+=("Count ${Y}${term1}${C} occurrences in ${W}${log}${C}§grep -c ${term1} ${log}§#output:~^\\s*[0-9]+")
+  questions+=("Count ${Y}${term2}${C} matches in ${W}${txt}${C}§grep -c ${term2} ${txt}")
+  questions+=("Count ${Y}${term1}${C} occurrences in ${W}${log}${C}§grep -c ${term1} ${log}")
 
   # grep -i (case insensitive)
-  questions+=("Find ${Y}${term1}${C} case-insensitive in ${W}${log}${C}§grep -i ${term1} ${log}§#output:*")
-  questions+=("Search ${W}${txt}${C} for ${Y}${term2}${C} ignoring case§grep -i ${term2} ${txt}§#output:*")
+  questions+=("Find ${Y}${term1}${C} case-insensitive in ${W}${log}${C}§grep -i ${term1} ${log}")
+  questions+=("Search ${W}${txt}${C} for ${Y}${term2}${C} ignoring case§grep -i ${term2} ${txt}")
 
   # grep -v (invert)
-  questions+=("Show lines NOT containing ${Y}${term1}${C} in ${W}${log}${C}§grep -v ${term1} ${log}§#output:*")
-  questions+=("Exclude ${Y}${term2}${C} lines from ${W}${txt}${C}§grep -v ${term2} ${txt}§#output:*")
+  questions+=("Show lines NOT containing ${Y}${term1}${C} in ${W}${log}${C}§grep -v ${term1} ${log}")
+  questions+=("Exclude ${Y}${term2}${C} lines from ${W}${txt}${C}§grep -v ${term2} ${txt}")
 
   # sort variants
-  questions+=("Sort ${W}${txt}${C} alphabetically§sort ${txt}§#output:*")
-  questions+=("Sort ${W}${cfg}${C} in reverse§sort -r ${cfg}§#output:*")
-  questions+=("Sort ${W}${csv}${C} numerically§sort -n ${csv}§#output:*")
-  questions+=("Sort ${W}${txt2}${C} and remove duplicates§sort ${txt2} | uniq§sort -u ${txt2}§#output:*")
-  questions+=("Unique sorted lines from ${W}${txt}${C}§sort -u ${txt}§sort ${txt} | uniq§#output:*")
+  questions+=("Sort ${W}${txt}${C} alphabetically§sort ${txt}")
+  questions+=("Sort ${W}${cfg}${C} in reverse§sort -r ${cfg}")
+  questions+=("Sort ${W}${csv}${C} numerically§sort -n ${csv}")
+  questions+=("Sort ${W}${txt2}${C} and remove duplicates§sort ${txt2} | uniq§sort -u ${txt2}")
+  questions+=("Unique sorted lines from ${W}${txt}${C}§sort -u ${txt}§sort ${txt} | uniq")
 
   # Combined pipes
-  questions+=("First ${n} ${Y}${term1}${C} matches in ${W}${log}${C}§grep ${term1} ${log} | head -${n}§#output:*")
-  questions+=("Last ${n2} ${Y}${term1}${C} lines in ${W}${log}${C}§grep ${term1} ${log} | tail -${n2}§#output:*")
-  questions+=("Count unique lines in ${W}${txt}${C}§sort ${txt} | uniq | wc -l§sort -u ${txt} | wc -l§#output:~[0-9]+")
-  questions+=("Sort ${W}${log}${C} and show first ${n}§sort ${log} | head -${n}§#output:@${n}")
-  questions+=("Show last ${n2} sorted lines of ${W}${cfg}${C}§sort ${cfg} | tail -${n2}§#output:@${n2}")
-  questions+=("Find ${Y}${term1}${C} lines, then count them in ${W}${log}${C}§grep ${term1} ${log} | wc -l§grep -c ${term1} ${log}§#output:~[0-9]+")
+  questions+=("First ${n} ${Y}${term1}${C} matches in ${W}${log}${C}§grep ${term1} ${log} | head -${n}§#output:~${term1}")
+  questions+=("Last ${n2} ${Y}${term1}${C} lines in ${W}${log}${C}§grep ${term1} ${log} | tail -${n2}§#output:~${term1}")
+  questions+=("Count unique lines in ${W}${txt}${C}§sort ${txt} | uniq | wc -l§sort -u ${txt} | wc -l")
+  questions+=("Sort ${W}${log}${C} and show first ${n}§sort ${log} | head -${n}")
+  questions+=("Show last ${n2} sorted lines of ${W}${cfg}${C}§sort ${cfg} | tail -${n2}")
+  questions+=("Find ${Y}${term1}${C} lines, then count them in ${W}${log}${C}§grep ${term1} ${log} | wc -l§grep -c ${term1} ${log}")
 
   printf '%s\n' "${questions[@]}"
 }
@@ -1281,14 +1285,15 @@ gen_level4() {
   local num3=$((RANDOM % 100 + 50)) num4=$((RANDOM % 30 + 10))
 
   # < stdin redirection (only where it matters)
-  questions+=("Count lines in ${W}${csv}${C} without filename in output (use ${Y}<${C})|wc -l < ${csv}|#output:~^\\s*[0-9]+")
-  questions+=("Count words in ${W}${txt}${C} — just the number, no filename (use ${Y}<${C})|wc -w < ${txt}|#output:~^\\s*[0-9]+")
-  questions+=("Uppercase contents of ${W}${txt}${C} (${Y}tr${C} needs ${Y}<${C}, no file arg)|tr a-z A-Z < ${txt}|#output:~[A-Z]")
-  questions+=("Delete blank lines from ${W}${log}${C} (${Y}tr${C} needs ${Y}<${C})|tr -s '\\n' < ${log}|#output:*")
+  questions+=("Count lines in ${W}${csv}${C} without filename in output (use ${Y}<${C})|wc -l < ${csv}")
+  questions+=("Count words in ${W}${txt}${C} — just the number, no filename (use ${Y}<${C})|wc -w < ${txt}")
+  local _tr_up; case "$txt" in notes.txt) _tr_up="MEETING" ;; todo.txt) _tr_up="TASK" ;; *) _tr_up="[A-Z]" ;; esac
+  questions+=("Uppercase contents of ${W}${txt}${C} (${Y}tr${C} needs ${Y}<${C}, no file arg)|tr a-z A-Z < ${txt}|#output:~${_tr_up}")
+  questions+=("Delete blank lines from ${W}${log}${C} (${Y}tr${C} needs ${Y}<${C})|tr -s '\\n' < ${log}")
 
   # <<< feeds a string (here-string)
-  questions+=("Uppercase ${Y}'${word}'${C} (use ${Y}<<<${C})|tr a-z A-Z <<< '${word}'|tr a-z A-Z <<< ${word}|#output:~[A-Z]")
-  questions+=("Lowercase ${Y}'${word2^^}'${C} (use ${Y}<<<${C})|tr A-Z a-z <<< '${word2^^}'|tr A-Z a-z <<< ${word2^^}|#output:~[a-z]")
+  questions+=("Uppercase ${Y}'${word}'${C} (use ${Y}<<<${C})|tr a-z A-Z <<< '${word}'|tr a-z A-Z <<< ${word}|#output:${word^^}")
+  questions+=("Lowercase ${Y}'${word2^^}'${C} (use ${Y}<<<${C})|tr A-Z a-z <<< '${word2^^}'|tr A-Z a-z <<< ${word2^^}|#output:${word2}")
   local _rw="" _rw2="" _i; for ((_i=${#word}-1;_i>=0;_i--)); do _rw+="${word:_i:1}"; done
   for ((_i=${#word2}-1;_i>=0;_i--)); do _rw2+="${word2:_i:1}"; done
   questions+=("Reverse ${Y}'${word}'${C} (use ${Y}<<<${C})|rev <<< '${word}'|rev <<< ${word}|#output:~${_rw}")
@@ -1330,7 +1335,7 @@ gen_level5() {
   questions+=("${Y}cat${C} ${W}${missing}${C}, save error to ${W}${errfile}${C} (use ${Y}2>${C})|cat ${missing} 2> ${errfile}|~^cat [^ ]+ 2> ?${errfile}$")
 
   # 2> /dev/null = hide errors
-  questions+=("Find ${Y}*.${ext}${C} files, hide errors (use ${Y}2> /dev/null${C})|find . -name '*.${ext}' 2> /dev/null|#output:*")
+  questions+=("Find ${Y}*.${ext}${C} files, hide errors (use ${Y}2> /dev/null${C})|find . -name '*.${ext}' 2> /dev/null")
   questions+=("Run ${W}./${script}${C} but hide errors (use ${Y}2> /dev/null${C})|./${script} 2> /dev/null")
 
   # &> = both stdout+stderr
@@ -1338,9 +1343,9 @@ gen_level5() {
   questions+=("Run ${W}./${script}${C} completely silently (use ${Y}&> /dev/null${C})|./${script} &> /dev/null|./${script} > /dev/null 2>&1")
 
   # 2>&1 = merge stderr into stdout
-  questions+=("Run ${W}./${script}${C}, search ALL output for 'error'§./${script} 2>&1 | grep -i error§~^\\./[^ ]+ 2>&1 \\| grep")
+  questions+=("Run ${W}./${script}${C}, search ALL output for 'error'§./${script} 2>&1 | grep -i error§~^\\./[^ ]+ 2>&1 \\| grep -i")
   questions+=("Run ${W}./${script2}${C}, pipe all output to ${Y}less${C}§./${script2} 2>&1 | less§#text:")
-  questions+=("Run ${W}./${script}${C}, count total lines (stdout+stderr)§./${script} 2>&1 | wc -l§#output:~[0-9]+")
+  questions+=("Run ${W}./${script}${C}, count total lines (stdout+stderr)§./${script} 2>&1 | wc -l")
 
   # Separate files for stdout and stderr
   questions+=("Save output to ${W}${outfile}${C}, errors to ${W}${errfile}${C}|ls -la > ${outfile} 2> ${errfile}")
@@ -2925,6 +2930,7 @@ generate_level() {
 
 # Normalize flags: -la == -al == -a -l (pure bash, no fork)
 norm() {
+  [[ -z "$1" ]] && { echo; return; }
   local parts flags=() args=() out p
   read -ra parts <<< "$1"; out="${parts[0]}"
   for p in "${parts[@]:1}"; do
@@ -2939,7 +2945,10 @@ norm() {
     for ((j=i; j>0; j--)); do [[ "${flags[$((j-1))]}" > "$tmp" ]] || break; flags[$j]="${flags[$((j-1))]}"; done
     flags[$j]="$tmp"
   done
-  printf '%s' "$out"; printf ' %s' "${flags[@]}" "${args[@]}"; echo
+  printf '%s' "$out"
+  ((${#flags[@]})) && printf ' %s' "${flags[@]}"
+  ((${#args[@]})) && printf ' %s' "${args[@]}"
+  echo
 }
 
 _SANDBOX_OUTPUT=""  # Store output for display after check
@@ -2972,10 +2981,11 @@ check() {
   fi
 
   # Text matching fallback (§ delimiter for questions with pipes, | for legacy)
-  local delim='|'; [[ "$2" == *§* ]] && delim='§'
+  local delim="$_qdelim"
   local -a opts; IFS="$delim" read -ra opts <<< "$2"
   for a in "${opts[@]}"; do
     b="${a#"${a%%[![:space:]]*}"}"; b="${b%"${b##*[![:space:]]}"}"
+    [[ -z "$b" ]] && continue
     # ~pattern = regex match
     if [[ "$b" == ~* ]]; then
       local _pat="${b:1}"; [[ "$inp" =~ ${_pat} ]] && return 0
