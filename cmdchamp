@@ -554,7 +554,7 @@ _sandbox_exec() {
   [[ -e /lib ]] && bwrap_args+=(--ro-bind /lib /lib)
   [[ -e /lib64 ]] && bwrap_args+=(--ro-bind /lib64 /lib64)
 
-  timeout "$timeout_sec" bwrap "${bwrap_args[@]}" /bin/bash -c "$cmd" 2>&1
+  timeout "$timeout_sec" bwrap "${bwrap_args[@]}" /bin/bash -c "$cmd"
 }
 
 # Track if command was destructive (for per-question reset)
@@ -2949,9 +2949,10 @@ check() {
 
   # Sandbox mode: execute command and validate output/state
   if ((SANDBOX_MODE && !_qtext)); then
-    local output _sb_rc
-    output=$(_sandbox_exec "$inp" 5 2>&1); _sb_rc=$?
-    _SANDBOX_OUTPUT="$output"
+    local output _sb_err _sb_rc
+    { output=$(_sandbox_exec "$inp" 5 2>"$SANDBOX_DIR/.stderr"); } 2>/dev/null; _sb_rc=$?
+    _sb_err=$(<"$SANDBOX_DIR/.stderr" 2>/dev/null) || _sb_err=""
+    _SANDBOX_OUTPUT="${output}${_sb_err:+$'\n'$_sb_err}"
 
     # Track destructive commands for reset
     _is_destructive "$inp" && _SANDBOX_DESTRUCTIVE=1
