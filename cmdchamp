@@ -1303,7 +1303,7 @@ gen_level4() {
 
   # wc with <<<
   questions+=("Count words in ${Y}'${word} ${word2} test'${C}|wc -w <<< '${word} ${word2} test'|#output:~^\\s*3$")
-  questions+=("Count bytes in ${Y}'${word}'${C} (use ${Y}wc -c${C})|wc -c <<< '${word}'|wc -c <<< ${word}|#output:~^\\s*$((${#word}+1))$")
+  questions+=("Count bytes in ${Y}'${word}'${C} (use ${Y}wc${C})|wc -c <<< '${word}'|wc -c <<< ${word}|#output:~^\\s*$((${#word}+1))$")
 
   # tr transformations
   questions+=("Replace spaces with underscores in ${Y}'hello world test'${C}|tr ' ' '_' <<< 'hello world test'|#output:~hello_world_test")
