@@ -890,8 +890,8 @@ declare -A EXP=(
   ['>']="write stdout to file (overwrite)" ['>>']="append stdout to file"
   ['2>']="redirect stderr to file" ['&>']="redirect stdout+stderr to file"
   ['/dev/null']="black hole: discards anything written to it" ['2>&1']="merge stderr into stdout"
-  ['<']="input redirect: feed file contents INTO command (like typing it)"
-  ['<<<']="here-string: feed text INTO command (like typing it)"
+  ['<']="input redirect: feed FILE contents into command"
+  ['<<<']="here-string: feed a STRING into command"
   ['.']="current directory" ['..']="parent directory" ['~']="home directory" ['/']="root directory (or path separator)"
   ['*']="wildcard: matches any characters" ['?']="wildcard: matches single character"
   ['*.py']="glob: all .py files" ['*.log']="glob: all .log files" ['*.txt']="glob: all .txt files"
@@ -974,6 +974,14 @@ declare -A EXP=(
   [disown]="detach job from shell" [exec]="replace shell with command"
   [unset]="remove variable or function"
 )
+_esc_legend() {
+  local _a=$1 _leg=""
+  [[ "$_a" == *'\n'* ]] && _leg+="${Y}\\n${D}=newline  "
+  [[ "$_a" == *'\t'* ]] && _leg+="${Y}\\t${D}=tab  "
+  [[ "$_a" == *'\0'* ]] && _leg+="${Y}\\0${D}=null  "
+  [[ "$_a" == *'\r'* ]] && _leg+="${Y}\\r${D}=return  "
+  [[ -n "$_leg" ]] && { printf '  %s\n' "${D}${_leg%  }${N}"; REPLY=1; } || REPLY=0
+}
 explain() {
   local tok n=0 exp label desc tcol cmds=() _ap=1
   printf '%s\n' "${D}----------------------------------------${N}"
@@ -1001,12 +1009,13 @@ explain() {
       local sp; printf -v sp '%*s' "$pad" ''
       if [[ "$exp" == *:* ]]; then
         label="${exp%%:*}"; desc="${exp#*: }"
-        printf '  %s%s %s  %s%s %s\n' "${Y}${tok}${N}" "$sp" "${D}->${N}" "${Y}${label}${D}:${N}" "${W}${desc}${N}" ""
+        printf '%s%s %s  %s%s %s\n' "${Y}${tok}${N}" "$sp" "${D}->${N}" "${Y}${label}${D}:${N}" "${W}${desc}${N}" ""
       else
-        printf '  %s%s %s  %s\n' "${Y}${tok}${N}" "$sp" "${D}->${N}" "${W}${exp}${N}"
+        printf '%s%s %s  %s\n' "${Y}${tok}${N}" "$sp" "${D}->${N}" "${W}${exp}${N}"
       fi
       ((_ml++))
     done
+    _esc_legend "$1"; ((_ml += REPLY))
     printf '%s\n' "${D}----------------------------------------${N}"
     EXPLAIN_LINES=$((_ml + 2))
     return
@@ -1056,6 +1065,7 @@ explain() {
   done
   # Show full answer if no explanations found
   ((n == 0)) && { printf '  %s\n' "${Y}$1${N}"; ((++n)); }
+  _esc_legend "$1"; ((n += REPLY))
   printf '%s\n' "${D}----------------------------------------${N}"
   EXPLAIN_LINES=$((n + 2))
 }
@@ -3257,14 +3267,15 @@ run() {
     while true; do
       _read_line 1 1
       if check "$input" "$_qanswers"; then
+        if $HINT; then
+          ((_S_ANSWERED++)); _S_STREAK=0; streak=0; _sset "$prompt" "$tier"
+          ((++qi)); QI=$qi; save; break
+        fi
         [[ -n "$input" ]] && { HIST+=("$input"); HIST_IDX=${#HIST[@]}; HIST_SAVE=""; }
-        if [[ -n "$_SANDBOX_OUTPUT" ]]; then printf '\n%s\n' "${W}${_SANDBOX_OUTPUT}${N}"; fi
         ((_S_ANSWERED++)); ((_S_CORRECT++)); ((_S_STREAK++))
         ((_S_STREAK > _S_BEST_STREAK)) && _S_BEST_STREAK=$_S_STREAK
-        if $HINT; then
-          printf '\n%s\n' "${D}+0 (hint)${N}"; streak=0; _S_STREAK=0; _sset "$prompt" "$tier"
-          break
-        elif ((streak>=FIRE_STREAK)); then
+        if [[ -n "$_SANDBOX_OUTPUT" ]]; then printf '\n%s\n' "${W}${_SANDBOX_OUTPUT}${N}"; fi
+        if ((streak>=FIRE_STREAK)); then
           local _new_tier=$((_real_tier<2?_real_tier+1:2))
           ((_real_tier < 2 && _new_tier >= 2)) && ((_S_MASTERED++))
           printf '\n%s\n' "${Y}${B}* ON FIRE! +2${N}"; ((++streak)); _sset "$prompt" "$_new_tier"
@@ -3576,19 +3587,18 @@ review() {
     while true; do
       _read_line 1 1
       if check "$input" "$_qanswers"; then
+        if $HINT; then
+          ((_S_ANSWERED++)); _S_STREAK=0; streak=0; _sset "$prompt" "$tier"
+          ((++qi)); break
+        fi
         [[ -n "$input" ]] && { HIST+=("$input"); HIST_IDX=${#HIST[@]}; HIST_SAVE=""; }
-        [[ -n "$_SANDBOX_OUTPUT" ]] && printf '\n%s\n' "${W}${_SANDBOX_OUTPUT}${N}"
         ((_S_ANSWERED++)); ((_S_CORRECT++)); ((_S_STREAK++))
         ((_S_STREAK > _S_BEST_STREAK)) && _S_BEST_STREAK=$_S_STREAK
-        if $HINT; then
-          printf '\n%s\n' "${D}+0 (hint)${N}"; streak=0; _S_STREAK=0; _sset "$prompt" "$tier"
-          ((++qi)); break
-        else
-          local _new_tier=$((tier<2?tier+1:2))
-          ((tier < 2 && _new_tier >= 2)) && ((_S_MASTERED++))
-          ((++streak)); _sset "$prompt" "$_new_tier"
-          printf '\n%s\n' "${G}${B}+${N}"
-        fi
+        [[ -n "$_SANDBOX_OUTPUT" ]] && printf '\n%s\n' "${W}${_SANDBOX_OUTPUT}${N}"
+        local _new_tier=$((tier<2?tier+1:2))
+        ((tier < 2 && _new_tier >= 2)) && ((_S_MASTERED++))
+        ((++streak)); _sset "$prompt" "$_new_tier"
+        printf '\n%s\n' "${G}${B}+${N}"
         read -rsp "${D}Press Enter to continue...${N}"; ((++qi)); break
       else
         ((_S_ANSWERED++)); _S_STREAK=0
