@@ -3270,6 +3270,7 @@ run() {
     _REDRAW_HDR
     while true; do
       _read_line 1 1
+      [[ -z "$input" ]] && { draw; continue; }
       if check "$input" "$_qanswers"; then
         [[ -n "$input" ]] && { HIST+=("$input"); HIST_IDX=${#HIST[@]}; HIST_SAVE=""; }
         ((_S_ANSWERED++))
