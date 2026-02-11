@@ -4,11 +4,15 @@ Pure bash CLI trainer — 29 levels from `ls` to privilege escalation.
 
 ![demo](demo.gif)
 
-Questions change every run. Miss one and it comes back. Each level has a boss at the end — no hints, 4/5 to pass. Beat all 29 and the endgame modes open up.
+Drill real commands until they're muscle memory. Every question is a prompt you'd see on a real terminal — type the answer, get instant feedback, move on. Questions reference real files in the sandbox, accept multiple valid syntaxes (both `sort -u` and `sort | uniq`), and hint which tool to use when the answer isn't obvious. Randomized each run so you can't memorize the order. A spaced repetition system tracks what you know and what you don't: nail a question twice and it's mastered, miss it and it comes back more often.
 
-If you have bubblewrap, commands run in a real sandbox. Without it, answers are text-matched. Takes both modern (`rg`, `fd`) and classic (`grep`, `find`) syntax.
+Each level ends with a boss round — no hints, 4/5 to pass. Beat all 29 and endgame modes unlock: gauntlet (3 lives), timed runs, and review mode that targets your weakest commands.
 
-Vi line editing.
+With [bubblewrap](https://github.com/containers/bubblewrap), commands run in a real sandboxed filesystem. Without it, answers are text-matched. Accepts both modern (`rg`, `fd`) and classic (`grep`, `find`) syntax. Vi line editing built in.
+
+### How scoring works
+
+Each question has a mastery tier (0→1→2). Get it right to promote, wrong to demote. Tier 2 = mastered. The progress bar shows how far through the current session's question set you are — hints advance the bar but don't promote the tier, so the question will come back until you can answer it cold.
 
 ## Install
 

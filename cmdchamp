@@ -3276,7 +3276,7 @@ run() {
           ((_S_STREAK > _S_BEST_STREAK)) && _S_BEST_STREAK=$_S_STREAK
         fi
         if $HINT; then
-          printf '\n%s\n' "${D}+0 (hint)${N}"
+          printf '\n%s\n' "${D}(hint)${N}"
         else
           if [[ -n "$_SANDBOX_OUTPUT" ]]; then printf '\n%s\n' "${W}${_SANDBOX_OUTPUT}${N}"; fi
           if ((streak>=FIRE_STREAK)); then
@@ -3596,7 +3596,7 @@ review() {
         ((_S_ANSWERED++))
         if $HINT; then
           _S_STREAK=0; streak=0; _sset "$prompt" "$tier"
-          printf '\n%s\n' "${D}+0 (hint)${N}"
+          printf '\n%s\n' "${D}(hint)${N}"
         else
           ((_S_CORRECT++)); ((_S_STREAK++))
           ((_S_STREAK > _S_BEST_STREAK)) && _S_BEST_STREAK=$_S_STREAK
