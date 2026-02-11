@@ -109,7 +109,7 @@ _intro() {
 
 
 EOF
-  read -rsn1 -p "                            Press Enter to begin..."
+  read -rsn1 -p "                            Press Enter to continue..."
   echo
 }
 
@@ -134,7 +134,7 @@ _tutorial() {
     ${C}?${N}         Full vi help (in normal mode)
 
 EOF
-  read -rsn1 -p "                            Press Enter to begin..."
+  read -rsn1 -p "                            Press Enter to continue..."
   echo
 }
 
@@ -3411,7 +3411,7 @@ gauntlet() {
   printf '%s\n' "${R}${B}═══ GAUNTLET ═══${N}"
   printf '%s\n' "${D}3 lives. Questions escalate. How far can you go?${N}"
   ((BEST_GAUNTLET > 0)) && printf '%s\n' "${D}Personal best: ${Y}${BEST_GAUNTLET}${N}"
-  printf '\n'; read -rsn1 -p "${D}Press Enter to begin...${N}"; echo
+  printf '\n'; read -rsn1 -p "${D}Press Enter to continue...${N}"; echo
 
   local lives=3 score=0 streak=0 difficulty=1
   local -A _sc; [[ -f "$DATA/scores" ]] && while IFS='|' read -r k v; do _sc[$k]=$v; done < "$DATA/scores"
@@ -3477,7 +3477,7 @@ timed() {
   printf '%s\n' "${Y}${B}═══ TIMED MODE ═══${N}"
   printf '%s\n' "${D}${duration}s on the clock. Answer fast.${N}"
   ((BEST_TIMED > 0)) && printf '%s\n' "${D}Personal best: ${Y}${BEST_TIMED}${N}"
-  printf '\n'; read -rsn1 -p "${D}Press Enter to begin...${N}"; echo
+  printf '\n'; read -rsn1 -p "${D}Press Enter to continue...${N}"; echo
 
   local score=0
   local -A _sc; [[ -f "$DATA/scores" ]] && while IFS='|' read -r k v; do _sc[$k]=$v; done < "$DATA/scores"
@@ -3740,6 +3740,6 @@ EOF
     for lv in {1..30}; do printf "  %2d - %s\n" "$lv" "${LEVEL_NAMES[$lv]}"; done
     ;;
   n|new) _tty; _load_profile; LVL=1; QI=0; save; _run_loop;;
-  "") _tty; _load_profile; load; ((LVL>1||QI>0)) && { read -rp "Continue Level $LVL Q$((QI+1))? [Y/n] " yn; [[ "$yn" =~ ^[Nn] ]] && { LVL=1; QI=0; save; }; }; _run_loop;;
+  "") _tty; _load_profile; load; ((LVL>1||QI>0)) && { read -rp "Continue Level $LVL Q$((QI+1))? [Y/n] " yn; [[ "$yn" =~ ^[Nn] ]] && { LVL=1; QI=0; save; _intro; _tutorial; }; }; _run_loop;;
   *) echo "Usage: cmdchamp [1-30|new|pass|stats|review|gauntlet|timed|reset|help]"; exit 1;;
 esac
