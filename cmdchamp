@@ -3140,6 +3140,7 @@ _read_line() {
         if ((SHOW_HINT)); then SHOW_HINT=0; _REDRAW_HDR
         else SHOW_HINT=1; HINT=true; draw; echo; explain "$ans"
           read -rsp "${D}Press Enter to continue...${N}"; read -t 0.01 -rsn 1000 ||:; SHOW_HINT=0; input="" cursor=0; _rl_hints=0; _REDRAW_HDR; fi
+      elif $HINT; then :
       else printf '\n%s\n' "${R}No hints in boss mode!${N}"; sleep 0.5; printf '\e[A\e[2K'; fi
       draw; continue
     fi
