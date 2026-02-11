@@ -1289,8 +1289,10 @@ gen_level4() {
   # <<< feeds a string (here-string)
   questions+=("Uppercase ${Y}'${word}'${C} (use ${Y}<<<${C})|tr a-z A-Z <<< '${word}'|tr a-z A-Z <<< ${word}|#output:~[A-Z]")
   questions+=("Lowercase ${Y}'${word2^^}'${C} (use ${Y}<<<${C})|tr A-Z a-z <<< '${word2^^}'|tr A-Z a-z <<< ${word2^^}|#output:~[a-z]")
-  questions+=("Reverse ${Y}'${word}'${C} (use ${Y}<<<${C})|rev <<< '${word}'|rev <<< ${word}|#output:*")
-  questions+=("Reverse ${Y}'${word2}'${C} (use ${Y}<<<${C})|rev <<< '${word2}'|rev <<< ${word2}|#output:*")
+  local _rw="" _rw2="" _i; for ((_i=${#word}-1;_i>=0;_i--)); do _rw+="${word:_i:1}"; done
+  for ((_i=${#word2}-1;_i>=0;_i--)); do _rw2+="${word2:_i:1}"; done
+  questions+=("Reverse ${Y}'${word}'${C} (use ${Y}<<<${C})|rev <<< '${word}'|rev <<< ${word}|#output:~${_rw}")
+  questions+=("Reverse ${Y}'${word2}'${C} (use ${Y}<<<${C})|rev <<< '${word2}'|rev <<< ${word2}|#output:~${_rw2}")
 
   # bc calculations (one example)
   questions+=("Calculate ${Y}${num1}+${num2}${C} with bc|bc <<< '${num1}+${num2}'|bc <<< ${num1}+${num2}|#output:~$((num1+num2))")
@@ -1301,7 +1303,7 @@ gen_level4() {
 
   # wc with <<<
   questions+=("Count words in ${Y}'${word} ${word2} test'${C}|wc -w <<< '${word} ${word2} test'|#output:~^\\s*3$")
-  questions+=("Count bytes in ${Y}'${word}'${C} (use ${Y}wc -c${C})|wc -c <<< '${word}'|wc -c <<< ${word}|#output:~[0-9]+")
+  questions+=("Count bytes in ${Y}'${word}'${C} (use ${Y}wc -c${C})|wc -c <<< '${word}'|wc -c <<< ${word}|#output:~^\\s*$((${#word}+1))$")
 
   # tr transformations
   questions+=("Replace spaces with underscores in ${Y}'hello world test'${C}|tr ' ' '_' <<< 'hello world test'|#output:~hello_world_test")
