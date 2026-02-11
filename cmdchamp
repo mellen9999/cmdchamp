@@ -1171,7 +1171,7 @@ gen_level1() {
 
   # tee - write to file AND stdout
   questions+=("Echo '${word}' to screen AND save to ${W}${txt}${C} (use ${Y}tee${C})§echo ${word} | tee ${txt}§#output:${word}")
-  questions+=("Echo '${word2}' and append to ${W}${log}${C} (use ${Y}tee -a${C})§echo ${word2} | tee -a ${log}§#output:${word2}")
+  questions+=("Echo '${word2}' and append to ${W}${log}${C} (use ${Y}tee${C}, append mode)§echo ${word2} | tee -a ${log}§#output:${word2}")
   questions+=("Run ls, show output AND save to ${W}${outfile}${C} (use ${Y}tee${C})§ls | tee ${outfile}§#output:~server.log")
 
   printf '%s\n' "${questions[@]}"
@@ -1201,7 +1201,7 @@ gen_level2() {
 
   # less - scrollable file viewer
   questions+=("Page through ${W}${log}${C} interactively|less ${log}|#text:")
-  questions+=("View ${W}${txt}${C} with line numbers in a pager (use ${Y}less -N${C})|less -N ${txt}|#text:")
+  questions+=("View ${W}${txt}${C} with line numbers in a pager (use ${Y}less${C})|less -N ${txt}|#text:")
 
   printf '%s\n' "${questions[@]}"
 }
@@ -1915,7 +1915,7 @@ gen_level19() {
   questions+=("Confirm before each delete (interactive)§find . -name '*.${ext2}' -print0 | xargs -0 -p rm")
   questions+=("Copy files in batches of ${n}§find . -name '*.${ext}' -print0 | xargs -0 -n ${n} cp -t ${dir}/")
   questions+=("Rename files with backup_ prefix§find . -maxdepth 1 -name '*.${ext}' -printf '%f\\n' | xargs -I {} mv {} backup_{}")
-  questions+=("Preview what xargs would run (-t flag)§find . -name '*.${ext}' -print0 | xargs -0 -t wc -l")
+  questions+=("Preview what xargs would run (verbose/trace mode)§find . -name '*.${ext}' -print0 | xargs -0 -t wc -l")
 
   # Combined operations
   questions+=("Find .${ext} files > ${size}, show sizes sorted§find . -name '*.${ext}' -size +${size} -exec du -h {} \\; | sort -rh")
