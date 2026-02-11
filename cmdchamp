@@ -2947,19 +2947,22 @@ check() {
 
   # Sandbox mode: execute command and validate output/state
   if ((SANDBOX_MODE && !_qtext)); then
-    local output
-    output=$(_sandbox_exec "$inp" 5 2>&1)
+    local output _sb_rc
+    output=$(_sandbox_exec "$inp" 5 2>&1); _sb_rc=$?
     _SANDBOX_OUTPUT="$output"
 
     # Track destructive commands for reset
     _is_destructive "$inp" && _SANDBOX_DESTRUCTIVE=1
 
-    # Validate based on markers
-    if [[ -n "$_qoutput" ]]; then
-      _sandbox_check_output "$output" "$_qoutput" && return 0
-    fi
-    if [[ -n "$_qstate" ]]; then
-      _sandbox_check_state "$_qstate" && return 0
+    # Reject command-not-found (127) and cannot-execute (126) errors
+    if ((_sb_rc != 127 && _sb_rc != 126)); then
+      # Validate based on markers
+      if [[ -n "$_qoutput" ]]; then
+        _sandbox_check_output "$output" "$_qoutput" && return 0
+      fi
+      if [[ -n "$_qstate" ]]; then
+        _sandbox_check_state "$_qstate" && return 0
+      fi
     fi
 
     # Fall through to text matching if no markers or sandbox failed
