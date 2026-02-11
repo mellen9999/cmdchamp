@@ -3273,11 +3273,10 @@ run() {
       if check "$input" "$_qanswers"; then
         [[ -n "$input" ]] && { HIST+=("$input"); HIST_IDX=${#HIST[@]}; HIST_SAVE=""; }
         ((_S_ANSWERED++))
-        ((_S_CORRECT++))
         if $HINT; then
           _S_STREAK=0; streak=0
         else
-          ((_S_STREAK++))
+          ((_S_CORRECT++)); ((_S_STREAK++))
           ((_S_STREAK > _S_BEST_STREAK)) && _S_BEST_STREAK=$_S_STREAK
         fi
         if [[ -n "$_SANDBOX_OUTPUT" ]]; then printf '\n%s\n' "${W}${_SANDBOX_OUTPUT}${N}"; fi
@@ -3291,11 +3290,12 @@ run() {
           local _new_tier=$((tier<2?tier+1:2))
           ((tier < 2 && _new_tier >= 2)) && ((_S_MASTERED++))
           if $HINT; then
-            printf '\n%s\n' "${G}+${D} (recalled)${N}"
+            printf '\n%s\n' "${Y}~${D} (hint)${N}"
+            _sset "$prompt" "$tier"
           else
             printf '\n%s\n' "${G}${B}+${N}"; ((++streak))
+            _sset "$prompt" "$_new_tier"
           fi
-          _sset "$prompt" "$_new_tier"
         fi
         read -rsp "${D}Press Enter to continue...${N}"
         ((++qi)); QI=$qi; save; break
