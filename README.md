@@ -12,7 +12,7 @@ With [bubblewrap](https://github.com/containers/bubblewrap), commands run in a r
 
 ### How scoring works
 
-Each question has a mastery tier (0→1→2). Get it right to promote, wrong to demote. Tier 2 = mastered. The progress bar shows how far through the current session's question set you are — hints advance the bar but don't promote the tier, so the question will come back until you can answer it cold.
+Each question has a mastery tier (0→1→2). Get it right to promote, wrong to demote. Tier 2 = mastered. Hints show the answer, then you retype it from memory — but the question doesn't advance. You have to answer without a hint to move the progress bar forward. No shortcutting to the boss.
 
 ## Install
 
