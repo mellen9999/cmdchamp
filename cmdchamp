@@ -3197,7 +3197,7 @@ _read_line() {
             mode="normal"; ((cursor>0)) && ((cursor--)); draw
           fi;;
         $'\x7f'|$'\b') ((cursor>0)) && { input="${input:0:cursor-1}${input:cursor}"; ((cursor--)); draw; };;
-        '') echo; return;;
+        '') ((_man_open)) && printf '\e[s\n\e[J\e[u'; _man_open=0; echo; return;;
         *) input="${input:0:cursor}${c}${input:cursor}"; ((++cursor)); draw;;
       esac
     elif ((VI_MODE)); then
@@ -3239,7 +3239,7 @@ _read_line() {
             esac; fi; fi;;
         q) _quit;;
         \?) ((_rl_hints)) && { printf '\n%s\n%s\n%s\n%s\n' "${D}hl${N} move  ${D}kj${N}/↑↓ history  ${D}wb${N} word  ${D}fFtT${N}+char find  ${D}0\$/gg/G${N} line" "${D}x/X${N} del char  ${D}dw/db/dd${N} del  ${D}cw/cb/cc${N} change  ${D}r${N} replace" "${D}s/S${N} subst  ${D}i/a/I/A${N} insert  ${D}u${N} undo(stack)  ${D}q${N} quit" "${D}Tab${N} man  ${D}Ctrl+d${N} quit  ${D}[num]cmd${N} repeat"; read -rsn1; _REDRAW_HDR; draw; };;
-        '') echo; return;;
+        '') ((_man_open)) && printf '\e[s\n\e[J\e[u'; _man_open=0; echo; return;;
       esac
     fi
   done
