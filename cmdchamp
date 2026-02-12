@@ -17,16 +17,6 @@ FIRE_STREAK=5          # Streak needed for fire mode (+2 points)
 REVIEW_PER_LEVEL=2     # Review questions to pick from each previous level
 MAX_LEVEL=30           # Highest level number
 
-# Generate level password: deterministic 4-char code
-_level_pass() {
-  local lv=$1 chars="ABCDEFGHJKLMNPQRSTUVWXYZ23456789"  # No I/O/0/1 (ambiguous)
-  local seed=$((lv * 7919 + 1327)) out=""
-  for _ in 1 2 3 4; do
-    out+="${chars:$((seed % 32)):1}"
-    seed=$((seed / 32 + lv * 31))
-  done
-  echo "$out"
-}
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # PLAYER PROFILE & BOSS SYSTEM
@@ -3387,8 +3377,6 @@ run() {
     printf '%s\n\n' "${C}You acquired: ${LEVEL_NAMES[$lv]}${N}"
     ((BOSS_BEATEN < lv)) && { BOSS_BEATEN=$lv; _save_profile; }
     if ((lv<MAX_LEVEL)); then
-      local next_pass; next_pass=$(_level_pass "$((lv+1))")
-      printf '%s\n' "${Y}PASSWORD: ${B}${next_pass}${N}"
       printf "${D}Press Enter for Level %d...${N}\n" "$((lv+1))"; read -r
       LVL=$((lv+1)); QI=0; save; _NEXT_LV=$LVL _NEXT_BOSS=0; return 0
     else
@@ -3661,56 +3649,23 @@ case "${1:-}" in
   [1-9]|[12][0-9]|30)
     _tty; _load_profile
     LVL=$1
-    # Level 1 always unlocked, others need boss beaten or password
     if ((LVL > 1 && LVL > BOSS_BEATEN + 1)); then
-      printf '%s\n' "${Y}Level $LVL locked${N} - enter password (or beat Level $((LVL-1)) boss):"
-      read -rp "> " _pass
-      _unlocked=0
-      for _lv in $(seq "$LVL" "$MAX_LEVEL"); do
-        if [[ "${_pass^^}" == "$(_level_pass "$_lv")" ]]; then
-          _unlocked=1; break
-        fi
-      done
-      if ((!_unlocked)); then
-        printf '%s\n' "${R}Wrong password${N}"
-        exit 1
-      fi
-      printf '%s\n' "${G}Unlocked!${N}"
+      printf '%s\n' "${R}Level $LVL locked${N} - beat Level $((LVL-1)) boss first"
+      exit 1
     fi
     QI=0; save; _run_loop
     ;;
-  p|pass)
+  p|progress)
     _load_profile
-    if [[ -z "${2:-}" ]]; then
-      # Show all levels with unlock status
-      if ((BOSS_BEATEN < 1)); then
-        echo "No passwords yet - beat Level 1 boss first"
+    printf '%s\n' "${B}Progress${N}"
+    for lv in $(seq 1 $MAX_LEVEL); do
+      if ((lv <= BOSS_BEATEN + 1)); then
+        local mark="${G}✓${N}"; ((lv > BOSS_BEATEN)) && mark="${Y}→${N}"
+        printf "  %s ${G}%2d${N} %s\n" "$mark" "$lv" "${LEVEL_NAMES[$lv]:-}"
       else
-        printf '%s\n' "${B}Unlocked Levels${N}"
-        for lv in $(seq 1 $((BOSS_BEATEN + 1))); do
-          ((lv > MAX_LEVEL)) && break
-          if ((lv == 1)); then
-            printf "  ${G}%2d${N} %-22s ${D}(always open)${N}\n" "$lv" "${LEVEL_NAMES[$lv]:-}"
-          else
-            printf "  ${G}%2d${N} %-22s ${Y}%s${N}\n" "$lv" "${LEVEL_NAMES[$lv]:-}" "$(_level_pass "$lv")"
-          fi
-        done
-        if ((BOSS_BEATEN + 2 <= MAX_LEVEL)); then
-          printf '\n%s\n' "${D}Locked: Levels $((BOSS_BEATEN + 2))-${MAX_LEVEL}${N}"
-        fi
+        printf "  ${D}  %2d %s${N}\n" "$lv" "${LEVEL_NAMES[$lv]:-}"
       fi
-    else
-      # Try password against all levels
-      for lv in $(seq 2 $MAX_LEVEL); do
-        if [[ "${2^^}" == "$(_level_pass "$lv")" ]]; then
-          printf '%s\n' "${G}Password for Level $lv!${N}"
-          _tty; LVL=$lv; QI=0; save; _run_loop
-          exit 0
-        fi
-      done
-      printf '%s\n' "${R}Invalid password${N}"
-      exit 1
-    fi
+    done
     ;;
   r|reset) rm -f "$DATA"/*.json "$DATA/scores" "$DATA/scores.lock" "$DATA/profile"; rm -rf "$DATA/sandbox" "$DATA/sandbox.pristine" 2>/dev/null; echo "Reset.";;
   c|cleanup) [[ -f "$DATA/scores" ]] && { flock "$DATA/scores.lock" awk -F'|' '!seen[$1]++' "$DATA/scores" > "$DATA/scores.tmp" && mv "$DATA/scores.tmp" "$DATA/scores"; echo "Deduplicated scores."; } || echo "No scores file.";;
@@ -3730,9 +3685,8 @@ Options:
   --no-sandbox  Disable sandbox (text-match only)
 
 Commands:
-  1-30          Start level (password required if locked)
-  p|pass        Show your earned passwords
-  p|pass CODE   Jump to level using password
+  1-30          Start level (must be unlocked)
+  p|progress    Show level progress
   n|new         Start fresh from level 1
   s|stats       Show mastery statistics
   review        Practice weak levels (mastery < 80%)
@@ -3752,5 +3706,5 @@ EOF
     ;;
   n|new) _tty; _load_profile; LVL=1; QI=0; save; _run_loop;;
   "") _tty; _load_profile; load; ((LVL>1||QI>0)) && { read -rp "Continue Level $LVL Q$((QI+1))? [Y/n] " yn; [[ "$yn" =~ ^[Nn] ]] && { LVL=1; QI=0; save; _intro; _tutorial; }; }; _run_loop;;
-  *) echo "Usage: cmdchamp [1-30|new|pass|stats|review|gauntlet|timed|reset|help]"; exit 1;;
+  *) echo "Usage: cmdchamp [1-30|new|progress|stats|review|gauntlet|timed|reset|help]"; exit 1;;
 esac
