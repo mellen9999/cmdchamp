@@ -1332,7 +1332,7 @@ gen_level6() {
   questions+=("Reverse ${Y}'${word}'${C} (use ${Y}<<<${C})|rev <<< '${word}'|rev <<< ${word}|#output:~${_rw}")
   questions+=("Reverse ${Y}'${word2}'${C} (use ${Y}<<<${C})|rev <<< '${word2}'|rev <<< ${word2}|#output:~${_rw2}")
 
-  questions+=("Calculate ${Y}${num1}+${num2}${C} with bc|bc <<< '${num1}+${num2}'|bc <<< ${num1}+${num2}|#output:~$((num1+num2))")
+  command -v bc &>/dev/null && questions+=("Calculate ${Y}${num1}+${num2}${C} with bc|bc <<< '${num1}+${num2}'|bc <<< ${num1}+${num2}|#output:~$((num1+num2))")
 
   questions+=("Extract home dir from ${Y}'root:x:0:0:root:/root:/bin/bash'${C}|cut -d: -f6 <<< 'root:x:0:0:root:/root:/bin/bash'|#output:~/root")
   questions+=("Get username from ${Y}'john:x:1000:1000:John:/home/john:/bin/bash'${C}|cut -d: -f1 <<< 'john:x:1000:1000:John:/home/john:/bin/bash'|#output:~john")
