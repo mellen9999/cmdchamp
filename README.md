@@ -40,9 +40,8 @@ git clone https://github.com/mellen9999/cmdchamp.git
 ```bash
 cmdchamp                # Resume from last position
 cmdchamp n              # Start fresh from level 1
-cmdchamp 14             # Jump to level (password required if locked)
-cmdchamp pass           # Show earned passwords
-cmdchamp pass CODE      # Jump to level using password
+cmdchamp 14             # Jump to level (must be unlocked)
+cmdchamp progress       # Show level progress
 cmdchamp stats          # Show mastery statistics
 cmdchamp review         # Practice weak levels (< 80% mastery)
 cmdchamp gauntlet       # 3 lives, escalating difficulty (post-ROOT)
