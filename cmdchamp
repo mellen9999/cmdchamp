@@ -3165,7 +3165,7 @@ _del() { # $1=motion
 # Caller defines _REDRAW_HDR(). Uses dynamic scoping for ans, HIST, etc.
 _read_line() {
   local _rl_hints=${1:-1} _rl_hist=${2:-1}
-  input="" cursor=0 mode="insert" _rep=""
+  input="" cursor=0 mode="insert" _rep="" _man_open=0
   UNDO_STACK=()
   ((_rl_hist)) && { HIST_IDX=${#HIST[@]}; HIST_SAVE=""; }
   read -t 0.01 -rsn 1000 ||:
@@ -3173,10 +3173,12 @@ _read_line() {
   while IFS= read -rsn1 c; do
     if [[ "$c" == $'\t' ]]; then
       if ((_rl_hints)); then
-        echo; explain "$ans"
-        read -rsp "${D}Press Enter to continue...${N}"; read -t 0.01 -rsn 1000 ||:; _REDRAW_HDR
+        ((_man_open)) && _man_open=0 || _man_open=1
+        printf '\e[?25l\e[s\n\e[J'  # hide cursor, save pos, clear below
+        ((_man_open)) && explain "$ans"
+        printf '\e[u\e[?25h'  # restore pos, show cursor
       else printf '\n%s\n' "${R}No manpages in boss mode!${N}"; sleep 0.5; printf '\e[A\e[2K'; fi
-      draw; continue
+      continue
     fi
     if [[ "$mode" == "insert" ]]; then
       case "$c" in
