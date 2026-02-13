@@ -3313,7 +3313,6 @@ run() {
           local _new_tier=$((_real_tier<2?_real_tier+1:2))
           ((_real_tier < 2 && _new_tier >= 2)) && ((_S_MASTERED++))
           printf '\n%s\n' "${Y}${B}* ON FIRE! +2${N}"; ((++streak)); _sset "$prompt" "$_new_tier"
-          read -rsp "${D}Press Enter to continue...${N}"
           qi=$((qi+2)); ((qi >= ${#shuf[@]})) && qi=${#shuf[@]}; QI=$qi; save; break
         else
           local _new_tier=$((tier<2?tier+1:2))
@@ -3321,7 +3320,6 @@ run() {
           printf '\n%s\n' "${G}${B}+${N}"; ((++streak))
           _sset "$prompt" "$_new_tier"
         fi
-        read -rsp "${D}Press Enter to continue...${N}"
         ((++qi)); QI=$qi; save; break
       else
         ((_S_ANSWERED++)); _S_STREAK=0
@@ -3366,8 +3364,8 @@ run() {
       _S_STREAK=0
       printf '%s  %s %s\n\n' "${R}x${N}" "${D}expected:${N}" "${Y}${ans}${N}"
       explain "$ans"
+      read -rsp "${D}Press Enter to continue...${N}"
     fi
-    read -rsp "${D}Press Enter to continue...${N}"
   done
 
   # Results
