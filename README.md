@@ -4,15 +4,15 @@ Pure bash CLI trainer — 30 levels from `ls` to privilege escalation.
 
 ![demo](demo.gif)
 
-Drill real commands until they're muscle memory. Every question is a prompt you'd see on a real terminal — type the answer, get instant feedback, move on. Questions reference real files in the sandbox, accept multiple valid syntaxes (both `sort -u` and `sort | uniq`), and hint which tool to use when the answer isn't obvious. Randomized each run so you can't memorize the order. A spaced repetition system tracks what you know and what you don't: nail a question twice and it's mastered, miss it and it comes back more often.
+Drill real commands until they're muscle memory. Every question is a prompt you'd see on a real terminal — type the answer, get instant feedback, move on. Questions reference real files in the sandbox, accept multiple valid syntaxes (both `sort -u` and `sort | uniq`), and hint which tool to use when the answer isn't obvious. Randomized each run so you can't memorize the order. A mastery system tracks what you know and what you don't: get a question right and it's mastered, get it wrong and it drops back to unmastered so you see it first next time. Hit a 5-answer streak and you enter fire mode for bonus points.
 
-Each level ends with a boss round — no hints, 4/5 to pass. Beat all 30 and endgame modes unlock: gauntlet (3 lives), timed runs, and review mode that targets your weakest commands.
+Each level ends with a boss round — no manpages, 4/5 to pass. Fail and you can retry the boss immediately or go back to practice. Beat all 30 and endgame modes unlock: gauntlet (3 lives) and timed runs. Review mode targets your weakest commands and is available anytime. First run includes a short tutorial.
 
-With [bubblewrap](https://github.com/containers/bubblewrap), commands run in a real sandboxed filesystem. Without it, answers are text-matched. Accepts both modern (`rg`, `fd`) and classic (`grep`, `find`) syntax. Vi line editing built in.
+With [bubblewrap](https://github.com/containers/bubblewrap), commands run in a real sandboxed filesystem. Without it, answers are text-matched. Search levels (16-17) accept both modern (`rg`, `fd`) and classic (`grep`, `find`) syntax. Vi line editing built in.
 
 ### How scoring works
 
-Each question has a mastery tier (0→1→2). Get it right to promote, wrong to demote. Tier 2 = mastered. Tab opens the manpage for the relevant command — a reference, not a spoiler. You still have to figure out the answer yourself.
+Each question has a mastery tier (unmastered → mastered). Get it right to promote, wrong to demote. Tab toggles the manpage for the relevant command — a reference, not a spoiler. You still have to figure out the answer yourself.
 
 ## Install
 
@@ -38,7 +38,7 @@ git clone https://github.com/mellen9999/cmdchamp.git
 ## Usage
 
 ```bash
-cmdchamp                # Resume from last position
+cmdchamp                # Resume from last position (prompts to continue)
 cmdchamp n              # Start fresh from level 1
 cmdchamp 14             # Jump to level (must be unlocked)
 cmdchamp progress       # Show level progress
@@ -48,6 +48,8 @@ cmdchamp gauntlet       # 3 lives, escalating difficulty (post-ROOT)
 cmdchamp timed          # Race the clock, default 120s (post-ROOT)
 cmdchamp timed 60       # Timed mode: 60, 120, or 300 seconds
 cmdchamp reset          # Clear all progress
+cmdchamp cleanup        # Deduplicate score file
+cmdchamp help           # Show help + level list
 cmdchamp --no-sandbox   # Disable sandbox (text-match only)
 ```
 
@@ -82,7 +84,7 @@ cmdchamp --no-sandbox   # Disable sandbox (text-match only)
 | 23 | Git | branches, remotes, rebasing, stashing, bisect |
 | 24 | Network Tools | tshark, curl, jq, ssh tunnels, openssl, SMB |
 | 25 | Network Scanning | nmap, service detection, scripts |
-| 26 | WiFi & RF | aircrack-ng, netcat, tcpdump, RTL-SDR |
+| 26 | WiFi & RF | aircrack-ng, netcat, tcpdump, wireless recon |
 | 27 | Hash Cracking | hashcat, john, hydra, encoding |
 | 28 | Forensics | strings, readelf, binwalk, volatility, exiftool |
 | 29 | Privilege Escalation | SUID, GTFOBins, enumeration |
@@ -93,7 +95,7 @@ cmdchamp --no-sandbox   # Disable sandbox (text-match only)
 | Key | Action |
 |-----|--------|
 | Enter | Submit answer |
-| Tab | Show manpage |
+| Tab | Toggle manpage |
 | Ctrl+d | Quit (session summary) |
 | Esc | Vi normal mode |
 | ? | All keybindings (normal mode) |

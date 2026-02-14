@@ -11,9 +11,12 @@ Set Framerate 24
 Set TypingSpeed 1ms
 Set Padding 20
 
-# Hidden setup: deterministic version + clean state
+# Hidden setup: clean state + deterministic question order
 Hide
 Type "rm -rf ~/.local/share/cmdchamp"
+Enter
+Sleep 300ms
+Type "printf '#!/bin/bash\ncat' > /tmp/shuf && chmod +x /tmp/shuf"
 Enter
 Sleep 300ms
 Type "export PATH=/tmp:$PATH"
@@ -37,63 +40,61 @@ Sleep 2s
 # ASCII banner - enter handle
 Set TypingSpeed 100ms
 Type "hacker"
-Sleep 500ms
+Sleep 400ms
 Enter
-Sleep 3s
+Sleep 2.5s
 
 # Intro story - press to continue
 Enter
-Sleep 2.5s
+Sleep 1.5s
 
 # Tutorial - press to continue
 Enter
-Sleep 1.5s
+Sleep 1s
 
-# ── Q1: "Show current directory" → pwd ✓ ──
+# ── Q1: pwd question → correct ──
 Set TypingSpeed 70ms
-Sleep 500ms
+Sleep 400ms
 Type "pwd"
-Sleep 300ms
+Sleep 200ms
 Enter
-Sleep 1.5s
+Sleep 1.2s
 Enter
-Sleep 1s
+Sleep 600ms
 
-# ── Q2: "What directory?" → whoami ✗ then pwd ✓ ──
-Sleep 300ms
-Type "whoami"
-Sleep 300ms
-Enter
-Sleep 2.5s
-Enter
-Sleep 1s
-Type "pwd"
-Sleep 300ms
-Enter
-Sleep 1.5s
-Enter
-Sleep 1s
-
-# ── Q3: "Show files in current directory" → ls ✓ ──
+# ── Q2: pwd question → wrong (type ls), then correct ──
 Sleep 300ms
 Type "ls"
-Sleep 300ms
-Enter
-Sleep 1.5s
-Enter
-Sleep 1s
-
-# ── Q4: "List all files including hidden" → Tab hint → ls -a → +0 ──
-Sleep 300ms
-Tab
-Sleep 2.5s
-Type "ls -a"
-Sleep 300ms
+Sleep 200ms
 Enter
 Sleep 2s
 Enter
-Sleep 1s
+Sleep 600ms
+Type "pwd"
+Sleep 200ms
+Enter
+Sleep 1.2s
+Enter
+Sleep 600ms
+
+# ── Q3: ls question → Tab for manpage, then correct ──
+Sleep 300ms
+Tab
+Sleep 2s
+Type "ls"
+Sleep 200ms
+Enter
+Sleep 1.2s
+Enter
+Sleep 600ms
+
+# ── Q4: ls -a question → correct ──
+Sleep 300ms
+Type "ls -a"
+Sleep 200ms
+Enter
+Sleep 1.5s
 
 # Session summary
 Ctrl+D
-Sleep 4s
+Sleep 3s
