@@ -11,28 +11,13 @@ Set Framerate 24
 Set TypingSpeed 1ms
 Set Padding 20
 
-# Hidden setup: clean state + deterministic question order
-Hide
-Type "rm -rf ~/.local/share/cmdchamp"
-Enter
-Sleep 300ms
-Type "printf '#!/bin/bash\ncat' > /tmp/shuf && chmod +x /tmp/shuf"
-Enter
-Sleep 300ms
-Type "export PATH=/tmp:$PATH"
-Enter
-Sleep 300ms
-Type "export PS1='$ '"
-Enter
-Sleep 200ms
-Type "clear"
+# Setup: exec into clean bash (rcfile does cleanup + clear)
+Type "exec bash --rcfile /tmp/demo-bashrc"
 Enter
 Sleep 500ms
-Show
 
 # Launch
 Set TypingSpeed 60ms
-Sleep 300ms
 Type "cmdchamp n"
 Enter
 Sleep 2s
