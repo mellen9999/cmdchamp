@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# cmdchamp audit.sh — omega-level automated testing for all 29 levels
+# cmdchamp audit.sh — omega-level automated testing for all 30 levels
 # Tests: syntax validation, positive self-test, confusable negatives, generic negatives
 set -uo pipefail
 
@@ -50,7 +50,7 @@ _warn() {
 phase1_syntax() {
   printf '\n%s\n' "═══ PHASE 1: Question Syntax Validation ═══"
 
-  for lv in {0..28}; do
+  for lv in {1..30}; do
     local count=0 errors=0
 
     # Generate 3 times to catch randomization issues
@@ -134,7 +134,7 @@ phase2_positive() {
 
   ((SANDBOX_MODE)) && _sandbox_init
 
-  for lv in {0..28}; do
+  for lv in {1..30}; do
     local tested=0 passed=0 failed=0 skipped=0
     local raw
     raw=$(gen_level${lv} 2>/dev/null) || continue
@@ -456,7 +456,7 @@ _mutate() {
 phase3_confusable() {
   printf '\n%s\n' "═══ PHASE 3: Confusable Negative Testing ═══"
 
-  for lv in {0..28}; do
+  for lv in {1..30}; do
     local tested=0 caught=0 leaked=0
     local raw
     raw=$(gen_level${lv} 2>/dev/null) || continue
@@ -507,7 +507,7 @@ phase4_generic() {
 
   local generics=("" "ls" "echo hi" "asdfqwer" "rm -rf /")
 
-  for lv in {0..28}; do
+  for lv in {1..30}; do
     local tested=0 caught=0 leaked=0
     local raw
     raw=$(gen_level${lv} 2>/dev/null) || continue
@@ -568,7 +568,7 @@ phase5_crosscheck() {
 
   # Check boss can find 5 unseen questions per level
   printf '  Checking boss question availability...\n'
-  for lv in {0..28}; do
+  for lv in {1..30}; do
     local raw count=0
     raw=$(gen_level${lv} 2>/dev/null) || continue
     while IFS= read -r line; do [[ -n "$line" ]] && ((count++)); done <<< "$raw"

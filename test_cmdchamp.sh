@@ -64,9 +64,9 @@ else
 fi
 
 # ─────────────────────────────────────────────────────────────────────────────
-section "Answer Normalization (norm)"
+section "Answer Normalization (_fnorm)"
 
-run_norm() { _run "norm '$1'"; }
+run_norm() { _run "_fnorm '$1'; printf '%s' \"\$REPLY\""; }
 
 # Combined short flags
 r=$(run_norm "ls -la")

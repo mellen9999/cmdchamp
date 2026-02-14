@@ -1720,7 +1720,7 @@ gen_level13() {
   printf '%s\n' "${questions[@]}"
 }
 
-# Level 16: Text Search (grep, rg)
+# Level 14: System Admin
 gen_level14() {
   eval "local questions=() $_QV"; _ctx
   _fphrase git vim tmux htop curl wget rsync jq; local pkg=$REPLY
@@ -1793,6 +1793,7 @@ gen_level14() {
 
   printf '%s\n' "${questions[@]}"
 }
+# Level 15: Multiplexers (tmux)
 gen_level15() {
   eval "local questions=() $_QV"; _ctx
 
@@ -1845,7 +1846,7 @@ gen_level15() {
   printf '%s\n' "${questions[@]}"
 }
 
-# Level 29: Privilege Escalation
+# Level 16: Text Search (grep, rg)
 gen_level16() {
   eval "local questions=() $_QV"; _ctx
   _frnum 1 10; local ctx=$REPLY; _frnum 2 5; local ctx2=$REPLY
@@ -2035,7 +2036,7 @@ gen_level18() {
   printf '%s\n' "${questions[@]}"
 }
 
-# Level 21: Batch Operations
+# Level 19: String & Arrays
 gen_level19() {
   eval "local questions=() $_QV"; _ctx
 
@@ -2181,7 +2182,7 @@ gen_level20() {
   printf '%s\n' "${questions[@]}"
 }
 
-# Level 30: ROOT (Apocalypse Mode)
+# Level 21: Batch Ops
 gen_level21() {
   eval "local questions=() $_QV"; _ctx
   _fpick SERVICES; local svc2=$REPLY; _frnum 2 8; local parallel=$REPLY; _frnum 1 20; local linenum=$REPLY
@@ -2273,7 +2274,7 @@ gen_level21() {
   printf '%s\n' "${questions[@]}"
 }
 
-# Level 25: Network Scanning (nmap)
+# Level 22: Advanced Regex
 gen_level22() {
   eval "local questions=() $_QV"; _ctx
 
@@ -2361,7 +2362,7 @@ gen_level22() {
   printf '%s\n' "${questions[@]}"
 }
 
-# Level 14: System Admin
+# Level 23: Git
 gen_level23() {
   eval "local questions=() $_QV"; _ctx
 
@@ -2458,7 +2459,7 @@ gen_level23() {
   printf '%s\n' "${questions[@]}"
 }
 
-# Level 15: Multiplexers (tmux)
+# Level 24: Network Tools
 gen_level24() {
   eval "local questions=() $_QV"; _ctx
   local key=data  # export.json only has .data array
@@ -2528,7 +2529,7 @@ gen_level24() {
   printf '%s\n' "${questions[@]}"
 }
 
-# Level 26: WiFi & RF
+# Level 25: Network Scanning (nmap)
 gen_level25() {
   eval "local questions=() $_QV"; _ctx
   port2=$((port + 1000))
@@ -2579,7 +2580,7 @@ gen_level25() {
   printf '%s\n' "${questions[@]}"
 }
 
-# Level 27: Hash Cracking
+# Level 26: WiFi & RF
 gen_level26() {
   eval "local questions=() $_QV"; _ctx
   _fpick WIFI_INTERFACES; local wiface=$REPLY
@@ -2624,7 +2625,7 @@ gen_level26() {
   printf '%s\n' "${questions[@]}"
 }
 
-# Level 19: String & Arrays
+# Level 27: Hash Cracking
 gen_level27() {
   eval "local questions=() $_QV"; _ctx
   local hidx=$((RANDOM % ${#HASHCAT_MODES[@]}))
@@ -2738,7 +2739,7 @@ gen_level28() {
   printf '%s\n' "${questions[@]}"
 }
 
-# Level 24: Network Tools
+# Level 29: Privilege Escalation
 gen_level29() {
   eval "local questions=() $_QV"; _ctx
 
@@ -2799,7 +2800,7 @@ gen_level29() {
   printf '%s\n' "${questions[@]}"
 }
 
-# Level 22: Advanced Regex
+# Level 30: ROOT
 gen_level30() {
   eval "local questions=() $_QV"; _ctx
 
@@ -2893,8 +2894,6 @@ gen_level30() {
 
   printf '%s\n' "${questions[@]}"
 }
-
-# Level 23: Git
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # QUESTION SYSTEM - Generate and manage questions per level
@@ -3030,7 +3029,7 @@ save() {
   mv "$DATA/session.json.tmp" "$DATA/session.json"
   exec {fd}>&-
 }
-# Score tracking: tier 1=blank, 2=recall (djb2 hash keys, no forks)
+# Score tracking: tier 0=unseen/demoted, 1=learning, 2=mastered (djb2 hash keys, no forks)
 declare -A _HASH_CACHE=()
 _hash() {
   local key="$1"
