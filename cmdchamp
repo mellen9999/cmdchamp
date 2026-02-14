@@ -650,7 +650,7 @@ _sandbox_check_output() {
 }
 
 # Validate file state after command
-# Formats: exists:file, !exists:file, contains:file:pattern, lines:file:N, perm:file:rwx
+# Formats: exists:file, !exists:file, contains:file:pattern, !contains:file:pattern, lines:file:N, perm:file:rwx
 _sandbox_check_state() {
   local checks="$1"
   IFS=',' read -ra checks_arr <<< "$checks"
@@ -669,6 +669,12 @@ _sandbox_check_state() {
         local file="${rest%%:*}"
         local pattern="${rest#*:}"
         grep -qF "$pattern" -- "$SANDBOX_DIR/$file" 2>/dev/null || return 1
+        ;;
+      !contains:*:*)
+        local rest="${check#!contains:}"
+        local file="${rest%%:*}"
+        local pattern="${rest#*:}"
+        grep -qF "$pattern" -- "$SANDBOX_DIR/$file" 2>/dev/null && return 1
         ;;
       lines:*:*)
         local rest="${check#lines:}"
@@ -1405,7 +1411,7 @@ gen_level5() {
   questions+=("Count words in ${W}${txt}${C} — just the number, no filename (use ${Y}<${C})|wc -w < ${txt}")
   local _tr_up; case "$txt" in notes.txt) _tr_up="MEETING" ;; todo.txt) _tr_up="TASK" ;; *) _tr_up="[A-Z]" ;; esac
   questions+=("Uppercase contents of ${W}${txt}${C} (${Y}tr${C} needs ${Y}<${C}, no file arg)|tr a-z A-Z < ${txt}|#output:~${_tr_up}")
-  questions+=("Delete blank lines from ${W}${log}${C} (${Y}tr${C} needs ${Y}<${C})|tr -s '\\n' < ${log}")
+  questions+=("Squeeze consecutive blank lines in ${W}${log}${C} (${Y}tr${C} needs ${Y}<${C})|tr -s '\\n' < ${log}")
   questions+=("Sort ${W}${csv}${C} without filename in output (use ${Y}<${C})|sort < ${csv}")
 
   printf '%s\n' "${questions[@]}"
@@ -1753,7 +1759,7 @@ gen_level13() {
 
   # Listing files
   questions+=("List sorted by size, largest first|ls -lS|ls -Sl|eza -l --sort size -r")
-  questions+=("List sorted by time, newest first|ls -lt|ls -tl|eza -l --sort modified -r")
+  questions+=("List sorted by time, newest first|ls -lt|ls -tl|eza -l --sort modified")
   questions+=("List only directories|ls -d */|eza -D")
   questions+=("Show directory tree|tree|eza -T")
   questions+=("Tree ${n3} levels deep|tree -L ${n3}|eza -T -L ${n3}")
@@ -2014,7 +2020,7 @@ gen_level17() {
   # By size
   questions+=("Find files larger than ${size}|find . -size +${size}|fd -S +${size}")
   questions+=("Find files smaller than ${size}|find . -size -${size}|fd -S -${size}")
-  questions+=("Find empty files|find . -type f -empty|fd -t f --size 0b")
+  questions+=("Find empty files|find . -type f -empty")
 
   # By time
   questions+=("Find files modified in last ${time} minutes|find . -mmin -${time}|fd --changed-within ${time}m")
@@ -3058,7 +3064,7 @@ CSV
 _sc_steps_3() {
   cat <<'STEPS'
 Count data rows (excluding header)§tail -n +2 data.csv | wc -l§sed 1d data.csv | wc -l#output:~^\s*6\s*$
-Find duplicate lines (excluding header)§tail -n +2 data.csv | sort | uniq -d§sort data.csv | uniq -d#output:~alice
+Find duplicate lines (excluding header)§tail -n +2 data.csv | sort | uniq -d#output:~alice
 Sort and deduplicate (keep header)§head -1 data.csv > sorted.csv && tail -n +2 data.csv | sort -t, -k1 -n | uniq >> sorted.csv§(head -1 data.csv; tail -n +2 data.csv | sort -t, -k1,1n | uniq) > sorted.csv#state:lines:sorted.csv:5,contains:sorted.csv:id,name,status
 Count active entries in sorted file§grep -cw active sorted.csv§grep -c ',active$' sorted.csv#output:3
 STEPS
@@ -4018,10 +4024,13 @@ scenario() {
   printf '%s\n\n' "${D}${total} steps — sandbox state persists between steps${N}"
   read -rsn1 -p "${D}Press Enter to start...${N}"; echo
 
-  local si
+  local si _sc_snap="$DATA/sandbox.snap"
   for ((si=0; si<total; si++)); do
     _qparse "${steps[$si]}"
     local prompt=$_qprompt ans=$_qans
+
+    # Snapshot sandbox before each step so wrong answers can be rolled back
+    rm -rf "$_sc_snap"; cp -a "$SANDBOX_DIR" "$_sc_snap"
 
     _REDRAW_HDR() {
       printf '\e[2J\e[H'
@@ -4050,11 +4059,15 @@ scenario() {
         [[ -n "$_SANDBOX_OUTPUT" ]] && printf '\n%s %s\n' "${D}output:${N}" "$_SANDBOX_OUTPUT"
         printf '%s  %s %s\n\n' "${R}x${N}" "${D}expected:${N}" "${Y}${ans}${N}"
         explain "$ans"
+        # Restore sandbox to pre-step state so retry starts clean
+        chmod -R u+rwX "$SANDBOX_DIR" 2>/dev/null
+        rm -rf "$SANDBOX_DIR"; cp -a "$_sc_snap" "$SANDBOX_DIR"
         read -rsp "${D}Press Enter to retry...${N}"
         _REDRAW_HDR
       fi
     done
   done
+  rm -rf "$_sc_snap" 2>/dev/null
 
   # Completion
   printf '\e[2J\e[H'
