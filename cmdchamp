@@ -3438,7 +3438,8 @@ _read_line() {
   local _rl_hints=${1:-1} _rl_hist=${2:-1} _rl_timeout=${3:-0} _rl_deadline=0
   input="" cursor=0 mode="insert" _rep="" _man_open=0
   UNDO_STACK=()
-  if ((_rl_timeout > 0)); then printf -v _rl_deadline '%(%s)T' -1; ((_rl_deadline += _rl_timeout)); fi
+  local _rl_last_sec=0
+  if ((_rl_timeout > 0)); then printf -v _rl_deadline '%(%s)T' -1; ((_rl_deadline += _rl_timeout)); _rl_last_sec=$_rl_deadline; fi
   ((_rl_hist)) && { HIST_IDX=${#HIST[@]}; HIST_SAVE=""; }
   read -t 0.01 -rsn 1000 ||:
   draw
@@ -3446,11 +3447,11 @@ _read_line() {
     if ((_rl_deadline)); then
       local _now; printf -v _now '%(%s)T' -1; local _rem=$((_rl_deadline - _now))
       ((_rem <= 0)) && { input=""; return 1; }
+      if ((_now != _rl_last_sec)); then _rl_last_sec=$_now; _REDRAW_HDR; draw; fi
       IFS= read -rsn1 -t 1 c || {
-        # Check if truly expired vs just a 1s tick
         printf -v _now '%(%s)T' -1; _rem=$((_rl_deadline - _now))
         ((_rem <= 0)) && { input=""; return 1; }
-        _REDRAW_HDR; draw; continue
+        _rl_last_sec=$_now; _REDRAW_HDR; draw; continue
       }
     else
       IFS= read -rsn1 c || break
