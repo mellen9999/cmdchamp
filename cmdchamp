@@ -84,7 +84,7 @@ EOF
 _intro() {
   printf '\e[2J\e[H'
   # Padding: inner width 66, fixed text 41 chars ("      You are " + ". You have only your shell.")
-  local pad=$((25 - ${#PLAYER_NAME}))
+  local pad=$((25 - ${#PLAYER_NAME})); ((pad < 0)) && pad=0
   local spaces; printf -v spaces '%*s' "$pad" ''
   cat <<EOF
 
@@ -566,7 +566,7 @@ _sandbox_exec() {
 
   local _rc
   timeout "$timeout_sec" bwrap "${bwrap_args[@]}" /bin/bash -c "$cmd"; _rc=$?
-  ((_rc >= 125)) && printf '%s\n' "${R}sandbox error (exit %d)${N}" "$_rc" >&2
+  ((_rc >= 125)) && printf "${R}sandbox error (exit %d)${N}\n" "$_rc" >&2
   return "$_rc"
 }
 
@@ -834,9 +834,9 @@ declare -A MANPAGE=(
   [journalctl]=$'systemd logs\n  \e[36m-u\e[0m \e[33mUNIT\e[0m   service logs           \e[36m-f\e[0m        follow live\n  \e[36m-n\e[0m \e[33mN\e[0m      last \e[33mN\e[0m lines           \e[36m-b\e[0m        current boot\n  \e[36m-p\e[0m \e[33mLEVEL\e[0m  priority (err/warn)    \e[36m-k\e[0m        kernel messages\n  \e[36m-o\e[0m \e[33mFMT\e[0m    output format          \e[36m--since\e[0m   time filter\n  \e[36m--disk-usage\e[0m   journal size      \e[36m--vacuum-size\e[0m=\e[33mN\e[0m  shrink to\n  \e[36m--no-pager\e[0m     no less/more\n  \e[2mjournalctl -u nginx -f    journalctl -b -p err    journalctl --disk-usage\e[0m'
   [crontab]=$'scheduled tasks\n  \e[36m-e\e[0m        edit crontab           \e[36m-l\e[0m        list jobs\n  \e[36m-r\e[0m        remove all jobs\n  \e[2mcrontab -e    crontab -l    sudo crontab -e\e[0m'
   [tmux]=$'terminal multiplexer\n  \e[33mnew\e[0m \e[36m-s\e[0m \e[33mNAME\e[0m   new session     \e[33mattach\e[0m \e[36m-t\e[0m \e[33mNAME\e[0m  reattach\n  \e[33mls\e[0m              list sessions   \e[33mkill-session\e[0m \e[36m-t\e[0m \e[33mNAME\e[0m\n  \e[2mtmux new -s work    tmux attach -t work    tmux ls\e[0m'
-  [nmap]=$'network scanner\n  \e[36m-sS\e[0m       SYN (stealth)          \e[36m-sT\e[0m       TCP connect\n  \e[36m-sU\e[0m       UDP scan               \e[36m-sV\e[0m       version detect\n  \e[36m-sC\e[0m       default scripts        \e[36m-O\e[0m        OS detection\n  \e[36m-A\e[0m        aggressive (all)       \e[36m-F\e[0m        fast (top 100)\n  \e[36m-p\e[0m \e[33mPORTS\e[0m  specific ports         \e[36m-p-\e[0m       all 65535 ports\n  \e[36m-Pn\e[0m       skip discovery         \e[36m-sn\e[0m       ping sweep\n  \e[36m-sL\e[0m       list targets           \e[36m-PR\e[0m       ARP scan\n  \e[36m-oA\e[0m \e[33mPFX\e[0m   all output formats     \e[36m-oG\e[0m \e[33mFILE\e[0m  greppable output\n  \e[36m-T1\e[0m       slow (evasion)         \e[36m-T4\e[0m       fast timing\n  \e[36m--top-ports\e[0m \e[33mN\e[0m  top N ports       \e[36m--script\e[0m \e[33mNAME\e[0m  NSE script\n  \e[2mnmap -sV -sC host    nmap -A -p- host    nmap -sn 192.168.1.0/24\e[0m'
+  [nmap]=$'network scanner\n  \e[36m-sS\e[0m       SYN (half-open)          \e[36m-sT\e[0m       TCP connect\n  \e[36m-sU\e[0m       UDP scan               \e[36m-sV\e[0m       version detect\n  \e[36m-sC\e[0m       default scripts        \e[36m-O\e[0m        OS detection\n  \e[36m-A\e[0m        aggressive (all)       \e[36m-F\e[0m        fast (top 100)\n  \e[36m-p\e[0m \e[33mPORTS\e[0m  specific ports         \e[36m-p-\e[0m       all 65535 ports\n  \e[36m-Pn\e[0m       skip discovery         \e[36m-sn\e[0m       ping sweep\n  \e[36m-sL\e[0m       list targets           \e[36m-PR\e[0m       ARP scan\n  \e[36m-oA\e[0m \e[33mPFX\e[0m   all output formats     \e[36m-oG\e[0m \e[33mFILE\e[0m  greppable output\n  \e[36m-T1\e[0m       slow (evasion)         \e[36m-T4\e[0m       fast timing\n  \e[36m--top-ports\e[0m \e[33mN\e[0m  top N ports       \e[36m--script\e[0m \e[33mNAME\e[0m  NSE script\n  \e[2mnmap -sV -sC host    nmap -A -p- host    nmap -sn 192.168.1.0/24\e[0m'
   [hydra]=$'network login cracker\n  \e[36m-l\e[0m \e[33mUSER\e[0m   single username        \e[36m-L\e[0m \e[33mFILE\e[0m   username list\n  \e[36m-P\e[0m \e[33mFILE\e[0m   password list          \e[36m-t\e[0m \e[33mN\e[0m      threads per target\n  \e[2mhydra -l admin -P pass.txt ssh://192.168.1.1\e[0m'
-  [hashcat]=$'GPU hash cracker\n  \e[36m-m\e[0m \e[33mTYPE\e[0m   hash type \e[2m(0=MD5 100=SHA1 1000=NTLM 1800=SHA512)\e[0m\n  \e[36m-a\e[0m \e[33mMODE\e[0m   attack \e[2m(0=dict, 3=brute)\e[0m     \e[36m--show\e[0m   show cracked\n  \e[36m-r\e[0m \e[33mFILE\e[0m   rules file             \e[36m--restore\e[0m resume session\n  \e[2mhashcat -m 0 hash.txt wordlist.txt    hashcat -m 1000 -a 3 hash ?a?a?a?a\e[0m'
+  [hashcat]=$'GPU hash cracker\n  \e[36m-m\e[0m \e[33mTYPE\e[0m   hash type \e[2m(0=MD5 100=SHA1 1000=NTLM 1800=sha512crypt)\e[0m\n  \e[36m-a\e[0m \e[33mMODE\e[0m   attack \e[2m(0=dict, 3=brute)\e[0m     \e[36m--show\e[0m   show cracked\n  \e[36m-r\e[0m \e[33mFILE\e[0m   rules file             \e[36m--restore\e[0m resume session\n  \e[2mhashcat -m 0 hash.txt wordlist.txt    hashcat -m 1000 -a 3 hash ?a?a?a?a\e[0m'
   [john]=$'password cracker\n  \e[36m--wordlist\e[0m=\e[33mFILE\e[0m   dictionary attack\n  \e[36m--show\e[0m            display cracked    \e[36m--list\e[0m=formats  list types\n  \e[2mjohn --wordlist=rockyou.txt hash.txt    john --show hash.txt\e[0m'
   [tshark]=$'terminal packet analyzer\n  \e[36m-i\e[0m \e[33mIFACE\e[0m  capture live           \e[36m-r\e[0m \e[33mFILE\e[0m   read pcap\n  \e[36m-w\e[0m \e[33mFILE\e[0m   write pcap             \e[36m-c\e[0m \e[33mN\e[0m      capture N packets\n  \e[36m-Y\e[0m \e[33mFILTER\e[0m display filter         \e[36m-T\e[0m fields output format\n  \e[36m-e\e[0m \e[33mFIELD\e[0m  extract field          \e[36m-q\e[0m        quiet (stats only)\n  \e[36m-z\e[0m \e[33mSTAT\e[0m   statistics\n  \e[2mtshark -i eth0 -w cap.pcap    tshark -r cap.pcap -Y http    tshark -q -z conv,tcp\e[0m'
   [tcpdump]=$'packet capture\n  \e[36m-i\e[0m \e[33mIFACE\e[0m  capture interface      \e[36m-w\e[0m \e[33mFILE\e[0m   write to pcap\n  \e[36m-r\e[0m \e[33mFILE\e[0m   read from pcap         \e[36m-c\e[0m \e[33mN\e[0m      capture N packets\n  \e[36m-n\e[0m        no DNS resolution      \e[36m-vvv\e[0m      max verbosity\n  \e[2mtcpdump -i eth0 -w cap.pcap    tcpdump -r cap.pcap    tcpdump -i eth0 -c 100\e[0m'
@@ -877,7 +877,7 @@ declare -A MANPAGE=(
   [aircrack-ng]=$'wireless key cracker\n  \e[36m-w\e[0m \e[33mFILE\e[0m   wordlist               \e[36m-b\e[0m \e[33mBSSID\e[0m  target AP\n  \e[2maircrack-ng -w wordlist.txt -b AA:BB:CC cap-01.cap\e[0m'
   [getcap]=$'show file capabilities\n  \e[36m-r\e[0m        recursive search\n  \e[2mgetcap -r / 2>/dev/null\e[0m'
   [exiftool]=$'read/write file metadata\n  \e[2mexiftool image.jpg    exiftool -all= image.jpg    exiftool -GPS* image.jpg\e[0m'
-  [shred]=$'securely overwrite file\n  \e[36m-n\e[0m \e[33mN\e[0m      overwrite N times      \e[36m-z\e[0m        final zero pass\n  \e[36m-u\e[0m        remove after\n  \e[2mshred -zu file    shred -n 3 -zu file\e[0m'
+  [shred]=$'securely overwrite file \e[2m(ineffective on SSD/journaling/CoW fs)\e[0m\n  \e[36m-n\e[0m \e[33mN\e[0m      overwrite N times      \e[36m-z\e[0m        final zero pass\n  \e[36m-u\e[0m        remove after\n  \e[2mshred -zu file    shred -n 3 -zu file\e[0m'
 )
 # Render manpage: first line as header, rest as body
 _mp_show() {
@@ -921,7 +921,7 @@ declare -A EXP=(
   [r2]="radare2 RE framework" [vol]="memory forensics (volatility3)" [mactime]="filesystem timeline"
   [proxychains]="proxy traffic" [procs]="modern ps"
   [awk]="pattern scanning & processing" [jq]="JSON processor" [curl]="transfer data (HTTP/FTP)"
-  [ssh]="secure shell" [scp]="secure copy (deprecated — use rsync)" [rsync]="incremental transfer (only sends changes — always prefer over scp)"
+  [ssh]="secure shell" [scp]="secure copy (prefer rsync for large/repeat transfers)" [rsync]="incremental transfer (only sends changes — always prefer over scp)"
   [zip2john]="extract hash from zip" [pdf2john]="extract hash from pdf" [rar2john]="extract hash from rar"
   [openssl]="crypto toolkit" [socat]="multipurpose relay"
   [ln]="create links" [readlink]="show link target" [pgrep]="find process by name" [pkill]="kill by name"
@@ -2022,7 +2022,7 @@ gen_level25() {
   # Scan types
   questions+=("UDP scan top 20 ports on ${ip}|nmap -sU --top-ports 20 ${ip}")
   questions+=("TCP connect scan on ${ip} (full handshake)|nmap -sT ${ip}")
-  questions+=("TCP SYN scan on ${ip} (stealth)|nmap -sS ${ip}")
+  questions+=("TCP SYN scan on ${ip} (half-open)|nmap -sS ${ip}")
   questions+=("Scan ${ip}, skip host discovery (treat as up)|nmap -Pn ${ip}")
 
   # Network discovery
@@ -2144,7 +2144,7 @@ gen_level28() {
 
   # File metadata
   questions+=("Extract all metadata from ${photo}|exiftool ${photo}")
-  questions+=("Extract GPS coordinates from ${W}${photo}${C}|exiftool '-gps*' ${photo}")
+  questions+=("Extract GPS coordinates from ${W}${photo}${C}|exiftool '-GPS*' ${photo}")
   questions+=("Remove all metadata from ${photo}|exiftool -all= ${photo}")
 
   # Disk imaging
@@ -2534,7 +2534,7 @@ gen_level23() {
 
   # Staging & committing
   questions+=("Stage file '${txt}' for commit|git add ${txt}")
-  questions+=("Stage all changed files|git add -u")
+  questions+=("Stage all tracked changed files|git add -u")
   questions+=("Stage all files including untracked|git add -A|git add --all")
   questions+=("Stage interactively (hunks)|git add -p|git add --patch")
   questions+=("Commit with message|git commit -m \"message\"")
