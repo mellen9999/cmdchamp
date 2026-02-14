@@ -512,6 +512,12 @@ EOF
 _sandbox_init() {
   ((SANDBOX_MODE)) || return 0
   _check_bwrap || return 1
+  # Check available disk space (need at least 10MB)
+  local _avail; _avail=$(df -k "${DATA%/*}" 2>/dev/null | awk 'NR==2{print $4}')
+  if [[ -n "$_avail" ]] && ((_avail < 10240)); then
+    printf '%s\n' "${Y}Warning: low disk space, sandbox disabled${N}" >&2
+    SANDBOX_MODE=0; return 1
+  fi
   if [[ ! -d "$SANDBOX_PRISTINE" ]]; then
     _gen_sandbox_files "$SANDBOX_PRISTINE"
   fi
@@ -523,7 +529,10 @@ _sandbox_reset() {
   ((SANDBOX_MODE)) || return 0
   [[ -d "$SANDBOX_PRISTINE" ]] || return 1
   rm -rf "$SANDBOX_DIR"
-  cp -a "$SANDBOX_PRISTINE" "$SANDBOX_DIR"
+  if ! cp -a "$SANDBOX_PRISTINE" "$SANDBOX_DIR"; then
+    printf '%s\n' "${Y}Warning: sandbox reset failed, disabling${N}" >&2
+    SANDBOX_MODE=0; return 1
+  fi
 }
 
 # Execute command in sandbox with bwrap isolation
@@ -548,15 +557,18 @@ _sandbox_exec() {
   [[ -e /lib ]] && bwrap_args+=(--ro-bind /lib /lib)
   [[ -e /lib64 ]] && bwrap_args+=(--ro-bind /lib64 /lib64)
 
-  timeout "$timeout_sec" bwrap "${bwrap_args[@]}" /bin/bash -c "$cmd"
+  local _rc
+  timeout "$timeout_sec" bwrap "${bwrap_args[@]}" /bin/bash -c "$cmd"; _rc=$?
+  ((_rc >= 125)) && printf '%s\n' "${R}sandbox error (exit %d)${N}" "$_rc" >&2
+  return "$_rc"
 }
 
 # Track if command was destructive (for per-question reset)
 _SANDBOX_DESTRUCTIVE=0
 _is_destructive() {
   local cmd="$1"
-  # File modifiers, redirects, partition tools, truncation patterns
-  [[ "$cmd" =~ (^|[[:space:]])(rm|mv|cp|dd|truncate|shred|unlink|tee|chmod|chown|mkfs|fdisk|parted)[[:space:]]|[[:space:]](\>|\>\>)[[:space:]]|sed[[:space:]]+-i|:[[:space:]]*\>|-delete[[:space:]]*$ ]] && return 0
+  # File modifiers, partition tools, truncation patterns, redirects, compound destructive
+  [[ "$cmd" =~ (^|[[:space:]])(rm|mv|cp|dd|truncate|shred|unlink|tee|chmod|chown|mkfs|fdisk|parted|install|split|patch|ln)[[:space:]]|([[:space:]]|[0-9&])(\>\>|\>)|sed[[:space:]]+-i|:[[:space:]]*\>|-delete[[:space:]]*$|rsync[[:space:]].*--delete|xargs[[:space:]].*(rm|mv)|find[[:space:]].*-exec[[:space:]].*(rm|mv) ]] && return 0
   return 1
 }
 
@@ -754,6 +766,7 @@ _phrase() {
 
 # Fast pick/rnum - set REPLY, no subshell (40 forks -> 0 in _ctx)
 _fpick() { local -n _a=$1; REPLY="${_a[$((RANDOM % ${#_a[@]}))]}"; }
+_fphrase() { local -a _a=("$@"); REPLY="${_a[$((RANDOM % ${#_a[@]}))]}"; }
 _frnum() { REPLY=$(($1 + RANDOM % ($2 - $1 + 1))); }
 
 _QV='log log2 cfg cfg2 txt txt2 csv csv2 dir dir2 ext ext2 script archive bin img pcap hash photo wordlist ip subnet port port2 mac url user host term term2 term3 field field2 key old new size iface proc svc sig branch time n1 n2 n3 col'
@@ -1007,6 +1020,16 @@ declare -A EXP=(
   [disown]="detach job from shell" [exec]="replace shell with command"
   [unset]="remove variable or function"
 )
+_exp_line() {
+  local tok=$1 exp=$2 tcol=$3
+  local pad=$((8 - ${#tok})); ((pad < 0)) && pad=0
+  local sp; printf -v sp '%*s' "$pad" ''
+  if [[ "$exp" == *:* ]]; then
+    printf '  %s%s %s  %s%s %s\n' "${tcol}${tok}${N}" "$sp" "${D}->${N}" "${Y}${exp%%:*}${D}:${N}" "${W}${exp#*: }${N}" ""
+  else
+    printf '  %s%s %s  %s\n' "${tcol}${tok}${N}" "$sp" "${D}->${N}" "${W}${exp}${N}"
+  fi
+}
 _esc_legend() {
   local _a=$1 _leg=""
   [[ "$_a" == *'\n'* ]] && _leg+="${Y}\\n${D}=newline  "
@@ -1016,7 +1039,7 @@ _esc_legend() {
   [[ -n "$_leg" ]] && { printf '  %s\n' "${D}${_leg%  }${N}"; REPLY=1; } || REPLY=0
 }
 explain() {
-  local tok n=0 exp label desc tcol cmds=() _ap=1
+  local tok n=0 exp tcol cmds=() _ap=1
   printf '%s\n' "${D}----------------------------------------${N}"
   # Collect all pipeline commands (skip env vars like VAR=val)
   for tok in $1; do
@@ -1038,14 +1061,7 @@ explain() {
     for tok in $1; do
       case "$tok" in '>'|'>>'|'<'|'<<<'|'2>'|'&>'|'2>&1') ;; *) continue ;; esac
       exp="${EXP[$tok]:-}"; [[ -z "$exp" ]] && continue
-      local pad=$((8 - ${#tok})); ((pad < 0)) && pad=0
-      local sp; printf -v sp '%*s' "$pad" ''
-      if [[ "$exp" == *:* ]]; then
-        label="${exp%%:*}"; desc="${exp#*: }"
-        printf '%s%s %s  %s%s %s\n' "${Y}${tok}${N}" "$sp" "${D}->${N}" "${Y}${label}${D}:${N}" "${W}${desc}${N}" ""
-      else
-        printf '%s%s %s  %s\n' "${Y}${tok}${N}" "$sp" "${D}->${N}" "${W}${exp}${N}"
-      fi
+      _exp_line "$tok" "$exp" "${Y}"
       ((_ml++))
     done
     _esc_legend "$1"; ((_ml += REPLY))
@@ -1075,22 +1091,7 @@ explain() {
         -*) tcol="${C}" ;;  # flags = cyan
       esac
 
-      # Pad token to 8 chars for alignment
-      local pad=$((8 - ${#tok})); ((pad < 0)) && pad=0
-      local sp; printf -v sp '%*s' "$pad" ''
-      # Split on first colon if present: "label: description"
-      if [[ "$exp" == *:* ]]; then
-        label="${exp%%:*}"
-        desc="${exp#*: }"
-        # If label has spaces, it's an example - use magenta
-        if [[ "$label" == *" "* ]]; then
-          printf '  %s%s %s  %s%s %s\n' "${tcol}${tok}${N}" "$sp" "${D}->${N}" "${Y}${label}${D}:${N}" "${W}${desc}${N}" ""
-        else
-          printf '  %s%s %s  %s%s %s\n' "${tcol}${tok}${N}" "$sp" "${D}->${N}" "${Y}${label}${D}:${N}" "${W}${desc}${N}" ""
-        fi
-      else
-        printf '  %s%s %s  %s\n' "${tcol}${tok}${N}" "$sp" "${D}->${N}" "${W}${exp}${N}"
-      fi
+      _exp_line "$tok" "$exp" "$tcol"
       ((++n))
     fi
     # After seeing a non-operator token, we're past command position
@@ -1145,9 +1146,9 @@ VI_MODE=${CMD_VI:-1}
 # Level 1: First Commands (pwd, ls, echo, cd)
 gen_level1() {
   local questions=() dir dir2 word num; _ctx
-  dir=$(_phrase src data logs); dir2=$(_phrase backup temp config test)
-  local newdir=$(_phrase projects demos tools assets)
-  word=$(_phrase hello ready done test ping); num=$((RANDOM % 50 + 1))
+  _fphrase src data logs; dir=$REPLY; _fphrase backup temp config test; dir2=$REPLY
+  _fphrase projects demos tools assets; local newdir=$REPLY
+  _fphrase hello ready done test ping; word=$REPLY; num=$((RANDOM % 50 + 1))
 
   # pwd variations
   questions+=("$(_phrase "Print" "Show" "Display") current directory|pwd|#output:~^/sandbox")
@@ -1188,12 +1189,12 @@ gen_level1() {
 # Level 2: Save Output (>, >>)
 gen_level2() {
   local questions=() log log2 txt cfg word word2 word3 outfile outfile2 num; _ctx
-  log=$(_pick SANDBOX_LOGS); log2=$(_pick SANDBOX_LOGS); txt=$(_pick SANDBOX_TXTS); cfg=$(_pick SANDBOX_CFGS)
-  word=$(_phrase hello done ready complete finished saved started stopped)
-  word2=$(_phrase entry note line record message update backup)
-  word3=$(_phrase success error warning info debug trace)
-  outfile=$(_phrase output.txt files.txt list.txt result.txt)
-  outfile2=$(_phrase report.txt data.txt dump.txt export.txt)
+  _fpick SANDBOX_LOGS; log=$REPLY; _fpick SANDBOX_LOGS; log2=$REPLY; _fpick SANDBOX_TXTS; txt=$REPLY; _fpick SANDBOX_CFGS; cfg=$REPLY
+  _fphrase hello done ready complete finished saved started stopped; word=$REPLY
+  _fphrase entry note line record message update backup; word2=$REPLY
+  _fphrase success error warning info debug trace; word3=$REPLY
+  _fphrase output.txt files.txt list.txt result.txt; outfile=$REPLY
+  _fphrase report.txt data.txt dump.txt export.txt; outfile2=$REPLY
   num=$((RANDOM % 100 + 1))
 
   # Output redirection: > overwrites, >> appends (mixed to teach the difference)
@@ -1216,9 +1217,9 @@ gen_level2() {
 # Level 3: Read Files (cat, head, tail)
 gen_level3() {
   local questions=() log log2 txt txt2 cfg cfg2 n n2 n3; _ctx
-  log=$(_pick SANDBOX_LOGS); log2=$(_pick SANDBOX_LOGS)
-  txt=$(_pick SANDBOX_TXTS); txt2=$(_pick SANDBOX_TXTS)
-  cfg=$(_pick SANDBOX_CFGS); cfg2=$(_pick SANDBOX_CFGS)
+  _fpick SANDBOX_LOGS; log=$REPLY; _fpick SANDBOX_LOGS; log2=$REPLY
+  _fpick SANDBOX_TXTS; txt=$REPLY; _fpick SANDBOX_TXTS; txt2=$REPLY
+  _fpick SANDBOX_CFGS; cfg=$REPLY; _fpick SANDBOX_CFGS; cfg2=$REPLY
   n=$((RANDOM % 6 + 3)); n2=$((RANDOM % 5 + 2)); n3=$((RANDOM % 8 + 5))
 
   # cat - display file (hint base command, user figures out flags)
@@ -1247,25 +1248,25 @@ gen_level3() {
 gen_level4() {
   local questions=() n n2 n3 log log2 txt txt2 cfg cfg2 csv term1 term2 term3; _ctx
   n=$((RANDOM % 5 + 3)); n2=$((RANDOM % 4 + 2)); n3=$((RANDOM % 6 + 5))
-  log=$(_pick SANDBOX_LOGS); log2=$(_pick SANDBOX_LOGS)
-  txt=$(_pick SANDBOX_TXTS); txt2=$(_pick SANDBOX_TXTS)
-  cfg=$(_pick SANDBOX_CFGS); cfg2=$(_pick SANDBOX_CFGS)
-  csv=$(_pick SANDBOX_CSVS)
+  _fpick SANDBOX_LOGS; log=$REPLY; _fpick SANDBOX_LOGS; log2=$REPLY
+  _fpick SANDBOX_TXTS; txt=$REPLY; _fpick SANDBOX_TXTS; txt2=$REPLY
+  _fpick SANDBOX_CFGS; cfg=$REPLY; _fpick SANDBOX_CFGS; cfg2=$REPLY
+  _fpick SANDBOX_CSVS; csv=$REPLY
   # Match terms to file types to ensure grep always finds results
   local _log_type="app"
   [[ $log == server.log || $log == logs/access.log ]] && _log_type="nginx"
   if [[ $_log_type == "nginx" ]]; then
-    term1=$(_phrase GET POST 200 404 500)
+    _fphrase GET POST 200 404 500; term1=$REPLY
   else
-    term1=$(_phrase ERROR WARN INFO DEBUG)
+    _fphrase ERROR WARN INFO DEBUG; term1=$REPLY
   fi
   if [[ $txt == todo.txt ]]; then
-    term2=$(_phrase Review Deploy Update)
+    _fphrase Review Deploy Update; term2=$REPLY
   else
-    term2=$(_phrase TODO Review Deploy Update Schedule)
+    _fphrase TODO Review Deploy Update Schedule; term2=$REPLY
   fi
   # Terms present in both config.ini and settings.yaml
-  term3=$(_phrase server database logging cache host port localhost info enabled)
+  _fphrase server database logging cache host port localhost info enabled; term3=$REPLY
 
   # ls | wc variants (hint at pipe since this level teaches pipes)
   questions+=("Count items in current directory (pipe ${Y}ls${C} to ${Y}wc${C})§ls | wc -l§ls -1 | wc -l")
@@ -1308,8 +1309,8 @@ gen_level4() {
 # Level 5: Input Redirection (<)
 gen_level5() {
   local questions=() txt csv log; _ctx
-  txt=$(_pick SANDBOX_TXTS)
-  csv=$(_pick SANDBOX_CSVS); log=$(_pick SANDBOX_LOGS)
+  _fpick SANDBOX_TXTS; txt=$REPLY
+  _fpick SANDBOX_CSVS; csv=$REPLY; _fpick SANDBOX_LOGS; log=$REPLY
 
   questions+=("Count lines in ${W}${csv}${C} without filename in output (use ${Y}<${C})|wc -l < ${csv}")
   questions+=("Count words in ${W}${txt}${C} — just the number, no filename (use ${Y}<${C})|wc -w < ${txt}")
@@ -1323,8 +1324,8 @@ gen_level5() {
 # Level 6: Here-Strings (<<<)
 gen_level6() {
   local questions=() word word2
-  word=$(_phrase hello world example config backup server admin debug)
-  word2=$(_phrase test data input query search token ready active)
+  _fphrase hello world example config backup server admin debug; word=$REPLY
+  _fphrase test data input query search token ready active; word2=$REPLY
 
   local num1=$((RANDOM % 50 + 10)) num2=$((RANDOM % 20 + 5))
 
@@ -1352,15 +1353,15 @@ gen_level6() {
 # Level 7: Error Redirection (2>, &>, 2>&1)
 gen_level7() {
   local questions=() script script2 ext ext2 errfile errfile2 outfile outfile2 log missing missing2; _ctx
-  script=$(_pick SANDBOX_SCRIPTS); script2=$(_pick SANDBOX_SCRIPTS)
-  ext=$(_phrase py sh log txt); ext2=$(_phrase conf ini yaml json)
-  errfile=$(_phrase errors.log err.txt stderr.log error.out)
-  errfile2=$(_phrase debug.err issue.log problem.txt err2.log)
-  outfile=$(_phrase output.log out.txt all.log combined.out)
-  outfile2=$(_phrase result.log full.txt complete.out run.log)
-  log=$(_pick SANDBOX_LOGS)
-  missing=$(_phrase old.log backup.txt archive.csv deleted.log)
-  missing2=$(_phrase removed.txt gone.log lost.dat missing.cfg)
+  _fpick SANDBOX_SCRIPTS; script=$REPLY; _fpick SANDBOX_SCRIPTS; script2=$REPLY
+  _fphrase py sh log txt; ext=$REPLY; _fphrase conf ini yaml json; ext2=$REPLY
+  _fphrase errors.log err.txt stderr.log error.out; errfile=$REPLY
+  _fphrase debug.err issue.log problem.txt err2.log; errfile2=$REPLY
+  _fphrase output.log out.txt all.log combined.out; outfile=$REPLY
+  _fphrase result.log full.txt complete.out run.log; outfile2=$REPLY
+  _fpick SANDBOX_LOGS; log=$REPLY
+  _fphrase old.log backup.txt archive.csv deleted.log; missing=$REPLY
+  _fphrase removed.txt gone.log lost.dat missing.cfg; missing2=$REPLY
 
   # 2> = stderr to file
   questions+=("Save stderr from ${W}./${script}${C} to ${W}${errfile}${C} (use ${Y}2>${C})|./${script} 2> ${errfile}")
@@ -1393,17 +1394,17 @@ gen_level7() {
 # Level 8: Logic Operators (&&, ||)
 gen_level8() {
   local questions=() dir dir2 cfg cfg2 txt txt2 log msg msg2 script n; _ctx
-  dir=$(_phrase new work build output cache proj dist bundle)
-  dir2=$(_phrase archive old staging release deploy results)
-  cfg=$(_pick SANDBOX_CFGS); cfg2=$(_pick SANDBOX_CFGS)
-  txt=$(_pick SANDBOX_TXTS); txt2=$(_pick SANDBOX_TXTS)
-  log=$(_pick SANDBOX_LOGS)
-  msg=$(_phrase exists failed done error warning success ok)
-  msg2=$(_phrase ready complete skipped finished created started)
-  script=$(_pick SANDBOX_SCRIPTS)
+  _fphrase new work build output cache proj dist bundle; dir=$REPLY
+  _fphrase archive old staging release deploy results; dir2=$REPLY
+  _fpick SANDBOX_CFGS; cfg=$REPLY; _fpick SANDBOX_CFGS; cfg2=$REPLY
+  _fpick SANDBOX_TXTS; txt=$REPLY; _fpick SANDBOX_TXTS; txt2=$REPLY
+  _fpick SANDBOX_LOGS; log=$REPLY
+  _fphrase exists failed done error warning success ok; msg=$REPLY
+  _fphrase ready complete skipped finished created started; msg2=$REPLY
+  _fpick SANDBOX_SCRIPTS; script=$REPLY
   n=$((RANDOM % 5 + 3))
-  local term=$(_phrase ERROR WARN INFO DEBUG)
-  local sdir=$(_phrase src data logs backup temp config test)
+  _fphrase ERROR WARN INFO DEBUG; local term=$REPLY
+  _fphrase src data logs backup temp config test; local sdir=$REPLY
 
   # === PURE: Just && and || basics ===
   questions+=("Create ${W}${dir}${C} and cd into it (use ${Y}&&${C})|mkdir ${dir} && cd ${dir}")
@@ -1447,14 +1448,14 @@ gen_level8() {
 # Level 9: Variables & Substitution
 gen_level9() {
   local questions=() txt txt2 log cfg var var2 var3 val val2 term n; _ctx
-  txt=$(_pick SANDBOX_TXTS); txt2=$(_pick SANDBOX_TXTS)
-  log=$(_pick SANDBOX_LOGS); cfg=$(_pick SANDBOX_CFGS)
-  var=$(_phrase msg name data result value output status)
-  var2=$(_phrase now time today count num lines)
-  var3=$(_phrase tmp dir file path prefix backup)
-  val=$(_phrase hello world test ready done success running active)
-  val2=$(_phrase config debug enabled production staging offline)
-  term=$(_phrase ERROR WARN INFO DEBUG); n=$((RANDOM % 5 + 3))
+  _fpick SANDBOX_TXTS; txt=$REPLY; _fpick SANDBOX_TXTS; txt2=$REPLY
+  _fpick SANDBOX_LOGS; log=$REPLY; _fpick SANDBOX_CFGS; cfg=$REPLY
+  _fphrase msg name data result value output status; var=$REPLY
+  _fphrase now time today count num lines; var2=$REPLY
+  _fphrase tmp dir file path prefix backup; var3=$REPLY
+  _fphrase hello world test ready done success running active; val=$REPLY
+  _fphrase config debug enabled production staging offline; val2=$REPLY
+  _fphrase ERROR WARN INFO DEBUG; term=$REPLY; n=$((RANDOM % 5 + 3))
 
   # === PURE: Just variables and substitution basics ===
   questions+=("Store '${val}' in variable ${var}|${var}=${val}|${var}='${val}'|${var}=\"${val}\"")
@@ -1509,8 +1510,8 @@ gen_level9() {
 gen_level10() {
   local questions=() n n2 script log txt; _ctx
   n=$((RANDOM % 3 + 2)); n2=$((RANDOM % 4 + 3))
-  script=$(_pick SANDBOX_SCRIPTS); log=$(_pick SANDBOX_LOGS); txt=$(_pick SANDBOX_TXTS)
-  local term=$(_phrase ERROR WARN INFO)
+  _fpick SANDBOX_SCRIPTS; script=$REPLY; _fpick SANDBOX_LOGS; log=$REPLY; _fpick SANDBOX_TXTS; txt=$REPLY
+  _fphrase ERROR WARN INFO; local term=$REPLY
 
   # === PURE: Special variables basics ===
   questions+=("Print current shell PID (use ${Y}\$\$${C})|echo \$\$")
@@ -1547,11 +1548,11 @@ gen_level10() {
 gen_level11() {
   local questions=() n n2 n3 script script2 log outfile errfile txt term; _ctx
   n=$((RANDOM % 90 + 10)); n2=$((RANDOM % 3 + 1)); n3=$((RANDOM % 60 + 30))
-  script=$(_pick SANDBOX_SCRIPTS); script2=$(_pick SANDBOX_SCRIPTS)
-  log=$(_pick SANDBOX_LOGS); txt=$(_pick SANDBOX_TXTS)
-  outfile=$(_phrase output.log results.txt run.log process.out)
-  errfile=$(_phrase errors.log err.txt debug.log)
-  term=$(_phrase ERROR WARN INFO)
+  _fpick SANDBOX_SCRIPTS; script=$REPLY; _fpick SANDBOX_SCRIPTS; script2=$REPLY
+  _fpick SANDBOX_LOGS; log=$REPLY; _fpick SANDBOX_TXTS; txt=$REPLY
+  _fphrase output.log results.txt run.log process.out; outfile=$REPLY
+  _fphrase errors.log err.txt debug.log; errfile=$REPLY
+  _fphrase ERROR WARN INFO; term=$REPLY
 
   # === PURE: Just & and job control basics ===
   questions+=("Run sleep ${n} in background (use ${Y}&${C})|sleep ${n} &")
@@ -1596,12 +1597,12 @@ gen_level11() {
 # Level 12: Test Operators ([[ -f ]], [[ -d ]], etc)
 gen_level12() {
   local questions=() txt txt2 cfg cfg2 log script dir dir2 n n2 n3 term; _ctx
-  txt=$(_pick SANDBOX_TXTS); txt2=$(_pick SANDBOX_TXTS)
-  cfg=$(_pick SANDBOX_CFGS); cfg2=$(_pick SANDBOX_CFGS)
-  log=$(_pick SANDBOX_LOGS); script=$(_pick SANDBOX_SCRIPTS)
-  dir=$(_phrase src data logs backup); dir2=$(_phrase temp cache build output)
+  _fpick SANDBOX_TXTS; txt=$REPLY; _fpick SANDBOX_TXTS; txt2=$REPLY
+  _fpick SANDBOX_CFGS; cfg=$REPLY; _fpick SANDBOX_CFGS; cfg2=$REPLY
+  _fpick SANDBOX_LOGS; log=$REPLY; _fpick SANDBOX_SCRIPTS; script=$REPLY
+  _fphrase src data logs backup; dir=$REPLY; _fphrase temp cache build output; dir2=$REPLY
   n=$((RANDOM % 90 + 10)); n2=$((RANDOM % 50 + 5)); n3=$((RANDOM % 5 + 3))
-  term=$(_phrase ERROR WARN INFO DEBUG)
+  _fphrase ERROR WARN INFO DEBUG; term=$REPLY
 
   # === PURE: Test operator basics ===
   questions+=("Test if ${W}${txt}${C} exists and is a file|[[ -f ${txt} ]]|test -f ${txt}")
@@ -1653,7 +1654,7 @@ gen_level12() {
 gen_level13() {
   eval "local questions=() $_QV"; _ctx
   local perm1=$((RANDOM % 8))$((RANDOM % 8))$((RANDOM % 8))
-  local searchterm=$(_phrase ERROR WARN INFO DEBUG)
+  _fphrase ERROR WARN INFO DEBUG; local searchterm=$REPLY
   [[ "$cfg2" == "$cfg" ]] && { _fpick CONFIGS; cfg2=$REPLY; }
   [[ "$txt2" == "$txt" ]] && { _fpick TXTS; txt2=$REPLY; }
 
@@ -1685,7 +1686,7 @@ gen_level13() {
 
   # Archives (tar) - only use .tar.gz since answers use gzip flags
   local -a GZ_ARCHIVES=(backup.tar.gz archive.tar.gz files.tgz release.tar.gz package.tar.gz source.tar.gz logs.tar.gz)
-  local gz_archive=$(_pick GZ_ARCHIVES)
+  _fpick GZ_ARCHIVES; local gz_archive=$REPLY
   questions+=("Extract ${gz_archive}|tar xzf ${gz_archive}|tar -xzf ${gz_archive}")
   questions+=("Extract ${gz_archive} to ${dir}/|tar xzf ${gz_archive} -C ${dir}/|tar -xzf ${gz_archive} -C ${dir}/")
   questions+=("Create archive.tar.gz from ${dir}/|tar czf archive.tar.gz ${dir}/|tar -czf archive.tar.gz ${dir}/")
@@ -1725,7 +1726,7 @@ gen_level13() {
 # Level 16: Text Search (grep, rg)
 gen_level16() {
   eval "local questions=() $_QV"; _ctx
-  local ctx=$(_rnum 1 10) ctx2=$(_rnum 2 5)
+  _frnum 1 10; local ctx=$REPLY; _frnum 2 5; local ctx2=$REPLY
 
   # Basic grep - with flag order alternatives
   questions+=("Search for '${term}' recursively|grep -r ${term}|grep -r ${term} .|rg ${term}")
@@ -1837,7 +1838,7 @@ gen_level17() {
 # Level 18: Data Processing
 gen_level18() {
   eval "local questions=() $_QV"; _ctx
-  local proc2=$(_pick PROCS) col2=$(_rnum 1 5) col3=$((col % 5 + 1)) chars=$(_rnum 10 80) thresh=$(_rnum 1 25)
+  _fpick PROCS; local proc2=$REPLY; _frnum 1 5; local col2=$REPLY; local col3=$((col % 5 + 1)); _frnum 10 80; local chars=$REPLY; _frnum 1 25; local thresh=$REPLY
   ((col3 < col)) && { local _t=$col; col=$col3; col3=$_t; }  # ensure col <= col3 for ranges
   ((n > n2)) && { local t=$n; n=$n2; n2=$t; }
 
@@ -1915,7 +1916,7 @@ gen_level18() {
 # Level 21: Batch Operations
 gen_level21() {
   eval "local questions=() $_QV"; _ctx
-  local svc2=$(_pick SERVICES) parallel=$(_rnum 2 8) linenum=$(_rnum 1 20)
+  _fpick SERVICES; local svc2=$REPLY; _frnum 2 8; local parallel=$REPLY; _frnum 1 20; local linenum=$REPLY
 
   # find -exec - with flag alternatives
   questions+=("Run ls -l on each .${ext} file found|find . -name '*.${ext}' -exec ls -l {} \\;|fd -e ${ext} -x ls -l {}")
@@ -2828,8 +2829,8 @@ gen_level22() {
 # Level 14: System Admin
 gen_level14() {
   eval "local questions=() $_QV"; _ctx
-  local pkg=$(_phrase git vim tmux htop curl wget rsync jq)
-  local sysbin=$(_phrase ls cat grep find sort awk sed head)
+  _fphrase git vim tmux htop curl wget rsync jq; local pkg=$REPLY
+  _fphrase ls cat grep find sort awk sed head; local sysbin=$REPLY
 
   # Network diagnostics
   questions+=("Ping ${ip} 5 times|ping -c 5 ${ip}")
@@ -3049,13 +3050,13 @@ _hash() {
 # Flush scores atomically (pure bash, no sed fork)
 _sflush() {
   local _fd; exec {_fd}>"$DATA/scores.lock"; flock -x "$_fd"
-  { for k in "${!_sc[@]}"; do printf '%s|%s\n' "$k" "${_sc[$k]}"; done; } > "$DATA/scores.tmp"
+  { printf '#v1\n'; for k in "${!_sc[@]}"; do printf '%s|%s\n' "$k" "${_sc[$k]}"; done; } > "$DATA/scores.tmp"
   mv "$DATA/scores.tmp" "$DATA/scores"
   exec {_fd}>&-
 }
 
 stats() {
-  local -A sc; [[ -f "$DATA/scores" ]] && while IFS='|' read -r k v; do sc[$k]=$v; done < "$DATA/scores"
+  local -A sc; [[ -f "$DATA/scores" ]] && while IFS='|' read -r k v; do [[ "$k" == "#"* ]] && continue; sc[$k]=$v; done < "$DATA/scores"
   printf '%s\n' "${C}${PLAYER_NAME:-anon}${N}"
   printf '%s\n\n' "${D}Stats show unique prompts seen${N}"
   local total_seen=0 total_t1=0 total_t2=0
@@ -3097,6 +3098,7 @@ stats() {
 _S_ANSWERED=0 _S_CORRECT=0 _S_STREAK=0 _S_BEST_STREAK=0 _S_MASTERED=0 _S_START=0
 _session_init() { printf -v _S_START '%(%s)T' -1; _S_ANSWERED=0 _S_CORRECT=0 _S_STREAK=0 _S_BEST_STREAK=0 _S_MASTERED=0; }
 _quit() {
+  _sflush_if_dirty
   printf '\n'
   if ((_S_ANSWERED > 0)); then
     local elapsed=$(( $(printf '%(%s)T' -1) - _S_START ))
@@ -3239,22 +3241,29 @@ _read_line() {
   done
 }
 
+_sdirty=0
+_sflush_if_dirty() { ((_sdirty)) && { _sflush; _sdirty=0; }; }
+_mode_init() {
+  local _tag=$1
+  declare -gA _sc; _sc=()
+  [[ -f "$DATA/scores" ]] && while IFS='|' read -r k v; do
+    [[ "$k" == "#"* ]] && continue
+    _sc[$k]=$v
+  done < "$DATA/scores"
+  _sget() { _hash "$1"; local _v="${_sc[$REPLY]:-1}"; REPLY="${_v%%|*}"; }
+  eval "_sset() { _hash \"\$1\"; _sc[\$REPLY]=\"\$2|${_tag}\"; (( ++_sdirty >= 10 )) && { _sflush; _sdirty=0; }; }"
+  HIST=() HIST_IDX=0 HIST_SAVE=""
+  _interactive=1; _stty_saved=$(stty -g 2>/dev/null) || _stty_saved=""
+  ((SANDBOX_MODE)) && _sandbox_init
+}
+_preq_reset() { ((SANDBOX_MODE && _SANDBOX_DESTRUCTIVE)) && { _sandbox_reset; _SANDBOX_DESTRUCTIVE=0; }; }
+
 run() {
   local lv=$1 boss_only=${2:-0} shuf=() qi=${QI:-0} streak=0
-  local -a HIST=() SEEN_PROMPTS=() ; local HIST_IDX=0 HIST_SAVE=""
-  # Save terminal state for clean restoration
-  _interactive=1
-  _stty_saved=$(stty -g 2>/dev/null) || _stty_saved=""
-
-  # Initialize sandbox for this level
-  ((SANDBOX_MODE)) && _sandbox_init
+  local -a SEEN_PROMPTS=()
+  _mode_init "$lv"
 
   generate_level "$lv"  # Generate fresh questions for this level
-  local -A _sc; [[ -f "$DATA/scores" ]] && while IFS='|' read -r k v; do _sc[$k]=$v; done < "$DATA/scores"
-  # REPLY-based: no subshell forks. _sflush replaces per-question sed -i
-  # Score value format: tier|level (level tag optional for back-compat)
-  _sget() { _hash "$1"; local _v="${_sc[$REPLY]:-1}"; REPLY="${_v%%|*}"; }
-  _sset() { _hash "$1"; _sc[$REPLY]="$2|$lv"; _sflush; }
   TOT=${#CURRENT_QUESTIONS[@]}
   # Prioritize by tier: 1 (blank) > 2 (recall) - no tier 0 copy mode
   local t1=() t2=()
@@ -3283,8 +3292,7 @@ run() {
   fi
   if ((!boss_only)); then
   while ((qi < ${#shuf[@]})); do
-    # Reset sandbox if previous command was destructive
-    ((SANDBOX_MODE && _SANDBOX_DESTRUCTIVE)) && { _sandbox_reset; _SANDBOX_DESTRUCTIVE=0; }
+    _preq_reset
 
     _qparse "${shuf[$qi]}"; local prompt=$_qprompt ans=$_qans
     SEEN_PROMPTS+=("$prompt")  # Track for boss exclusion
@@ -3374,10 +3382,10 @@ run() {
     ((BOSS_BEATEN < lv)) && { BOSS_BEATEN=$lv; _save_profile; }
     if ((lv<MAX_LEVEL)); then
       printf "${D}Press Enter for Level %d...${N}\n" "$((lv+1))"; read -r
-      LVL=$((lv+1)); QI=0; save; _NEXT_LV=$LVL _NEXT_BOSS=0; return 0
+      LVL=$((lv+1)); QI=0; save; _sflush_if_dirty; _NEXT_LV=$LVL _NEXT_BOSS=0; return 0
     else
       _victory
-      return 1
+      _sflush_if_dirty; return 1
     fi
   else
     printf '%s\n' "${R}${B}══ ${boss} PREVAILS ══${N}"
@@ -3385,8 +3393,8 @@ run() {
     printf '%s\n' "${D}r = retry, p = practice${N}"
     read -rsn1 choice
     case "$choice" in
-      r) QI=0; save; _NEXT_LV=$lv _NEXT_BOSS=1; return 0 ;;
-      *) QI=0; save; _NEXT_LV=$lv _NEXT_BOSS=0; return 0 ;;
+      r) QI=0; save; _sflush_if_dirty; _NEXT_LV=$lv _NEXT_BOSS=1; return 0 ;;
+      *) QI=0; save; _sflush_if_dirty; _NEXT_LV=$lv _NEXT_BOSS=0; return 0 ;;
     esac
   fi
 }
@@ -3415,12 +3423,7 @@ gauntlet() {
   printf '\n'; read -rsn1 -p "${D}Press Enter to continue...${N}"; echo
 
   local lives=3 score=0 streak=0 difficulty=1
-  local -A _sc; [[ -f "$DATA/scores" ]] && while IFS='|' read -r k v; do _sc[$k]=$v; done < "$DATA/scores"
-  _sget() { _hash "$1"; local _v="${_sc[$REPLY]:-1}"; REPLY="${_v%%|*}"; }
-  _sset() { _hash "$1"; _sc[$REPLY]="$2|g"; _sflush; }
-  local -a HIST=(); local HIST_IDX=0 HIST_SAVE=""
-  _interactive=1; _stty_saved=$(stty -g 2>/dev/null) || _stty_saved=""
-  ((SANDBOX_MODE)) && _sandbox_init
+  _mode_init g
 
   while ((lives > 0)); do
     # Pick level based on difficulty (escalates every 5 correct)
@@ -3441,7 +3444,7 @@ gauntlet() {
     }
     _REDRAW_HDR
 
-    ((SANDBOX_MODE && _SANDBOX_DESTRUCTIVE)) && { _sandbox_reset; _SANDBOX_DESTRUCTIVE=0; }
+    _preq_reset
     _read_line 0 1
     if check "$input" "$_qanswers"; then
       [[ -n "$input" ]] && { HIST+=("$input"); HIST_IDX=${#HIST[@]}; HIST_SAVE=""; }
@@ -3457,6 +3460,7 @@ gauntlet() {
     read -rsp "${D}Press Enter to continue...${N}"
   done
 
+  _sflush_if_dirty
   printf '\e[2J\e[H'
   printf '%s\n\n' "${R}${B}═══ GAME OVER ═══${N}"
   printf 'Score: %s\n' "${B}${score}${N}"
@@ -3481,12 +3485,7 @@ timed() {
   printf '\n'; read -rsn1 -p "${D}Press Enter to continue...${N}"; echo
 
   local score=0
-  local -A _sc; [[ -f "$DATA/scores" ]] && while IFS='|' read -r k v; do _sc[$k]=$v; done < "$DATA/scores"
-  _sget() { _hash "$1"; local _v="${_sc[$REPLY]:-1}"; REPLY="${_v%%|*}"; }
-  _sset() { _hash "$1"; _sc[$REPLY]="$2|t"; _sflush; }
-  local -a HIST=(); local HIST_IDX=0 HIST_SAVE=""
-  _interactive=1; _stty_saved=$(stty -g 2>/dev/null) || _stty_saved=""
-  ((SANDBOX_MODE)) && _sandbox_init
+  _mode_init t
 
   local start_t; printf -v start_t '%(%s)T' -1
   local end_t=$((start_t + duration))
@@ -3516,7 +3515,7 @@ timed() {
     }
     _REDRAW_HDR
 
-    ((SANDBOX_MODE && _SANDBOX_DESTRUCTIVE)) && { _sandbox_reset; _SANDBOX_DESTRUCTIVE=0; }
+    _preq_reset
 
     # Use read with timeout for time pressure
     _read_line 0 1
@@ -3535,6 +3534,7 @@ timed() {
     read -rsn1 -t 1 || true
   done
 
+  _sflush_if_dirty
   printf '\e[2J\e[H'
   printf '%s\n\n' "${Y}${B}═══ TIME'S UP! ═══${N}"
   printf 'Score: %s in %ds\n' "${B}${score}${N}" "$duration"
@@ -3549,12 +3549,12 @@ timed() {
 
 review() {
   _session_init
-  local -A sc; [[ -f "$DATA/scores" ]] && while IFS='|' read -r k v; do sc[$k]=$v; done < "$DATA/scores"
+  _mode_init rev
   # Find weak levels: mastery < 80%
   local -A lv_total lv_mastered
   local has_tagged=0
-  for k in "${!sc[@]}"; do
-    local _val="${sc[$k]}" _tier _lvtag
+  for k in "${!_sc[@]}"; do
+    local _val="${_sc[$k]}" _tier _lvtag
     _tier="${_val%%|*}"
     [[ "$_val" == *"|"* ]] && { _lvtag="${_val#*|}"; has_tagged=1; } || _lvtag=""
     [[ -n "$_lvtag" ]] && {
@@ -3589,17 +3589,10 @@ review() {
   readarray -t all_q < <(printf '%s\n' "${all_q[@]}" | shuf)
   ((${#all_q[@]} == 0)) && { printf '%s\n' "${D}No questions found.${N}"; return; }
 
-  local -A _sc; [[ -f "$DATA/scores" ]] && while IFS='|' read -r k v; do _sc[$k]=$v; done < "$DATA/scores"
-  _sget() { _hash "$1"; local _v="${_sc[$REPLY]:-1}"; REPLY="${_v%%|*}"; }
-  _sset() { _hash "$1"; _sc[$REPLY]="$2|rev"; _sflush; }
-
   local qi=0 streak=0 TOT=${#all_q[@]}
-  local -a HIST=(); local HIST_IDX=0 HIST_SAVE=""
-  _interactive=1; _stty_saved=$(stty -g 2>/dev/null) || _stty_saved=""
-  ((SANDBOX_MODE)) && _sandbox_init
 
   while ((qi < ${#all_q[@]})); do
-    ((SANDBOX_MODE && _SANDBOX_DESTRUCTIVE)) && { _sandbox_reset; _SANDBOX_DESTRUCTIVE=0; }
+    _preq_reset
     _qparse "${all_q[$qi]}"; local prompt=$_qprompt ans=$_qans
     _sget "$prompt"; local tier=$REPLY
     EXPLAIN_LINES=0 HIST=()
@@ -3633,6 +3626,7 @@ review() {
       _sget "$prompt"; tier=$REPLY; _REDRAW_HDR
     done
   done
+  _sflush_if_dirty
   printf '\e[2J\e[H'
   printf '%s\n' "${G}${B}Review complete!${N}"
   _quit
@@ -3664,7 +3658,7 @@ case "${1:-}" in
     done
     ;;
   r|reset) rm -f "$DATA"/*.json "$DATA/scores" "$DATA/scores.lock" "$DATA/profile"; rm -rf "$DATA/sandbox" "$DATA/sandbox.pristine" 2>/dev/null; echo "Reset.";;
-  c|cleanup) [[ -f "$DATA/scores" ]] && { flock "$DATA/scores.lock" awk -F'|' '!seen[$1]++' "$DATA/scores" > "$DATA/scores.tmp" && mv "$DATA/scores.tmp" "$DATA/scores"; echo "Deduplicated scores."; } || echo "No scores file.";;
+  c|cleanup) [[ -f "$DATA/scores" ]] && { flock -x "$DATA/scores.lock" awk -F'|' '/^#/{print;next} !seen[$1]++' "$DATA/scores" > "$DATA/scores.tmp" && mv "$DATA/scores.tmp" "$DATA/scores"; echo "Deduplicated scores."; } || echo "No scores file.";;
   s|stats) _load_profile; stats;;
   review) _tty; _load_profile; review;;
   gauntlet) _tty; _load_profile; gauntlet;;
