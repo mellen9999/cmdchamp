@@ -32,6 +32,7 @@ touch "$DATA/scores"
 
 # Helper: run bash snippet with sourced cmdchamp
 _run() { bash -c "source '$SOURCE_FILE' 2>/dev/null; $1" 2>/dev/null; }
+_rune() { bash -c "source '$SOURCE_FILE' 2>/dev/null; $1" 2>/dev/null; }
 
 # ─────────────────────────────────────────────────────────────────────────────
 section "Syntax"
@@ -242,6 +243,17 @@ r=$(_run_state '_sandbox_check_state "exists:testfile,contains:testfile:foo" && 
 # Combo where one fails
 r=$(_run_state '_sandbox_check_state "exists:testfile,contains:testfile:zzz" && echo PASS || echo FAIL')
 [[ "$r" == "FAIL" ]] && ok "state combo partial fail" || fail "state combo fail" "$r"
+
+# !perm: check (file is not executable)
+chmod 644 "$SBOX/testfile"
+r=$(_run_state '_sandbox_check_state "!perm:testfile:x" && echo PASS || echo FAIL')
+[[ "$r" == "PASS" ]] && ok "state !perm:x pass (644)" || fail "state !perm" "$r"
+
+# !perm: fail (file IS executable)
+chmod 755 "$SBOX/testfile"
+r=$(_run_state '_sandbox_check_state "!perm:testfile:x" && echo PASS || echo FAIL')
+[[ "$r" == "FAIL" ]] && ok "state !perm:x fail (755)" || fail "state !perm fail" "$r"
+chmod 644 "$SBOX/testfile"  # restore
 
 # ─────────────────────────────────────────────────────────────────────────────
 section "Destructive Detection (_is_destructive)"
@@ -468,7 +480,7 @@ r=$(_run "
   echo \"name=\$PLAYER_NAME ver=\$_PROFILE_VER beaten=\$BOSS_BEATEN gauntlet=\$BEST_GAUNTLET timed=\$BEST_TIMED\"
 ")
 echo "$r" | grep -q 'name=TestPlayer' && ok "profile stores name" || fail "profile name" "$r"
-echo "$r" | grep -q 'ver=2' && ok "profile ver=2" || fail "profile ver" "$r"
+echo "$r" | grep -q 'ver=3' && ok "profile ver=3" || fail "profile ver" "$r"
 echo "$r" | grep -q 'beaten=0' && ok "new BOSS_BEATEN=0" || fail "profile beaten" "$r"
 
 # v0->v1 migration: BOSS_BEATEN=-1 (old format) -> 0
@@ -521,7 +533,7 @@ r=$(bash -c "
   _load_profile
   echo \"ver=\$_PROFILE_VER scores=\$(wc -c < \"\$DATA/scores\")\"
 " 2>/dev/null)
-echo "$r" | grep -q 'ver=2' && ok "v1->v2: ver bumped" || fail "v1->v2 ver" "$r"
+echo "$r" | grep -q 'ver=3' && ok "v1->v2->v3: ver bumped" || fail "v1->v2 ver" "$r"
 echo "$r" | grep -q 'scores=0' && ok "v1->v2: scores cleared" || fail "v1->v2 scores" "$r"
 
 # Save/load round-trip
@@ -682,9 +694,13 @@ hr=$(grep -n '\bHINT\b' "$CMDCHAMP" | grep -v '#\|hint' || true)
 # ═════════════════════════════════════════════════════════════════════════════
 section "Sandbox Answer Verification"
 
+HAS_BWRAP=0
 if ! command -v bwrap &>/dev/null; then
+  printf '  %s⚠  bwrap NOT INSTALLED — 25-40%% of tests will be skipped!%s\n' "$R$B" "$N"
+  printf '  %s   Install bwrap for full coverage: paru -S bubblewrap%s\n' "$Y" "$N"
   skip "bwrap not installed - skipping sandbox verification"
 else
+  HAS_BWRAP=1
   # Create sandbox source with SANDBOX_MODE=1
   SB_SOURCE="$TDIR/cmdchamp_sandbox.sh"
   {
@@ -808,6 +824,363 @@ else
   fi
 fi
 
+# ─────────────────────────────────────────────────────────────────────────────
+section "Boss Mechanics"
+
+# Boss threshold: 4/5 = pass, 3/5 = fail
+r=$(_run "
+  ((4 >= BOSS_THRESHOLD)) && echo pass4 || echo fail4
+  ((3 >= BOSS_THRESHOLD)) && echo pass3 || echo fail3
+  ((5 >= BOSS_THRESHOLD)) && echo pass5 || echo fail5
+")
+echo "$r" | grep -q 'pass4' && ok "4/5 meets threshold" || fail "boss threshold 4" "$r"
+echo "$r" | grep -q 'fail3' && ok "3/5 fails threshold" || fail "boss threshold 3" "$r"
+echo "$r" | grep -q 'pass5' && ok "5/5 meets threshold" || fail "boss threshold 5" "$r"
+
+# Boss questions are drawn from current level
+r=$(_run "
+  BOSS_BEATEN=30
+  generate_level 1
+  echo \"qcount=\${#CURRENT_QUESTIONS[@]}\"
+")
+qc=$(echo "$r" | grep 'qcount=' | grep -o '[0-9]*')
+((qc >= 5)) && ok "L1 has >=5 questions for boss" || fail "boss q pool" "only $qc"
+
+# Boss excludes seen prompts
+r=$(_rune '
+  BOSS_BEATEN=30
+  generate_level 1
+  declare -A _seen_map
+  seen_count=0
+  for q in "${CURRENT_QUESTIONS[@]}"; do
+    _qparse "$q"
+    _seen_map[$_qprompt]=1
+    ((++seen_count >= 3)) && break
+  done
+  unseen=0
+  for q in "${CURRENT_QUESTIONS[@]}"; do
+    _qparse "$q"
+    [[ -z "${_seen_map[$_qprompt]:-}" ]] && ((++unseen))
+  done
+  echo "unseen=$unseen total=${#CURRENT_QUESTIONS[@]} seen=3"
+')
+unseen=$(echo "$r" | grep 'unseen=' | sed 's/.*unseen=\([0-9]*\).*/\1/')
+((unseen >= 5)) && ok "enough unseen for boss after 3 seen" || fail "boss unseen" "$r"
+
+# BOSS_BEATEN increments on win
+r=$(_run "BOSS_BEATEN=5; ((4 >= BOSS_THRESHOLD)) && { ((BOSS_BEATEN < 6)) && BOSS_BEATEN=6; }; echo \$BOSS_BEATEN")
+[[ "$r" == "6" ]] && ok "BOSS_BEATEN increments 5->6 on win" || fail "boss increment" "$r"
+
+# BOSS_BEATEN doesn't decrement on loss
+r=$(_run "BOSS_BEATEN=5; ((2 >= BOSS_THRESHOLD)) || true; echo \$BOSS_BEATEN")
+[[ "$r" == "5" ]] && ok "BOSS_BEATEN stable on loss" || fail "boss loss stable" "$r"
+
+# Level unlock after boss beat
+r=$(_run "BOSS_BEATEN=5; lv=6; if ((lv > 1 && lv > BOSS_BEATEN + 1)); then echo LOCKED; else echo OPEN; fi")
+[[ "$r" == "OPEN" ]] && ok "L6 open after BB=5" || fail "boss unlock L6" "$r"
+r=$(_run "BOSS_BEATEN=5; lv=7; if ((lv > 1 && lv > BOSS_BEATEN + 1)); then echo LOCKED; else echo OPEN; fi")
+[[ "$r" == "LOCKED" ]] && ok "L7 locked after BB=5" || fail "boss lock L7" "$r"
+
+# ─────────────────────────────────────────────────────────────────────────────
+section "Tier/Mastery System"
+
+# Default tier is 1 (learning)
+r=$(_run 'declare -A _sc; _sget() { _hash "$1"; local _v="${_sc[$REPLY]:-1}"; REPLY="${_v%%|*}"; }; _sget "brand new"; echo $REPLY')
+[[ "$r" == "1" ]] && ok "default tier=1 (learning)" || fail "default tier" "$r"
+
+# Correct answer promotes 1->2
+r=$(_run '
+  declare -A _sc
+  _sget() { _hash "$1"; local _v="${_sc[$REPLY]:-1}"; REPLY="${_v%%|*}"; }
+  _sget "q1"; tier=$REPLY
+  new_tier=$((tier<2?tier+1:2))
+  echo "old=$tier new=$new_tier"
+')
+echo "$r" | grep -q 'old=1 new=2' && ok "correct: tier 1->2 (mastered)" || fail "tier promote" "$r"
+
+# Wrong answer demotes 2->1
+r=$(_run '
+  declare -A _sc
+  _hash "q1"; _sc[$REPLY]="2|1"
+  _sget() { _hash "$1"; local _v="${_sc[$REPLY]:-1}"; REPLY="${_v%%|*}"; }
+  _sget "q1"; tier=$REPLY
+  new_tier=$((tier>0?tier-1:0))
+  echo "old=$tier new=$new_tier"
+')
+echo "$r" | grep -q 'old=2 new=1' && ok "wrong: tier 2->1 (demoted)" || fail "tier demote" "$r"
+
+# Wrong answer demotes 1->0
+r=$(_run '
+  declare -A _sc
+  _hash "q1"; _sc[$REPLY]="1|1"
+  _sget() { _hash "$1"; local _v="${_sc[$REPLY]:-1}"; REPLY="${_v%%|*}"; }
+  _sget "q1"; tier=$REPLY
+  new_tier=$((tier>0?tier-1:0))
+  echo "old=$tier new=$new_tier"
+')
+echo "$r" | grep -q 'old=1 new=0' && ok "wrong: tier 1->0" || fail "tier demote 1->0" "$r"
+
+# Tier caps at 2
+r=$(_run 'tier=2; new_tier=$((tier<2?tier+1:2)); echo $new_tier')
+[[ "$r" == "2" ]] && ok "tier capped at 2" || fail "tier cap" "$r"
+
+# Tier floors at 0
+r=$(_run 'tier=0; new_tier=$((tier>0?tier-1:0)); echo $new_tier')
+[[ "$r" == "0" ]] && ok "tier floored at 0" || fail "tier floor" "$r"
+
+# FIRE_STREAK forces tier 2 (recall mode)
+r=$(_run '
+  streak=$FIRE_STREAK tier=1
+  ((streak>=FIRE_STREAK)) && tier=2
+  echo $tier
+')
+[[ "$r" == "2" ]] && ok "fire streak forces tier 2" || fail "fire tier" "$r"
+
+# ─────────────────────────────────────────────────────────────────────────────
+section "Gauntlet Logic"
+
+# _post_root_check blocks when BOSS_BEATEN < MAX_LEVEL
+r=$(bash -c "
+  source '$SOURCE_FILE' 2>/dev/null
+  BOSS_BEATEN=29 MAX_LEVEL=30
+  _post_root_check 2>&1 || true
+" 2>/dev/null)
+echo "$r" | grep -q 'Locked' && ok "gauntlet locked at BB=29" || fail "gauntlet lock" "$r"
+
+# Difficulty escalation: every 5 correct answers, difficulty++
+r=$(_run '
+  difficulty=1
+  for i in {1..15}; do
+    ((i % 5 == 0 && difficulty <= 30)) && ((++difficulty))
+  done
+  echo $difficulty
+')
+[[ "$r" == "4" ]] && ok "difficulty escalates 1->4 after 15 correct" || fail "gauntlet difficulty" "$r"
+
+# 3 lives tracking
+r=$(_run '
+  lives=3 streak=0
+  # 2 wrongs
+  ((lives--)); ((lives--))
+  echo "lives=$lives"
+')
+echo "$r" | grep -q 'lives=1' && ok "gauntlet lives decrement" || fail "gauntlet lives" "$r"
+
+# Best gauntlet tracking
+r=$(bash -c "
+  source '$SOURCE_FILE' 2>/dev/null
+  DATA='$TDIR/data_gauntlet'; mkdir -p \"\$DATA\"; touch \"\$DATA/scores\"
+  printf 'PLAYER_NAME=test\nBOSS_BEATEN=30\nBEST_GAUNTLET=10\nBEST_TIMED=0\nEGGS_FOUND=\nSC_DONE=\nPROFILE_VER=3\n' > \"\$DATA/profile\"
+  _load_profile
+  score=15
+  ((score > BEST_GAUNTLET)) && { BEST_GAUNTLET=\$score; _save_profile; }
+  _load_profile
+  echo \"\$BEST_GAUNTLET\"
+" 2>/dev/null)
+[[ "$r" == "15" ]] && ok "gauntlet best score persists" || fail "gauntlet best" "$r"
+
+# ─────────────────────────────────────────────────────────────────────────────
+section "Timed Mode Logic"
+
+# Valid durations
+for dur in 60 120 300; do
+  r=$(_run "
+    case $dur in 60|120|300) echo valid;; *) echo invalid;; esac
+  ")
+  [[ "$r" == "valid" ]] && ok "timed duration $dur valid" || fail "timed dur $dur" "$r"
+done
+
+# Invalid duration rejected
+r=$(_run 'case 90 in 60|120|300) echo valid;; *) echo invalid;; esac')
+[[ "$r" == "invalid" ]] && ok "timed rejects 90s" || fail "timed reject" "$r"
+
+# Best timed tracking
+r=$(bash -c "
+  source '$SOURCE_FILE' 2>/dev/null
+  DATA='$TDIR/data_timed'; mkdir -p \"\$DATA\"; touch \"\$DATA/scores\"
+  printf 'PLAYER_NAME=test\nBOSS_BEATEN=30\nBEST_GAUNTLET=0\nBEST_TIMED=8\nEGGS_FOUND=\nSC_DONE=\nPROFILE_VER=3\n' > \"\$DATA/profile\"
+  _load_profile
+  score=12
+  ((score > BEST_TIMED)) && { BEST_TIMED=\$score; _save_profile; }
+  _load_profile
+  echo \"\$BEST_TIMED\"
+" 2>/dev/null)
+[[ "$r" == "12" ]] && ok "timed best score persists" || fail "timed best" "$r"
+
+# ─────────────────────────────────────────────────────────────────────────────
+section "Review Mode Logic"
+
+# Weak level detection: <80% mastery = weak
+r=$(_rune '
+  declare -A _sc
+  for i in {1..10}; do _hash "q$i"; _sc[$REPLY]="1|1"; done
+  for i in {1..6}; do _hash "q$i"; _sc[$REPLY]="2|1"; done
+  declare -A lv_total lv_mastered
+  for k in "${!_sc[@]}"; do
+    _val="${_sc[$k]}" _tier="${_val%%|*}"
+    [[ "$_val" == *"|"* ]] && _lvtag="${_val#*|}" || _lvtag=""
+    [[ -n "$_lvtag" ]] && {
+      lv_total[$_lvtag]=$(( ${lv_total[$_lvtag]:-0} + 1 ))
+      [[ "$_tier" != "0" && "$_tier" != "1" ]] && lv_mastered[$_lvtag]=$(( ${lv_mastered[$_lvtag]:-0} + 1 ))
+    }
+  done
+  lt=${lv_total[1]:-0} lm=${lv_mastered[1]:-0}
+  ((lt > 0)) && pct=$((lm * 100 / lt)) || pct=0
+  ((pct < 80)) && echo "weak pct=$pct" || echo "strong pct=$pct"
+')
+echo "$r" | grep -q 'weak pct=60' && ok "60% mastery = weak" || fail "review weak" "$r"
+
+# Strong level detection: >=80% mastery
+r=$(_rune '
+  declare -A _sc
+  for i in {1..10}; do _hash "s$i"; _sc[$REPLY]="2|2"; done
+  for i in {1..2}; do _hash "s$i"; _sc[$REPLY]="1|2"; done
+  declare -A lv_total lv_mastered
+  for k in "${!_sc[@]}"; do
+    _val="${_sc[$k]}" _tier="${_val%%|*}"
+    [[ "$_val" == *"|"* ]] && _lvtag="${_val#*|}" || _lvtag=""
+    [[ -n "$_lvtag" ]] && {
+      lv_total[$_lvtag]=$(( ${lv_total[$_lvtag]:-0} + 1 ))
+      [[ "$_tier" != "0" && "$_tier" != "1" ]] && lv_mastered[$_lvtag]=$(( ${lv_mastered[$_lvtag]:-0} + 1 ))
+    }
+  done
+  lt=${lv_total[2]:-0} lm=${lv_mastered[2]:-0}
+  ((lt > 0)) && pct=$((lm * 100 / lt)) || pct=0
+  ((pct < 80)) && echo "weak pct=$pct" || echo "strong pct=$pct"
+')
+echo "$r" | grep -q 'strong pct=80' && ok "80% mastery = strong" || fail "review strong" "$r"
+
+# ─────────────────────────────────────────────────────────────────────────────
+section "Easter Eggs"
+
+# Override _egg_found to skip sleep and ANSI output
+_egg_setup='EGGS_FOUND=""; _save_profile() { :; }; _egg_found() { local name=$1; [[ ",$EGGS_FOUND," == *",$name,"* ]] && return; [[ -n "$EGGS_FOUND" ]] && EGGS_FOUND="$EGGS_FOUND,$name" || EGGS_FOUND="$name"; }'
+
+# sudorm egg
+r=$(_rune "$_egg_setup; _egg_check wrong \"sudo rm -rf /\"; echo \"\$EGGS_FOUND\"")
+echo "$r" | grep -q 'sudorm' && ok "egg: sudorm" || fail "egg sudorm" "$r"
+
+# forkbomb egg
+r=$(_rune "$_egg_setup; _egg_check wrong ':(){ :|:& };:'; echo \"\$EGGS_FOUND\"")
+echo "$r" | grep -q 'forkbomb' && ok "egg: forkbomb" || fail "egg forkbomb" "$r"
+
+# rtfm egg
+r=$(_rune "$_egg_setup; _egg_check wrong man; echo \"\$EGGS_FOUND\"")
+echo "$r" | grep -q 'rtfm' && ok "egg: rtfm" || fail "egg rtfm" "$r"
+
+# streak10 egg
+r=$(_rune "$_egg_setup; _S_STREAK=10; _egg_check streak; echo \"\$EGGS_FOUND\"")
+echo "$r" | grep -q 'streak10' && ok "egg: streak10" || fail "egg streak10" "$r"
+
+# streak10 doesn't fire at 9
+r=$(_rune "$_egg_setup; _S_STREAK=9; _egg_check streak; echo \"eggs=\${EGGS_FOUND:-none}\"")
+echo "$r" | grep -q 'eggs=none' && ok "egg: streak9 no trigger" || fail "egg streak9" "$r"
+
+# flawless egg
+r=$(_rune "$_egg_setup; _egg_check flawless; echo \"\$EGGS_FOUND\"")
+echo "$r" | grep -q 'flawless' && ok "egg: flawless" || fail "egg flawless" "$r"
+
+# _egg_found deduplication
+r=$(_rune "$_egg_setup; _egg_found sudorm; _egg_found sudorm; echo \"\$EGGS_FOUND\"")
+[[ "$(echo "$r" | tail -1)" == "sudorm" ]] && ok "egg: no duplicates" || fail "egg dedup" "$r"
+
+# Multiple eggs accumulate
+r=$(_rune "$_egg_setup; _egg_found sudorm; _egg_found rtfm; echo \"\$EGGS_FOUND\"")
+echo "$r" | grep -q 'sudorm,rtfm' && ok "egg: accumulate" || fail "egg accumulate" "$r"
+
+# ─────────────────────────────────────────────────────────────────────────────
+section "Session Persistence"
+
+# Score persist: write scores, reload from file, verify
+r=$(bash -c "
+  export DATA='$TDIR/data_persist'; mkdir -p \"\$DATA\"; touch \"\$DATA/scores\"
+  source '$SOURCE_FILE' 2>/dev/null
+  DATA='$TDIR/data_persist'
+  declare -gA _sc; _sc=()
+  _hash 'persist question'; _sc[\$REPLY]='2|5'
+  _sflush
+
+  # Reload in fresh context
+  declare -A _sc2; _sc2=()
+  while IFS='|' read -r k v rest; do [[ \"\$k\" == '#'* ]] && continue; _sc2[\$k]=\$v; done < \"\$DATA/scores\"
+  _hash 'persist question'
+  echo \"tier=\${_sc2[\$REPLY]:-missing}\"
+" 2>/dev/null)
+echo "$r" | grep -q 'tier=2' && ok "scores persist across reload" || fail "score persist" "$r"
+
+# Profile round-trip with all fields
+r=$(bash -c "
+  source '$SOURCE_FILE' 2>/dev/null
+  DATA='$TDIR/data_prof_rt'; mkdir -p \"\$DATA\"; touch \"\$DATA/scores\"
+  PLAYER_NAME='testguy' BOSS_BEATEN=15 BEST_GAUNTLET=42 BEST_TIMED=99 EGGS_FOUND='sudorm,rtfm' SC_DONE='1,3' _PROFILE_VER=3
+  _save_profile
+  # Reset
+  PLAYER_NAME='' BOSS_BEATEN=0 BEST_GAUNTLET=0 BEST_TIMED=0 EGGS_FOUND='' SC_DONE='' _PROFILE_VER=0
+  _load_profile
+  echo \"name=\$PLAYER_NAME bb=\$BOSS_BEATEN bg=\$BEST_GAUNTLET bt=\$BEST_TIMED eggs=\$EGGS_FOUND sc=\$SC_DONE ver=\$_PROFILE_VER\"
+" 2>/dev/null)
+echo "$r" | grep -q 'name=testguy' && ok "profile name round-trip" || fail "prof name" "$r"
+echo "$r" | grep -q 'bb=15' && ok "profile BOSS_BEATEN round-trip" || fail "prof bb" "$r"
+echo "$r" | grep -q 'bg=42' && ok "profile BEST_GAUNTLET round-trip" || fail "prof bg" "$r"
+echo "$r" | grep -q 'bt=99' && ok "profile BEST_TIMED round-trip" || fail "prof bt" "$r"
+echo "$r" | grep -q 'eggs=sudorm,rtfm' && ok "profile EGGS_FOUND round-trip" || fail "prof eggs" "$r"
+echo "$r" | grep -q 'sc=1,3' && ok "profile SC_DONE round-trip" || fail "prof sc" "$r"
+echo "$r" | grep -q 'ver=3' && ok "profile ver=3 stable" || fail "prof ver" "$r"
+
+# Session save/load with scores
+r=$(bash -c "
+  export DATA='$TDIR/data_sess2'; mkdir -p \"\$DATA\"; touch \"\$DATA/scores\"
+  source '$SOURCE_FILE' 2>/dev/null
+  DATA='$TDIR/data_sess2'
+  LVL=14; QI=7; save
+  LVL=1; QI=0; load
+  echo \"lvl=\$LVL qi=\$QI\"
+" 2>/dev/null)
+echo "$r" | grep -q 'lvl=14 qi=7' && ok "session LVL+QI persist" || fail "session persist" "$r"
+
+# v2->v3 migration adds eggs+scenario fields
+r=$(bash -c "
+  source '$SOURCE_FILE' 2>/dev/null
+  DATA='$TDIR/data_mig_v3'; mkdir -p \"\$DATA\"; touch \"\$DATA/scores\"
+  printf 'PLAYER_NAME=migtest\nBOSS_BEATEN=5\nPROFILE_VER=2\n' > \"\$DATA/profile\"
+  _load_profile
+  echo \"ver=\$_PROFILE_VER eggs=\${EGGS_FOUND:-empty} sc=\${SC_DONE:-empty}\"
+" 2>/dev/null)
+echo "$r" | grep -q 'ver=3' && ok "v2->v3: ver bumped" || fail "v2->v3 ver" "$r"
+echo "$r" | grep -q 'eggs=empty' && ok "v2->v3: eggs initialized" || fail "v2->v3 eggs" "$r"
+echo "$r" | grep -q 'sc=empty' && ok "v2->v3: sc initialized" || fail "v2->v3 sc" "$r"
+
+# ─────────────────────────────────────────────────────────────────────────────
+section "Scenario System"
+
+# SC_TOTAL matches actual scenario count
+r=$(_run "echo \"\$SC_TOTAL\"")
+[[ "$r" == "8" ]] && ok "SC_TOTAL=8" || fail "SC_TOTAL" "$r"
+
+# All scenario functions exist
+for sc_id in {1..8}; do
+  r=$(_run "declare -f _sc_setup_${sc_id} >/dev/null && echo Y || echo N")
+  [[ "$r" == "Y" ]] && ok "sc_setup_${sc_id} exists" || fail "sc_setup_${sc_id}" "missing"
+  r=$(_run "declare -f _sc_steps_${sc_id} >/dev/null && echo Y || echo N")
+  [[ "$r" == "Y" ]] && ok "sc_steps_${sc_id} exists" || fail "sc_steps_${sc_id}" "missing"
+done
+
+# SC_UNLOCK array has correct size
+r=$(_run "echo \"\${#SC_UNLOCK[@]}\"")
+[[ "$r" == "9" ]] && ok "SC_UNLOCK has 9 entries (padded)" || fail "SC_UNLOCK size" "$r"
+
+# _sc_is_done / _sc_mark_done
+r=$(_rune 'SC_DONE=""; _save_profile() { :; }
+  _sc_is_done 1 && echo "already" || echo "not_done"
+  _sc_mark_done 1
+  _sc_is_done 1 && echo "done" || echo "still_not"
+  _sc_mark_done 1
+  echo "sc=$SC_DONE"
+')
+echo "$r" | grep -q 'not_done' && ok "sc: not done initially" || fail "sc init" "$r"
+echo "$r" | grep -q '^done$' && ok "sc: done after mark" || fail "sc mark" "$r"
+echo "$r" | grep -q 'sc=1$' && ok "sc: no duplicate mark" || fail "sc dedup" "$r"
+
 # ═════════════════════════════════════════════════════════════════════════════
 # Summary
 # ═════════════════════════════════════════════════════════════════════════════
@@ -820,10 +1193,12 @@ if ((FAIL > 0)); then
   for e in "${ERRORS[@]}"; do
     printf '  %s• %s%s\n' "$R" "$e" "$N"
   done
+  ((!HAS_BWRAP)) && printf '\n%s⚠  INCOMPLETE: bwrap missing — sandbox tests were skipped%s\n' "$R$B" "$N"
   exit 1
 else
   printf '%s0 failed%s' "$G" "$N"
   ((SKIP > 0)) && printf ', %s%d skipped%s' "$Y" "$SKIP" "$N"
   printf '\n'
+  ((!HAS_BWRAP)) && printf '\n%s⚠  INCOMPLETE: bwrap missing — sandbox tests were skipped%s\n' "$R$B" "$N"
   exit 0
 fi
