@@ -62,7 +62,7 @@ _load_profile() {
 }
 
 _save_profile() {
-  printf 'PLAYER_NAME=%q\nBOSS_BEATEN=%d\nBEST_GAUNTLET=%d\nBEST_TIMED=%d\nEGGS_FOUND=%s\nSC_DONE=%s\nPROFILE_VER=%d\n' \
+  printf 'PLAYER_NAME=%q\nBOSS_BEATEN=%d\nBEST_GAUNTLET=%d\nBEST_TIMED=%d\nEGGS_FOUND=%q\nSC_DONE=%q\nPROFILE_VER=%d\n' \
     "$PLAYER_NAME" "$BOSS_BEATEN" "$BEST_GAUNTLET" "$BEST_TIMED" "$EGGS_FOUND" "$SC_DONE" "$_PROFILE_VER" > "$DATA/profile"
 }
 
@@ -83,6 +83,8 @@ EOF
   echo
   read -rp "    Enter your handle: " PLAYER_NAME
   PLAYER_NAME="${PLAYER_NAME//$'\e'*/}"          # strip ANSI escapes
+  PLAYER_NAME="${PLAYER_NAME//$'\n'/}"            # strip newlines
+  PLAYER_NAME="${PLAYER_NAME//$'\r'/}"            # strip carriage returns
   PLAYER_NAME="${PLAYER_NAME:0:20}"              # truncate to 20 chars
   [[ -z "$PLAYER_NAME" ]] && PLAYER_NAME="anon"
   BOSS_BEATEN=0; _PROFILE_VER=3
@@ -3016,7 +3018,7 @@ _sc_steps_1() {
   cat <<'STEPS'
 Check permissions on deploy.sh§ls -l deploy.sh§ls -la deploy.sh#output:~-rw-r--r--
 Make deploy.sh executable§chmod +x deploy.sh§chmod 755 deploy.sh§chmod u+x deploy.sh#state:perm:deploy.sh:x
-Create VERSION file with "1.0"§echo 1.0 > VERSION§printf '1.0\n' > VERSION§printf 1.0 > VERSION#state:contains:VERSION:1.0,lines:VERSION:1
+Create VERSION file with "1.0"§echo 1.0 > VERSION§printf '1.0\n' > VERSION#state:contains:VERSION:1.0,lines:VERSION:1
 Fix the port in config.ini to 8080§sed -i 's/port=0/port=8080/' config.ini§sed -i 's/port=0/port=8080/g' config.ini#state:contains:config.ini:port=8080
 Run the deploy script§./deploy.sh§bash deploy.sh#output:~Deploy complete
 STEPS
@@ -3587,15 +3589,18 @@ run() {
     _qparse "$q"
     _sget "$_qprompt"; case "$REPLY" in 0|1) t1+=("$q");; *) t2+=("$q");; esac
   done
-  # Shuffle and interleave: tier 1 first, mix in tier 2
+  # Shuffle and interleave: tier 1 (learning) prioritized, tier 2 (mastered) mixed in
   local _shuf1=() _shuf2=()
   ((${#t1[@]} > 0)) && { _shuf1=("${t1[@]}"); _fshuffle _shuf1; }
   ((${#t2[@]} > 0)) && { _shuf2=("${t2[@]}"); _fshuffle _shuf2; }
   shuf=()
   local i1=0 i2=0
   while ((i1 < ${#_shuf1[@]} || i2 < ${#_shuf2[@]})); do
-    if ((i1 < ${#_shuf1[@]})); then shuf+=("${_shuf1[$i1]}"); ((++i1))
-    elif ((i2 < ${#_shuf2[@]})); then shuf+=("${_shuf2[$i2]}"); ((++i2))
+    # 2:1 ratio favoring tier 1 (learning), with tier 2 (mastered) mixed in
+    if ((i1 < ${#_shuf1[@]} && (i2 >= ${#_shuf2[@]} || RANDOM % 3 != 0))); then
+      shuf+=("${_shuf1[$i1]}"); ((++i1))
+    elif ((i2 < ${#_shuf2[@]})); then
+      shuf+=("${_shuf2[$i2]}"); ((++i2))
     fi
   done
   if ((boss_only)); then
