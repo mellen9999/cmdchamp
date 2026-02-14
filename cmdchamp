@@ -701,12 +701,23 @@ PROMPT_CHAR="${CMD_PROMPT:-$([[ $EUID -eq 0 ]] && echo '# ' || echo '$ ')}"
 # EASTER EGGS
 # ═══════════════════════════════════════════════════════════════════════════════
 _EGG_TOTAL=8
+declare -A _EGG_DESC=(
+  [sudorm]="Answer sudo rm -rf /"
+  [forkbomb]="Answer a fork bomb"
+  [rtfm]="Answer just 'man' with no arguments"
+  [streak10]="Get a 10+ answer streak"
+  [nightowl]="Play between midnight and 4am"
+  [flawless]="Beat a boss without a single mistake"
+  [vimquit]="Try to :q! or :wq out of the game"
+  [completionist]="Complete all scenarios"
+)
 _egg_found() {
   local name=$1
   [[ ",$EGGS_FOUND," == *",$name,"* ]] && return
   [[ -n "$EGGS_FOUND" ]] && EGGS_FOUND="$EGGS_FOUND,$name" || EGGS_FOUND="$name"
   _save_profile
   printf '\n%s\n' "${Y}${B}★ EASTER EGG: ${name} ★${N}"
+  printf '%s\n' "${_EGG_DESC[$name]:-}"
   local egg_count=0
   IFS=',' read -ra _ea <<< "$EGGS_FOUND"; egg_count=${#_ea[@]}
   printf '%s\n\n' "${D}${egg_count}/${_EGG_TOTAL} discovered${N}"
