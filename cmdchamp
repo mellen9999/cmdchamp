@@ -710,7 +710,7 @@ _egg_found() {
   local egg_count=0
   IFS=',' read -ra _ea <<< "$EGGS_FOUND"; egg_count=${#_ea[@]}
   printf '%s\n\n' "${D}${egg_count}/${_EGG_TOTAL} discovered${N}"
-  sleep 1
+  sleep 3
 }
 _egg_check() {
   local trigger=$1 ctx=${2:-}
