@@ -85,7 +85,7 @@ EOF
   PLAYER_NAME="${PLAYER_NAME//$'\e'*/}"          # strip ANSI escapes
   PLAYER_NAME="${PLAYER_NAME:0:20}"              # truncate to 20 chars
   [[ -z "$PLAYER_NAME" ]] && PLAYER_NAME="anon"
-  BOSS_BEATEN=0; _PROFILE_VER=2
+  BOSS_BEATEN=0; _PROFILE_VER=3
   _save_profile
   _intro
   _tutorial
@@ -166,6 +166,7 @@ LEVEL_NAMES=("" "First Steps" "Save Your Work" "Reading Files" "Basic Pipes" "In
 SC_TOTAL=8
 SC_NAMES=("" "The Broken Deploy" "Log Emergency" "Messy CSV" "Permission Lockout"
   "Find the Needle" "Archive & Extract" "The Incident" "Config Surgery")
+SC_UNLOCK=("" 21 21 18 13 16 13 18 21)  # boss level needed to unlock each scenario
 SC_FLAVOR=(""
   "The deploy pipeline is broken. Find the problems and fix them."
   "The logs are screaming. Triage the errors before it gets worse."
@@ -3658,7 +3659,14 @@ run() {
     printf '%s\n' "${G}${B}══ ${boss} DEFEATED ══${N}"
     printf '%s\n' "${G}${boss_correct}/${boss_total}${N} correct!"
     printf '%s\n\n' "${C}You acquired: ${LEVEL_NAMES[$lv]}${N}"
-    ((BOSS_BEATEN < lv)) && { BOSS_BEATEN=$lv; _save_profile; }
+    if ((BOSS_BEATEN < lv)); then
+      BOSS_BEATEN=$lv; _save_profile
+      # Notify about newly unlocked scenarios
+      local _si
+      for ((_si=1; _si<=SC_TOTAL; _si++)); do
+        ((SC_UNLOCK[_si] == lv)) && printf '%s\n' "${Y}★ Scenario unlocked: ${SC_NAMES[$_si]}${N}"
+      done
+    fi
     if ((lv<MAX_LEVEL)); then
       printf "${D}Press Enter for Level %d...${N}\n" "$((lv+1))"; read -r
       LVL=$((lv+1)); QI=0; save; _sflush_if_dirty; _NEXT_LV=$LVL _NEXT_BOSS=0; return 0
@@ -3918,10 +3926,16 @@ _sc_menu() {
   printf '\e[2J\e[H'
   printf '%s\n' "${C}${B}═══ SCENARIOS ═══${N}"
   printf '%s\n\n' "${D}Multi-step sandbox investigations${N}"
-  local i mark
+  local i mark req
   for ((i=1; i<=SC_TOTAL; i++)); do
-    _sc_is_done "$i" && mark="${G}[+]${N}" || mark="${D}[ ]${N}"
-    printf '  %s %d. %s\n' "$mark" "$i" "${SC_NAMES[$i]}"
+    req=${SC_UNLOCK[$i]:-$MAX_LEVEL}
+    if ((BOSS_BEATEN < req)); then
+      printf '  %s %d. %s %s\n' "${D}[-]${N}" "$i" "${D}${SC_NAMES[$i]}${N}" "${D}(beat L${req} boss)${N}"
+    elif _sc_is_done "$i"; then
+      printf '  %s %d. %s\n' "${G}[+]${N}" "$i" "${SC_NAMES[$i]}"
+    else
+      printf '  %s %d. %s\n' "${Y}[ ]${N}" "$i" "${SC_NAMES[$i]}"
+    fi
   done
   printf '\n%s ' "${D}Pick 1-${SC_TOTAL} (q=quit):${N}"
   local choice; read -r choice
@@ -3933,7 +3947,11 @@ scenario() {
   local sc_id=${1:-0}
   ((sc_id == 0)) && { _sc_menu; return; }
   ((sc_id < 1 || sc_id > SC_TOTAL)) && { printf '%s\n' "${R}Scenario ${sc_id} does not exist.${N}"; return 1; }
-  _post_root_check
+  local _sc_req=${SC_UNLOCK[$sc_id]:-$MAX_LEVEL}
+  if ((BOSS_BEATEN < _sc_req)); then
+    printf '%s\n' "${R}Locked${N} — beat the Level ${_sc_req} boss (${LEVEL_NAMES[$_sc_req]}) first."
+    return 1
+  fi
   if ! ((SANDBOX_MODE)); then
     printf '%s\n' "${R}Scenarios require sandbox mode.${N}"; return 1
   fi
@@ -4056,7 +4074,7 @@ Commands:
   review        Practice weak levels (mastery < 80%)
   gauntlet      3 lives, escalating difficulty (post-ROOT)
   timed [secs]  Race the clock (post-ROOT, default 120s)
-  scenario [N]  Sandbox investigations (post-ROOT, 1-8)
+  scenario [N]  Sandbox investigations (unlock per-level, 1-8)
   r|reset       Reset all progress
   c|cleanup     Deduplicate score file
   h|help        Show this help
