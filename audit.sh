@@ -115,7 +115,7 @@ phase1_syntax() {
           IFS=',' read -ra _checks <<< "$_qstate"
           for _chk in "${_checks[@]}"; do
             case "$_chk" in
-              exists:*|!exists:*|contains:*:*|lines:*:*) ;;
+              exists:*|!exists:*|contains:*:*|lines:*:*|perm:*:*|!perm:*:*) ;;
               *) _fail "L${lv}: bad #state: marker '$_chk' for: ${_qprompt:0:60}" ;;
             esac
           done
@@ -597,19 +597,177 @@ phase5_crosscheck() {
 }
 
 # ═══════════════════════════════════════════════════════════════════
+# PHASE 6: SCENARIO SANDBOX VERIFICATION
+# Execute each scenario step's correct answer and validate markers
+# ═══════════════════════════════════════════════════════════════════
+phase6_scenarios() {
+  printf '\n%s\n' "═══ PHASE 6: Scenario Verification (sandbox) ═══"
+
+  if ! ((SANDBOX_MODE)); then
+    printf '  WARNING: sandbox disabled — scenario steps cannot be verified\n'
+    return
+  fi
+
+  for sc_id in {1..8}; do
+    local tested=0 passed=0 failed=0 skipped=0
+
+    # Init sandbox and run setup
+    _sandbox_init
+    _sc_setup_${sc_id} "$SANDBOX_DIR"
+
+    # Get steps
+    local steps
+    steps=$(_sc_steps_${sc_id} 2>/dev/null) || { _fail "SC${sc_id}: _sc_steps_${sc_id} crashed"; continue; }
+
+    while IFS= read -r line; do
+      [[ -z "$line" ]] && continue
+      _qparse "$line"
+
+      # Skip text-only questions
+      ((_qtext)) && { ((skipped++)); continue; }
+
+      # Skip if no markers
+      [[ -z "$_qoutput" && -z "$_qstate" ]] && { ((skipped++)); continue; }
+
+      ((tested++))
+
+      # Execute canonical answer in sandbox
+      local output="" _sb_rc=0
+      { output=$(_sandbox_exec "$_qans" 5 2>"$SANDBOX_DIR/.stderr"); } 2>/dev/null; _sb_rc=$?
+
+      if ((_sb_rc == 127 || _sb_rc == 126)); then
+        ((skipped++)); ((tested--)); continue
+      fi
+
+      # Validate
+      local out_ok=1 state_ok=1
+      if [[ -n "$_qoutput" ]]; then
+        _sandbox_check_output "$output" "$_qoutput" || out_ok=0
+      fi
+      if [[ -n "$_qstate" ]]; then
+        _sandbox_check_state "$_qstate" || state_ok=0
+      fi
+
+      if ((out_ok && state_ok)); then
+        ((passed++)); _ok
+      else
+        ((failed++))
+        local reason=""
+        ((out_ok)) || reason+="output_fail(got='${output:0:40}',expect='$_qoutput') "
+        ((state_ok)) || reason+="state_fail(expect='$_qstate') "
+        _fail "SC${sc_id} step: '${_qans:0:50}' [${reason}]"
+      fi
+    done <<< "$steps"
+
+    printf '  SC%d %-22s tested:%d pass:%d fail:%d skip:%d\n' \
+      "$sc_id" "${SC_NAMES[$sc_id]}" "$tested" "$passed" "$failed" "$skipped"
+  done
+}
+
+# ═══════════════════════════════════════════════════════════════════
+# PHASE 7: SCENARIO WRONG-ANSWER REJECTION
+# Similar-but-wrong answers for scenario steps should be rejected
+# ═══════════════════════════════════════════════════════════════════
+phase7_scenario_negatives() {
+  printf '\n%s\n' "═══ PHASE 7: Scenario Wrong-Answer Rejection ═══"
+
+  if ! ((SANDBOX_MODE)); then
+    printf '  WARNING: sandbox disabled — skipping scenario negatives\n'
+    return
+  fi
+
+  for sc_id in {1..8}; do
+    local tested=0 caught=0 leaked=0
+
+    local steps
+    steps=$(_sc_steps_${sc_id} 2>/dev/null) || continue
+
+    # Collect all steps into array for sequential replay
+    local -a step_arr=()
+    while IFS= read -r line; do [[ -n "$line" ]] && step_arr+=("$line"); done <<< "$steps"
+
+    for ((si=0; si<${#step_arr[@]}; si++)); do
+      _qparse "${step_arr[$si]}"
+
+      # Skip text-only
+      ((_qtext)) && continue
+
+      local ans="$_qans" answers="$_qanswers" prompt="$_qprompt"
+
+      # Generate confusable mutations
+      local mut_list
+      mut_list=$(_mutate "$ans") || continue
+      [[ -z "$mut_list" ]] && continue
+
+      while IFS= read -r mut; do
+        [[ -z "$mut" ]] && continue
+        [[ "$mut" == "$ans" ]] && continue
+        ((tested++))
+
+        # Reset sandbox, run setup, then replay all PRIOR steps correctly
+        _sandbox_init
+        _sc_setup_${sc_id} "$SANDBOX_DIR"
+        for ((pi=0; pi<si; pi++)); do
+          _qparse "${step_arr[$pi]}"
+          { _sandbox_exec "$_qans" 5 2>/dev/null; } 2>/dev/null || true
+        done
+        # Restore current step's parse state
+        _qparse "${step_arr[$si]}"
+
+        if check "$mut" "$answers" 2>/dev/null; then
+          ((leaked++))
+          _fail "SC${sc_id}: mutation '${mut:0:40}' PASSED for: ${prompt:0:40} [correct: ${ans:0:40}]"
+        else
+          ((caught++)); _ok
+        fi
+      done <<< "$mut_list"
+
+      # Also test generic wrong answers
+      for wrong in "" "ls" "echo hi" "asdfqwer"; do
+        [[ "$wrong" == "$ans" ]] && continue
+        ((tested++))
+        _sandbox_init
+        _sc_setup_${sc_id} "$SANDBOX_DIR"
+        for ((pi=0; pi<si; pi++)); do
+          _qparse "${step_arr[$pi]}"
+          { _sandbox_exec "$_qans" 5 2>/dev/null; } 2>/dev/null || true
+        done
+        _qparse "${step_arr[$si]}"
+        if check "$wrong" "$answers" 2>/dev/null; then
+          ((leaked++))
+          _fail "SC${sc_id}: generic '$wrong' PASSED for: ${prompt:0:40}"
+        else
+          ((caught++)); _ok
+        fi
+      done
+    done
+
+    printf '  SC%d %-22s tested:%d caught:%d leaked:%d\n' \
+      "$sc_id" "${SC_NAMES[$sc_id]}" "$tested" "$caught" "$leaked"
+  done
+}
+
+# ═══════════════════════════════════════════════════════════════════
 # MAIN
 # ═══════════════════════════════════════════════════════════════════
 main() {
   printf '%s\n' "╔══════════════════════════════════════════╗"
   printf '%s\n' "║   CmdChamp Omega Audit                   ║"
-  printf '%s\n' "║   30 levels × 5 phases                   ║"
+  printf '%s\n' "║   30 levels × 7 phases                   ║"
   printf '%s\n' "╚══════════════════════════════════════════╝"
+
+  if ! ((SANDBOX_MODE)); then
+    printf '\n  ⚠  bwrap NOT INSTALLED — phases 2-4 degrade to text-match only!\n'
+    printf '     Install bwrap for full coverage: paru -S bubblewrap\n\n'
+  fi
 
   phase1_syntax
   phase2_positive
   phase3_confusable
   phase4_generic
   phase5_crosscheck
+  phase6_scenarios
+  phase7_scenario_negatives
 
   printf '\n%s\n' "═══════════════════════════════════════════"
   printf '  TOTAL: %d tests  PASS: %d  FAIL: %d  WARN: %d\n' "$TOTAL" "$PASS" "$FAIL" "$WARN"
@@ -621,6 +779,10 @@ main() {
       printf '  ✗ %s\n' "$f"
     done
     printf '\n'
+  fi
+
+  if ! ((SANDBOX_MODE)); then
+    printf '\n  ⚠  INCOMPLETE: bwrap missing — sandbox execution was disabled\n'
   fi
 
   ((FAIL > 0)) && return 1 || return 0
