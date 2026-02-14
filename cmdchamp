@@ -3,7 +3,7 @@
 set -uo pipefail
 [[ ${BASH_VERSINFO[0]:-0} -lt 4 || (${BASH_VERSINFO[0]} -eq 4 && ${BASH_VERSINFO[1]:-0} -lt 3) ]] && { echo "Requires bash 4.3+"; exit 1; }
 _tty() { [[ -t 0 ]] || { echo "Error: requires interactive terminal" >&2; exit 1; }; }
-for _dep in shuf awk; do command -v "$_dep" &>/dev/null || { echo "Error: $_dep not found" >&2; exit 1; }; done
+for _dep in awk; do command -v "$_dep" &>/dev/null || { echo "Error: $_dep not found" >&2; exit 1; }; done
 
 DATA="${XDG_DATA_HOME:-$HOME/.local/share}/cmdchamp"; mkdir -p "$DATA"; touch "$DATA/scores"
 
@@ -17,6 +17,7 @@ BOSS_TOTAL=5           # Number of questions in boss round
 FIRE_STREAK=5          # Streak needed for fire mode (+2 points)
 REVIEW_PER_LEVEL=2     # Review questions to pick from each previous level
 MAX_LEVEL=30           # Highest level number
+BOSS_TIMER=15          # Seconds per boss question
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -767,6 +768,9 @@ _phrase() {
 _fpick() { local -n _a=$1; REPLY="${_a[$((RANDOM % ${#_a[@]}))]}"; }
 _fphrase() { local -a _a=("$@"); REPLY="${_a[$((RANDOM % ${#_a[@]}))]}"; }
 _frnum() { REPLY=$(($1 + RANDOM % ($2 - $1 + 1))); }
+# Fisher-Yates in-place shuffle via nameref (replaces shuf fork)
+_fshuffle() { local -n _a=$1; local i j t; for ((i=${#_a[@]}-1; i>0; i--)); do j=$((RANDOM % (i+1))); t="${_a[$i]}"; _a[$i]="${_a[$j]}"; _a[$j]="$t"; done; }
+_fshuffle_n() { _fshuffle "$1"; local -n _a=$1; (($2 < ${#_a[@]})) && _a=("${_a[@]:0:$2}"); }
 
 _QV='log log2 cfg cfg2 txt txt2 csv csv2 dir dir2 ext ext2 script archive bin img pcap hash photo wordlist ip subnet port port2 mac url user host term term2 term3 field field2 key old new size iface proc svc sig branch time n1 n2 n3 col'
 _ctx() {
@@ -1042,7 +1046,7 @@ explain() {
   printf '%s\n' "${D}----------------------------------------${N}"
   # Collect all pipeline commands (skip env vars like VAR=val)
   for tok in $1; do
-    case "$tok" in '|'|'|&') _ap=1; continue ;; esac
+    case "$tok" in '|'|'|&'|'&&'|'||'|';'|'&') _ap=1; continue ;; esac
     ((_ap)) && [[ "$tok" != *=* ]] && { cmds+=("$tok"); _ap=0; }
   done
   # Show manpages for pipeline commands (EXP fallback for commands without manpage)
@@ -1058,7 +1062,7 @@ explain() {
   if ((_mc)); then
     # Still show EXP entries for operators/redirects alongside manpages
     for tok in $1; do
-      case "$tok" in '>'|'>>'|'<'|'<<<'|'2>'|'&>'|'2>&1') ;; *) continue ;; esac
+      case "$tok" in '>'|'>>'|'<'|'<<<'|'2>'|'&>'|'2>&1'|'|'|'|&'|'&&'|'||'|';'|'&') ;; *) continue ;; esac
       exp="${EXP[$tok]:-}"; [[ -z "$exp" ]] && continue
       _exp_line "$tok" "$exp" "${Y}"
       ((_ml++))
@@ -2783,7 +2787,7 @@ gen_level29() {
   # Weak permissions
   questions+=("Check /etc/passwd writeable|ls -la /etc/passwd")
   questions+=("Check /etc/shadow readable|ls -la /etc/shadow")
-  questions+=("Add user to /etc/passwd|echo \"hacker:\$(openssl passwd -6 pass):0:0::/root:/bin/bash\" >> /etc/passwd")
+  questions+=("Privesc: add root user to /etc/passwd (when writable)|echo \"hacker:\$(openssl passwd -6 pass):0:0::/root:/bin/bash\" >> /etc/passwd")
   questions+=("Check writable /etc/sudoers|ls -la /etc/sudoers")
 
   # Path hijacking
@@ -2935,8 +2939,8 @@ generate_level() {
       done <<< "$(_get_level_questions "$prev")"
       # Pick random questions from this previous level
       if ((${#prev_arr[@]} > 0)); then
-        readarray -t picks < <(printf '%s\n' "${prev_arr[@]}" | shuf | head -$REVIEW_PER_LEVEL)
-        review+=("${picks[@]}")
+        _fshuffle_n prev_arr $REVIEW_PER_LEVEL
+        review+=("${prev_arr[@]}")
       fi
     done
     CURRENT_QUESTIONS+=("${review[@]}")
@@ -3124,6 +3128,7 @@ hdr() {
   printf '%s\n\n' "${D}[$2/$3]  Tab=man${N}"
 }
 qdisp() { bar; printf "\n${C}%s${N}\n\n" "$1"; }
+_wrong_feedback() { [[ "${CMD_BELL:-1}" != "0" ]] && printf '\a'; printf '\e[7m'; read -t 0.05 -rsn1 _ ||:; printf '\e[0m'; }
 bar() { local f e p=$((qi<TOT?qi:TOT)); printf -v f '%*s' "$p" ''; printf -v e '%*s' "$((TOT-p))" ''; printf "${B}[${G}%s${D}%s${B}]${N}" "${f// /█}" "${e// /░}"; }
 draw() {
   printf '\e[?25l\r\e[K'  # hide cursor, clear line
@@ -3153,15 +3158,24 @@ _del() { # $1=motion
 
 # Read one line of input with vi/insert mode (shared by practice + boss)
 # $1: 1=allow manpages, 0=boss mode  $2: 1=allow history, 0=no history
+# $3: timeout seconds (0=none). Returns 1 on timeout.
 # Caller defines _REDRAW_HDR(). Uses dynamic scoping for ans, HIST, etc.
 _read_line() {
-  local _rl_hints=${1:-1} _rl_hist=${2:-1}
+  local _rl_hints=${1:-1} _rl_hist=${2:-1} _rl_timeout=${3:-0} _rl_deadline=0
   input="" cursor=0 mode="insert" _rep="" _man_open=0
   UNDO_STACK=()
+  if ((_rl_timeout > 0)); then printf -v _rl_deadline '%(%s)T' -1; ((_rl_deadline += _rl_timeout)); fi
   ((_rl_hist)) && { HIST_IDX=${#HIST[@]}; HIST_SAVE=""; }
   read -t 0.01 -rsn 1000 ||:
   draw
-  while IFS= read -rsn1 c; do
+  while true; do
+    if ((_rl_deadline)); then
+      local _now; printf -v _now '%(%s)T' -1; local _rem=$((_rl_deadline - _now))
+      ((_rem <= 0)) && { input=""; return 1; }
+      IFS= read -rsn1 -t "$_rem" c || { input=""; return 1; }
+    else
+      IFS= read -rsn1 c || break
+    fi
     if [[ "$c" == $'\t' ]]; then
       if ((_rl_hints)); then
         ((_man_open)) && _man_open=0 || _man_open=1
@@ -3269,8 +3283,8 @@ run() {
   done
   # Shuffle and interleave: tier 1 first, mix in tier 2
   local _shuf1=() _shuf2=()
-  ((${#t1[@]} > 0)) && readarray -t _shuf1 < <(printf '%s\n' "${t1[@]}" | LC_ALL=C shuf)
-  ((${#t2[@]} > 0)) && readarray -t _shuf2 < <(printf '%s\n' "${t2[@]}" | LC_ALL=C shuf)
+  ((${#t1[@]} > 0)) && { _shuf1=("${t1[@]}"); _fshuffle _shuf1; }
+  ((${#t2[@]} > 0)) && { _shuf2=("${t2[@]}"); _fshuffle _shuf2; }
   shuf=()
   local i1=0 i2=0
   while ((i1 < ${#_shuf1[@]} || i2 < ${#_shuf2[@]})); do
@@ -3322,7 +3336,7 @@ run() {
         read -rsp "${D}Press Enter to continue...${N}"
         ((++qi)); QI=$qi; save; break
       else
-        ((_S_ANSWERED++)); _S_STREAK=0
+        ((_S_ANSWERED++)); _S_STREAK=0; _wrong_feedback
         if [[ -n "$_SANDBOX_OUTPUT" ]]; then printf '\n%s %s\n' "${D}output:${N}" "$_SANDBOX_OUTPUT"; fi
         printf '%s  %s %s\n\n' "${R}x${N}" "${D}expected:${N}" "${Y}${ans}${N}"
         explain "$ans"
@@ -3344,25 +3358,36 @@ run() {
   done
   # Use unseen questions if enough, otherwise fall back to all
   if ((${#unseen_q[@]} >= boss_total)); then
-    readarray -t boss_q < <(printf '%s\n' "${unseen_q[@]}" | shuf | head -$boss_total)
+    boss_q=("${unseen_q[@]}"); _fshuffle_n boss_q "$boss_total"
   else
-    readarray -t boss_q < <(printf '%s\n' "${CURRENT_QUESTIONS[@]}" | shuf | head -$boss_total)
+    boss_q=("${CURRENT_QUESTIONS[@]}"); _fshuffle_n boss_q "$boss_total"
   fi
 
   for ((bi=0; bi<${#boss_q[@]}; bi++)); do
     _qparse "${boss_q[$bi]}"; local prompt=$_qprompt ans=$_qans
     [[ -z "$prompt" ]] && { ((boss_total--)); continue; }
-    _REDRAW_HDR() { printf '\e[2J\e[H'; printf '%s\n\n%s\n\n' "${R}${B}═══ BOSS $((bi+1))/${boss_total} ═══${N}" "${C}${prompt}${N}"; }
+    _sget "$prompt"; local _boss_tier=$REPLY
+    _REDRAW_HDR() {
+      printf '\e[2J\e[H'
+      printf '%s  %s\n\n%s\n\n' "${R}${B}═══ BOSS $((bi+1))/${boss_total} ═══${N}" "${Y}${BOSS_TIMER}s${N}" "${C}${prompt}${N}"
+    }
     _REDRAW_HDR
-    _read_line 0 0
-    ((_S_ANSWERED++))
-    if check "$input" "$_qanswers"; then
-      ((++boss_correct)); ((_S_CORRECT++)); ((_S_STREAK++))
-      ((_S_STREAK > _S_BEST_STREAK)) && _S_BEST_STREAK=$_S_STREAK
-      printf '%s\n' "${G}${B}+${N}"
+    if _read_line 0 0 "$BOSS_TIMER"; then
+      ((_S_ANSWERED++))
+      if check "$input" "$_qanswers"; then
+        ((++boss_correct)); ((_S_CORRECT++)); ((_S_STREAK++))
+        ((_S_STREAK > _S_BEST_STREAK)) && _S_BEST_STREAK=$_S_STREAK
+        printf '%s\n' "${G}${B}+${N}"
+      else
+        _S_STREAK=0; _wrong_feedback
+        _sset "$prompt" "$((_boss_tier>0?_boss_tier-1:0))"
+        printf '%s  %s %s\n\n' "${R}x${N}" "${D}expected:${N}" "${Y}${ans}${N}"
+        explain "$ans"
+      fi
     else
-      _S_STREAK=0
-      printf '%s  %s %s\n\n' "${R}x${N}" "${D}expected:${N}" "${Y}${ans}${N}"
+      ((_S_ANSWERED++)); _S_STREAK=0; _wrong_feedback
+      _sset "$prompt" "$((_boss_tier>0?_boss_tier-1:0))"
+      printf '\n%s  %s %s\n\n' "${R}${B}TIME'S UP${N}" "${D}expected:${N}" "${Y}${ans}${N}"
       explain "$ans"
     fi
     read -rsp "${D}Press Enter to continue...${N}"
@@ -3449,6 +3474,7 @@ gauntlet() {
       ((streak % 5 == 0 && difficulty <= MAX_LEVEL)) && ((++difficulty))
       printf '\n%s\n' "${G}${B}+${N} +1"
     else
+      _wrong_feedback
       [[ -n "$_SANDBOX_OUTPUT" ]] && printf '\n%s %s\n' "${D}output:${N}" "$_SANDBOX_OUTPUT"
       printf '%s  %s %s\n\n' "${R}x${N}" "${D}expected:${N}" "${Y}${ans}${N}"
       ((lives--)); streak=0
@@ -3524,6 +3550,7 @@ timed() {
       ((++score))
       printf '\n%s\n' "${G}${B}+${N} +1"
     else
+      _wrong_feedback
       [[ -n "$_SANDBOX_OUTPUT" ]] && printf '\n%s %s\n' "${D}output:${N}" "$_SANDBOX_OUTPUT"
       printf '%s  %s %s\n' "${R}x${N}" "${D}expected:${N}" "${Y}${ans}${N}"
     fi
@@ -3582,7 +3609,7 @@ review() {
     while IFS= read -r line; do [[ -n "$line" ]] && prev_arr+=("$line"); done <<< "$(_get_level_questions "$lv")"
     all_q+=("${prev_arr[@]}")
   done
-  readarray -t all_q < <(printf '%s\n' "${all_q[@]}" | shuf)
+  _fshuffle all_q
   ((${#all_q[@]} == 0)) && { printf '%s\n' "${D}No questions found.${N}"; return; }
 
   local qi=0 streak=0 TOT=${#all_q[@]}
@@ -3613,7 +3640,7 @@ review() {
         printf '\n%s\n' "${G}${B}+${N}"
         read -rsp "${D}Press Enter to continue...${N}"; ((++qi)); break
       else
-        ((_S_ANSWERED++)); _S_STREAK=0
+        ((_S_ANSWERED++)); _S_STREAK=0; _wrong_feedback
         [[ -n "$_SANDBOX_OUTPUT" ]] && printf '\n%s %s\n' "${D}output:${N}" "$_SANDBOX_OUTPUT"
         printf '%s  %s %s\n\n' "${R}x${N}" "${D}expected:${N}" "${Y}${ans}${N}"
         explain "$ans"
