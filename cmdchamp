@@ -3446,7 +3446,12 @@ _read_line() {
     if ((_rl_deadline)); then
       local _now; printf -v _now '%(%s)T' -1; local _rem=$((_rl_deadline - _now))
       ((_rem <= 0)) && { input=""; return 1; }
-      IFS= read -rsn1 -t "$_rem" c || { input=""; return 1; }
+      IFS= read -rsn1 -t 1 c || {
+        # Check if truly expired vs just a 1s tick
+        printf -v _now '%(%s)T' -1; _rem=$((_rl_deadline - _now))
+        ((_rem <= 0)) && { input=""; return 1; }
+        _REDRAW_HDR; draw; continue
+      }
     else
       IFS= read -rsn1 c || break
     fi
@@ -3651,8 +3656,10 @@ run() {
     [[ -z "$prompt" ]] && { ((boss_total--)); continue; }
     _sget "$prompt"; local _boss_tier=$REPLY
     _REDRAW_HDR() {
+      local _t=$BOSS_TIMER
+      if ((_rl_deadline)); then local _n; printf -v _n '%(%s)T' -1; _t=$((_rl_deadline - _n)); ((_t < 0)) && _t=0; fi
       printf '\e[2J\e[H'
-      printf '%s  %s\n\n%s\n\n' "${R}${B}═══ BOSS $((bi+1))/${boss_total} ═══${N}" "${Y}${BOSS_TIMER}s${N}" "${C}${prompt}${N}"
+      printf '%s  %s\n\n%s\n\n' "${R}${B}═══ BOSS $((bi+1))/${boss_total} ═══${N}" "${Y}${_t}s${N}" "${C}${prompt}${N}"
     }
     _REDRAW_HDR
     if _read_line 0 0 "$BOSS_TIMER"; then
