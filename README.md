@@ -29,7 +29,7 @@ git clone https://github.com/mellen9999/cmdchamp.git
 ./cmdchamp/cmdchamp
 ```
 
-**Requires:** bash 4.3+, coreutils (shuf), awk
+**Requires:** bash 4.3+, coreutils, awk
 
 **macOS:** Ships with bash 3.2 — install modern bash first: `brew install bash`
 
