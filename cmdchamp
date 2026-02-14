@@ -559,6 +559,7 @@ _sandbox_init() {
 _sandbox_reset() {
   ((SANDBOX_MODE)) || return 0
   [[ -d "$SANDBOX_PRISTINE" ]] || return 1
+  chmod -R u+rwX "$SANDBOX_DIR" 2>/dev/null  # unlock any restricted dirs (e.g. scenario 4)
   rm -rf "$SANDBOX_DIR"
   if ! cp -a "$SANDBOX_PRISTINE" "$SANDBOX_DIR"; then
     printf '%s\n' "${Y}Warning: sandbox reset failed, disabling${N}" >&2
@@ -688,6 +689,21 @@ _sandbox_check_state() {
             r) [[ -r "$path" ]] || return 1;;
             w) [[ -w "$path" ]] || return 1;;
             x) [[ -x "$path" ]] || return 1;;
+          esac
+        done
+        ;;
+      !perm:*:*)
+        local rest="${check#!perm:}"
+        local file="${rest%%:*}"
+        local perms="${rest#*:}"
+        local path="$SANDBOX_DIR/$file"
+        [[ ! -e "$path" ]] && return 1
+        local _p
+        for ((_p=0; _p<${#perms}; _p++)); do
+          case "${perms:$_p:1}" in
+            r) [[ ! -r "$path" ]] || return 1;;
+            w) [[ ! -w "$path" ]] || return 1;;
+            x) [[ ! -x "$path" ]] || return 1;;
           esac
         done
         ;;
@@ -2994,7 +3010,7 @@ _sc_steps_1() {
   cat <<'STEPS'
 Check permissions on deploy.sh§ls -l deploy.sh§ls -la deploy.sh#output:~-rw-r--r--
 Make deploy.sh executable§chmod +x deploy.sh§chmod 755 deploy.sh§chmod u+x deploy.sh#state:perm:deploy.sh:x
-Create VERSION file with "1.0"§echo 1.0 > VERSION§printf '1.0\n' > VERSION§printf 1.0 > VERSION#state:contains:VERSION:1.0
+Create VERSION file with "1.0"§echo 1.0 > VERSION§printf '1.0\n' > VERSION§printf 1.0 > VERSION#state:contains:VERSION:1.0,lines:VERSION:1
 Fix the port in config.ini to 8080§sed -i 's/port=0/port=8080/' config.ini§sed -i 's/port=0/port=8080/g' config.ini#state:contains:config.ini:port=8080
 Run the deploy script§./deploy.sh§bash deploy.sh#output:~Deploy complete
 STEPS
@@ -3020,7 +3036,7 @@ _sc_steps_2() {
   cat <<'STEPS'
 Count the ERROR lines in app.log§grep -c ERROR app.log#output:5
 Find the most common error message§grep ERROR app.log | sed 's/.* ERROR //' | sort | uniq -c | sort -rn | head -1§grep ERROR app.log | cut -d' ' -f4- | sort | uniq -c | sort -rn | head -1#output:~Connection refused
-Save all ERROR lines to errors.txt§grep ERROR app.log > errors.txt#state:contains:errors.txt:ERROR
+Save all ERROR lines to errors.txt§grep ERROR app.log > errors.txt#state:contains:errors.txt:ERROR,lines:errors.txt:5
 Count unique error types§grep ERROR app.log | sed 's/.* ERROR //' | sort -u | wc -l§grep ERROR app.log | cut -d' ' -f4- | sort -u | wc -l#output:2
 Remove all ERROR lines from app.log§sed -i '/ERROR/d' app.log§grep -v ERROR app.log > tmp && mv tmp app.log#state:lines:app.log:5
 STEPS
@@ -3041,9 +3057,9 @@ CSV
 }
 _sc_steps_3() {
   cat <<'STEPS'
-Count data rows (excluding header)§tail -n +2 data.csv | wc -l§sed 1d data.csv | wc -l#output:6
+Count data rows (excluding header)§tail -n +2 data.csv | wc -l§sed 1d data.csv | wc -l#output:~^\s*6\s*$
 Find duplicate lines (excluding header)§tail -n +2 data.csv | sort | uniq -d§sort data.csv | uniq -d#output:~alice
-Sort and deduplicate (keep header)§head -1 data.csv > sorted.csv && tail -n +2 data.csv | sort -t, -k1 -n | uniq >> sorted.csv§(head -1 data.csv; tail -n +2 data.csv | sort -t, -k1,1n | uniq) > sorted.csv#state:lines:sorted.csv:5
+Sort and deduplicate (keep header)§head -1 data.csv > sorted.csv && tail -n +2 data.csv | sort -t, -k1 -n | uniq >> sorted.csv§(head -1 data.csv; tail -n +2 data.csv | sort -t, -k1,1n | uniq) > sorted.csv#state:lines:sorted.csv:5,contains:sorted.csv:id,name,status
 Count active entries in sorted file§grep -cw active sorted.csv§grep -c ',active$' sorted.csv#output:3
 STEPS
 }
@@ -3133,7 +3149,7 @@ _sc_steps_7() {
 Find the IP with the most requests§awk '{print $3}' server.log | sort | uniq -c | sort -rn | head -1§cut -d' ' -f3 server.log | sort | uniq -c | sort -rn | head -1#output:~10\.10\.10\.50
 Count failed login attempts (401)§grep 401 server.log | wc -l§grep -c 401 server.log#output:3
 Check if the attacker got in (find 200 after 401s from same IP)§grep 10.10.10.50 server.log | grep 200§grep '10.10.10.50.*200' server.log#output:~login 200
-Save all attacker activity to attacker.log§grep 10.10.10.50 server.log > attacker.log#state:contains:attacker.log:10.10.10.50
+Save all attacker activity to attacker.log§grep 10.10.10.50 server.log > attacker.log#state:contains:attacker.log:10.10.10.50,lines:attacker.log:6
 Count unique IPs in the log§awk '{print $3}' server.log | sort -u | wc -l§awk '{print $3}' server.log | sort | uniq | wc -l#output:2
 STEPS
 }
