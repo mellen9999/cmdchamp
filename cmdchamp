@@ -1318,6 +1318,7 @@ gen_level5() {
   local _tr_up; case "$txt" in notes.txt) _tr_up="MEETING" ;; todo.txt) _tr_up="TASK" ;; *) _tr_up="[A-Z]" ;; esac
   questions+=("Uppercase contents of ${W}${txt}${C} (${Y}tr${C} needs ${Y}<${C}, no file arg)|tr a-z A-Z < ${txt}|#output:~${_tr_up}")
   questions+=("Delete blank lines from ${W}${log}${C} (${Y}tr${C} needs ${Y}<${C})|tr -s '\\n' < ${log}")
+  questions+=("Sort ${W}${csv}${C} without filename in output (use ${Y}<${C})|sort < ${csv}")
 
   printf '%s\n' "${questions[@]}"
 }
@@ -1783,13 +1784,13 @@ gen_level14() {
   questions+=("Show current user|whoami")
   questions+=("Show user id info|id")
 
-  # Package management (common patterns)
-  questions+=("Install package (Arch)|pacman -S ${pkg}|paru -S ${pkg}")
-  questions+=("Upgrade all packages (Arch)|pacman -Syu|paru -Syu")
-  questions+=("Search for package|pacman -Ss ${term}|paru -Ss ${term}")
-  questions+=("Show package info (Arch)|pacman -Qi ${pkg}|paru -Qi ${pkg}")
-  questions+=("List installed packages|pacman -Q|paru -Q")
-  questions+=("Which package owns a file (Arch)|pacman -Qo /usr/bin/${sysbin}|paru -Qo /usr/bin/${sysbin}")
+  # Package management (distro-agnostic patterns)
+  questions+=("Install ${pkg} (Debian/Ubuntu)|apt install ${pkg}|sudo apt install ${pkg}")
+  questions+=("Install ${pkg} (Fedora/RHEL)|dnf install ${pkg}|sudo dnf install ${pkg}")
+  questions+=("Upgrade all packages (Debian/Ubuntu)|apt upgrade|sudo apt upgrade")
+  questions+=("Upgrade all packages (Fedora/RHEL)|dnf upgrade|sudo dnf upgrade")
+  questions+=("Search for package ${term} (Debian)|apt search ${term}|apt-cache search ${term}")
+  questions+=("Search for package ${term} (Fedora)|dnf search ${term}")
 
   # Security audit
   questions+=("Run full system security audit|lynis audit system")
@@ -2536,7 +2537,7 @@ gen_level24() {
 # Level 25: Network Scanning (nmap)
 gen_level25() {
   eval "local questions=() $_QV"; _ctx
-  port2=$((port + 1000))
+  local port2=$((port + 1000))
 
   # Basic scans
   questions+=("Scan all 65535 ports on ${ip}|nmap -p- ${ip}")
@@ -3414,8 +3415,8 @@ run() {
     printf '%s\n' "${D}r = retry, p = practice${N}"
     read -rsn1 choice
     case "$choice" in
-      r) QI=0; save; _sflush_if_dirty; _NEXT_LV=$lv _NEXT_BOSS=1; return 0 ;;
-      *) QI=0; save; _sflush_if_dirty; _NEXT_LV=$lv _NEXT_BOSS=0; return 0 ;;
+      r) save; _sflush_if_dirty; _NEXT_LV=$lv _NEXT_BOSS=1; return 0 ;;
+      *) save; _sflush_if_dirty; _NEXT_LV=$lv _NEXT_BOSS=0; return 0 ;;
     esac
   fi
 }
@@ -3554,7 +3555,7 @@ timed() {
       [[ -n "$_SANDBOX_OUTPUT" ]] && printf '\n%s %s\n' "${D}output:${N}" "$_SANDBOX_OUTPUT"
       printf '%s  %s %s\n' "${R}x${N}" "${D}expected:${N}" "${Y}${ans}${N}"
     fi
-    read -rsn1 -t 1 || true
+    read -rsn1 -t 0.3 || true
   done
 
   _sflush_if_dirty

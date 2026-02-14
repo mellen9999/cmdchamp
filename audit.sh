@@ -9,23 +9,26 @@ set -uo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CMDCHAMP="$SCRIPT_DIR/cmdchamp"
 
-# Extract everything before the main case statement (line 3631)
+# Extract everything before the main case statement
 # This gives us all function defs, variable pools, constants
 _bootstrap() {
   # Disable tty check, override interactive bits
   _tty() { :; }
   _first_run() { :; }
-  _load_profile() { PLAYER_NAME="auditor" BOSS_BEATEN=28; }
+  _load_profile() { PLAYER_NAME="auditor" BOSS_BEATEN=30; }
   _save_profile() { :; }
   _intro() { :; }
   _tutorial() { :; }
 
-  # Source everything up to main flow
-  eval "$(head -n 3644 "$CMDCHAMP" | tail -n +2)"
+  # Source everything up to main flow (same approach as test_cmdchamp.sh)
+  eval "$(sed -e 's/^_tty().*/\_tty() { :; }/' \
+              -e '/^\[.*--no-sandbox/,$d' \
+              "$CMDCHAMP")"
   _load_profile
 }
 
 _bootstrap
+trap '((SANDBOX_MODE)) && [[ -d "${SANDBOX_DIR:-}" ]] && rm -rf "$SANDBOX_DIR"' EXIT
 
 # ═══════════════════════════════════════════════════════════════════
 # TEST FRAMEWORK
@@ -40,7 +43,7 @@ _fail() {
   printf '  FAIL: %s\n' "$1"
 }
 _warn() {
-  ((WARN++))
+  ((WARN++)); ((TOTAL++))
   printf '  WARN: %s\n' "$1"
 }
 
@@ -81,7 +84,7 @@ phase1_syntax() {
         if [[ "$_qprompt" =~ \$\{?[a-z_]+\}? ]] && [[ ! "$_qprompt" =~ \\\$ ]] && [[ ! "$_qprompt" =~ '\$' ]]; then
           # Could be intentional (teaching variables), check level
           if ((lv < 7 && lv != 4)); then
-            # Levels 0-6 (except 4 which uses <<<) shouldn't have bare $var in prompts
+            # Levels 1-6 (except 4 which uses $term in grep prompts) shouldn't have bare $var in prompts
             local _match="${BASH_REMATCH[0]}"
             # Exclude known variable teaching contexts
             case "$_qprompt" in
@@ -132,6 +135,9 @@ phase1_syntax() {
 phase2_positive() {
   printf '\n%s\n' "═══ PHASE 2: Positive Self-Test (sandbox) ═══"
 
+  if ! ((SANDBOX_MODE)); then
+    printf '  %s\n' "WARNING: sandbox disabled (bwrap not found) — phase 2 will only validate markers"
+  fi
   ((SANDBOX_MODE)) && _sandbox_init
 
   for lv in {1..30}; do
@@ -197,8 +203,10 @@ phase2_positive() {
       fi
     done <<< "$raw"
 
-    printf '  L%02d %-22s tested:%d pass:%d fail:%d skip:%d\n' \
-      "$lv" "${LEVEL_NAMES[$lv]}" "$tested" "$passed" "$failed" "$skipped"
+    if ((tested > 0 || failed > 0)); then
+      printf '  L%02d %-22s tested:%d pass:%d fail:%d skip:%d\n' \
+        "$lv" "${LEVEL_NAMES[$lv]}" "$tested" "$passed" "$failed" "$skipped"
+    fi
   done
 }
 
@@ -579,13 +587,13 @@ phase5_crosscheck() {
     fi
   done
 
-  # Check norm() handles edge cases
-  printf '  Checking norm() edge cases...\n'
+  # Check _fnorm() handles edge cases
+  printf '  Checking _fnorm() edge cases...\n'
   local n
-  n=$(norm "ls -la") ; [[ "$n" =~ ^"ls -a -l"$ ]] && _ok || _fail "norm('ls -la') = '$n', expected 'ls -a -l'"
-  n=$(norm "grep -rn pattern file") ; [[ "$n" =~ ^"grep -n -r pattern file"$ ]] && _ok || _fail "norm('grep -rn pattern file') = '$n'"
-  n=$(norm "") ; _ok  # shouldn't crash
-  n=$(norm "ls") ; [[ "$n" =~ ^"ls"$ ]] && _ok || _fail "norm('ls') = '$n'"
+  _fnorm "ls -la"; n=$REPLY; [[ "$n" =~ ^"ls -a -l"$ ]] && _ok || _fail "_fnorm('ls -la') = '$n', expected 'ls -a -l'"
+  _fnorm "grep -rn pattern file"; n=$REPLY; [[ "$n" =~ ^"grep -n -r pattern file"$ ]] && _ok || _fail "_fnorm('grep -rn pattern file') = '$n'"
+  _fnorm ""; _ok  # shouldn't crash
+  _fnorm "ls"; n=$REPLY; [[ "$n" =~ ^"ls"$ ]] && _ok || _fail "_fnorm('ls') = '$n'"
 }
 
 # ═══════════════════════════════════════════════════════════════════
@@ -594,7 +602,7 @@ phase5_crosscheck() {
 main() {
   printf '%s\n' "╔══════════════════════════════════════════╗"
   printf '%s\n' "║   CmdChamp Omega Audit                   ║"
-  printf '%s\n' "║   29 levels × 5 phases                   ║"
+  printf '%s\n' "║   30 levels × 5 phases                   ║"
   printf '%s\n' "╚══════════════════════════════════════════╝"
 
   phase1_syntax
