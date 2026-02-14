@@ -649,7 +649,7 @@ _sandbox_check_output() {
 }
 
 # Validate file state after command
-# Formats: exists:file, !exists:file, contains:file:pattern, lines:file:N
+# Formats: exists:file, !exists:file, contains:file:pattern, lines:file:N, perm:file:rwx
 _sandbox_check_state() {
   local checks="$1"
   IFS=',' read -ra checks_arr <<< "$checks"
@@ -675,6 +675,21 @@ _sandbox_check_state() {
         local count="${rest#*:}"
         local actual=$(wc -l < "$SANDBOX_DIR/$file" 2>/dev/null)
         ((actual == count)) || return 1
+        ;;
+      perm:*:*)
+        local rest="${check#perm:}"
+        local file="${rest%%:*}"
+        local perms="${rest#*:}"
+        local path="$SANDBOX_DIR/$file"
+        [[ ! -e "$path" ]] && return 1
+        local _p
+        for ((_p=0; _p<${#perms}; _p++)); do
+          case "${perms:$_p:1}" in
+            r) [[ -r "$path" ]] || return 1;;
+            w) [[ -w "$path" ]] || return 1;;
+            x) [[ -x "$path" ]] || return 1;;
+          esac
+        done
         ;;
     esac
   done
@@ -2977,11 +2992,11 @@ _sc_setup_1() {
 }
 _sc_steps_1() {
   cat <<'STEPS'
-Check permissions on deploy.sh|ls -l deploy.sh§ls -la deploy.sh#output:-rw-r--r--
-Make deploy.sh executable|chmod +x deploy.sh§chmod 755 deploy.sh§chmod u+x deploy.sh#state:perm:deploy.sh:x
-Create VERSION file with "1.0"|echo 1.0 > VERSION§printf '1.0\n' > VERSION§printf 1.0 > VERSION#state:contains:VERSION:1.0
-Fix the port in config.ini to 8080|sed -i 's/port=0/port=8080/' config.ini§sed -i 's/port=0/port=8080/g' config.ini#state:contains:config.ini:port=8080
-Run the deploy script|./deploy.sh§bash deploy.sh#state:perm:deploy.sh:x
+Check permissions on deploy.sh§ls -l deploy.sh§ls -la deploy.sh#output:~-rw-r--r--
+Make deploy.sh executable§chmod +x deploy.sh§chmod 755 deploy.sh§chmod u+x deploy.sh#state:perm:deploy.sh:x
+Create VERSION file with "1.0"§echo 1.0 > VERSION§printf '1.0\n' > VERSION§printf 1.0 > VERSION#state:contains:VERSION:1.0
+Fix the port in config.ini to 8080§sed -i 's/port=0/port=8080/' config.ini§sed -i 's/port=0/port=8080/g' config.ini#state:contains:config.ini:port=8080
+Run the deploy script§./deploy.sh§bash deploy.sh#output:~Deploy complete
 STEPS
 }
 
@@ -3003,11 +3018,11 @@ LOG
 }
 _sc_steps_2() {
   cat <<'STEPS'
-Count the ERROR lines in app.log|grep -c ERROR app.log#output:5
-Find the most common error message|grep ERROR app.log | sort | uniq -c | sort -rn | head -1§grep ERROR app.log | sort | uniq -c | sort -nr | head -1#output:Connection refused
-Save all ERROR lines to errors.txt|grep ERROR app.log > errors.txt#state:contains:errors.txt:ERROR
-Count unique error types|grep ERROR app.log | sort -u | wc -l§grep ERROR app.log | sort | uniq | wc -l#output:2
-Remove all ERROR lines from app.log|sed -i '/ERROR/d' app.log§grep -v ERROR app.log > tmp && mv tmp app.log#state:lines:app.log:5
+Count the ERROR lines in app.log§grep -c ERROR app.log#output:5
+Find the most common error message§grep ERROR app.log | sed 's/.* ERROR //' | sort | uniq -c | sort -rn | head -1§grep ERROR app.log | cut -d' ' -f4- | sort | uniq -c | sort -rn | head -1#output:~Connection refused
+Save all ERROR lines to errors.txt§grep ERROR app.log > errors.txt#state:contains:errors.txt:ERROR
+Count unique error types§grep ERROR app.log | sed 's/.* ERROR //' | sort -u | wc -l§grep ERROR app.log | cut -d' ' -f4- | sort -u | wc -l#output:2
+Remove all ERROR lines from app.log§sed -i '/ERROR/d' app.log§grep -v ERROR app.log > tmp && mv tmp app.log#state:lines:app.log:5
 STEPS
 }
 
@@ -3026,10 +3041,10 @@ CSV
 }
 _sc_steps_3() {
   cat <<'STEPS'
-Count data rows (excluding header)|tail -n +2 data.csv | wc -l§sed 1d data.csv | wc -l#output:6
-Find duplicate lines (excluding header)|tail -n +2 data.csv | sort | uniq -d§sort data.csv | uniq -d#output:alice
-Sort and deduplicate (keep header)|head -1 data.csv > sorted.csv && tail -n +2 data.csv | sort -t, -k1 -n | uniq >> sorted.csv§(head -1 data.csv; tail -n +2 data.csv | sort -t, -k1,1n | uniq) > sorted.csv#state:lines:sorted.csv:5
-Count active entries in sorted file|grep -c active sorted.csv§grep active sorted.csv | wc -l#output:3
+Count data rows (excluding header)§tail -n +2 data.csv | wc -l§sed 1d data.csv | wc -l#output:6
+Find duplicate lines (excluding header)§tail -n +2 data.csv | sort | uniq -d§sort data.csv | uniq -d#output:~alice
+Sort and deduplicate (keep header)§head -1 data.csv > sorted.csv && tail -n +2 data.csv | sort -t, -k1 -n | uniq >> sorted.csv§(head -1 data.csv; tail -n +2 data.csv | sort -t, -k1,1n | uniq) > sorted.csv#state:lines:sorted.csv:5
+Count active entries in sorted file§grep -cw active sorted.csv§grep -c ',active$' sorted.csv#output:3
 STEPS
 }
 
@@ -3043,27 +3058,40 @@ _sc_setup_4() {
 }
 _sc_steps_4() {
   cat <<'STEPS'
-Make config.ini readable|chmod 644 config.ini§chmod a+r config.ini§chmod u+r config.ini#state:perm:config.ini:r
-Make backup.sh executable|chmod +x backup.sh§chmod 755 backup.sh§chmod u+x backup.sh#state:perm:backup.sh:x
-Make logs/ directory accessible|chmod 755 logs§chmod +rx logs§chmod a+rx logs#state:perm:logs:rx
-Run backup.sh to verify it works|./backup.sh§bash backup.sh#state:perm:backup.sh:x
+Make config.ini readable§chmod 644 config.ini§chmod a+r config.ini§chmod u+r config.ini#state:perm:config.ini:r
+Make backup.sh executable§chmod +x backup.sh§chmod 755 backup.sh§chmod u+x backup.sh#state:perm:backup.sh:x
+Make logs/ directory accessible§chmod 755 logs§chmod +rx logs§chmod a+rx logs#state:perm:logs:rx
+Run backup.sh to verify it works§./backup.sh§bash backup.sh#output:~Backup complete
 STEPS
 }
 
 # --- Scenario 5: Find the Needle ---
 _sc_setup_5() {
   local d=$1
-  printf 'def main():\n    pass  # TODO: implement main logic\n' >> "$d/main.py"
-  printf 'function helper() {\n  // FIXME: broken on edge case\n}\n' >> "$d/src/utils.py"
+  # Clear pre-existing TODOs from notes.txt
+  printf 'Meeting Notes\n=============\nNo action items.\n' > "$d/notes.txt"
+  # Plant markers across the codebase
+  mkdir -p "$d/src/lib"
+  cat > "$d/main.py" <<'PY'
+#!/usr/bin/env python3
+"""Main application module."""
+
+def main():
+    pass  # TODO: implement main logic
+
+if __name__ == "__main__":
+    main()
+PY
+  printf '# FIXME: broken on edge case\ndef helper(x):\n    return x * 2\n' > "$d/src/lib/helpers.py"
   printf '# HACK: temporary workaround\necho "ok"\n' >> "$d/deploy.sh"
   printf '# TODO: add error handling\n' >> "$d/backup.sh"
 }
 _sc_steps_5() {
   cat <<'STEPS'
-Find files containing TODO|grep -rl TODO .§grep -rl TODO#output:main.py
-Count total TODO/FIXME/HACK markers|grep -r 'TODO\|FIXME\|HACK' . | wc -l§grep -rE 'TODO|FIXME|HACK' . | wc -l§grep -rc 'TODO\|FIXME\|HACK' . | awk -F: '{s+=$2}END{print s}'#output:4
-Show markers with line numbers|grep -rn 'TODO\|FIXME\|HACK' .§grep -rnE 'TODO|FIXME|HACK' .#output:TODO
-Find the file with FIXME|grep -rl FIXME .§grep -rl FIXME#output:utils.py
+Find files containing TODO§grep -rl TODO .§grep -rl TODO#output:~main\.py
+Count total TODO/FIXME/HACK markers§grep -rE 'TODO|FIXME|HACK' . | wc -l§grep -r 'TODO\|FIXME\|HACK' . | wc -l#output:4
+Show markers with line numbers§grep -rnE 'TODO|FIXME|HACK' .§grep -rn 'TODO\|FIXME\|HACK' .#output:~TODO
+Find the file with FIXME§grep -rl FIXME .§grep -rl FIXME#output:~helpers\.py
 STEPS
 }
 
@@ -3077,10 +3105,10 @@ _sc_setup_6() {
 }
 _sc_steps_6() {
   cat <<'STEPS'
-Create a tar.gz of the release/ directory|tar czf release.tar.gz release§tar -czf release.tar.gz release#state:exists:release.tar.gz
-List the archive contents|tar tzf release.tar.gz§tar -tzf release.tar.gz§tar -tf release.tar.gz#output:release/
-Delete the original release/ directory|rm -rf release§rm -r release#state:!exists:release
-Extract the archive to restore it|tar xzf release.tar.gz§tar -xzf release.tar.gz§tar xf release.tar.gz#state:exists:release/VERSION
+Create a tar.gz of the release/ directory§tar czf release.tar.gz release§tar -czf release.tar.gz release#state:exists:release.tar.gz
+List the archive contents§tar tzf release.tar.gz§tar -tzf release.tar.gz§tar -tf release.tar.gz#output:~release/
+Delete the original release/ directory§rm -rf release§rm -r release#state:!exists:release
+Extract the archive to restore it§tar xzf release.tar.gz§tar -xzf release.tar.gz§tar xf release.tar.gz#state:exists:release/VERSION
 STEPS
 }
 
@@ -3102,11 +3130,11 @@ LOG
 }
 _sc_steps_7() {
   cat <<'STEPS'
-Find the IP with the most requests|awk '{print $3}' server.log | sort | uniq -c | sort -rn | head -1#output:10.10.10.50
-Count failed login attempts (401)|grep 401 server.log | wc -l§grep -c 401 server.log#output:3
-Check if the attacker got in (find 200 after 401s from same IP)|grep 10.10.10.50 server.log | grep 200§grep '10.10.10.50.*200' server.log#output:login 200
-Save all attacker activity to attacker.log|grep 10.10.10.50 server.log > attacker.log#state:contains:attacker.log:10.10.10.50
-Count unique IPs in the log|awk '{print $3}' server.log | sort -u | wc -l§awk '{print $3}' server.log | sort | uniq | wc -l#output:2
+Find the IP with the most requests§awk '{print $3}' server.log | sort | uniq -c | sort -rn | head -1§cut -d' ' -f3 server.log | sort | uniq -c | sort -rn | head -1#output:~10\.10\.10\.50
+Count failed login attempts (401)§grep 401 server.log | wc -l§grep -c 401 server.log#output:3
+Check if the attacker got in (find 200 after 401s from same IP)§grep 10.10.10.50 server.log | grep 200§grep '10.10.10.50.*200' server.log#output:~login 200
+Save all attacker activity to attacker.log§grep 10.10.10.50 server.log > attacker.log#state:contains:attacker.log:10.10.10.50
+Count unique IPs in the log§awk '{print $3}' server.log | sort -u | wc -l§awk '{print $3}' server.log | sort | uniq | wc -l#output:2
 STEPS
 }
 
@@ -3132,11 +3160,11 @@ CFG
 }
 _sc_steps_8() {
   cat <<'STEPS'
-Find the debug setting|grep debug config.ini§grep -i debug config.ini#output:debug=true
-Disable debug mode (set to false)|sed -i 's/debug=true/debug=false/' config.ini#state:contains:config.ini:debug=false
-Find the plaintext password|grep password config.ini§grep -i password config.ini#output:password=hunter2
-Remove the password line|sed -i '/password/d' config.ini§sed -i '/^password/d' config.ini#state:!contains:config.ini:password
-Fix log level to INFO|sed -i 's/level=DEBUG/level=INFO/' config.ini§sed -i 's/DEBUG/INFO/' config.ini#state:contains:config.ini:level=INFO
+Find the debug setting§grep debug config.ini§grep -i debug config.ini#output:debug=true
+Disable debug mode (set to false)§sed -i 's/debug=true/debug=false/' config.ini#state:contains:config.ini:debug=false
+Find the plaintext password§grep password config.ini§grep -i password config.ini#output:password=hunter2
+Remove the password line§sed -i '/password/d' config.ini§sed -i '/^password/d' config.ini#state:!contains:config.ini:password
+Fix log level to INFO§sed -i 's/level=DEBUG/level=INFO/' config.ini§sed -i 's/DEBUG/INFO/' config.ini#state:contains:config.ini:level=INFO
 STEPS
 }
 
