@@ -23,7 +23,7 @@ BOSS_TIMER=15          # Seconds per boss question
 # ═══════════════════════════════════════════════════════════════════════════════
 # PLAYER PROFILE & BOSS SYSTEM
 # ═══════════════════════════════════════════════════════════════════════════════
-PLAYER_NAME="" BOSS_BEATEN=0 BEST_GAUNTLET=0 BEST_TIMED=0 _PROFILE_VER=0
+PLAYER_NAME="" BOSS_BEATEN=0 BEST_GAUNTLET=0 BEST_TIMED=0 EGGS_FOUND="" SC_DONE="" _PROFILE_VER=0
 
 _load_profile() {
   _PROFILE_VER=0
@@ -36,6 +36,8 @@ _load_profile() {
         BOSS_BEATEN) BOSS_BEATEN="$val";;
         BEST_GAUNTLET) BEST_GAUNTLET="$val";;
         BEST_TIMED) BEST_TIMED="$val";;
+        EGGS_FOUND) EGGS_FOUND="$val";;
+        SC_DONE) SC_DONE="$val";;
         PROFILE_VER) _PROFILE_VER="$val";;
       esac
     done < "$DATA/profile"
@@ -49,14 +51,19 @@ _load_profile() {
       : > "$DATA/scores"
       _PROFILE_VER=2; _save_profile
     fi
+    # Migrate v2 → v3: add easter eggs + scenario tracking
+    if ((_PROFILE_VER < 3)); then
+      EGGS_FOUND="" SC_DONE=""
+      _PROFILE_VER=3; _save_profile
+    fi
     ((BOSS_BEATEN > MAX_LEVEL)) && BOSS_BEATEN=$MAX_LEVEL
   fi
   [[ -z "$PLAYER_NAME" ]] && _first_run
 }
 
 _save_profile() {
-  printf 'PLAYER_NAME=%q\nBOSS_BEATEN=%d\nBEST_GAUNTLET=%d\nBEST_TIMED=%d\nPROFILE_VER=%d\n' \
-    "$PLAYER_NAME" "$BOSS_BEATEN" "$BEST_GAUNTLET" "$BEST_TIMED" "$_PROFILE_VER" > "$DATA/profile"
+  printf 'PLAYER_NAME=%q\nBOSS_BEATEN=%d\nBEST_GAUNTLET=%d\nBEST_TIMED=%d\nEGGS_FOUND=%s\nSC_DONE=%s\nPROFILE_VER=%d\n' \
+    "$PLAYER_NAME" "$BOSS_BEATEN" "$BEST_GAUNTLET" "$BEST_TIMED" "$EGGS_FOUND" "$SC_DONE" "$_PROFILE_VER" > "$DATA/profile"
 }
 
 _first_run() {
@@ -155,6 +162,19 @@ LEVEL_NAMES=("" "First Steps" "Save Your Work" "Reading Files" "Basic Pipes" "In
   "File Finding" "Data Processing" "String & Arrays" "Control Flow" "Batch Ops"
   "Advanced Regex" "Git" "Network Tools" "Network Scanning" "WiFi & RF"
   "Hash Cracking" "Forensics" "Privilege Escalation" "ROOT")
+
+SC_TOTAL=8
+SC_NAMES=("" "The Broken Deploy" "Log Emergency" "Messy CSV" "Permission Lockout"
+  "Find the Needle" "Archive & Extract" "The Incident" "Config Surgery")
+SC_FLAVOR=(""
+  "The deploy pipeline is broken. Find the problems and fix them."
+  "The logs are screaming. Triage the errors before it gets worse."
+  "Someone dumped messy data. Clean it up."
+  "Everything is locked down. Restore access."
+  "Hidden markers are buried in the codebase. Hunt them down."
+  "Package it up, ship it out, bring it back."
+  "An attacker hit the server. Investigate the breach."
+  "The config file is a mess. Perform surgery.")
 
 # Victory screen - displayed after beating the final boss (ROOT)
 _victory() {
@@ -665,6 +685,42 @@ _cleanup() { ((_interactive)) && { printf '\e[?25h'; [[ -n "$_stty_saved" ]] && 
 trap '_cleanup; exit 0' INT TERM HUP EXIT
 R=$'\e[31m' G=$'\e[32m' Y=$'\e[33m' C=$'\e[36m' W=$'\e[97m' D=$'\e[2m' B=$'\e[1m' N=$'\e[0m'
 PROMPT_CHAR="${CMD_PROMPT:-$([[ $EUID -eq 0 ]] && echo '# ' || echo '$ ')}"
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# EASTER EGGS
+# ═══════════════════════════════════════════════════════════════════════════════
+_EGG_TOTAL=8
+_egg_found() {
+  local name=$1
+  [[ ",$EGGS_FOUND," == *",$name,"* ]] && return
+  [[ -n "$EGGS_FOUND" ]] && EGGS_FOUND="$EGGS_FOUND,$name" || EGGS_FOUND="$name"
+  _save_profile
+  printf '\n%s\n' "${Y}${B}★ EASTER EGG: ${name} ★${N}"
+  local egg_count=0
+  IFS=',' read -ra _ea <<< "$EGGS_FOUND"; egg_count=${#_ea[@]}
+  printf '%s\n\n' "${D}${egg_count}/${_EGG_TOTAL} discovered${N}"
+  sleep 1
+}
+_egg_check() {
+  local trigger=$1 ctx=${2:-}
+  case "$trigger" in
+    wrong)
+      [[ "$ctx" == "sudo rm -rf /"* ]] && _egg_found sudorm
+      [[ "$ctx" == *":()"*":|:"* ]] && _egg_found forkbomb
+      [[ "$ctx" == "man" ]] && _egg_found rtfm
+      ;;
+    streak) ((_S_STREAK >= 10)) && _egg_found streak10;;
+    nightowl) local h; printf -v h '%(%H)T' -1; ((h < 4)) && _egg_found nightowl;;
+    flawless) _egg_found flawless;;
+    completionist)
+      local i done=1
+      for ((i=1; i<=SC_TOTAL; i++)); do
+        [[ ",$SC_DONE," == *",$i,"* ]] || { done=0; break; }
+      done
+      ((done)) && _egg_found completionist
+      ;;
+  esac
+}
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # VARIABLE POOLS
@@ -2901,6 +2957,189 @@ gen_level30() {
 }
 
 # ═══════════════════════════════════════════════════════════════════════════════
+# SCENARIO SYSTEM
+# ═══════════════════════════════════════════════════════════════════════════════
+
+_sc_is_done() { [[ ",$SC_DONE," == *",$1,"* ]]; }
+_sc_mark_done() {
+  _sc_is_done "$1" && return
+  [[ -n "$SC_DONE" ]] && SC_DONE="$SC_DONE,$1" || SC_DONE="$1"
+  _save_profile
+}
+
+# --- Scenario 1: The Broken Deploy ---
+_sc_setup_1() {
+  local d=$1
+  chmod 644 "$d/deploy.sh"
+  rm -f "$d/VERSION"
+  printf '[server]\nhost=localhost\nport=0\n' > "$d/config.ini"
+}
+_sc_steps_1() {
+  cat <<'STEPS'
+Check permissions on deploy.sh|ls -l deploy.sh§ls -la deploy.sh#output:-rw-r--r--
+Make deploy.sh executable|chmod +x deploy.sh§chmod 755 deploy.sh§chmod u+x deploy.sh#state:perm:deploy.sh:x
+Create VERSION file with "1.0"|echo 1.0 > VERSION§printf '1.0\n' > VERSION§printf 1.0 > VERSION#state:contains:VERSION:1.0
+Fix the port in config.ini to 8080|sed -i 's/port=0/port=8080/' config.ini§sed -i 's/port=0/port=8080/g' config.ini#state:contains:config.ini:port=8080
+Run the deploy script|./deploy.sh§bash deploy.sh#state:perm:deploy.sh:x
+STEPS
+}
+
+# --- Scenario 2: Log Emergency ---
+_sc_setup_2() {
+  local d=$1
+  cat > "$d/app.log" <<'LOG'
+2024-01-15 08:00:01 INFO Application started
+2024-01-15 08:01:12 ERROR Connection refused to database
+2024-01-15 08:01:15 ERROR Connection refused to database
+2024-01-15 08:02:30 WARN Disk usage at 85%
+2024-01-15 08:03:01 INFO Health check passed
+2024-01-15 08:03:45 ERROR Connection refused to database
+2024-01-15 08:04:10 ERROR Database error: timeout
+2024-01-15 08:04:30 WARN Memory usage high
+2024-01-15 08:05:00 INFO Retry succeeded
+2024-01-15 08:05:30 ERROR Connection refused to database
+LOG
+}
+_sc_steps_2() {
+  cat <<'STEPS'
+Count the ERROR lines in app.log|grep -c ERROR app.log#output:5
+Find the most common error message|grep ERROR app.log | sort | uniq -c | sort -rn | head -1§grep ERROR app.log | sort | uniq -c | sort -nr | head -1#output:Connection refused
+Save all ERROR lines to errors.txt|grep ERROR app.log > errors.txt#state:contains:errors.txt:ERROR
+Count unique error types|grep ERROR app.log | sort -u | wc -l§grep ERROR app.log | sort | uniq | wc -l#output:2
+Remove all ERROR lines from app.log|sed -i '/ERROR/d' app.log§grep -v ERROR app.log > tmp && mv tmp app.log#state:lines:app.log:5
+STEPS
+}
+
+# --- Scenario 3: Messy CSV ---
+_sc_setup_3() {
+  local d=$1
+  cat > "$d/data.csv" <<'CSV'
+id,name,status
+3,charlie,active
+1,alice,active
+2,bob,inactive
+1,alice,active
+4,dave,active
+2,bob,inactive
+CSV
+}
+_sc_steps_3() {
+  cat <<'STEPS'
+Count data rows (excluding header)|tail -n +2 data.csv | wc -l§sed 1d data.csv | wc -l#output:6
+Find duplicate lines (excluding header)|tail -n +2 data.csv | sort | uniq -d§sort data.csv | uniq -d#output:alice
+Sort and deduplicate (keep header)|head -1 data.csv > sorted.csv && tail -n +2 data.csv | sort -t, -k1 -n | uniq >> sorted.csv§(head -1 data.csv; tail -n +2 data.csv | sort -t, -k1,1n | uniq) > sorted.csv#state:lines:sorted.csv:5
+Count active entries in sorted file|grep -c active sorted.csv§grep active sorted.csv | wc -l#output:3
+STEPS
+}
+
+# --- Scenario 4: Permission Lockout ---
+_sc_setup_4() {
+  local d=$1
+  chmod 000 "$d/config.ini"
+  chmod 644 "$d/backup.sh"
+  mkdir -p "$d/logs"
+  chmod 000 "$d/logs"
+}
+_sc_steps_4() {
+  cat <<'STEPS'
+Make config.ini readable|chmod 644 config.ini§chmod a+r config.ini§chmod u+r config.ini#state:perm:config.ini:r
+Make backup.sh executable|chmod +x backup.sh§chmod 755 backup.sh§chmod u+x backup.sh#state:perm:backup.sh:x
+Make logs/ directory accessible|chmod 755 logs§chmod +rx logs§chmod a+rx logs#state:perm:logs:rx
+Run backup.sh to verify it works|./backup.sh§bash backup.sh#state:perm:backup.sh:x
+STEPS
+}
+
+# --- Scenario 5: Find the Needle ---
+_sc_setup_5() {
+  local d=$1
+  printf 'def main():\n    pass  # TODO: implement main logic\n' >> "$d/main.py"
+  printf 'function helper() {\n  // FIXME: broken on edge case\n}\n' >> "$d/src/utils.py"
+  printf '# HACK: temporary workaround\necho "ok"\n' >> "$d/deploy.sh"
+  printf '# TODO: add error handling\n' >> "$d/backup.sh"
+}
+_sc_steps_5() {
+  cat <<'STEPS'
+Find files containing TODO|grep -rl TODO .§grep -rl TODO#output:main.py
+Count total TODO/FIXME/HACK markers|grep -r 'TODO\|FIXME\|HACK' . | wc -l§grep -rE 'TODO|FIXME|HACK' . | wc -l§grep -rc 'TODO\|FIXME\|HACK' . | awk -F: '{s+=$2}END{print s}'#output:4
+Show markers with line numbers|grep -rn 'TODO\|FIXME\|HACK' .§grep -rnE 'TODO|FIXME|HACK' .#output:TODO
+Find the file with FIXME|grep -rl FIXME .§grep -rl FIXME#output:utils.py
+STEPS
+}
+
+# --- Scenario 6: Archive & Extract ---
+_sc_setup_6() {
+  local d=$1
+  mkdir -p "$d/release"
+  printf '2.0\n' > "$d/release/VERSION"
+  printf '# Release Notes\nNew features.\n' > "$d/release/README.md"
+  printf 'print("hello")\n' > "$d/release/app.py"
+}
+_sc_steps_6() {
+  cat <<'STEPS'
+Create a tar.gz of the release/ directory|tar czf release.tar.gz release§tar -czf release.tar.gz release#state:exists:release.tar.gz
+List the archive contents|tar tzf release.tar.gz§tar -tzf release.tar.gz§tar -tf release.tar.gz#output:release/
+Delete the original release/ directory|rm -rf release§rm -r release#state:!exists:release
+Extract the archive to restore it|tar xzf release.tar.gz§tar -xzf release.tar.gz§tar xf release.tar.gz#state:exists:release/VERSION
+STEPS
+}
+
+# --- Scenario 7: The Incident ---
+_sc_setup_7() {
+  local d=$1
+  cat > "$d/server.log" <<'LOG'
+2024-01-15 08:00:01 192.168.1.100 GET /index.html 200
+2024-01-15 08:01:10 10.10.10.50 POST /login 401
+2024-01-15 08:01:15 10.10.10.50 POST /login 401
+2024-01-15 08:01:20 10.10.10.50 POST /login 401
+2024-01-15 08:01:25 10.10.10.50 POST /login 200
+2024-01-15 08:02:00 192.168.1.100 GET /dashboard 200
+2024-01-15 08:02:30 10.10.10.50 GET /admin 200
+2024-01-15 08:03:00 192.168.1.100 GET /api/status 200
+2024-01-15 08:04:00 10.10.10.50 GET /admin/users 200
+2024-01-15 08:05:00 192.168.1.100 GET /index.html 200
+LOG
+}
+_sc_steps_7() {
+  cat <<'STEPS'
+Find the IP with the most requests|awk '{print $3}' server.log | sort | uniq -c | sort -rn | head -1#output:10.10.10.50
+Count failed login attempts (401)|grep 401 server.log | wc -l§grep -c 401 server.log#output:3
+Check if the attacker got in (find 200 after 401s from same IP)|grep 10.10.10.50 server.log | grep 200§grep '10.10.10.50.*200' server.log#output:login 200
+Save all attacker activity to attacker.log|grep 10.10.10.50 server.log > attacker.log#state:contains:attacker.log:10.10.10.50
+Count unique IPs in the log|awk '{print $3}' server.log | sort -u | wc -l§awk '{print $3}' server.log | sort | uniq | wc -l#output:2
+STEPS
+}
+
+# --- Scenario 8: Config Surgery ---
+_sc_setup_8() {
+  local d=$1
+  cat > "$d/config.ini" <<'CFG'
+[general]
+app_name=myapp
+debug=true
+version=2.1
+
+[database]
+host=localhost
+port=5432
+password=hunter2
+
+[logging]
+level=DEBUG
+file=/var/log/app.log
+rotate=daily
+CFG
+}
+_sc_steps_8() {
+  cat <<'STEPS'
+Find the debug setting|grep debug config.ini§grep -i debug config.ini#output:debug=true
+Disable debug mode (set to false)|sed -i 's/debug=true/debug=false/' config.ini#state:contains:config.ini:debug=false
+Find the plaintext password|grep password config.ini§grep -i password config.ini#output:password=hunter2
+Remove the password line|sed -i '/password/d' config.ini§sed -i '/^password/d' config.ini#state:!contains:config.ini:password
+Fix log level to INFO|sed -i 's/level=DEBUG/level=INFO/' config.ini§sed -i 's/DEBUG/INFO/' config.ini#state:contains:config.ini:level=INFO
+STEPS
+}
+
+# ═══════════════════════════════════════════════════════════════════════════════
 # QUESTION SYSTEM - Generate and manage questions per level
 # ═══════════════════════════════════════════════════════════════════════════════
 
@@ -3092,11 +3331,19 @@ stats() {
       printf "  %s ${C}%2d${N} %-22s ${D}%*s${N}\n" "$boss_mark" "$lv" "${LEVEL_NAMES[$lv]:-}" "$BAR_W" "no data"
     fi
   done
+  # Scenario progress
+  local sc_count=0
+  [[ -n "$SC_DONE" ]] && { IFS=',' read -ra _sca <<< "$SC_DONE"; sc_count=${#_sca[@]}; }
+  ((SC_TOTAL > 0)) && printf '\n  %s %s/%d\n' "${D}Scenarios:${N}" "${C}${sc_count}${N}" "$SC_TOTAL"
+  # Easter eggs
+  local egg_count=0
+  [[ -n "$EGGS_FOUND" ]] && { IFS=',' read -ra _ea <<< "$EGGS_FOUND"; egg_count=${#_ea[@]}; }
+  printf '  %s %s/%d\n' "${D}Easter Eggs:${N}" "${Y}${egg_count}${N}" "$_EGG_TOTAL"
 }
 
 # Session tracking
 _S_ANSWERED=0 _S_CORRECT=0 _S_STREAK=0 _S_BEST_STREAK=0 _S_MASTERED=0 _S_START=0
-_session_init() { printf -v _S_START '%(%s)T' -1; _S_ANSWERED=0 _S_CORRECT=0 _S_STREAK=0 _S_BEST_STREAK=0 _S_MASTERED=0; }
+_session_init() { printf -v _S_START '%(%s)T' -1; _S_ANSWERED=0 _S_CORRECT=0 _S_STREAK=0 _S_BEST_STREAK=0 _S_MASTERED=0; _egg_check nightowl; }
 _quit() {
   _sflush_if_dirty
   printf '\n'
@@ -3244,7 +3491,14 @@ _read_line() {
               B) ((HIST_IDX<${#HIST[@]})) && { ((++HIST_IDX)); ((HIST_IDX==${#HIST[@]})) && input="$HIST_SAVE" || input="${HIST[$HIST_IDX]}"; cursor=${#input}; _clamp; draw; };;
             esac; fi; fi;;
         q) _quit;;
-        \?) ((_rl_hints)) && { printf '\n%s\n%s\n%s\n%s\n' "${D}hl${N} move  ${D}kj${N}/↑↓ history  ${D}wb${N} word  ${D}fFtT${N}+char find  ${D}0\$/gg/G${N} line" "${D}x/X${N} del char  ${D}dw/db/dd${N} del  ${D}cw/cb/cc${N} change  ${D}r${N} replace" "${D}s/S${N} subst  ${D}i/a/I/A${N} insert  ${D}u${N} undo(stack)  ${D}q${N} quit" "${D}Tab${N} man  ${D}Ctrl+d${N} quit  ${D}[num]cmd${N} repeat"; read -rsn1; _REDRAW_HDR; draw; };;
+        :) local _vcmd=""; IFS= read -rsn1 -t 1 _vcmd || _vcmd=""
+          case "$_vcmd" in
+            q) local _vbang=""; IFS= read -rsn1 -t 0.2 _vbang || _vbang=""
+              [[ "$_vbang" == "!" ]] && _egg_found vimquit; _quit;;
+            w) local _vq=""; IFS= read -rsn1 -t 0.2 _vq || _vq=""
+              [[ "$_vq" == "q" ]] && _egg_found vimquit; _quit;;
+          esac;;
+        \?) ((_rl_hints)) && { printf '\n%s\n%s\n%s\n%s\n' "${D}hl${N} move  ${D}kj${N}/↑↓ history  ${D}wb${N} word  ${D}fFtT${N}+char find  ${D}0\$/gg/G${N} line" "${D}x/X${N} del char  ${D}dw/db/dd${N} del  ${D}cw/cb/cc${N} change  ${D}r${N} replace" "${D}s/S${N} subst  ${D}i/a/I/A${N} insert  ${D}u${N} undo(stack)  ${D}:q/:wq${N} quit" "${D}Tab${N} man  ${D}Ctrl+d${N} quit  ${D}[num]cmd${N} repeat"; read -rsn1; _REDRAW_HDR; draw; };;
         '') ((_man_open)) && printf '\e[s\n\e[J\e[u'; _man_open=0; echo; return;;
       esac
     fi
@@ -3321,6 +3575,7 @@ run() {
         [[ -n "$input" ]] && { HIST+=("$input"); HIST_IDX=${#HIST[@]}; HIST_SAVE=""; }
         ((_S_ANSWERED++)); ((_S_CORRECT++)); ((_S_STREAK++))
         ((_S_STREAK > _S_BEST_STREAK)) && _S_BEST_STREAK=$_S_STREAK
+        _egg_check streak
         if [[ -n "$_SANDBOX_OUTPUT" ]]; then printf '\n%s\n' "${W}${_SANDBOX_OUTPUT}${N}"; fi
         if ((streak>=FIRE_STREAK)); then
           local _new_tier=$((_real_tier<2?_real_tier+1:2))
@@ -3338,6 +3593,7 @@ run() {
         ((++qi)); QI=$qi; save; break
       else
         ((_S_ANSWERED++)); _S_STREAK=0; _wrong_feedback
+        _egg_check wrong "$input"
         if [[ -n "$_SANDBOX_OUTPUT" ]]; then printf '\n%s %s\n' "${D}output:${N}" "$_SANDBOX_OUTPUT"; fi
         printf '%s  %s %s\n\n' "${R}x${N}" "${D}expected:${N}" "${Y}${ans}${N}"
         explain "$ans"
@@ -3398,6 +3654,7 @@ run() {
   printf '\e[2J\e[H'
   local boss="${BOSS_NAMES[$lv]}"
   if ((boss_correct >= BOSS_THRESHOLD)); then
+    ((boss_correct == boss_total)) && _egg_check flawless
     printf '%s\n' "${G}${B}══ ${boss} DEFEATED ══${N}"
     printf '%s\n' "${G}${boss_correct}/${boss_total}${N} correct!"
     printf '%s\n\n' "${C}You acquired: ${LEVEL_NAMES[$lv]}${N}"
@@ -3476,6 +3733,7 @@ gauntlet() {
       printf '\n%s\n' "${G}${B}+${N} +1"
     else
       _wrong_feedback
+      _egg_check wrong "$input"
       [[ -n "$_SANDBOX_OUTPUT" ]] && printf '\n%s %s\n' "${D}output:${N}" "$_SANDBOX_OUTPUT"
       printf '%s  %s %s\n\n' "${R}x${N}" "${D}expected:${N}" "${Y}${ans}${N}"
       ((lives--)); streak=0
@@ -3656,6 +3914,97 @@ review() {
   _quit
 }
 
+_sc_menu() {
+  printf '\e[2J\e[H'
+  printf '%s\n' "${C}${B}═══ SCENARIOS ═══${N}"
+  printf '%s\n\n' "${D}Multi-step sandbox investigations${N}"
+  local i mark
+  for ((i=1; i<=SC_TOTAL; i++)); do
+    _sc_is_done "$i" && mark="${G}[+]${N}" || mark="${D}[ ]${N}"
+    printf '  %s %d. %s\n' "$mark" "$i" "${SC_NAMES[$i]}"
+  done
+  printf '\n%s ' "${D}Pick 1-${SC_TOTAL} (q=quit):${N}"
+  local choice; read -r choice
+  [[ "$choice" == "q" || -z "$choice" ]] && return
+  [[ "$choice" =~ ^[1-8]$ ]] && scenario "$choice" || { printf '%s\n' "${R}Invalid choice${N}"; sleep 1; }
+}
+
+scenario() {
+  local sc_id=${1:-0}
+  ((sc_id == 0)) && { _sc_menu; return; }
+  ((sc_id < 1 || sc_id > SC_TOTAL)) && { printf '%s\n' "${R}Scenario ${sc_id} does not exist.${N}"; return 1; }
+  _post_root_check
+  if ! ((SANDBOX_MODE)); then
+    printf '%s\n' "${R}Scenarios require sandbox mode.${N}"; return 1
+  fi
+  _session_init
+  _mode_init "sc${sc_id}"
+
+  # Fresh sandbox + apply broken state
+  _sandbox_reset
+  "_sc_setup_${sc_id}" "$SANDBOX_DIR"
+
+  # Load steps
+  local -a steps=()
+  while IFS= read -r line; do [[ -n "$line" ]] && steps+=("$line"); done <<< "$("_sc_steps_${sc_id}")"
+  local total=${#steps[@]} correct=0
+
+  # Splash screen
+  printf '\e[2J\e[H'
+  printf '%s\n' "${C}${B}═══ ${SC_NAMES[$sc_id]} ═══${N}"
+  printf '%s\n' "${D}${SC_FLAVOR[$sc_id]}${N}"
+  printf '%s\n\n' "${D}${total} steps — sandbox state persists between steps${N}"
+  read -rsn1 -p "${D}Press Enter to start...${N}"; echo
+
+  local si
+  for ((si=0; si<total; si++)); do
+    _qparse "${steps[$si]}"
+    local prompt=$_qprompt ans=$_qans
+
+    _REDRAW_HDR() {
+      printf '\e[2J\e[H'
+      printf '%s  %s\n' "${C}${B}${SC_NAMES[$sc_id]}${N}" "${D}[Step $((si+1))/${total}]${N}"
+      printf '\n%s\n\n' "${C}${prompt}${N}"
+    }
+    _REDRAW_HDR
+    HIST=()
+
+    while true; do
+      _read_line 1 1
+      [[ -z "$input" ]] && { draw; continue; }
+      if check "$input" "$_qanswers"; then
+        [[ -n "$input" ]] && { HIST+=("$input"); HIST_IDX=${#HIST[@]}; HIST_SAVE=""; }
+        ((++correct))
+        ((_S_ANSWERED++)); ((_S_CORRECT++)); ((_S_STREAK++))
+        ((_S_STREAK > _S_BEST_STREAK)) && _S_BEST_STREAK=$_S_STREAK
+        _egg_check streak
+        [[ -n "$_SANDBOX_OUTPUT" ]] && printf '\n%s\n' "${W}${_SANDBOX_OUTPUT}${N}"
+        printf '\n%s\n' "${G}${B}+${N}"
+        read -rsp "${D}Press Enter to continue...${N}"
+        break
+      else
+        ((_S_ANSWERED++)); _S_STREAK=0; _wrong_feedback
+        _egg_check wrong "$input"
+        [[ -n "$_SANDBOX_OUTPUT" ]] && printf '\n%s %s\n' "${D}output:${N}" "$_SANDBOX_OUTPUT"
+        printf '%s  %s %s\n\n' "${R}x${N}" "${D}expected:${N}" "${Y}${ans}${N}"
+        explain "$ans"
+        read -rsp "${D}Press Enter to retry...${N}"
+        _REDRAW_HDR
+      fi
+    done
+  done
+
+  # Completion
+  printf '\e[2J\e[H'
+  printf '%s\n' "${G}${B}═══ SCENARIO COMPLETE ═══${N}"
+  printf '%s\n' "${C}${SC_NAMES[$sc_id]}${N}"
+  printf '%s\n' "${G}${correct}/${total}${N} steps"
+  _sc_mark_done "$sc_id"
+  _egg_check completionist
+  _sflush_if_dirty
+  echo
+}
+
 # Handle --no-sandbox flag
 [[ "${1:-}" == "--no-sandbox" ]] && { SANDBOX_MODE=0; shift; }
 
@@ -3687,6 +4036,7 @@ case "${1:-}" in
   review) _tty; _load_profile; review;;
   gauntlet) _tty; _load_profile; gauntlet;;
   timed) _tty; _load_profile; timed "${2:-120}";;
+  scenario|sc) _tty; _load_profile; scenario "${2:-0}";;
   v|version|-v|--version) echo "cmdchamp $VERSION";;
   h|help|-h|--help)
     cat <<EOF
@@ -3706,6 +4056,7 @@ Commands:
   review        Practice weak levels (mastery < 80%)
   gauntlet      3 lives, escalating difficulty (post-ROOT)
   timed [secs]  Race the clock (post-ROOT, default 120s)
+  scenario [N]  Sandbox investigations (post-ROOT, 1-8)
   r|reset       Reset all progress
   c|cleanup     Deduplicate score file
   h|help        Show this help
@@ -3720,5 +4071,5 @@ EOF
     ;;
   n|new) _tty; _load_profile; LVL=1; QI=0; save; _run_loop;;
   "") _tty; _load_profile; load; ((LVL>1||QI>0)) && { read -rp "Continue Level $LVL Q$((QI+1))? [Y/n] " yn; [[ "$yn" =~ ^[Nn] ]] && { LVL=1; QI=0; save; _intro; _tutorial; }; }; _run_loop;;
-  *) echo "Usage: cmdchamp [1-30|new|progress|stats|review|gauntlet|timed|reset|help]"; exit 1;;
+  *) echo "Usage: cmdchamp [1-30|new|progress|stats|review|gauntlet|timed|scenario|reset|help]"; exit 1;;
 esac
