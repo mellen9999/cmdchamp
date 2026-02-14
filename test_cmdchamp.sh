@@ -248,14 +248,17 @@ section "Destructive Detection (_is_destructive)"
 
 # Destructive commands
 for cmd in "rm file" "mv a b" "cp a b" "echo x > file" "sed -i 's/a/b/' f" "dd if=/dev/zero" \
-           "truncate -s 0 f" "find . -delete"; do
+           "truncate -s 0 f" "find . -delete" \
+           "install -m 755 bin /usr/local/bin/" "split -b 1M file" "patch -p1 < fix.patch" \
+           "ln -sf /new link" "rsync --delete src/ dst/" "find . | xargs rm" \
+           "find . -exec rm {} ;" "cmd 2>file" "cmd &>file"; do
   r=$(_run "_is_destructive '$cmd' && echo YES || echo NO")
   [[ "$r" == "YES" ]] && ok "destructive: $cmd" || fail "destructive" "$cmd -> $r"
 done
 
 # Non-destructive commands
 for cmd in "ls -la" "cat file" "grep pattern file" "head -5 file" "wc -l file" "sort file" \
-           "pwd" "echo hello" "find . -name '*.txt'"; do
+           "pwd" "echo hello" "find . -name '*.txt'" "rsync src/ dst/" "xargs echo"; do
   r=$(_run "_is_destructive '$cmd' && echo YES || echo NO")
   [[ "$r" == "NO" ]] && ok "safe: $cmd" || fail "safe" "$cmd -> $r"
 done
@@ -563,6 +566,28 @@ r=$(bash -c "
   _hash 'old q'; echo \"tier=\${_sc[\$REPLY]%%|*}\"
 " 2>/dev/null)
 echo "$r" | grep -q 'tier=2' && ok "back-compat old score format" || fail "old format" "$r"
+
+# Score versioning: #v1 header
+r=$(_run "
+  declare -A _sc
+  _sc[abc123]=2|1
+  _sflush
+  head -1 \"\$DATA/scores\"
+")
+[[ "$r" == "#v1" ]] && ok "scores file has #v1 header" || fail "score version" "got '$r'"
+
+# Loaders skip # lines
+r=$(bash -c "
+  export DATA='$TDIR/data_v1sc'; mkdir -p \"\$DATA\"
+  source '$SOURCE_FILE' 2>/dev/null
+  printf '#v1\nabc123|2|1\n' > \"\$DATA/scores\"
+  declare -gA _sc; _sc=()
+  while IFS='|' read -r k v; do [[ \"\$k\" == \"#\"* ]] && continue; _sc[\$k]=\$v; done < \"\$DATA/scores\"
+  echo \"count=\${#_sc[@]}\"
+  echo \"val=\${_sc[abc123]:-missing}\"
+" 2>/dev/null)
+echo "$r" | grep -q 'count=1' && ok "loader skips # lines" || fail "loader skip" "$r"
+echo "$r" | grep -q 'val=2|1' && ok "loader reads data after header" || fail "loader data" "$r"
 
 # ─────────────────────────────────────────────────────────────────────────────
 section "Level Locking"
