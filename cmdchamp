@@ -160,7 +160,8 @@ _victory() {
   local total=0 mastered=0
   for k in "${!sc[@]}"; do
     ((++total))
-    [[ "${sc[$k]}" != 1 ]] && ((++mastered))
+    local _tier="${sc[$k]%%|*}"
+    [[ "$_tier" != "0" && "$_tier" != "1" ]] && ((++mastered))
   done
   local s
   cat <<'EOF'
@@ -750,26 +751,6 @@ BRANCHES=(main master develop feature/auth feature/api fix/login hotfix/security
 # DYNAMIC GENERATION HELPERS - True infinite variation
 # ═══════════════════════════════════════════════════════════════════════════════
 
-# Unbiased random selection using rejection sampling
-_pick() {
-  local -n arr=$1
-  local len=${#arr[@]}
-  ((len == 0)) && { echo ""; return; }
-  local max=$((32768 - 32768 % len)) r
-  while r=$RANDOM; ((r >= max)); do :; done
-  echo "${arr[$((r % len))]}"
-}
-
-# Unbiased random number in range: _rnum 1 100 -> random 1-100
-_rnum() {
-  local lo=$1 hi=$2
-  ((lo > hi)) && { local t=$lo; lo=$hi; hi=$t; }  # swap if inverted
-  local range=$((hi - lo + 1))
-  local max=$((32768 - 32768 % range)) r
-  while r=$RANDOM; ((r >= max)); do :; done
-  echo $((lo + r % range))
-}
-
 # Unbiased pick from phrasings
 _phrase() {
   local -a opts=("$@")
@@ -923,7 +904,7 @@ declare -A EXP=(
   [diff]="compare files" [tar]="archive tool" [tee]="split output: file AND screen (>> = file only)" [xargs]="build commands from stdin"
   [chmod]="change permissions" [kill]="send signal to process (default: terminate)" [jobs]="list background jobs" [fg]="foreground job"
   [bg]="background job" [sleep]="pause N seconds" [make]="build tool" [gcc]="C compiler"
-  [date]="show/set date" [du]="disk usage" [ps]="list processes" [mount]="attach filesystem"
+  [date]="show/set date" [du]="disk usage" [ps]="list processes"
   [dd]="low-level copy" [strings]="extract text from binary" [base64]="encode/decode base64"
   [rg]="ripgrep: fast grep (respects .gitignore, recursive by default — grep is POSIX/everywhere)"
   [fd]="fast find (regex default, respects .gitignore — find is POSIX/everywhere, more powerful predicates)"
@@ -942,7 +923,7 @@ declare -A EXP=(
   [awk]="pattern scanning & processing" [jq]="JSON processor" [curl]="transfer data (HTTP/FTP)"
   [ssh]="secure shell" [scp]="secure copy (deprecated — use rsync)" [rsync]="incremental transfer (only sends changes — always prefer over scp)"
   [zip2john]="extract hash from zip" [pdf2john]="extract hash from pdf" [rar2john]="extract hash from rar"
-  [openssl]="crypto toolkit" [socat]="multipurpose relay" [tmux]="terminal multiplexer"
+  [openssl]="crypto toolkit" [socat]="multipurpose relay"
   [ln]="create links" [readlink]="show link target" [pgrep]="find process by name" [pkill]="kill by name"
   [pidof]="get PID by name" [pstree]="process tree" [ip]="network config" [ss]="socket statistics"
   [lsof]="list open files" [systemctl]="systemd control" [journalctl]="systemd logs"
@@ -1082,7 +1063,6 @@ explain() {
     done
     _esc_legend "$1"; ((_ml += REPLY))
     printf '%s\n' "${D}----------------------------------------${N}"
-    EXPLAIN_LINES=$((_ml + 2))
     return
   fi
   local _cp=1  # command position: 1=expecting command, 0=in arguments
@@ -1117,7 +1097,6 @@ explain() {
   ((n == 0)) && { printf '  %s\n' "${Y}$1${N}"; ((++n)); }
   _esc_legend "$1"; ((n += REPLY))
   printf '%s\n' "${D}----------------------------------------${N}"
-  EXPLAIN_LINES=$((n + 2))
 }
 
 # Parse question - handles both | and § delimiters (§ for answers with ||)
@@ -2278,7 +2257,6 @@ gen_level26() {
   questions+=("Mass scan all ports on subnet at 10k rate|masscan -p1-65535 ${ip%.*}.0/24 --rate 10000")
   questions+=("Masscan specific ports|masscan -p 22,80,443 ${ip%.*}.0/24 --rate 1000")
 
-
   # Packet capture
   questions+=("Capture packets on ${iface}|tcpdump -i ${iface}")
   questions+=("Capture and save to ${W}${pcap}${C}|tcpdump -i ${iface} -w ${pcap}")
@@ -2968,30 +2946,7 @@ generate_level() {
 # CORE ENGINE (mostly unchanged from original)
 # ═══════════════════════════════════════════════════════════════════════════════
 
-# Normalize flags: -la == -al == -a -l (pure bash, no fork)
-norm() {
-  [[ -z "$1" ]] && { echo; return; }
-  local parts flags=() args=() out p
-  read -ra parts <<< "$1"; out="${parts[0]}"
-  for p in "${parts[@]:1}"; do
-    if [[ "$p" == -* ]]; then
-      [[ "$p" =~ ^-[a-zA-Z]+$ && ${#p} -gt 2 ]] && { for ((j=1;j<${#p};j++)); do flags+=("-${p:j:1}"); done; } || flags+=("$p")
-    else args+=("$p"); fi
-  done
-  # Insertion sort - faster than fork for <10 flags
-  local i j tmp
-  for ((i=1; i<${#flags[@]}; i++)); do
-    tmp="${flags[$i]}"
-    for ((j=i; j>0; j--)); do [[ "${flags[$((j-1))]}" > "$tmp" ]] || break; flags[$j]="${flags[$((j-1))]}"; done
-    flags[$j]="$tmp"
-  done
-  printf '%s' "$out"
-  ((${#flags[@]})) && printf ' %s' "${flags[@]}"
-  ((${#args[@]})) && printf ' %s' "${args[@]}"
-  echo
-}
-
-# REPLY-pattern norm (no fork)
+# Normalize flags: -la == -al == -a -l (REPLY pattern, no fork)
 _fnorm() {
   [[ -z "$1" ]] && { REPLY=""; return; }
   local parts flags=() args=() p
@@ -3158,7 +3113,7 @@ _quit() {
   exit 0
 }
 
-input="" cursor=0 mode="insert" EXPLAIN_LINES=0 _rep=""
+input="" cursor=0 mode="insert" _rep=""
 declare -a UNDO_STACK=()  # Multi-level undo
 hdr() {
   printf '\e[2J\e[H'
@@ -3340,7 +3295,7 @@ run() {
     # Fire mode: force tier 2 (pure recall)
     local _real_tier=$REPLY
     ((streak>=FIRE_STREAK)) && tier=2
-    EXPLAIN_LINES=0 HIST=()
+    HIST=()
     _REDRAW_HDR() { hdr "$lv" "$((qi+1))" "$TOT"; qdisp "$prompt"; }
     _REDRAW_HDR
     while true; do
@@ -3473,7 +3428,7 @@ gauntlet() {
     ((${#q_arr[@]} == 0)) && break
     local q_idx=$((RANDOM % ${#q_arr[@]}))
     _qparse "${q_arr[$q_idx]}"; local prompt=$_qprompt ans=$_qans
-    EXPLAIN_LINES=0
+
 
     local hearts=""; for ((h=0;h<lives;h++)); do hearts+="${R}♥${N} "; done
     _REDRAW_HDR() {
@@ -3542,7 +3497,7 @@ timed() {
     ((${#q_arr[@]} == 0)) && continue
     local q_idx=$((RANDOM % ${#q_arr[@]}))
     _qparse "${q_arr[$q_idx]}"; local prompt=$_qprompt ans=$_qans
-    EXPLAIN_LINES=0
+
 
     _REDRAW_HDR() {
       local _now; printf -v _now '%(%s)T' -1; local _rem=$((end_t - _now))
@@ -3635,7 +3590,7 @@ review() {
     _preq_reset
     _qparse "${all_q[$qi]}"; local prompt=$_qprompt ans=$_qans
     _sget "$prompt"; local tier=$REPLY
-    EXPLAIN_LINES=0 HIST=()
+    HIST=()
     _REDRAW_HDR() {
       printf '\e[2J\e[H'
       printf '%s\n' "${C}${PLAYER_NAME:-anon}${N}"
