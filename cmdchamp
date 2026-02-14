@@ -954,11 +954,10 @@ declare -A EXP=(
   [shred]="secure file delete" [smartctl]="disk SMART info" [gcore]="dump process memory"
   [coproc]="coprocess (bidirectional pipe)" [mkfifo]="create named pipe" [fuser]="find process using file"
   [renice]="change process priority" [cgcreate]="create cgroup" [cgexec]="run in cgroup"
-  [enum4linux]="SMB enumeration" [wash]="WPS scanner" [reaver]="WPS attack tool"
+  [enum4linux]="SMB enumeration"
   [chkrootkit]="rootkit checker" [rkhunter]="rootkit hunter"
   [bc]="calculator" [rev]="reverse lines" [docker]="container runtime" [crontab]="schedule tasks"
-  [tcpdump]="packet capture" [rtl_sdr]="RTL-SDR receiver" [rtl_433]="433MHz decoder" [rtl_fm]="FM demodulator"
-  [rtl_power]="frequency scanner" [iw]="wireless config"
+  [tcpdump]="packet capture" [iw]="wireless config"
   [git]="version control" [clone]="copy repository" [commit]="save changes" [push]="upload to remote"
   [pull]="download from remote" [fetch]="download without merge" [merge]="combine branches"
   [rebase]="reapply commits" [stash]="save changes temporarily" [branch]="manage branches"
@@ -989,7 +988,7 @@ declare -A EXP=(
   [ping]="test network connectivity" [dig]="DNS lookup" [host]="DNS lookup (simple)"
   [userdel]="delete user account" [hostname]="show/set hostname"
   [unshadow]="combine passwd+shadow for cracking" [ldd]="list shared library dependencies"
-  [rtl_test]="test RTL-SDR device" [iwlist]="wireless scan (legacy)"
+  [iwlist]="wireless scan (legacy)"
   [mkinitcpio]="generate initramfs (Arch)" [grub-mkconfig]="generate GRUB config"
   [grub-install]="install GRUB bootloader" [ssh-keygen]="generate SSH key pair"
   [gpg]="GNU Privacy Guard (encrypt/sign)" [vim]="text editor"
@@ -2258,9 +2257,6 @@ gen_level26() {
   questions+=("Mass scan all ports on subnet at 10k rate|masscan -p1-65535 ${ip%.*}.0/24 --rate 10000")
   questions+=("Masscan specific ports|masscan -p 22,80,443 ${ip%.*}.0/24 --rate 1000")
 
-  # WPS attacks (legacy — most modern APs disable WPS)
-  questions+=("Scan for WPS-enabled APs|wash -i ${wiface}mon")
-  questions+=("Reaver with Pixie Dust attack (fast WPS crack)|reaver -i ${wiface}mon -b ${mac} -K")
 
   # Packet capture
   questions+=("Capture packets on ${iface}|tcpdump -i ${iface}")
@@ -2274,12 +2270,6 @@ gen_level26() {
   questions+=("Capture HTTP traffic only|tcpdump -i ${iface} port 80")
   questions+=("Don't resolve hostnames in capture|tcpdump -i ${iface} -n")
 
-  # SDR / RF basics (requires RTL-SDR hardware)
-  questions+=("List connected RTL-SDR devices|rtl_test")
-  questions+=("Record raw IQ data at 433MHz|rtl_sdr -f 433920000 -s 250000 capture.bin")
-  questions+=("Decode 433MHz sensor data (weather stations, doorbells)|rtl_433")
-  questions+=("Decode specific protocol only|rtl_433 -R 1")
-  questions+=("Scan frequency range for signals|rtl_power -f 400M:450M:100k -g 50 scan.csv")
 
   # Wireless recon
   questions+=("Show wireless interfaces|iw dev")
