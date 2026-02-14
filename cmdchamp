@@ -877,7 +877,7 @@ _ctx() {
 declare -A MANPAGE=(
   [cd]=$'change directory\n  \e[33m.\e[0m         current directory      \e[33m..\e[0m        parent directory\n  \e[33m~\e[0m         home directory         \e[33m-\e[0m         previous directory\n  \e[33m../..\e[0m     up two levels'
   [echo]=$'print text to stdout\n  \e[36m-n\e[0m        no trailing newline    \e[36m-e\e[0m        enable escapes (\\n \\t)\n  \e[33m"$VAR"\e[0m    expands variables      \e[33m\x27text\x27\e[0m   literal (no expansion)\n  \e[2mecho hello    echo "$HOME"    echo -n "no newline"    echo -e "line1\\nline2"\e[0m'
-  [pwd]=$'print working directory'
+  [pwd]=$'print working directory\n  shows absolute path of current directory\n  \e[2mpwd    # /home/user/projects\e[0m'
   [touch]=$'create empty file or update timestamp\n  \e[36m-t\e[0m \e[33mSTAMP\e[0m  set specific time\n  \e[2mtouch newfile    touch -t 202301010000 file\e[0m'
   [mv]=$'move or rename files\n  \e[36m-i\e[0m        confirm before overwrite\n  \e[36m-n\e[0m        never overwrite\n  \e[2mmv old.txt new.txt    mv file.txt dir/    mv *.log archive/\e[0m'
   [rm]=$'delete files permanently\n  \e[36m-r\e[0m        recursive (dirs)       \e[36m-f\e[0m        force (no prompt)\n  \e[36m-i\e[0m        confirm each file\n  \e[2mrm file.txt    rm -r dir/    rm -rf dir/    rm -i *.log\e[0m'
