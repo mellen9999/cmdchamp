@@ -3,13 +3,14 @@
 set -uo pipefail
 [[ ${BASH_VERSINFO[0]:-0} -lt 4 || (${BASH_VERSINFO[0]} -eq 4 && ${BASH_VERSINFO[1]:-0} -lt 3) ]] && { echo "Requires bash 4.3+"; exit 1; }
 _tty() { [[ -t 0 ]] || { echo "Error: requires interactive terminal" >&2; exit 1; }; }
-for _dep in shuf md5sum awk; do command -v "$_dep" &>/dev/null || { echo "Error: $_dep not found" >&2; exit 1; }; done
+for _dep in shuf awk; do command -v "$_dep" &>/dev/null || { echo "Error: $_dep not found" >&2; exit 1; }; done
 
 DATA="${XDG_DATA_HOME:-$HOME/.local/share}/cmdchamp"; mkdir -p "$DATA"; touch "$DATA/scores"
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # CONSTANTS
 # ═══════════════════════════════════════════════════════════════════════════════
+VERSION="0.3"
 SANDBOX_TIMEOUT=5      # Seconds before sandbox command times out
 BOSS_THRESHOLD=4       # Correct answers needed to beat boss (out of BOSS_TOTAL)
 BOSS_TOTAL=5           # Number of questions in boss round
@@ -42,6 +43,11 @@ _load_profile() {
       ((BOSS_BEATEN < 0)) && BOSS_BEATEN=0 || ((++BOSS_BEATEN))
       _PROFILE_VER=1; _save_profile
     fi
+    # Migrate v1 → v2: hash algorithm changed (md5→djb2), reset scores
+    if ((_PROFILE_VER < 2)); then
+      : > "$DATA/scores"
+      _PROFILE_VER=2; _save_profile
+    fi
     ((BOSS_BEATEN > MAX_LEVEL)) && BOSS_BEATEN=$MAX_LEVEL
   fi
   [[ -z "$PLAYER_NAME" ]] && _first_run
@@ -69,7 +75,7 @@ EOF
   echo
   read -rp "    Enter your handle: " PLAYER_NAME
   [[ -z "$PLAYER_NAME" ]] && PLAYER_NAME="anon"
-  BOSS_BEATEN=0; _PROFILE_VER=1
+  BOSS_BEATEN=0; _PROFILE_VER=2
   _save_profile
   _intro
   _tutorial
@@ -567,8 +573,18 @@ _sandbox_exec() {
 _SANDBOX_DESTRUCTIVE=0
 _is_destructive() {
   local cmd="$1"
-  # File modifiers, partition tools, truncation patterns, redirects, compound destructive
-  [[ "$cmd" =~ (^|[[:space:]])(rm|mv|cp|dd|truncate|shred|unlink|tee|chmod|chown|mkfs|fdisk|parted|install|split|patch|ln)[[:space:]]|([[:space:]]|[0-9&])(\>\>|\>)|sed[[:space:]]+-i|:[[:space:]]*\>|-delete[[:space:]]*$|rsync[[:space:]].*--delete|xargs[[:space:]].*(rm|mv)|find[[:space:]].*-exec[[:space:]].*(rm|mv) ]] && return 0
+  # File-modifying commands
+  [[ "$cmd" =~ (^|[[:space:]])(rm|mv|cp|dd|truncate|shred|unlink|tee|chmod|chown|mkfs|fdisk|parted|install|split|patch|ln)[[:space:]] ]] && return 0
+  # Output redirection
+  [[ "$cmd" =~ ([[:space:]]|[0-9&])(\>\>|\>) ]] && return 0
+  # In-place sed
+  [[ "$cmd" =~ sed[[:space:]]+-i ]] && return 0
+  # Truncation via :>
+  [[ "$cmd" =~ :[[:space:]]*\> ]] && return 0
+  # find -delete
+  [[ "$cmd" =~ -delete[[:space:]]*$ ]] && return 0
+  # Recursive delete patterns
+  [[ "$cmd" =~ rsync[[:space:]].*--delete|xargs[[:space:]].*(rm|mv)|find[[:space:]].*-exec[[:space:]].*(rm|mv) ]] && return 0
   return 1
 }
 
@@ -2975,9 +2991,29 @@ norm() {
   echo
 }
 
+# REPLY-pattern norm (no fork)
+_fnorm() {
+  [[ -z "$1" ]] && { REPLY=""; return; }
+  local parts flags=() args=() p
+  read -ra parts <<< "$1"; REPLY="${parts[0]}"
+  for p in "${parts[@]:1}"; do
+    if [[ "$p" == -* ]]; then
+      [[ "$p" =~ ^-[a-zA-Z]+$ && ${#p} -gt 2 ]] && { for ((j=1;j<${#p};j++)); do flags+=("-${p:j:1}"); done; } || flags+=("$p")
+    else args+=("$p"); fi
+  done
+  local i j tmp
+  for ((i=1; i<${#flags[@]}; i++)); do
+    tmp="${flags[$i]}"
+    for ((j=i; j>0; j--)); do [[ "${flags[$((j-1))]}" > "$tmp" ]] || break; flags[$j]="${flags[$((j-1))]}"; done
+    flags[$j]="$tmp"
+  done
+  ((${#flags[@]})) && { for p in "${flags[@]}"; do REPLY+=" $p"; done; }
+  ((${#args[@]})) && { for p in "${args[@]}"; do REPLY+=" $p"; done; }
+}
+
 _SANDBOX_OUTPUT=""  # Store output for display after check
 check() {
-  local inp="${1#"${1%%[![:space:]]*}"}" a b ninp; inp="${inp%"${inp##*[![:space:]]}"}"; ninp=$(norm "$inp")
+  local inp="${1#"${1%%[![:space:]]*}"}" a b ninp; inp="${inp%"${inp##*[![:space:]]}"}"; _fnorm "$inp"; ninp=$REPLY
   _SANDBOX_OUTPUT=""
 
   # Sandbox mode: execute command and validate output/state
@@ -3014,7 +3050,7 @@ check() {
     if [[ "$b" == ~* ]]; then
       local _pat="${b:1}"; [[ "$inp" =~ ${_pat} ]] && return 0
     else
-      [[ "$inp" == "$b" || "$ninp" == "$(norm "$b")" ]] && return 0
+      _fnorm "$b"; [[ "$inp" == "$b" || "$ninp" == "$REPLY" ]] && return 0
     fi
   done; return 1
 }
@@ -3037,15 +3073,18 @@ save() {
   mv "$DATA/session.json.tmp" "$DATA/session.json"
   exec {fd}>&-
 }
-# Score tracking: tier 1=blank, 2=recall (md5 hash keys avoid regex issues)
+# Score tracking: tier 1=blank, 2=recall (djb2 hash keys, no forks)
 declare -A _HASH_CACHE=()
-# Sets REPLY to 16-char md5 hash (cached, forks md5sum only on first encounter)
 _hash() {
   local key="$1"
   if [[ -n "${_HASH_CACHE[$key]:-}" ]]; then REPLY="${_HASH_CACHE[$key]}"; return; fi
-  local h; h=$(printf '%s' "$key"|md5sum)
-  _HASH_CACHE[$key]="${h:0:16}"
-  REPLY="${_HASH_CACHE[$key]}"
+  local h=5381 i c
+  for ((i=0; i<${#key}; i++)); do
+    printf -v c '%d' "'${key:i:1}"
+    h=$(( ((h << 5) + h + c) & 0xFFFFFFFF ))
+  done
+  printf -v REPLY '%08x' "$h"
+  _HASH_CACHE[$key]="$REPLY"
 }
 # Flush scores atomically (pure bash, no sed fork)
 _sflush() {
@@ -3243,15 +3282,16 @@ _read_line() {
 
 _sdirty=0
 _sflush_if_dirty() { ((_sdirty)) && { _sflush; _sdirty=0; }; }
+_MODE_TAG=""
+_sset() { _hash "$1"; _sc[$REPLY]="$2|$_MODE_TAG"; (( ++_sdirty >= 10 )) && { _sflush; _sdirty=0; }; }
 _mode_init() {
-  local _tag=$1
+  _MODE_TAG=$1
   declare -gA _sc; _sc=()
   [[ -f "$DATA/scores" ]] && while IFS='|' read -r k v; do
     [[ "$k" == "#"* ]] && continue
     _sc[$k]=$v
   done < "$DATA/scores"
   _sget() { _hash "$1"; local _v="${_sc[$REPLY]:-1}"; REPLY="${_v%%|*}"; }
-  eval "_sset() { _hash \"\$1\"; _sc[\$REPLY]=\"\$2|${_tag}\"; (( ++_sdirty >= 10 )) && { _sflush; _sdirty=0; }; }"
   HIST=() HIST_IDX=0 HIST_SAVE=""
   _interactive=1; _stty_saved=$(stty -g 2>/dev/null) || _stty_saved=""
   ((SANDBOX_MODE)) && _sandbox_init
@@ -3650,7 +3690,7 @@ case "${1:-}" in
     printf '%s\n' "${B}Progress${N}"
     for lv in $(seq 1 $MAX_LEVEL); do
       if ((lv <= BOSS_BEATEN + 1)); then
-        local mark="${G}✓${N}"; ((lv > BOSS_BEATEN)) && mark="${Y}→${N}"
+        mark="${G}✓${N}"; ((lv > BOSS_BEATEN)) && mark="${Y}→${N}"
         printf "  %s ${G}%2d${N} %s\n" "$mark" "$lv" "${LEVEL_NAMES[$lv]:-}"
       else
         printf "  ${D}  %2d %s${N}\n" "$lv" "${LEVEL_NAMES[$lv]:-}"
@@ -3658,12 +3698,12 @@ case "${1:-}" in
     done
     ;;
   r|reset) rm -f "$DATA"/*.json "$DATA/scores" "$DATA/scores.lock" "$DATA/profile"; rm -rf "$DATA/sandbox" "$DATA/sandbox.pristine" 2>/dev/null; echo "Reset.";;
-  c|cleanup) [[ -f "$DATA/scores" ]] && { flock -x "$DATA/scores.lock" awk -F'|' '/^#/{print;next} !seen[$1]++' "$DATA/scores" > "$DATA/scores.tmp" && mv "$DATA/scores.tmp" "$DATA/scores"; echo "Deduplicated scores."; } || echo "No scores file.";;
+  c|cleanup) [[ -f "$DATA/scores" ]] && { flock -x "$DATA/scores.lock" awk -F'|' '/^#/{print;next} !seen[$1]++' "$DATA/scores" > "$DATA/scores.tmp" && mv "$DATA/scores.tmp" "$DATA/scores"; _cnt=$(wc -l < "$DATA/scores"); echo "Deduplicated scores."; ((_cnt > 5000)) && echo "Warning: scores file has $_cnt entries — consider resetting."; } || echo "No scores file.";;
   s|stats) _load_profile; stats;;
   review) _tty; _load_profile; review;;
   gauntlet) _tty; _load_profile; gauntlet;;
   timed) _tty; _load_profile; timed "${2:-120}";;
-  v|version|-v|--version) echo "cmdchamp $(git -C "${BASH_SOURCE[0]%/*}" describe --tags 2>/dev/null || echo '0.2')";;
+  v|version|-v|--version) echo "cmdchamp $VERSION";;
   h|help|-h|--help)
     cat <<EOF
 ${B}cmdchamp${N} - CLI trainer

@@ -468,7 +468,7 @@ r=$(_run "
   echo \"name=\$PLAYER_NAME ver=\$_PROFILE_VER beaten=\$BOSS_BEATEN gauntlet=\$BEST_GAUNTLET timed=\$BEST_TIMED\"
 ")
 echo "$r" | grep -q 'name=TestPlayer' && ok "profile stores name" || fail "profile name" "$r"
-echo "$r" | grep -q 'ver=1' && ok "profile ver=1" || fail "profile ver" "$r"
+echo "$r" | grep -q 'ver=2' && ok "profile ver=2" || fail "profile ver" "$r"
 echo "$r" | grep -q 'beaten=0' && ok "new BOSS_BEATEN=0" || fail "profile beaten" "$r"
 
 # v0->v1 migration: BOSS_BEATEN=-1 (old format) -> 0
@@ -511,6 +511,18 @@ r=$(bash -c "
   echo \"\$BOSS_BEATEN\"
 " 2>/dev/null)
 [[ "$r" == "30" ]] && ok "BOSS_BEATEN clamped to 30" || fail "clamp" "got '$r'"
+
+# v1->v2 migration: scores reset
+r=$(bash -c "
+  source '$SOURCE_FILE' 2>/dev/null
+  DATA='$TDIR/data_mig5'; mkdir -p \"\$DATA\"
+  printf 'old_hash|2|5\n' > \"\$DATA/scores\"
+  printf 'PLAYER_NAME=migtest\nBOSS_BEATEN=3\nPROFILE_VER=1\n' > \"\$DATA/profile\"
+  _load_profile
+  echo \"ver=\$_PROFILE_VER scores=\$(wc -c < \"\$DATA/scores\")\"
+" 2>/dev/null)
+echo "$r" | grep -q 'ver=2' && ok "v1->v2: ver bumped" || fail "v1->v2 ver" "$r"
+echo "$r" | grep -q 'scores=0' && ok "v1->v2: scores cleared" || fail "v1->v2 scores" "$r"
 
 # Save/load round-trip
 r=$(_run "LVL=14; QI=7; save; LVL=0; QI=0; load; echo \"\$LVL \$QI\"")
