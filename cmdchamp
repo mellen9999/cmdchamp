@@ -19,7 +19,6 @@ REVIEW_PER_LEVEL=2     # Review questions to pick from each previous level
 MAX_LEVEL=30           # Highest level number
 BOSS_TIMER=15          # Seconds per boss question
 
-
 # ═══════════════════════════════════════════════════════════════════════════════
 # PLAYER PROFILE & BOSS SYSTEM
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -658,60 +657,32 @@ _sandbox_check_state() {
   IFS=',' read -ra checks_arr <<< "$checks"
   for check in "${checks_arr[@]}"; do
     case "$check" in
-      exists:*)
+      exists:*|!exists:*)
+        local _neg=0; [[ "$check" == !* ]] && { _neg=1; check="${check:1}"; }
         local file="${check#exists:}"
-        [[ -e "$SANDBOX_DIR/$file" ]] || return 1
+        ((_neg)) && { [[ ! -e "$SANDBOX_DIR/$file" ]] || return 1; } || { [[ -e "$SANDBOX_DIR/$file" ]] || return 1; }
         ;;
-      !exists:*)
-        local file="${check#!exists:}"
-        [[ ! -e "$SANDBOX_DIR/$file" ]] || return 1
-        ;;
-      contains:*:*)
-        local rest="${check#contains:}"
-        local file="${rest%%:*}"
-        local pattern="${rest#*:}"
-        grep -qF "$pattern" -- "$SANDBOX_DIR/$file" 2>/dev/null || return 1
-        ;;
-      !contains:*:*)
-        local rest="${check#!contains:}"
-        local file="${rest%%:*}"
-        local pattern="${rest#*:}"
-        grep -qF "$pattern" -- "$SANDBOX_DIR/$file" 2>/dev/null && return 1
+      contains:*:*|!contains:*:*)
+        local _neg=0; [[ "$check" == !* ]] && { _neg=1; check="${check:1}"; }
+        local rest="${check#contains:}"; local file="${rest%%:*}" pattern="${rest#*:}"
+        ((_neg)) && { grep -qF "$pattern" -- "$SANDBOX_DIR/$file" 2>/dev/null && return 1; } || { grep -qF "$pattern" -- "$SANDBOX_DIR/$file" 2>/dev/null || return 1; }
         ;;
       lines:*:*)
-        local rest="${check#lines:}"
-        local file="${rest%%:*}"
-        local count="${rest#*:}"
+        local rest="${check#lines:}"; local file="${rest%%:*}" count="${rest#*:}"
         local actual=$(wc -l < "$SANDBOX_DIR/$file" 2>/dev/null)
         ((actual == count)) || return 1
         ;;
-      perm:*:*)
-        local rest="${check#perm:}"
-        local file="${rest%%:*}"
-        local perms="${rest#*:}"
+      perm:*:*|!perm:*:*)
+        local _neg=0; [[ "$check" == !* ]] && { _neg=1; check="${check:1}"; }
+        local rest="${check#perm:}"; local file="${rest%%:*}" perms="${rest#*:}"
         local path="$SANDBOX_DIR/$file"
         [[ ! -e "$path" ]] && return 1
         local _p
         for ((_p=0; _p<${#perms}; _p++)); do
           case "${perms:$_p:1}" in
-            r) [[ -r "$path" ]] || return 1;;
-            w) [[ -w "$path" ]] || return 1;;
-            x) [[ -x "$path" ]] || return 1;;
-          esac
-        done
-        ;;
-      !perm:*:*)
-        local rest="${check#!perm:}"
-        local file="${rest%%:*}"
-        local perms="${rest#*:}"
-        local path="$SANDBOX_DIR/$file"
-        [[ ! -e "$path" ]] && return 1
-        local _p
-        for ((_p=0; _p<${#perms}; _p++)); do
-          case "${perms:$_p:1}" in
-            r) [[ ! -r "$path" ]] || return 1;;
-            w) [[ ! -w "$path" ]] || return 1;;
-            x) [[ ! -x "$path" ]] || return 1;;
+            r) ((_neg)) && { [[ ! -r "$path" ]] || return 1; } || { [[ -r "$path" ]] || return 1; };;
+            w) ((_neg)) && { [[ ! -w "$path" ]] || return 1; } || { [[ -w "$path" ]] || return 1; };;
+            x) ((_neg)) && { [[ ! -x "$path" ]] || return 1; } || { [[ -x "$path" ]] || return 1; };;
           esac
         done
         ;;
@@ -2715,7 +2686,6 @@ gen_level26() {
   questions+=("Capture HTTP traffic only|tcpdump -i ${iface} port 80")
   questions+=("Don't resolve hostnames in capture|tcpdump -i ${iface} -n")
 
-
   # Wireless recon
   questions+=("Show wireless interfaces|iw dev")
   questions+=("Scan for nearby APs|iw dev ${wiface} scan|iwlist ${wiface} scan")
@@ -3347,29 +3317,28 @@ _sflush() {
   exec {_fd}>&-
 }
 
-stats() {
-  local -A sc; [[ -f "$DATA/scores" ]] && while IFS='|' read -r k v; do [[ "$k" == "#"* ]] && continue; sc[$k]=$v; done < "$DATA/scores"
-  printf '%s\n' "${C}${PLAYER_NAME:-anon}${N}"
-  printf '%s\n\n' "${D}Stats show unique prompts seen${N}"
-  local total_seen=0 total_t1=0 total_t2=0
-  # Per-level counters: lv_total[n], lv_mastered[n]
-  local -A lv_total lv_mastered
-  for k in "${!sc[@]}"; do
-    local _val="${sc[$k]}" _tier _lvtag
+# Populate lv_total/lv_mastered from a scores array (caller must declare them)
+_calc_mastery() {
+  local -n _src=$1; _cm_seen=0 _cm_t1=0 _cm_t2=0 _cm_tagged=0
+  for k in "${!_src[@]}"; do
+    local _val="${_src[$k]}" _tier _lvtag
     _tier="${_val%%|*}"
-    if [[ "$_val" == *"|"* ]]; then
-      _lvtag="${_val#*|}"
-    else
-      _lvtag=""
-    fi
-    case "$_tier" in 0|1) ((++total_t1));; *) ((++total_t2));; esac
-    ((++total_seen))
+    [[ "$_val" == *"|"* ]] && { _lvtag="${_val#*|}"; _cm_tagged=1; } || _lvtag=""
+    case "$_tier" in 0|1) ((_cm_t1++));; *) ((_cm_t2++));; esac
+    ((_cm_seen++))
     [[ -n "$_lvtag" ]] && {
       lv_total[$_lvtag]=$(( ${lv_total[$_lvtag]:-0} + 1 ))
       [[ "$_tier" != "0" && "$_tier" != "1" ]] && lv_mastered[$_lvtag]=$(( ${lv_mastered[$_lvtag]:-0} + 1 ))
     }
   done
-  printf 'Total: %s  %s learning  %s mastered\n\n' "${B}${total_seen}${N}" "${Y}${total_t1}${N}" "${G}${total_t2}${N}"
+}
+
+stats() {
+  local -A sc; [[ -f "$DATA/scores" ]] && while IFS='|' read -r k v; do [[ "$k" == "#"* ]] && continue; sc[$k]=$v; done < "$DATA/scores"
+  printf '%s\n' "${C}${PLAYER_NAME:-anon}${N}"
+  printf '%s\n\n' "${D}Stats show unique prompts seen${N}"
+  local -A lv_total lv_mastered; _calc_mastery sc
+  printf 'Total: %s  %s learning  %s mastered\n\n' "${B}${_cm_seen}${N}" "${Y}${_cm_t1}${N}" "${G}${_cm_t2}${N}"
   local BAR_W=10
   for lv in {1..30}; do
     local lt=${lv_total[$lv]:-0} lm=${lv_mastered[$lv]:-0}
@@ -3403,16 +3372,12 @@ _quit() {
   if ((_S_ANSWERED > 0)); then
     local elapsed=$(( $(printf '%(%s)T' -1) - _S_START ))
     local m=$((elapsed / 60)) s=$((elapsed % 60))
-    printf '%s\n' "${B}Session Summary${N}"
-    printf '%s\n' "${D}----------------------------------------${N}"
-    printf '  Answered:    %s\n' "${B}${_S_ANSWERED}${N}"
+    printf '%s\n%s\n  Answered:    %s\n' "${B}Session Summary${N}" "${D}----------------------------------------${N}" "${B}${_S_ANSWERED}${N}"
     printf '  Correct:     %s' "${G}${_S_CORRECT}${N}"
     ((_S_ANSWERED > 0)) && printf ' (%d%%)' $((_S_CORRECT * 100 / _S_ANSWERED))
-    printf '\n'
-    printf '  Best streak: %s\n' "${Y}${_S_BEST_STREAK}${N}"
+    printf '\n  Best streak: %s\n' "${Y}${_S_BEST_STREAK}${N}"
     ((_S_MASTERED > 0)) && printf '  Mastered:    %s\n' "${C}${_S_MASTERED}${N}"
-    printf '  Time:        %dm %ds\n' "$m" "$s"
-    printf '%s\n' "${D}----------------------------------------${N}"
+    printf '  Time:        %dm %ds\n%s\n' "$m" "$s" "${D}----------------------------------------${N}"
   else
     printf '%s\n' "${D}[quit]${N}"
   fi
@@ -3422,14 +3387,12 @@ _quit() {
 input="" cursor=0 mode="insert" _rep=""
 declare -a UNDO_STACK=()  # Multi-level undo
 hdr() {
-  printf '\e[2J\e[H'
   local fire=""; ((streak>=FIRE_STREAK)) && fire="  ${Y}${B}*${N}"
-  printf '%s\n' "${C}${PLAYER_NAME:-anon}${N}${fire}"
-  printf '%s\n' "${B}Level $1: ${LEVEL_NAMES[$1]:-}${N}"
-  printf '%s\n\n' "${D}[$2/$3]  Tab=man${N}"
+  printf '\e[2J\e[H%s\n%s\n%s\n\n' "${C}${PLAYER_NAME:-anon}${N}${fire}" "${B}Level $1: ${LEVEL_NAMES[$1]:-}${N}" "${D}[$2/$3]  Tab=man${N}"
 }
 qdisp() { bar; printf "\n${C}%s${N}\n\n" "$1"; }
 _wrong_feedback() { [[ "${CMD_BELL:-1}" != "0" ]] && printf '\a'; printf '\e[7m'; read -t 0.05 -rsn1 _ ||:; printf '\e[0m'; }
+_wrong_show() { _wrong_feedback; [[ -n "$_SANDBOX_OUTPUT" ]] && printf '\n%s %s\n' "${D}output:${N}" "$_SANDBOX_OUTPUT"; printf '%s  %s %s\n\n' "${R}x${N}" "${D}expected:${N}" "${Y}${ans}${N}"; }
 bar() { local f e p=$((qi<TOT?qi:TOT)); printf -v f '%*s' "$p" ''; printf -v e '%*s' "$((TOT-p))" ''; printf "${B}[${G}%s${D}%s${B}]${N}" "${f// /█}" "${e// /░}"; }
 draw() {
   printf '\e[?25l\r\e[K'  # hide cursor, clear line
@@ -3439,7 +3402,6 @@ draw() {
   ((disp_cur < disp_len)) && printf '\e[%dD' "$((disp_len - disp_cur))"
   printf '\e[?25h'  # show cursor
 }
-
 
 # Vi helpers (requires UTF-8 locale for proper multi-byte char handling)
 _wfwd() { while ((cursor<${#input})) && [[ "${input:cursor:1}" != " " ]]; do ((++cursor)); done; while ((cursor<${#input})) && [[ "${input:cursor:1}" == " " ]]; do ((++cursor)); done; ((cursor>=${#input}&&${#input}>0)) && cursor=$((${#input}-1)); }
@@ -3648,10 +3610,7 @@ run() {
         read -rsp "${D}Press Enter to continue...${N}"
         ((++qi)); QI=$qi; save; break
       else
-        ((_S_ANSWERED++)); _S_STREAK=0; _wrong_feedback
-        _egg_check wrong "$input"
-        if [[ -n "$_SANDBOX_OUTPUT" ]]; then printf '\n%s %s\n' "${D}output:${N}" "$_SANDBOX_OUTPUT"; fi
-        printf '%s  %s %s\n\n' "${R}x${N}" "${D}expected:${N}" "${Y}${ans}${N}"
+        ((_S_ANSWERED++)); _S_STREAK=0; _wrong_show; _egg_check wrong "$input"
         explain "$ans"
         streak=0; _sset "$prompt" "$((tier>0?tier-1:0))"; read -rsp "${D}Press Enter to continue...${N}"
       fi
@@ -3692,16 +3651,12 @@ run() {
         ((_S_STREAK > _S_BEST_STREAK)) && _S_BEST_STREAK=$_S_STREAK
         printf '%s\n' "${G}${B}+${N}"
       else
-        _S_STREAK=0; _wrong_feedback
-        _sset "$prompt" "$((_boss_tier>0?_boss_tier-1:0))"
-        printf '%s  %s %s\n\n' "${R}x${N}" "${D}expected:${N}" "${Y}${ans}${N}"
+        _S_STREAK=0; _sset "$prompt" "$((_boss_tier>0?_boss_tier-1:0))"; _wrong_show
         explain "$ans"
       fi
     else
-      ((_S_ANSWERED++)); _S_STREAK=0; _wrong_feedback
-      _sset "$prompt" "$((_boss_tier>0?_boss_tier-1:0))"
-      printf '\n%s  %s %s\n\n' "${R}${B}TIME'S UP${N}" "${D}expected:${N}" "${Y}${ans}${N}"
-      explain "$ans"
+      ((_S_ANSWERED++)); _S_STREAK=0; _sset "$prompt" "$((_boss_tier>0?_boss_tier-1:0))"; _wrong_feedback
+      printf '\n%s  %s %s\n\n' "${R}${B}TIME'S UP${N}" "${D}expected:${N}" "${Y}${ans}${N}"; explain "$ans"
     fi
     read -rsp "${D}Press Enter to continue...${N}"
   done
@@ -3758,9 +3713,7 @@ _post_root_check() {
 gauntlet() {
   _post_root_check
   _session_init
-  printf '\e[2J\e[H'
-  printf '%s\n' "${R}${B}═══ GAUNTLET ═══${N}"
-  printf '%s\n' "${D}3 lives. Questions escalate. How far can you go?${N}"
+  printf '\e[2J\e[H%s\n%s\n' "${R}${B}═══ GAUNTLET ═══${N}" "${D}3 lives. Questions escalate. How far can you go?${N}"
   ((BEST_GAUNTLET > 0)) && printf '%s\n' "${D}Personal best: ${Y}${BEST_GAUNTLET}${N}"
   printf '\n'; read -rsn1 -p "${D}Press Enter to continue...${N}"; echo
 
@@ -3775,7 +3728,6 @@ gauntlet() {
     ((${#q_arr[@]} == 0)) && break
     local q_idx=$((RANDOM % ${#q_arr[@]}))
     _qparse "${q_arr[$q_idx]}"; local prompt=$_qprompt ans=$_qans
-
 
     local hearts=""; for ((h=0;h<lives;h++)); do hearts+="${R}♥${N} "; done
     _REDRAW_HDR() {
@@ -3795,10 +3747,7 @@ gauntlet() {
       ((streak % 5 == 0 && difficulty <= MAX_LEVEL)) && ((++difficulty))
       printf '\n%s\n' "${G}${B}+${N} +1"
     else
-      _wrong_feedback
-      _egg_check wrong "$input"
-      [[ -n "$_SANDBOX_OUTPUT" ]] && printf '\n%s %s\n' "${D}output:${N}" "$_SANDBOX_OUTPUT"
-      printf '%s  %s %s\n\n' "${R}x${N}" "${D}expected:${N}" "${Y}${ans}${N}"
+      _wrong_show; _egg_check wrong "$input"
       ((lives--)); streak=0
     fi
     read -rsp "${D}Press Enter to continue...${N}"
@@ -3822,9 +3771,7 @@ timed() {
   _session_init
   local duration=${1:-120}
   case "$duration" in 60|120|300) ;; *) printf '%s\n' "${R}Invalid time. Use 60, 120, or 300.${N}"; exit 1;; esac
-  printf '\e[2J\e[H'
-  printf '%s\n' "${Y}${B}═══ TIMED MODE ═══${N}"
-  printf '%s\n' "${D}${duration}s on the clock. Answer fast.${N}"
+  printf '\e[2J\e[H%s\n%s\n' "${Y}${B}═══ TIMED MODE ═══${N}" "${D}${duration}s on the clock. Answer fast.${N}"
   ((BEST_TIMED > 0)) && printf '%s\n' "${D}Personal best: ${Y}${BEST_TIMED}${N}"
   printf '\n'; read -rsn1 -p "${D}Press Enter to continue...${N}"; echo
 
@@ -3846,7 +3793,6 @@ timed() {
     ((${#q_arr[@]} == 0)) && continue
     local q_idx=$((RANDOM % ${#q_arr[@]}))
     _qparse "${q_arr[$q_idx]}"; local prompt=$_qprompt ans=$_qans
-
 
     _REDRAW_HDR() {
       local _now; printf -v _now '%(%s)T' -1; local _rem=$((end_t - _now))
@@ -3872,9 +3818,7 @@ timed() {
       ((++score))
       printf '\n%s\n' "${G}${B}+${N} +1"
     else
-      _wrong_feedback
-      [[ -n "$_SANDBOX_OUTPUT" ]] && printf '\n%s %s\n' "${D}output:${N}" "$_SANDBOX_OUTPUT"
-      printf '%s  %s %s\n' "${R}x${N}" "${D}expected:${N}" "${Y}${ans}${N}"
+      _wrong_show
     fi
     read -rsn1 -t 0.3 || true
   done
@@ -3896,19 +3840,9 @@ review() {
   _session_init
   _mode_init rev
   # Find weak levels: mastery < 80%
-  local -A lv_total lv_mastered
-  local has_tagged=0
-  for k in "${!_sc[@]}"; do
-    local _val="${_sc[$k]}" _tier _lvtag
-    _tier="${_val%%|*}"
-    [[ "$_val" == *"|"* ]] && { _lvtag="${_val#*|}"; has_tagged=1; } || _lvtag=""
-    [[ -n "$_lvtag" ]] && {
-      lv_total[$_lvtag]=$(( ${lv_total[$_lvtag]:-0} + 1 ))
-      [[ "$_tier" != "0" && "$_tier" != "1" ]] && lv_mastered[$_lvtag]=$(( ${lv_mastered[$_lvtag]:-0} + 1 ))
-    }
-  done
+  local -A lv_total lv_mastered; _calc_mastery _sc
   local weak=()
-  if ((has_tagged)); then
+  if ((_cm_tagged)); then
     for lv in $(seq 1 $((BOSS_BEATEN < 1 ? 1 : BOSS_BEATEN))); do
       local lt=${lv_total[$lv]:-0} lm=${lv_mastered[$lv]:-0}
       ((lt > 0)) && { local pct=$((lm * 100 / lt)); ((pct < 80)) && weak+=("$lv"); }
@@ -3962,10 +3896,7 @@ review() {
         printf '\n%s\n' "${G}${B}+${N}"
         read -rsp "${D}Press Enter to continue...${N}"; ((++qi)); break
       else
-        ((_S_ANSWERED++)); _S_STREAK=0; _wrong_feedback
-        [[ -n "$_SANDBOX_OUTPUT" ]] && printf '\n%s %s\n' "${D}output:${N}" "$_SANDBOX_OUTPUT"
-        printf '%s  %s %s\n\n' "${R}x${N}" "${D}expected:${N}" "${Y}${ans}${N}"
-        explain "$ans"
+        ((_S_ANSWERED++)); _S_STREAK=0; _wrong_show; explain "$ans"
         streak=0; _sset "$prompt" "$((tier>0?tier-1:0))"; read -rsp "${D}Press Enter to continue...${N}"
       fi
       _sget "$prompt"; tier=$REPLY; _REDRAW_HDR
@@ -4059,10 +3990,7 @@ scenario() {
         read -rsp "${D}Press Enter to continue...${N}"
         break
       else
-        ((_S_ANSWERED++)); _S_STREAK=0; _wrong_feedback
-        _egg_check wrong "$input"
-        [[ -n "$_SANDBOX_OUTPUT" ]] && printf '\n%s %s\n' "${D}output:${N}" "$_SANDBOX_OUTPUT"
-        printf '%s  %s %s\n\n' "${R}x${N}" "${D}expected:${N}" "${Y}${ans}${N}"
+        ((_S_ANSWERED++)); _S_STREAK=0; _wrong_show; _egg_check wrong "$input"
         explain "$ans"
         # Restore sandbox to pre-step state so retry starts clean
         chmod -R u+rwX "$SANDBOX_DIR" 2>/dev/null
