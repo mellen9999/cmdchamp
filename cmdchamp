@@ -1278,18 +1278,18 @@ gen_level2() {
   num=$((RANDOM % 100 + 1))
 
   # Output redirection: > overwrites, >> appends (mixed to teach the difference)
-  questions+=("Write '${word}' to ${W}${txt}${C} - overwrite (use ${Y}>${C})|echo ${word} > ${txt}|#state:contains:${txt}:${word},lines:${txt}:1")
-  questions+=("Append '${word2}' to ${W}${log}${C} - add to end (use ${Y}>>${C})|echo ${word2} >> ${log}|#state:contains:${log}:${word2},contains:${log}:[")
-  questions+=("Save ls to ${W}${outfile}${C} - overwrite (use ${Y}>${C})|ls > ${outfile}")
-  questions+=("Append timestamp to ${W}${log}${C} (use ${Y}>>${C})|date >> ${log}")
-  questions+=("Save whoami to ${W}${outfile}${C} - overwrite (use ${Y}>${C})|whoami > ${outfile}")
-  questions+=("Append hostname to ${W}${log}${C} (use ${Y}>>${C})|hostname >> ${log}")
+  questions+=("Write '${word}' to ${W}${txt}${C}, overwriting it|echo ${word} > ${txt}|#state:contains:${txt}:${word},lines:${txt}:1")
+  questions+=("Append '${word2}' to the end of ${W}${log}${C}|echo ${word2} >> ${log}|#state:contains:${log}:${word2},contains:${log}:[")
+  questions+=("Save ls output to ${W}${outfile}${C}, overwriting it|ls > ${outfile}")
+  questions+=("Append a timestamp to ${W}${log}${C}|date >> ${log}")
+  questions+=("Save whoami output to ${W}${outfile}${C}, overwriting it|whoami > ${outfile}")
+  questions+=("Append hostname to ${W}${log}${C}|hostname >> ${log}")
   questions+=("Create empty file ${W}${outfile2}${C}|touch ${outfile2}|#state:exists:${outfile2}")
 
   # tee - write to file AND stdout
-  questions+=("Echo '${word}' to screen AND save to ${W}${txt}${C} (use ${Y}tee${C})§echo ${word} | tee ${txt}§#output:${word}")
-  questions+=("Echo '${word2}' and append to ${W}${log}${C} (use ${Y}tee${C}, append mode)§echo ${word2} | tee -a ${log}§#output:${word2}")
-  questions+=("Run ls, show output AND save to ${W}${outfile}${C} (use ${Y}tee${C})§ls | tee ${outfile}§#state:contains:${outfile}:server.log")
+  questions+=("Echo '${word}' to screen AND save to ${W}${txt}${C}§echo ${word} | tee ${txt}§#output:${word}")
+  questions+=("Echo '${word2}' to screen AND append to ${W}${log}${C}§echo ${word2} | tee -a ${log}§#output:${word2}")
+  questions+=("Run ls, show output AND save to ${W}${outfile}${C}§ls | tee ${outfile}§#state:contains:${outfile}:server.log")
 
   printf '%s\n' "${questions[@]}"
 }
@@ -1319,7 +1319,7 @@ gen_level3() {
 
   # less - scrollable file viewer
   questions+=("Page through ${W}${log}${C} interactively|less ${log}|#text:")
-  questions+=("View ${W}${txt}${C} with line numbers in a pager (use ${Y}less${C})|less -N ${txt}|#text:")
+  questions+=("View ${W}${txt}${C} with line numbers in a pager|less -N ${txt}|#text:")
 
   printf '%s\n' "${questions[@]}"
 }
@@ -1392,12 +1392,12 @@ gen_level5() {
   _fpick SANDBOX_TXTS; txt=$REPLY
   _fpick SANDBOX_CSVS; csv=$REPLY; _fpick SANDBOX_LOGS; log=$REPLY
 
-  questions+=("Count lines in ${W}${csv}${C} without filename in output (use ${Y}<${C})|wc -l < ${csv}")
-  questions+=("Count words in ${W}${txt}${C} — just the number, no filename (use ${Y}<${C})|wc -w < ${txt}")
+  questions+=("Count lines in ${W}${csv}${C} — just the number, no filename|wc -l < ${csv}")
+  questions+=("Count words in ${W}${txt}${C} — just the number, no filename|wc -w < ${txt}")
   local _tr_up; case "$txt" in notes.txt) _tr_up="MEETING" ;; todo.txt) _tr_up="TASK" ;; *) _tr_up="[A-Z]" ;; esac
-  questions+=("Uppercase contents of ${W}${txt}${C} (${Y}tr${C} needs ${Y}<${C}, no file arg)|tr a-z A-Z < ${txt}|#output:~${_tr_up}")
-  questions+=("Squeeze consecutive blank lines in ${W}${log}${C} (${Y}tr${C} needs ${Y}<${C})|tr -s '\\n' < ${log}")
-  questions+=("Sort ${W}${csv}${C} without filename in output (use ${Y}<${C})|sort < ${csv}")
+  questions+=("Uppercase contents of ${W}${txt}${C} using tr|tr a-z A-Z < ${txt}|#output:~${_tr_up}")
+  questions+=("Squeeze consecutive blank lines in ${W}${log}${C} using tr|tr -s '\\n' < ${log}")
+  questions+=("Sort ${W}${csv}${C} — just the data, no filename|sort < ${csv}")
 
   printf '%s\n' "${questions[@]}"
 }
@@ -1410,12 +1410,12 @@ gen_level6() {
 
   local num1=$((RANDOM % 50 + 10)) num2=$((RANDOM % 20 + 5))
 
-  questions+=("Uppercase ${Y}'${word}'${C} (use ${Y}<<<${C})|tr a-z A-Z <<< '${word}'|tr a-z A-Z <<< ${word}|#output:${word^^}")
-  questions+=("Lowercase ${Y}'${word2^^}'${C} (use ${Y}<<<${C})|tr A-Z a-z <<< '${word2^^}'|tr A-Z a-z <<< ${word2^^}|#output:${word2}")
+  questions+=("Uppercase the string ${Y}'${word}'${C} directly|tr a-z A-Z <<< '${word}'|tr a-z A-Z <<< ${word}|#output:${word^^}")
+  questions+=("Lowercase the string ${Y}'${word2^^}'${C} directly|tr A-Z a-z <<< '${word2^^}'|tr A-Z a-z <<< ${word2^^}|#output:${word2}")
   local _rw="" _rw2="" _i; for ((_i=${#word}-1;_i>=0;_i--)); do _rw+="${word:_i:1}"; done
   for ((_i=${#word2}-1;_i>=0;_i--)); do _rw2+="${word2:_i:1}"; done
-  questions+=("Reverse ${Y}'${word}'${C} (use ${Y}<<<${C})|rev <<< '${word}'|rev <<< ${word}|#output:~${_rw}")
-  questions+=("Reverse ${Y}'${word2}'${C} (use ${Y}<<<${C})|rev <<< '${word2}'|rev <<< ${word2}|#output:~${_rw2}")
+  questions+=("Reverse the string ${Y}'${word}'${C}|rev <<< '${word}'|rev <<< ${word}|#output:~${_rw}")
+  questions+=("Reverse the string ${Y}'${word2}'${C}|rev <<< '${word2}'|rev <<< ${word2}|#output:~${_rw2}")
 
   command -v bc &>/dev/null && questions+=("Calculate ${Y}${num1}+${num2}${C} with bc|bc <<< '${num1}+${num2}'|bc <<< ${num1}+${num2}|#output:~$((num1+num2))")
 
@@ -1423,7 +1423,7 @@ gen_level6() {
   questions+=("Get username from ${Y}'john:x:1000:1000:John:/home/john:/bin/bash'${C}|cut -d: -f1 <<< 'john:x:1000:1000:John:/home/john:/bin/bash'|#output:~john")
 
   questions+=("Count words in ${Y}'${word} ${word2} test'${C}|wc -w <<< '${word} ${word2} test'|#output:~^\\s*3$")
-  questions+=("Count bytes in ${Y}'${word}'${C} (use ${Y}wc${C})|wc -c <<< '${word}'|wc -c <<< ${word}|#output:~^\\s*$((${#word}+1))$")
+  questions+=("Count bytes in the string ${Y}'${word}'${C}|wc -c <<< '${word}'|wc -c <<< ${word}|#output:~^\\s*$((${#word}+1))$")
 
   questions+=("Replace spaces with underscores in ${Y}'hello world test'${C}|tr ' ' '_' <<< 'hello world test'|#output:~hello_world_test")
   questions+=("Delete digits from ${Y}'abc123def456'${C}|tr -d '0-9' <<< 'abc123def456'|#output:~abcdef")
@@ -1445,16 +1445,16 @@ gen_level7() {
   _fphrase removed.txt gone.log lost.dat missing.cfg; missing2=$REPLY
 
   # 2> = stderr to file
-  questions+=("Save stderr from ${W}./${script}${C} to ${W}${errfile}${C} (use ${Y}2>${C})|./${script} 2> ${errfile}")
-  questions+=("${Y}cat${C} ${W}${missing}${C}, save error to ${W}${errfile}${C} (use ${Y}2>${C})|cat ${missing} 2> ${errfile}|~^cat [^ ]+ 2> ?${errfile}$")
+  questions+=("Save stderr from ${W}./${script}${C} to ${W}${errfile}${C}|./${script} 2> ${errfile}")
+  questions+=("${Y}cat${C} ${W}${missing}${C}, redirect the error to ${W}${errfile}${C}|cat ${missing} 2> ${errfile}|~^cat [^ ]+ 2> ?${errfile}$")
 
   # 2> /dev/null = hide errors
-  questions+=("Find ${Y}*.${ext}${C} files, hide errors (use ${Y}2> /dev/null${C})|find . -name '*.${ext}' 2> /dev/null")
-  questions+=("Run ${W}./${script}${C} but hide errors (use ${Y}2> /dev/null${C})|./${script} 2> /dev/null")
+  questions+=("Find ${Y}*.${ext}${C} files, suppress any errors|find . -name '*.${ext}' 2> /dev/null")
+  questions+=("Run ${W}./${script}${C}, discard any errors|./${script} 2> /dev/null")
 
   # &> = both stdout+stderr
-  questions+=("Capture stdout+stderr from ${W}./${script}${C} to ${W}${outfile}${C} (use ${Y}&>${C})|./${script} &> ${outfile}|./${script} > ${outfile} 2>&1")
-  questions+=("Run ${W}./${script}${C} completely silently (use ${Y}&> /dev/null${C})|./${script} &> /dev/null|./${script} > /dev/null 2>&1")
+  questions+=("Capture ALL output from ${W}./${script}${C} to ${W}${outfile}${C} (stdout and stderr)|./${script} &> ${outfile}|./${script} > ${outfile} 2>&1")
+  questions+=("Run ${W}./${script}${C} completely silently — no output at all|./${script} &> /dev/null|./${script} > /dev/null 2>&1")
 
   # 2>&1 = merge stderr into stdout
   questions+=("Run ${W}./${script}${C}, search ALL output for 'error'§./${script} 2>&1 | grep -i error§~^\\./[^ ]+ 2>&1 \\| grep -i")
@@ -1488,12 +1488,12 @@ gen_level8() {
   _fphrase src data logs backup temp config test; local sdir=$REPLY
 
   # === PURE: Just && and || basics ===
-  questions+=("Create ${W}${dir}${C} and cd into it (use ${Y}&&${C})|mkdir ${dir} && cd ${dir}")
-  questions+=("Create ${W}${dir}${C} or echo '${msg}' if fails (use ${Y}||${C})§mkdir ${dir} || echo '${msg}'")
-  questions+=("Try cd to ${W}${dir}${C}, create if it doesn't exist§cd ${dir} || mkdir ${dir}")
+  questions+=("Create ${W}${dir}${C} and cd into it, only if mkdir succeeds|mkdir ${dir} && cd ${dir}")
+  questions+=("Create ${W}${dir}${C}, or echo '${msg}' if it fails§mkdir ${dir} || echo '${msg}'")
+  questions+=("Try cd to ${W}${dir}${C}, create it if that fails§cd ${dir} || mkdir ${dir}")
 
   # === COMPOUND: Uses cat (L3), head (L3), tail (L3) ===
-  questions+=("If ${W}${txt}${C} exists, display it (use ${Y}&&${C})|test -f ${txt} && cat ${txt}|[[ -f ${txt} ]] && cat ${txt}")
+  questions+=("If ${W}${txt}${C} exists, display it — one line|test -f ${txt} && cat ${txt}|[[ -f ${txt} ]] && cat ${txt}")
   questions+=("If ${W}${log}${C} exists, show first ${n} lines|test -f ${log} && head -${n} ${log}|[[ -f ${log} ]] && head -${n} ${log}")
   questions+=("If ${W}${txt}${C} exists cat it, else echo '${msg}'§test -f ${txt} && cat ${txt} || echo '${msg}'§[[ -f ${txt} ]] && cat ${txt} || echo '${msg}'")
 
@@ -1521,7 +1521,7 @@ gen_level8() {
   questions+=("Search ${Y}${term}${C} in ${W}${log}${C}, save matches or echo 'none'§grep ${term} ${log} > matches.txt || echo 'none'")
 
   # === Semicolon: run commands sequentially regardless of exit status ===
-  questions+=("Run pwd, ls, date in sequence (use ${Y};${C})|pwd ; ls ; date")
+  questions+=("Run pwd, ls, date one after another regardless of errors|pwd ; ls ; date")
 
   printf '%s\n' "${questions[@]}"
 }
@@ -1541,8 +1541,8 @@ gen_level9() {
   # === PURE: Just variables and substitution basics ===
   questions+=("Store '${val}' in variable ${var}|${var}=${val}|${var}='${val}'|${var}=\"${val}\"")
   questions+=("$(_phrase "Print" "Echo" "Show") variable \$${var}|echo \$${var}")
-  questions+=("Store date output in ${var2} (use ${Y}\$()${C})|${var2}=\$(date)")
-  questions+=("Store hostname in variable (use ${Y}\$()${C})|${var}=\$(hostname)")
+  questions+=("Capture date output into ${var2}|${var2}=\$(date)")
+  questions+=("Capture hostname output into ${var}|${var}=\$(hostname)")
   questions+=("Print length of \$${var}|echo \${#${var}}")
   questions+=("Print \$${var} or 'default' if empty|echo \${${var}:-default}")
 
@@ -1581,7 +1581,7 @@ gen_level9() {
   # === export and unset ===
   questions+=("Export ${var} for child processes|export ${var}|export ${var}=${val}")
   questions+=("Set and export ${var2} in one command|export ${var2}='${val2}'")
-  questions+=("Remove variable ${var} (use ${Y}unset${C})|unset ${var}")
+  questions+=("Remove variable ${var} from the environment|unset ${var}")
   questions+=("Show all exported variables|export|env|printenv")
 
   printf '%s\n' "${questions[@]}"
@@ -1595,9 +1595,9 @@ gen_level10() {
   _fphrase ERROR WARN INFO; local term=$REPLY
 
   # === PURE: Special variables basics ===
-  questions+=("Print current shell PID (use ${Y}\$\$${C})|echo \$\$")
-  questions+=("Print exit status of last command (use ${Y}\$?${C})|echo \$?")
-  questions+=("Print random number (use ${Y}\$RANDOM${C})|echo \$RANDOM")
+  questions+=("Print the current shell's PID|echo \$\$")
+  questions+=("Print the exit status of the last command|echo \$?")
+  questions+=("Print a random number|echo \$RANDOM")
   questions+=("Show user and hostname together|echo \"\$USER@\$HOSTNAME\"")
 
   # === PURE: Script-context variables ===
@@ -1636,8 +1636,8 @@ gen_level11() {
   _fphrase ERROR WARN INFO; term=$REPLY
 
   # === PURE: Just & and job control basics ===
-  questions+=("Run sleep ${n} in background (use ${Y}&${C})|sleep ${n} &")
-  questions+=("Run ${W}${script}${C} in background (use ${Y}&${C})|./${script} &")
+  questions+=("Run sleep ${n} in the background|sleep ${n} &")
+  questions+=("Run ${W}${script}${C} in the background|./${script} &")
   questions+=("$(_phrase "List" "Show" "View") background jobs|jobs")
   questions+=("Bring job ${n2} to foreground|fg %${n2}")
   questions+=("$(_phrase "Send" "Move" "Put") job ${n2} to background|bg %${n2}")
@@ -1813,7 +1813,7 @@ gen_level14() {
   # Network diagnostics
   questions+=("Ping ${ip} 5 times|ping -c 5 ${ip}")
   questions+=("Ping ${ip} continuously|ping ${ip}")
-  questions+=("Trace route to ${ip} (use ${Y}traceroute${C})|traceroute ${ip}|tracepath ${ip}")
+  questions+=("Trace the network path to ${ip}|traceroute ${ip}|tracepath ${ip}")
   questions+=("DNS lookup for ${host}|dig ${host}|nslookup ${host}|host ${host}")
   questions+=("Reverse DNS lookup for ${ip}|dig -x ${ip}|host ${ip}")
   questions+=("Check if port ${port} is open on ${ip}|nc -zv ${ip} ${port}")
@@ -3229,6 +3229,19 @@ generate_level() {
 # Normalize flags: -la == -al == -a -l (REPLY pattern, no fork)
 _fnorm() {
   [[ -z "$1" ]] && { REPLY=""; return; }
+  # Handle pipes: normalize each segment independently
+  if [[ "$1" == *'|'* ]]; then
+    local _segs _s _r=""
+    IFS='|' read -ra _segs <<< "$1"
+    for _s in "${_segs[@]}"; do
+      _s="${_s#"${_s%%[![:space:]]*}"}"; _s="${_s%"${_s##*[![:space:]]}"}"
+      [[ -z "$_s" ]] && continue
+      _fnorm "$_s"
+      [[ -n "$_r" ]] && _r+=" | "
+      _r+="$REPLY"
+    done
+    REPLY="$_r"; return
+  fi
   local parts flags=() args=() p
   read -ra parts <<< "$1"; REPLY="${parts[0]}"
   for p in "${parts[@]:1}"; do
@@ -3236,6 +3249,16 @@ _fnorm() {
       [[ "$p" =~ ^-[a-zA-Z]+$ && ${#p} -gt 2 ]] && { for ((j=1;j<${#p};j++)); do flags+=("-${p:j:1}"); done; } || flags+=("$p")
     else args+=("$p"); fi
   done
+  # Normalize head/tail: -N → -n N
+  if [[ "$REPLY" == head || "$REPLY" == tail ]]; then
+    local _nf=() _f
+    for _f in "${flags[@]}"; do
+      if [[ "$_f" =~ ^-([0-9]+)$ ]]; then
+        _nf+=("-n"); args=("${BASH_REMATCH[1]}" "${args[@]}")
+      else _nf+=("$_f"); fi
+    done
+    flags=("${_nf[@]}")
+  fi
   local i j tmp
   for ((i=1; i<${#flags[@]}; i++)); do
     tmp="${flags[$i]}"
