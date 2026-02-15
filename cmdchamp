@@ -3,9 +3,12 @@
 set -uo pipefail
 [[ ${BASH_VERSINFO[0]:-0} -lt 4 || (${BASH_VERSINFO[0]} -eq 4 && ${BASH_VERSINFO[1]:-0} -lt 3) ]] && { echo "Requires bash 4.3+"; exit 1; }
 _tty() { [[ -t 0 ]] || { echo "Error: requires interactive terminal" >&2; exit 1; }; }
-for _dep in awk; do command -v "$_dep" &>/dev/null || { echo "Error: $_dep not found" >&2; exit 1; }; done
+command -v awk &>/dev/null || { echo "Error: awk not found" >&2; exit 1; }
 
 DATA="${XDG_DATA_HOME:-$HOME/.local/share}/cmdchamp"; mkdir -p "$DATA"; touch "$DATA/scores"
+
+# Colors (defined early so _first_run/_intro can use them)
+R=$'\e[31m' G=$'\e[32m' Y=$'\e[33m' C=$'\e[36m' W=$'\e[97m' D=$'\e[2m' B=$'\e[1m' N=$'\e[0m'
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # CONSTANTS
@@ -61,7 +64,7 @@ _load_profile() {
 }
 
 _save_profile() {
-  printf 'PLAYER_NAME=%q\nBOSS_BEATEN=%d\nBEST_GAUNTLET=%d\nBEST_TIMED=%d\nEGGS_FOUND=%q\nSC_DONE=%q\nPROFILE_VER=%d\n' \
+  printf 'PLAYER_NAME=%q\nBOSS_BEATEN=%d\nBEST_GAUNTLET=%d\nBEST_TIMED=%d\nEGGS_FOUND=%s\nSC_DONE=%s\nPROFILE_VER=%d\n' \
     "$PLAYER_NAME" "$BOSS_BEATEN" "$BEST_GAUNTLET" "$BEST_TIMED" "$EGGS_FOUND" "$SC_DONE" "$_PROFILE_VER" > "$DATA/profile"
 }
 
@@ -81,7 +84,7 @@ _first_run() {
 EOF
   echo
   read -rp "    Enter your handle: " PLAYER_NAME
-  PLAYER_NAME="${PLAYER_NAME//$'\e'*/}"          # strip ANSI escapes
+  while [[ "$PLAYER_NAME" == *$'\e'* ]]; do PLAYER_NAME="${PLAYER_NAME//$'\e'[^a-zA-Z]*[a-zA-Z]/}"; PLAYER_NAME="${PLAYER_NAME//$'\e'/}"; done  # strip ANSI escapes
   PLAYER_NAME="${PLAYER_NAME//$'\n'/}"            # strip newlines
   PLAYER_NAME="${PLAYER_NAME//$'\r'/}"            # strip carriage returns
   PLAYER_NAME="${PLAYER_NAME:0:20}"              # truncate to 20 chars
@@ -592,7 +595,7 @@ _sandbox_exec() {
 
   local _rc
   timeout "$timeout_sec" bwrap "${bwrap_args[@]}" /bin/bash -c "$cmd"; _rc=$?
-  ((_rc >= 125)) && printf "${R}sandbox error (exit %d)${N}\n" "$_rc" >&2
+  ((_rc >= 125)) && printf '%s\n' "${R}sandbox error (exit ${_rc})${N}" >&2
   return "$_rc"
 }
 
@@ -601,7 +604,7 @@ _SANDBOX_DESTRUCTIVE=0
 _is_destructive() {
   local cmd="$1"
   # File-modifying commands
-  [[ "$cmd" =~ (^|[[:space:]])(rm|mv|cp|dd|truncate|shred|unlink|tee|chmod|chown|mkfs|fdisk|parted|install|split|patch|ln)[[:space:]] ]] && return 0
+  [[ "$cmd" =~ (^|[[:space:];&|])(rm|mv|cp|dd|truncate|shred|unlink|tee|chmod|chown|mkfs|fdisk|parted|install|split|patch|ln)[[:space:]] ]] && return 0
   # Output redirection
   [[ "$cmd" =~ ([[:space:]]|[0-9&])(\>\>|\>) ]] && return 0
   # In-place sed
@@ -694,7 +697,6 @@ _sandbox_check_state() {
 _stty_saved="" _interactive=0
 _cleanup() { ((_interactive)) && { printf '\e[?25h'; [[ -n "$_stty_saved" ]] && stty "$_stty_saved" 2>/dev/null; echo; }; }
 trap '_cleanup; exit 0' INT TERM HUP EXIT
-R=$'\e[31m' G=$'\e[32m' Y=$'\e[33m' C=$'\e[36m' W=$'\e[97m' D=$'\e[2m' B=$'\e[1m' N=$'\e[0m'
 PROMPT_CHAR="${CMD_PROMPT:-$([[ $EUID -eq 0 ]] && echo '# ' || echo '$ ')}"
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -1106,7 +1108,7 @@ _exp_line() {
   local pad=$((8 - ${#tok})); ((pad < 0)) && pad=0
   local sp; printf -v sp '%*s' "$pad" ''
   if [[ "$exp" == *:* ]]; then
-    printf '  %s%s %s  %s%s %s\n' "${tcol}${tok}${N}" "$sp" "${D}->${N}" "${Y}${exp%%:*}${D}:${N}" "${W}${exp#*: }${N}" ""
+    printf '  %s%s %s  %s%s\n' "${tcol}${tok}${N}" "$sp" "${D}->${N}" "${Y}${exp%%:*}${D}:${N}" "${W}${exp#*: }${N}"
   else
     printf '  %s%s %s  %s\n' "${tcol}${tok}${N}" "$sp" "${D}->${N}" "${W}${exp}${N}"
   fi
@@ -1131,7 +1133,7 @@ explain() {
   local _mc=0 _ml=0
   for tok in "${cmds[@]}"; do
     if [[ -n "${MANPAGE[$tok]:-}" ]]; then
-      _mp_show "$tok"; local _l; _l=$(printf '%s' "${MANPAGE[$tok]}" | wc -l); ((_ml += _l + 1))
+      _mp_show "$tok"; local _tmp="${MANPAGE[$tok]}" _l=0; while [[ "$_tmp" == *$'\n'* ]]; do ((_l++)); _tmp="${_tmp#*$'\n'}"; done; ((_ml += _l + 1))
       ((_mc++))
     elif ((${#cmds[@]} > 1)) && [[ -n "${EXP[$tok]:-}" ]]; then
       printf "%s %s\n" "${W}${B}${tok}${N}" "${D}- ${EXP[$tok]}${N}"; ((_ml++)); ((_mc++))
@@ -1185,12 +1187,12 @@ explain() {
 
 # Parse question - handles both | and § delimiters (§ for answers with ||)
 # Also extracts sandbox markers: #output:, #state:, #text:
-_qoutput="" _qstate="" _qtext=0
+# Marker parse order: #text: first, then #state:, then #output: (reverse of appearance order)
 _qparse() {
   local q=$1
   _qoutput="" _qstate="" _qtext=0 _qdelim='|'
 
-  # Extract sandbox markers from end
+  # Extract sandbox markers from end (order matters: strip right-to-left)
   if [[ $q == *"#text:"* ]]; then
     _qtext=1
     q="${q%%#text:*}"
@@ -1215,8 +1217,7 @@ _qparse() {
   fi
 }
 
-# Vi mode: always on (override with CMD_VI=0)
-VI_MODE=${CMD_VI:-1}
+VI_MODE=${CMD_VI:-1}  # always on (override with CMD_VI=0)
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # QUESTION GENERATORS - Dynamic questions with infinite variations
@@ -1491,24 +1492,24 @@ gen_level8() {
   questions+=("Create ${W}${dir}${C} or echo '${msg}' if fails (use ${Y}||${C})§mkdir ${dir} || echo '${msg}'")
   questions+=("Try cd to ${W}${dir}${C}, create if it doesn't exist§cd ${dir} || mkdir ${dir}")
 
-  # === COMPOUND: Uses cat (L2), head (L2), tail (L2) ===
+  # === COMPOUND: Uses cat (L3), head (L3), tail (L3) ===
   questions+=("If ${W}${txt}${C} exists, display it (use ${Y}&&${C})|test -f ${txt} && cat ${txt}|[[ -f ${txt} ]] && cat ${txt}")
   questions+=("If ${W}${log}${C} exists, show first ${n} lines|test -f ${log} && head -${n} ${log}|[[ -f ${log} ]] && head -${n} ${log}")
   questions+=("If ${W}${txt}${C} exists cat it, else echo '${msg}'§test -f ${txt} && cat ${txt} || echo '${msg}'§[[ -f ${txt} ]] && cat ${txt} || echo '${msg}'")
 
-  # === COMPOUND: Uses grep (L3), pipes (L3) ===
+  # === COMPOUND: Uses grep (L3), pipes (L4) ===
   questions+=("If ${W}${log}${C} has ${Y}${term}${C}, show matching lines§grep -q ${term} ${log} && grep ${term} ${log}")
   questions+=("Search ${Y}${term}${C} in ${W}${log}${C}, or echo 'not found'§grep ${term} ${log} || echo 'not found'")
   questions+=("If ${W}${log}${C} contains ${Y}${term}${C}, count the matches§grep -q ${term} ${log} && grep -c ${term} ${log}")
   questions+=("Show ${Y}${term}${C} lines from ${W}${log}${C} if any, else show all§grep ${term} ${log} || cat ${log}")
 
-  # === COMPOUND: Uses redirection (L1, L5) ===
+  # === COMPOUND: Uses redirection (L4, L5) ===
   questions+=("Backup ${W}${cfg}${C} if it exists, then log success|test -f ${cfg} && cp ${cfg} ${cfg}.bak && echo done >> backup.log")
   questions+=("Copy ${W}${txt}${C} to backup and echo '${msg2}'|cp ${txt} ${txt}.bak && echo '${msg2}'")
   questions+=("Run ${W}./${script}${C} silently, echo success or failed§./${script} &>/dev/null && echo success || echo failed")
   questions+=("Run ${W}./${script}${C}, save output or log error§./${script} > output.txt || echo 'failed' >> errors.log")
 
-  # === COMPOUND: Uses ls (L0), test + cat/head combo ===
+  # === COMPOUND: Uses ls (L1), test + cat/head combo ===
   questions+=("If ${W}${sdir}${C} exists, list contents|test -d ${sdir} && ls ${sdir}|[[ -d ${sdir} ]] && ls ${sdir}")
   questions+=("List ${W}${dir}${C} or create it if missing§ls ${dir} || mkdir ${dir}")
   questions+=("Create ${W}${dir}${C} and save listing to files.txt§mkdir -p ${dir} && ls ${dir} > files.txt")
@@ -1552,12 +1553,12 @@ gen_level9() {
   questions+=("Store last line of ${W}${log}${C} in ${var}|${var}=\$(tail -1 ${log})")
   questions+=("Show 'Lines:' with line count of ${W}${txt}${C}§echo \"Lines: \$(wc -l < ${txt})\"")
 
-  # === COMPOUND: Uses grep (L3), pipes (L3) ===
+  # === COMPOUND: Uses grep (L3), pipes (L4) ===
   questions+=("Store count of ${Y}${term}${C} matches in ${W}${log}${C} in ${var2}§${var2}=\$(grep -c ${term} ${log})")
   questions+=("Store first ${Y}${term}${C} line from ${W}${log}${C}§${var}=\$(grep ${term} ${log} | head -1)")
   questions+=("Count unique lines in ${W}${txt}${C} and store in variable§${var2}=\$(sort ${txt} | uniq | wc -l)")
 
-  # === COMPOUND: Uses redirection (L1, L5) ===
+  # === COMPOUND: Uses redirection (L4, L5) ===
   questions+=("Backup ${W}${txt}${C} with date suffix|cp ${txt} ${txt}.\$(date +%Y%m%d)")
   questions+=("Create dir named with today's date|mkdir \$(date +%Y-%m-%d)")
   questions+=("Save grep results, echo count found in ${W}${log}${C}§grep ${term} ${log} > matches.txt && echo \"Found: \$(wc -l < matches.txt)\"")
@@ -1612,7 +1613,7 @@ gen_level10() {
   questions+=("Store exit status before it gets clobbered§status=\$? ; [[ \$status -eq 0 ]] && echo ok")
   questions+=("Test if last command succeeded (exit 0)|[[ \$? -eq 0 ]] && echo success")
 
-  # === COMPOUND: Uses redirection (L1, L5) ===
+  # === COMPOUND: Uses redirection (L4, L5) ===
   questions+=("Log exit status after command in ${W}${log}${C}§grep ${term} ${log} ; echo \$? >> status.log")
   questions+=("Print 'failed' to stderr if command fails§ls /nonexistent 2>/dev/null ; [[ \$? -ne 0 ]] && echo failed >&2")
 
@@ -1643,7 +1644,7 @@ gen_level11() {
   questions+=("Kill job ${n2}|kill %${n2}")
   questions+=("$(_phrase "Wait for" "Wait until") all background jobs finish|wait")
 
-  # === COMPOUND: Uses redirection (L1, L5) ===
+  # === COMPOUND: Uses redirection (L4, L5) ===
   questions+=("Run ${W}${script}${C} in background, save stdout to ${W}${outfile}${C}|./${script} > ${outfile} &")
   questions+=("Run ${W}${script2}${C} in background, capture all output to ${W}${outfile}${C}|./${script2} &> ${outfile} &|./${script2} > ${outfile} 2>&1 &")
   questions+=("Run ${W}${script}${C} in background, stdout to ${W}${outfile}${C}, stderr to ${W}${errfile}${C}|./${script} > ${outfile} 2> ${errfile} &")
@@ -1702,12 +1703,12 @@ gen_level12() {
   questions+=("If ${W}${log}${C} exists, show first ${n3} lines|[[ -f ${log} ]] && head -${n3} ${log}|[[ -f ${log} ]] && head -n ${n3} ${log}")
   questions+=("If ${W}${log}${C} has content, show last ${n3} lines|[[ -s ${log} ]] && tail -${n3} ${log}|[[ -s ${log} ]] && tail -n ${n3} ${log}")
 
-  # === COMPOUND: Uses grep (L3), pipes (L3) ===
+  # === COMPOUND: Uses grep (L3), pipes (L4) ===
   questions+=("If ${W}${log}${C} exists, search for ${Y}${term}${C}|[[ -f ${log} ]] && grep ${term} ${log}")
   questions+=("If ${W}${log}${C} is non-empty, count ${Y}${term}${C} matches|[[ -s ${log} ]] && grep -c ${term} ${log}")
   questions+=("Test if ${W}${log}${C} contains ${Y}${term}${C}§[[ -f ${log} ]] && grep -q ${term} ${log}")
 
-  # === COMPOUND: Uses redirection (L1, L5) ===
+  # === COMPOUND: Uses redirection (L4, L5) ===
   questions+=("If ${W}${txt}${C} is writable, append timestamp|[[ -w ${txt} ]] && date >> ${txt}")
   questions+=("If ${W}${script}${C} is executable, run and log output|[[ -x ${script} ]] && ./${script} > output.log 2>&1")
   questions+=("Test if ${W}${dir}${C} exists, create if not§[[ -d ${dir} ]] || mkdir -p ${dir}")
@@ -1792,7 +1793,7 @@ gen_level13() {
   questions+=("Set exact read-only (r--r--r--) in ${W}${txt}${C}|chmod 444 ${txt}")
   questions+=("Copy permissions from ${cfg} to ${txt}|chmod --reference=${cfg} ${txt}")
 
-  # === COMPOUND: Uses grep (L3), pipes (L3), logic (L6) ===
+  # === COMPOUND: Uses grep (L3), pipes (L4), logic (L6) ===
   questions+=("If ${W}${log}${C} exists, show lines with ${Y}${searchterm}${C}§[[ -f ${log} ]] && grep ${searchterm} ${log}")
   questions+=("Copy ${W}${cfg}${C} to backup and verify§cp ${cfg} ${cfg}.bak && diff ${cfg} ${cfg}.bak")
   questions+=("Create ${W}${dir}${C}, then list its contents|mkdir -p ${dir} && ls -la ${dir}")
@@ -2046,7 +2047,7 @@ gen_level18() {
   eval "local questions=() $_QV"; _ctx
   _fpick PROCS; local proc2=$REPLY; _frnum 1 5; local col2=$REPLY; local col3=$((col % 5 + 1)); _frnum 10 80; local chars=$REPLY; _frnum 1 25; local thresh=$REPLY
   ((col3 < col)) && { local _t=$col; col=$col3; col3=$_t; }  # ensure col <= col3 for ranges
-  ((n > n2)) && { local t=$n; n=$n2; n2=$t; }
+  ((n > n2)) && { local _t2=$n; n=$n2; n2=$_t2; }
 
   # Sorting
   questions+=("Sort ${txt} alphabetically|sort ${txt}")
@@ -2710,7 +2711,7 @@ gen_level26() {
 # Level 27: Hash Cracking
 gen_level27() {
   eval "local questions=() $_QV"; _ctx
-  local hidx=$((RANDOM % ${#HASHCAT_MODES[@]}))
+  _frnum 0 $((${#HASHCAT_MODES[@]} - 1)); local hidx=$REPLY
   local hmode=${HASHCAT_MODES[$hidx]} hname=${HASH_NAMES[$hidx]}
 
   # Hashcat dictionary attacks
@@ -3323,12 +3324,13 @@ _hash() {
 # Flush scores atomically (pure bash, no sed fork)
 _sflush() {
   local _fd; exec {_fd}>"$DATA/scores.lock"; flock -x "$_fd"
-  { printf '#v1\n'; for k in "${!_sc[@]}"; do printf '%s|%s\n' "$k" "${_sc[$k]}"; done; } > "$DATA/scores.tmp"
+  { printf '#v1\n'; local _keys=("${!_sc[@]}"); norm _keys; for k in "${_keys[@]}"; do printf '%s|%s\n' "$k" "${_sc[$k]}"; done; } > "$DATA/scores.tmp"
   mv "$DATA/scores.tmp" "$DATA/scores"
   exec {_fd}>&-
 }
 
 # Populate lv_total/lv_mastered from a scores array (caller must declare them)
+# Sets: _cm_seen, _cm_t1, _cm_t2, _cm_tagged (read by caller via dynamic scope)
 _calc_mastery() {
   local -n _src=$1; _cm_seen=0 _cm_t1=0 _cm_t2=0 _cm_tagged=0
   for k in "${!_src[@]}"; do
@@ -3762,10 +3764,13 @@ gauntlet() {
     if check "$input" "$_qanswers"; then
       [[ -n "$input" ]] && { HIST+=("$input"); HIST_IDX=${#HIST[@]}; HIST_SAVE=""; }
       [[ -n "$_SANDBOX_OUTPUT" ]] && printf '\n%s\n' "${W}${_SANDBOX_OUTPUT}${N}"
+      ((_S_ANSWERED++)); ((_S_CORRECT++)); ((_S_STREAK++))
+      ((_S_STREAK > _S_BEST_STREAK)) && _S_BEST_STREAK=$_S_STREAK
       ((++score)); ((++streak))
       ((streak % 5 == 0 && difficulty <= MAX_LEVEL)) && ((++difficulty))
       printf '\n%s\n' "${G}${B}+${N} +1"
     else
+      ((_S_ANSWERED++)); _S_STREAK=0
       _wrong_show; _egg_check wrong "$input"
       ((lives--)); streak=0
     fi
@@ -3826,17 +3831,20 @@ timed() {
 
     _preq_reset
 
-    # Use read with timeout for time pressure
-    _read_line 0 1
+    # Use read with per-question timeout so clock doesn't run silently
+    _read_line 0 1 "$remain"
     printf -v now_t '%(%s)T' -1
     ((now_t >= end_t)) && break
 
     if check "$input" "$_qanswers"; then
       [[ -n "$input" ]] && { HIST+=("$input"); HIST_IDX=${#HIST[@]}; HIST_SAVE=""; }
       [[ -n "$_SANDBOX_OUTPUT" ]] && printf '\n%s\n' "${W}${_SANDBOX_OUTPUT}${N}"
+      ((_S_ANSWERED++)); ((_S_CORRECT++)); ((_S_STREAK++))
+      ((_S_STREAK > _S_BEST_STREAK)) && _S_BEST_STREAK=$_S_STREAK
       ((++score))
       printf '\n%s\n' "${G}${B}+${N} +1"
     else
+      ((_S_ANSWERED++)); _S_STREAK=0
       _wrong_show
     fi
     read -rsn1 -t 0.3 || true
@@ -3924,7 +3932,6 @@ review() {
   _sflush_if_dirty
   printf '\e[2J\e[H'
   printf '%s\n' "${G}${B}Review complete!${N}"
-  _quit
 }
 
 _sc_menu() {
@@ -4032,8 +4039,10 @@ scenario() {
   echo
 }
 
-# Handle --no-sandbox flag
-[[ "${1:-}" == "--no-sandbox" ]] && { SANDBOX_MODE=0; shift; }
+# Handle --no-sandbox flag (any position)
+_args=()
+for _a in "$@"; do [[ "$_a" == "--no-sandbox" ]] && SANDBOX_MODE=0 || _args+=("$_a"); done
+set -- "${_args[@]+"${_args[@]}"}"
 
 case "${1:-}" in
   [1-9]|[12][0-9]|30)
