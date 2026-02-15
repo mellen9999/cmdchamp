@@ -1236,7 +1236,7 @@ gen_level1() {
 
   # ls variations
   questions+=("$(_phrase "List" "Show") files in current directory|ls|#output:~server.log")
-  questions+=("List $(_phrase "all files" "files") including hidden|ls -a|#output:~\\.\\.")
+  questions+=("List $(_phrase "all files" "files") including hidden|ls -a|ls --all|#output:~\\.\\.")
   questions+=("List files with $(_phrase "details" "permissions" "long format")|ls -l|#output:~^total")
   local _dir_pat; case "$dir" in src) _dir_pat="utils" ;; data) _dir_pat="export" ;; logs) _dir_pat="access" ;; *) _dir_pat="." ;; esac
   questions+=("List files in ${W}${dir}${C} directory|ls ${dir}|#output:~${_dir_pat}")
@@ -1252,11 +1252,11 @@ gen_level1() {
   questions+=("Print: ${Y}${word} ${word} ${word}${C}|echo ${word} ${word} ${word}|#output:${word} ${word} ${word}")
 
   # cd variations
-  questions+=("$(_phrase "Change to" "Go to" "Enter") ${W}${dir}${C} directory|cd ${dir}")
-  questions+=("$(_phrase "Change to" "Go to") ${W}${dir2}${C}|cd ${dir2}")
+  questions+=("$(_phrase "Change to" "Go to" "Enter") ${W}${dir}${C} directory|cd ${dir}|cd ${dir}/")
+  questions+=("$(_phrase "Change to" "Go to") ${W}${dir2}${C}|cd ${dir2}|cd ${dir2}/")
   questions+=("Go to home directory|cd|cd ~|cd ~/|cd \$HOME|cd \$HOME/")
-  questions+=("Go up one directory|cd ..")
-  questions+=("Go up two directories|cd ../..")
+  questions+=("Go up one directory|cd ..|cd ../")
+  questions+=("Go up two directories|cd ../..|cd ../../")
   questions+=("Go to filesystem root (/)|cd /")
 
   # mkdir
@@ -1305,7 +1305,7 @@ gen_level3() {
   # cat - display file (hint base command, user figures out flags)
   local _cat_lc; case "$txt" in notes.txt) _cat_lc=29 ;; todo.txt) _cat_lc=11 ;; *) _cat_lc=1 ;; esac
   questions+=("Display entire ${W}${txt}${C}|cat ${txt}|#output:@${_cat_lc}")
-  questions+=("Display ${W}${cfg}${C} with line numbers|cat -n ${cfg}|#output:~^\\s+1")
+  questions+=("Display ${W}${cfg}${C} with line numbers|cat -n ${cfg}|cat --number ${cfg}|nl ${cfg}|#output:~^\\s+1")
 
   # head - first N lines (user figures out -N flag)
   questions+=("First ${n} lines of ${W}${log}${C}|head -${n} ${log}|head -n ${n} ${log}")
@@ -1318,7 +1318,7 @@ gen_level3() {
   questions+=("Last line only of ${W}${txt}${C}|tail -1 ${txt}|tail -n 1 ${txt}")
 
   # less - scrollable file viewer
-  questions+=("Page through ${W}${log}${C} interactively|less ${log}|#text:")
+  questions+=("Page through ${W}${log}${C} interactively|less ${log}|more ${log}|#text:")
   questions+=("View ${W}${txt}${C} with line numbers in a pager|less -N ${txt}|#text:")
 
   printf '%s\n' "${questions[@]}"
@@ -1376,7 +1376,7 @@ gen_level4() {
   questions+=("Unique sorted lines from ${W}${txt}${C}§sort -u ${txt}§sort --unique ${txt}§sort ${txt} | uniq")
 
   # Combined pipes
-  questions+=("First ${n} ${Y}${term1}${C} matches in ${W}${log}${C}§grep ${term1} ${log} | head -${n}§#output:~${term1}")
+  questions+=("First ${n} ${Y}${term1}${C} matches in ${W}${log}${C}§grep ${term1} ${log} | head -${n}§grep -m ${n} ${term1} ${log}§grep --max-count ${n} ${term1} ${log}§#output:~${term1}")
   questions+=("Last ${n2} ${Y}${term1}${C} lines in ${W}${log}${C}§grep ${term1} ${log} | tail -${n2}§#output:~${term1}")
   questions+=("Count unique lines in ${W}${txt}${C}§sort ${txt} | uniq | wc -l§sort -u ${txt} | wc -l")
   questions+=("Sort ${W}${log}${C} and show first ${n}§sort ${log} | head -${n}")
@@ -1395,7 +1395,7 @@ gen_level5() {
   questions+=("Count lines in ${W}${csv}${C} — just the number, no filename|wc -l < ${csv}|wc --lines < ${csv}")
   questions+=("Count words in ${W}${txt}${C} — just the number, no filename|wc -w < ${txt}|wc --words < ${txt}")
   local _tr_up; case "$txt" in notes.txt) _tr_up="MEETING" ;; todo.txt) _tr_up="TASK" ;; *) _tr_up="[A-Z]" ;; esac
-  questions+=("Uppercase contents of ${W}${txt}${C} using tr|tr a-z A-Z < ${txt}|#output:~${_tr_up}")
+  questions+=("Uppercase contents of ${W}${txt}${C} using tr|tr a-z A-Z < ${txt}|tr '[:lower:]' '[:upper:]' < ${txt}|#output:~${_tr_up}")
   questions+=("Squeeze consecutive blank lines in ${W}${log}${C} using tr|tr -s '\\n' < ${log}")
   questions+=("Sort ${W}${csv}${C} — just the data, no filename|sort < ${csv}")
 
@@ -1410,8 +1410,8 @@ gen_level6() {
 
   local num1=$((RANDOM % 50 + 10)) num2=$((RANDOM % 20 + 5))
 
-  questions+=("Uppercase the string ${Y}'${word}'${C} directly|tr a-z A-Z <<< '${word}'|tr a-z A-Z <<< ${word}|#output:${word^^}")
-  questions+=("Lowercase the string ${Y}'${word2^^}'${C} directly|tr A-Z a-z <<< '${word2^^}'|tr A-Z a-z <<< ${word2^^}|#output:${word2}")
+  questions+=("Uppercase the string ${Y}'${word}'${C} directly|tr a-z A-Z <<< '${word}'|tr a-z A-Z <<< ${word}|tr '[:lower:]' '[:upper:]' <<< '${word}'|tr '[:lower:]' '[:upper:]' <<< ${word}|#output:${word^^}")
+  questions+=("Lowercase the string ${Y}'${word2^^}'${C} directly|tr A-Z a-z <<< '${word2^^}'|tr A-Z a-z <<< ${word2^^}|tr '[:upper:]' '[:lower:]' <<< '${word2^^}'|tr '[:upper:]' '[:lower:]' <<< ${word2^^}|#output:${word2}")
   local _rw="" _rw2="" _i; for ((_i=${#word}-1;_i>=0;_i--)); do _rw+="${word:_i:1}"; done
   for ((_i=${#word2}-1;_i>=0;_i--)); do _rw2+="${word2:_i:1}"; done
   questions+=("Reverse the string ${Y}'${word}'${C}|rev <<< '${word}'|rev <<< ${word}|#output:~${_rw}")
@@ -1426,7 +1426,7 @@ gen_level6() {
   questions+=("Count bytes in the string ${Y}'${word}'${C}|wc -c <<< '${word}'|wc -c <<< ${word}|#output:~^\\s*$((${#word}+1))$")
 
   questions+=("Replace spaces with underscores in ${Y}'hello world test'${C}|tr ' ' '_' <<< 'hello world test'|#output:~hello_world_test")
-  questions+=("Delete digits from ${Y}'abc123def456'${C}|tr -d '0-9' <<< 'abc123def456'|#output:~abcdef")
+  questions+=("Delete digits from ${Y}'abc123def456'${C}|tr -d '0-9' <<< 'abc123def456'|tr --delete '0-9' <<< 'abc123def456'|#output:~abcdef")
 
   printf '%s\n' "${questions[@]}"
 }
@@ -1521,7 +1521,7 @@ gen_level8() {
   questions+=("Search ${Y}${term}${C} in ${W}${log}${C}, save matches or echo 'none'§grep ${term} ${log} > matches.txt || echo 'none'")
 
   # === Semicolon: run commands sequentially regardless of exit status ===
-  questions+=("Run pwd, ls, date one after another regardless of errors|pwd ; ls ; date")
+  questions+=("Run pwd, ls, date one after another regardless of errors|pwd ; ls ; date|~^pwd\\s*;\\s*ls\\s*;\\s*date$")
 
   printf '%s\n' "${questions[@]}"
 }
@@ -1581,8 +1581,8 @@ gen_level9() {
   # === export and unset ===
   questions+=("Export ${var} for child processes|export ${var}|export ${var}=${val}")
   questions+=("Set and export ${var2} in one command|export ${var2}='${val2}'")
-  questions+=("Remove variable ${var} from the environment|unset ${var}")
-  questions+=("Show all exported variables|export|env|printenv")
+  questions+=("Remove variable ${var} from the environment|unset ${var}|unset -v ${var}")
+  questions+=("Show all exported variables|export|env|printenv|declare -x")
 
   printf '%s\n' "${questions[@]}"
 }
@@ -1697,7 +1697,7 @@ gen_level12() {
 
   # === COMPOUND: Uses cat (L2) ===
   questions+=("If ${W}${txt}${C} is readable, display it|[[ -r ${txt} ]] && cat ${txt}|[ -r ${txt} ] && cat ${txt}|test -r ${txt} && cat ${txt}")
-  questions+=("If ${W}${cfg}${C} exists and readable, show with line numbers|[[ -f ${cfg} && -r ${cfg} ]] && cat -n ${cfg}|[ -f ${cfg} ] && [ -r ${cfg} ] && cat -n ${cfg}|test -f ${cfg} && test -r ${cfg} && cat -n ${cfg}")
+  questions+=("If ${W}${cfg}${C} exists and readable, show with line numbers|[[ -f ${cfg} && -r ${cfg} ]] && cat -n ${cfg}|[[ -f ${cfg} ]] && [[ -r ${cfg} ]] && cat -n ${cfg}|[ -f ${cfg} ] && [ -r ${cfg} ] && cat -n ${cfg}|test -f ${cfg} && test -r ${cfg} && cat -n ${cfg}")
 
   # === COMPOUND: Uses head/tail (L2) ===
   questions+=("If ${W}${log}${C} exists, show first ${n3} lines|[[ -f ${log} ]] && head -${n3} ${log}|[[ -f ${log} ]] && head -n ${n3} ${log}|[ -f ${log} ] && head -${n3} ${log}|[ -f ${log} ] && head -n ${n3} ${log}|test -f ${log} && head -${n3} ${log}|test -f ${log} && head -n ${n3} ${log}")
@@ -1720,7 +1720,7 @@ gen_level12() {
 
   # === COMPOUND: Numeric tests with variables (L8) ===
   questions+=("If ${W}${txt}${C} line count > ${n2}, show first ${n3} lines§lines=\$(wc -l < ${txt}); [[ \$lines -gt ${n2} ]] && head -${n3} ${txt}§lines=\$(wc -l < ${txt}); [[ \$lines -gt ${n2} ]] && head -n ${n3} ${txt}§lines=\$(wc -l < ${txt}); [ \$lines -gt ${n2} ] && head -${n3} ${txt}§lines=\$(wc -l < ${txt}); [ \$lines -gt ${n2} ] && head -n ${n3} ${txt}§lines=\$(wc -l < ${txt}); test \$lines -gt ${n2} && head -${n3} ${txt}§lines=\$(wc -l < ${txt}); test \$lines -gt ${n2} && head -n ${n3} ${txt}")
-  questions+=("Test if ${W}${txt}${C} has more than ${n2} words§[[ \$(wc -w < ${txt}) -gt ${n2} ]]§[ \$(wc -w < ${txt}) -gt ${n2} ]")
+  questions+=("Test if ${W}${txt}${C} has more than ${n2} words§[[ \$(wc -w < ${txt}) -gt ${n2} ]]§[ \$(wc -w < ${txt}) -gt ${n2} ]§test \$(wc -w < ${txt}) -gt ${n2}")
 
   # === Combined/advanced tests ===
   questions+=("Test if ${W}${txt}${C} exists AND is readable|[[ -f ${txt} && -r ${txt} ]]|[ -f ${txt} ] && [ -r ${txt} ]|test -f ${txt} && test -r ${txt}")
@@ -1748,14 +1748,14 @@ gen_level13() {
   questions+=("List only directories|ls -d */|eza -D")
   questions+=("Show directory tree|tree|eza -T|eza --tree")
   questions+=("Tree ${n3} levels deep|tree -L ${n3}|eza -T -L ${n3}|eza --tree -L ${n3}")
-  questions+=("Long listing with human sizes|ls -lh|ls -hl|eza -lh")
+  questions+=("Long listing with human sizes|ls -lh|ls -hl|ls -l --human-readable|eza -lh")
   questions+=("List one file per line|ls -1")
-  questions+=("List ${dir}/ recursively|ls -R ${dir}/|eza -R ${dir}/")
+  questions+=("List ${dir}/ recursively|ls -R ${dir}/|ls --recursive ${dir}/|eza -R ${dir}/")
 
   # File operations
-  questions+=("Count lines in ${csv}|wc -l ${csv}|wc -l < ${csv}")
-  questions+=("Count words in ${txt}|wc -w ${txt}")
-  questions+=("Count bytes in ${txt}|wc -c ${txt}")
+  questions+=("Count lines in ${csv}|wc -l ${csv}|wc -l < ${csv}|wc --lines ${csv}|wc --lines < ${csv}")
+  questions+=("Count words in ${txt}|wc -w ${txt}|wc --words ${txt}")
+  questions+=("Count bytes in ${txt}|wc -c ${txt}|wc --bytes ${txt}")
   questions+=("Copy ${cfg} to ${cfg2}|cp ${cfg} ${cfg2}")
   questions+=("Copy ${dir}/ recursively to ${dir2}/|cp -r ${dir}/ ${dir2}/|cp -R ${dir}/ ${dir2}/|cp --recursive ${dir}/ ${dir2}/")
   questions+=("Move ${txt} to ${dir}/|mv ${txt} ${dir}/")
@@ -1774,7 +1774,7 @@ gen_level13() {
   questions+=("List contents of ${gz_archive} without extracting|tar tzf ${gz_archive}|tar -tzf ${gz_archive}|tar tf ${gz_archive}")
 
   # Symlinks
-  questions+=("Create symlink 'link' pointing to ${cfg}|ln -s ${cfg} link")
+  questions+=("Create symlink 'link' pointing to ${cfg}|ln -s ${cfg} link|ln --symbolic ${cfg} link")
   questions+=("Create symlink 'link' to ${cfg} using absolute path|ln -s \$(pwd)/${cfg} link")
   questions+=("$(_phrase "Show" "Display" "Print") where symlink points|readlink link|ls -l link")
   questions+=("Remove symlink (not target)|rm link|unlink link")
@@ -1823,10 +1823,10 @@ gen_level14() {
   questions+=("Show network interfaces|ip addr|ip a|ip addr show")
 
   # System monitoring
-  questions+=("Show disk space usage|df -h")
-  questions+=("Show memory usage|free -h")
+  questions+=("Show disk space usage|df -h|df --human-readable")
+  questions+=("Show memory usage|free -h|free --human")
   questions+=("Show system uptime|uptime")
-  questions+=("Show system info|uname -a")
+  questions+=("Show system info|uname -a|uname --all")
   questions+=("Show CPU info|lscpu|cat /proc/cpuinfo")
   questions+=("Show kernel messages|dmesg|dmesg -T|journalctl -k|journalctl --dmesg|sudo dmesg")
   questions+=("Interactive process viewer|top|htop|btop")
@@ -1843,17 +1843,17 @@ gen_level14() {
   questions+=("List running services|systemctl list-units --type=service --state=running")
   questions+=("Show services that failed to start|systemctl --failed|systemctl list-units --state=failed")
   questions+=("Reload systemd daemon|systemctl daemon-reload|sudo systemctl daemon-reload")
-  questions+=("Show ${svc} logs|journalctl -u ${svc}")
-  questions+=("Follow ${svc} logs|journalctl -fu ${svc}")
-  questions+=("Show logs since boot|journalctl -b")
-  questions+=("Show last 100 log lines|journalctl -n 100")
+  questions+=("Show ${svc} logs|journalctl -u ${svc}|journalctl --unit ${svc}|journalctl --unit=${svc}")
+  questions+=("Follow ${svc} logs|journalctl -fu ${svc}|journalctl --follow -u ${svc}|journalctl --follow --unit ${svc}")
+  questions+=("Show logs since boot|journalctl -b|journalctl --boot")
+  questions+=("Show last 100 log lines|journalctl -n 100|journalctl --lines 100|journalctl --lines=100")
 
   # User/permission management
   questions+=("Run ${script} as root|sudo ${script}")
   questions+=("Switch to root shell|sudo -i|su -|sudo su|sudo -s|sudo bash")
   questions+=("Switch to user ${user}|su - ${user}|sudo su - ${user}")
-  questions+=("Add user ${user}|useradd -m ${user}|sudo useradd -m ${user}|adduser ${user}|sudo adduser ${user}")
-  questions+=("Delete user ${user}|userdel -r ${user}|sudo userdel -r ${user}")
+  questions+=("Add user ${user}|useradd -m ${user}|sudo useradd -m ${user}|useradd --create-home ${user}|sudo useradd --create-home ${user}|adduser ${user}|sudo adduser ${user}")
+  questions+=("Delete user ${user}|userdel -r ${user}|sudo userdel -r ${user}|userdel --remove ${user}|sudo userdel --remove ${user}")
   questions+=("Change password for ${user}|passwd ${user}|sudo passwd ${user}")
   questions+=("Add ${user} to group wheel|usermod -aG wheel ${user}|sudo usermod -aG wheel ${user}|gpasswd -a ${user} wheel|sudo gpasswd -a ${user} wheel")
   questions+=("List groups for ${user}|groups ${user}|id ${user}")
@@ -1936,17 +1936,17 @@ gen_level16() {
   _frnum 1 10; local ctx=$REPLY; _frnum 2 5; local ctx2=$REPLY
 
   # Basic grep - with flag order alternatives
-  questions+=("Search for '${term}' recursively|grep -r ${term}|grep -r ${term} .|rg ${term}|grep -R ${term}|grep -R ${term} .")
-  questions+=("Case-insensitive search for '${term}'|grep -ri ${term}|grep -ir ${term}|rg -i ${term}|grep -Ri ${term}|grep -iR ${term}")
-  questions+=("Search '${term}' with line numbers|grep -rn ${term}|grep -nr ${term}|rg -n ${term}|grep -Rn ${term}|grep -nR ${term}")
-  questions+=("Count '${term}' matches in ${log}|grep -c ${term} ${log}|rg -c ${term} ${log}|grep ${term} ${log} | wc -l")
-  questions+=("Search '${term}' with ${ctx} lines context in ${log}|grep -C ${ctx} ${term} ${log}|rg -C ${ctx} ${term} ${log}")
-  questions+=("Show ${ctx2} lines before each '${term}' match in ${log}|grep -B ${ctx2} ${term} ${log}|rg -B ${ctx2} ${term} ${log}")
-  questions+=("Show ${ctx} lines after each '${term}' match in ${log}|grep -A ${ctx} ${term} ${log}|rg -A ${ctx} ${term} ${log}")
+  questions+=("Search for '${term}' recursively|grep -r ${term}|grep -r ${term} .|grep --recursive ${term}|grep --recursive ${term} .|rg ${term}|grep -R ${term}|grep -R ${term} .")
+  questions+=("Case-insensitive search for '${term}'|grep -ri ${term}|grep -ir ${term}|grep --recursive --ignore-case ${term}|rg -i ${term}|rg --ignore-case ${term}|grep -Ri ${term}|grep -iR ${term}")
+  questions+=("Search '${term}' with line numbers|grep -rn ${term}|grep -nr ${term}|grep --recursive --line-number ${term}|rg -n ${term}|rg --line-number ${term}|grep -Rn ${term}|grep -nR ${term}")
+  questions+=("Count '${term}' matches in ${log}|grep -c ${term} ${log}|grep --count ${term} ${log}|rg -c ${term} ${log}|rg --count ${term} ${log}|grep ${term} ${log} | wc -l")
+  questions+=("Search '${term}' with ${ctx} lines context in ${log}|grep -C ${ctx} ${term} ${log}|grep --context ${ctx} ${term} ${log}|rg -C ${ctx} ${term} ${log}|rg --context ${ctx} ${term} ${log}")
+  questions+=("Show ${ctx2} lines before each '${term}' match in ${log}|grep -B ${ctx2} ${term} ${log}|grep --before-context ${ctx2} ${term} ${log}|rg -B ${ctx2} ${term} ${log}|rg --before-context ${ctx2} ${term} ${log}")
+  questions+=("Show ${ctx} lines after each '${term}' match in ${log}|grep -A ${ctx} ${term} ${log}|grep --after-context ${ctx} ${term} ${log}|rg -A ${ctx} ${term} ${log}|rg --after-context ${ctx} ${term} ${log}")
 
   # Filtering - more variations
-  questions+=("$(_phrase "List" "Show") only filenames containing '${term}'|grep -rl ${term}|grep -lr ${term}|rg -l ${term}|grep -Rl ${term}|grep -lR ${term}")
-  questions+=("Lines WITHOUT '${term}' in ${log}|grep -v ${term} ${log}|rg -v ${term} ${log}")
+  questions+=("$(_phrase "List" "Show") only filenames containing '${term}'|grep -rl ${term}|grep -lr ${term}|grep --recursive --files-with-matches ${term}|rg -l ${term}|rg --files-with-matches ${term}|grep -Rl ${term}|grep -lR ${term}")
+  questions+=("Lines WITHOUT '${term}' in ${log}|grep -v ${term} ${log}|grep --invert-match ${term} ${log}|rg -v ${term} ${log}|rg --invert-match ${term} ${log}")
   questions+=("Search '${term}' in .${ext} files only|grep -r --include='*.${ext}' ${term}|rg -g '*.${ext}' ${term}|grep -R --include='*.${ext}' ${term}")
   questions+=("Search '${term}' in .${ext} and .${ext2} files|grep -r --include='*.${ext}' --include='*.${ext2}' ${term}|rg -g '*.${ext}' -g '*.${ext2}' ${term}|grep -R --include='*.${ext}' --include='*.${ext2}' ${term}")
   questions+=("Search '${term}' excluding .git directory|grep -r --exclude-dir=.git ${term}|rg ${term} -g '!.git'|grep -R --exclude-dir=.git ${term}")
@@ -1965,12 +1965,12 @@ gen_level16() {
   questions+=("Find hex values (0x...) in ${W}${log}${C}|grep -E '0x[0-9a-fA-F]+' ${log}|rg '0x[0-9a-fA-F]+' ${log}")
 
   # Literal search
-  questions+=("Literal search 'func()' (no regex) in ${W}${txt}${C}|grep -F 'func()' ${txt}|rg -F 'func()' ${txt}")
-  questions+=("Search for literal '[ERROR]' in ${log}|grep -F '[ERROR]' ${log}|rg -F '[ERROR]' ${log}")
-  questions+=("Search for literal '\$HOME' in ${txt}|grep -F '\$HOME' ${txt}|rg -F '\$HOME' ${txt}")
+  questions+=("Literal search 'func()' (no regex) in ${W}${txt}${C}|grep -F 'func()' ${txt}|grep --fixed-strings 'func()' ${txt}|rg -F 'func()' ${txt}|rg --fixed-strings 'func()' ${txt}")
+  questions+=("Search for literal '[ERROR]' in ${log}|grep -F '[ERROR]' ${log}|grep --fixed-strings '[ERROR]' ${log}|rg -F '[ERROR]' ${log}|rg --fixed-strings '[ERROR]' ${log}")
+  questions+=("Search for literal '\$HOME' in ${txt}|grep -F '\$HOME' ${txt}|grep --fixed-strings '\$HOME' ${txt}|rg -F '\$HOME' ${txt}|rg --fixed-strings '\$HOME' ${txt}")
 
   # Word boundaries
-  questions+=("Match whole word '${term}' only|grep -rw ${term}|grep -wr ${term}|rg -w ${term}|grep -Rw ${term}|grep -wR ${term}")
+  questions+=("Match whole word '${term}' only|grep -rw ${term}|grep -wr ${term}|grep --recursive --word-regexp ${term}|rg -w ${term}|rg --word-regexp ${term}|grep -Rw ${term}|grep -wR ${term}")
 
   # Multiple patterns
   questions+=("Find lines with '${term}' OR '${term2}'§grep -rE '${term}|${term2}'§rg '${term}|${term2}'§grep -RE '${term}|${term2}'")
@@ -1979,8 +1979,8 @@ gen_level16() {
   questions+=("Search for pattern from file patterns.txt|grep -rf patterns.txt|rg -f patterns.txt|grep -Rf patterns.txt")
 
   # Output control
-  questions+=("Show only matched text, not whole line in ${W}${log}${C}|grep -o ${term} ${log}|rg -o ${term} ${log}")
-  questions+=("Quiet mode (exit code only, no output) in ${W}${log}${C}|grep -q ${term} ${log}|rg -q ${term} ${log}")
+  questions+=("Show only matched text, not whole line in ${W}${log}${C}|grep -o ${term} ${log}|grep --only-matching ${term} ${log}|rg -o ${term} ${log}|rg --only-matching ${term} ${log}")
+  questions+=("Quiet mode (exit code only, no output) in ${W}${log}${C}|grep -q ${term} ${log}|grep --quiet ${term} ${log}|grep --silent ${term} ${log}|rg -q ${term} ${log}|rg --quiet ${term} ${log}")
 
   # === COMPOUND: Uses pipes (L3), head/tail (L2), sort/uniq (L16), logic (L6) ===
   questions+=("Find ${Y}${term}${C} in ${W}${log}${C}, show first ${ctx} matches§grep ${term} ${log} | head -${ctx}")
@@ -1997,14 +1997,14 @@ gen_level17() {
   eval "local questions=() $_QV"; _ctx
 
   # By name
-  questions+=("Find all .${ext} files|find . -name '*.${ext}'|fd -e ${ext}")
-  questions+=("Find files named exactly 'config'|find . -name 'config'|fd -g 'config'")
-  questions+=("Find 'config' files (case-insensitive)|find . -iname '*config*'|fd -i config")
+  questions+=("Find all .${ext} files|find . -name '*.${ext}'|fd -e ${ext}|fd --extension ${ext}")
+  questions+=("Find files named exactly 'config'|find . -name 'config'|fd -g 'config'|fd --glob 'config'")
+  questions+=("Find 'config' files (case-insensitive)|find . -iname '*config*'|fd -i config|fd --ignore-case config")
   questions+=("Find files matching '*test*' pattern|find . -name '*test*'|fd test")
 
   # By size
-  questions+=("Find files larger than ${size}|find . -size +${size}|fd -S +${size}")
-  questions+=("Find files smaller than ${size}|find . -size -${size}|fd -S -${size}")
+  questions+=("Find files larger than ${size}|find . -size +${size}|fd -S +${size}|fd --size +${size}")
+  questions+=("Find files smaller than ${size}|find . -size -${size}|fd -S -${size}|fd --size -${size}")
   questions+=("Find empty files|find . -type f -empty")
 
   # By time
@@ -2013,24 +2013,24 @@ gen_level17() {
   questions+=("Find files modified in last hour|find . -mmin -60|fd --changed-within 1h")
 
   # By type
-  questions+=("Find directories only|find . -type d|fd -t d")
-  questions+=("Find regular files only|find . -type f|fd -t f")
-  questions+=("Find symlinks only|find . -type l|fd -t l")
-  questions+=("Find executable files|find . -type f -executable|fd -t x")
+  questions+=("Find directories only|find . -type d|fd -t d|fd --type d|fd --type directory")
+  questions+=("Find regular files only|find . -type f|fd -t f|fd --type f|fd --type file")
+  questions+=("Find symlinks only|find . -type l|fd -t l|fd --type l|fd --type symlink")
+  questions+=("Find executable files|find . -type f -executable|fd -t x|fd --type x|fd --type executable")
 
   # Hidden and exclusions
-  questions+=("Find all files including hidden (fd excludes hidden by default)|fd -H")
-  questions+=("Find all, excluding .git directory|find . -not -path './.git/*'|fd -E .git")
-  questions+=("Find .${ext} files, excluding ${dir}/|find . -name '*.${ext}' -not -path './${dir}/*'|fd -e ${ext} -E ${dir}")
-  questions+=("Find files excluding multiple dirs|find . -not -path './node_modules/*' -not -path './.git/*'|fd -E node_modules -E .git")
+  questions+=("Find all files including hidden (fd excludes hidden by default)|fd -H|fd --hidden")
+  questions+=("Find all, excluding .git directory|find . -not -path './.git/*'|fd -E .git|fd --exclude .git")
+  questions+=("Find .${ext} files, excluding ${dir}/|find . -name '*.${ext}' -not -path './${dir}/*'|fd -e ${ext} -E ${dir}|fd --extension ${ext} --exclude ${dir}")
+  questions+=("Find files excluding multiple dirs|find . -not -path './node_modules/*' -not -path './.git/*'|fd -E node_modules -E .git|fd --exclude node_modules --exclude .git")
 
   # Path matching
   questions+=("Find files in paths matching */${dir}/*|find . -path '*/${dir}/*'|fd -p ${dir}/")
   questions+=("Find test files in src directory|find . -path '*/src/*' -name '*test*'|fd -p 'src/.*test'")
 
   # Max depth
-  questions+=("Find .${ext} files, max 2 levels deep|find . -maxdepth 2 -name '*.${ext}'|fd -e ${ext} -d 2")
-  questions+=("Find only in current dir (no recursion)|find . -maxdepth 1 -type f|fd -d 1 -t f")
+  questions+=("Find .${ext} files, max 2 levels deep|find . -maxdepth 2 -name '*.${ext}'|fd -e ${ext} -d 2|fd --extension ${ext} --max-depth 2")
+  questions+=("Find only in current dir (no recursion)|find . -maxdepth 1 -type f|fd -d 1 -t f|fd --max-depth 1 --type f")
 
   # === COMPOUND: Uses grep (L14), pipes (L3), wc (L2), logic (L6) ===
   questions+=("Find .${ext} files containing '${term}'§find . -name '*.${ext}' -exec grep -l ${term} {} \\;§fd -e ${ext} -x grep -l ${term} {}")
@@ -2051,14 +2051,14 @@ gen_level18() {
 
   # Sorting
   questions+=("Sort ${txt} alphabetically|sort ${txt}")
-  questions+=("Sort ${txt} in reverse|sort -r ${txt}")
-  questions+=("Sort ${txt} numerically|sort -n ${txt}")
-  questions+=("Sort ${txt} numerically descending|sort -rn ${txt}|sort -nr ${txt}")
-  questions+=("Sort and remove duplicates in ${W}${txt}${C}|sort -u ${txt}")
+  questions+=("Sort ${txt} in reverse|sort -r ${txt}|sort --reverse ${txt}")
+  questions+=("Sort ${txt} numerically|sort -n ${txt}|sort --numeric-sort ${txt}")
+  questions+=("Sort ${txt} numerically descending|sort -rn ${txt}|sort -nr ${txt}|sort --numeric-sort --reverse ${txt}")
+  questions+=("Sort and remove duplicates in ${W}${txt}${C}|sort -u ${txt}|sort --unique ${txt}")
   questions+=("Sort ${csv} by column ${col}|sort -t',' -k${col} ${csv}|sort -t, -k${col} ${csv}")
   questions+=("Sort ${csv} by column ${col} numerically|sort -t',' -k${col}n ${csv}|sort -t',' -nk${col} ${csv}|sort -t, -k${col}n ${csv}|sort -t, -nk${col} ${csv}")
   questions+=("Sort ${csv} by column ${col} descending|sort -t',' -k${col}rn ${csv}|sort -t',' -rnk${col} ${csv}|sort -t, -k${col}rn ${csv}|sort -t, -rnk${col} ${csv}")
-  questions+=("Sort ${txt} by human-readable sizes (1K, 2M, 3G)|sort -h ${txt}")
+  questions+=("Sort ${txt} by human-readable sizes (1K, 2M, 3G)|sort -h ${txt}|sort --human-numeric-sort ${txt}")
   questions+=("Sort ${txt} case-insensitively|sort -f ${txt}|sort --ignore-case ${txt}")
   questions+=("Sort ${csv} by column ${col} then ${col2}|sort -t',' -k${col},${col} -k${col2},${col2} ${csv}|sort -t, -k${col},${col} -k${col2},${col2} ${csv}")
 
@@ -2101,8 +2101,8 @@ gen_level18() {
 
   # Field manipulation with tr
   questions+=("Replace spaces with tabs in ${W}${txt}${C}|tr ' ' '\\t' < ${txt}")
-  questions+=("Delete all digits from ${txt}|tr -d '0-9' < ${txt}")
-  questions+=("Squeeze multiple spaces to single in ${W}${txt}${C}|tr -s ' ' < ${txt}")
+  questions+=("Delete all digits from ${txt}|tr -d '0-9' < ${txt}|tr --delete '0-9' < ${txt}")
+  questions+=("Squeeze multiple spaces to single in ${W}${txt}${C}|tr -s ' ' < ${txt}|tr --squeeze-repeats ' ' < ${txt}")
   questions+=("Convert to lowercase in ${W}${txt}${C}|tr 'A-Z' 'a-z' < ${txt}|tr '[:upper:]' '[:lower:]' < ${txt}")
   questions+=("Convert to uppercase in ${W}${txt}${C}|tr 'a-z' 'A-Z' < ${txt}|tr '[:lower:]' '[:upper:]' < ${txt}")
   questions+=("Delete all whitespace in ${W}${txt}${C}|tr -d '[:space:]' < ${txt}")
@@ -2254,7 +2254,7 @@ gen_level20() {
   questions+=("Exit on any error|set -e|set -o errexit")
   questions+=("Exit on undefined variable|set -u|set -o nounset")
   questions+=("Fail on pipe error|set -o pipefail")
-  questions+=("Strict mode combo|set -euo pipefail")
+  questions+=("Strict mode combo|set -euo pipefail|set -o errexit -o nounset -o pipefail")
   questions+=("Check last command status|[[ \$? -ne 0 ]] && echo failed|[ \$? -ne 0 ] && echo failed|test \$? -ne 0 && echo failed")
   questions+=("Run command, ignore failure§grep pattern file || true")
   questions+=("Die function|die() { echo \"\$1\" >&2; exit 1; }|function die { echo \"\$1\" >&2; exit 1; }|function die() { echo \"\$1\" >&2; exit 1; }")
@@ -2280,7 +2280,7 @@ gen_level21() {
   questions+=("Show size of files larger than ${size}|find . -size +${size} -exec du -h {} \\;|fd -S +${size} -x du -h {}")
   questions+=("Copy all .${ext} files to ${dir}/|find . -name '*.${ext}' -exec cp {} ${dir}/ \\;|fd -e ${ext} -x cp {} ${dir}/")
   questions+=("Move all .${ext2} files to ${dir}/|find . -name '*.${ext2}' -exec mv {} ${dir}/ \\;|fd -e ${ext2} -x mv {} ${dir}/")
-  questions+=("Change owner of all files in ${dir}/ to ${user}|find ${dir}/ -exec chown ${user}:${user} {} \\;")
+  questions+=("Change owner of all files in ${dir}/ to ${user}|find ${dir}/ -exec chown ${user}:${user} {} \\;|chown -R ${user}:${user} ${dir}/|chown --recursive ${user}:${user} ${dir}/")
   questions+=("Gzip all .${ext} files|find . -name '*.${ext}' -exec gzip {} \\;|fd -e ${ext} -x gzip {}")
 
   # Batch with + (more efficient)
@@ -2323,11 +2323,11 @@ gen_level21() {
   questions+=("Unmask ${svc}|systemctl unmask ${svc}|sudo systemctl unmask ${svc}")
 
   # Journalctl - L19-only commands (basics covered in L12)
-  questions+=("View last ${n2} log lines for ${svc}|journalctl -u ${svc} -n ${n2}")
-  questions+=("View kernel messages|journalctl -k|dmesg")
+  questions+=("View last ${n2} log lines for ${svc}|journalctl -u ${svc} -n ${n2}|journalctl --unit ${svc} --lines ${n2}|journalctl --unit ${svc} --lines=${n2}")
+  questions+=("View kernel messages|journalctl -k|journalctl --dmesg|dmesg")
   questions+=("View logs from last hour|journalctl --since '1 hour ago'")
   questions+=("View logs from last ${n} minutes|journalctl --since '${n} minutes ago'")
-  questions+=("View errors only|journalctl -p err|journalctl -p 3")
+  questions+=("View errors only|journalctl -p err|journalctl -p 3|journalctl -p error|journalctl --priority err|journalctl --priority error|journalctl --priority=err|journalctl --priority=error")
   questions+=("Disk usage of journal|journalctl --disk-usage")
   local jsize=${size/k/K}
   questions+=("Vacuum journal to ${jsize}|journalctl --vacuum-size=${jsize}|sudo journalctl --vacuum-size=${jsize}")
@@ -2374,7 +2374,7 @@ gen_level22() {
   questions+=("Extract first word after colon in ${W}${log}${C}|grep -oP ':\\s*\\K\\S+' ${log}")
 
   # Word boundaries and anchors
-  questions+=("Match whole word 'error' only in ${W}${log}${C}|grep -w 'error' ${log}|grep -P '\\berror\\b' ${log}")
+  questions+=("Match whole word 'error' only in ${W}${log}${C}|grep -w 'error' ${log}|grep --word-regexp 'error' ${log}|grep -P '\\berror\\b' ${log}")
   questions+=("Match 'error' at word boundary in ${W}${log}${C}|grep -P '\\berror' ${log}")
   questions+=("Match lines starting with digit in ${W}${txt}${C}|grep '^[0-9]' ${txt}")
   questions+=("Match lines ending with digit in ${W}${txt}${C}|grep '[0-9]$' ${txt}")
@@ -2409,8 +2409,8 @@ gen_level22() {
   questions+=("Multiple sed commands in ${W}${txt}${C}|sed -e 's/a/b/' -e 's/c/d/' ${txt}|sed 's/a/b/; s/c/d/' ${txt}")
   questions+=("Sed with address range in ${W}${txt}${C}|sed '5,10s/old/new/g' ${txt}")
   questions+=("Delete from line 5 to pattern in ${W}${txt}${C}|sed '5,/pattern/d' ${txt}")
-  questions+=("Transform case (lowercase) in ${W}${txt}${C}|sed 's/.*/\\L&/' ${txt}|tr '[:upper:]' '[:lower:]' < ${txt}")
-  questions+=("Transform case (uppercase) in ${W}${txt}${C}|sed 's/.*/\\U&/' ${txt}|tr '[:lower:]' '[:upper:]' < ${txt}")
+  questions+=("Transform case (lowercase) in ${W}${txt}${C}|sed 's/.*/\\L&/' ${txt}|tr '[:upper:]' '[:lower:]' < ${txt}|awk '{print tolower(\$0)}' ${txt}|tr A-Z a-z < ${txt}")
+  questions+=("Transform case (uppercase) in ${W}${txt}${C}|sed 's/.*/\\U&/' ${txt}|tr '[:lower:]' '[:upper:]' < ${txt}|awk '{print toupper(\$0)}' ${txt}|tr a-z A-Z < ${txt}")
   questions+=("Capitalize first letter in ${W}${txt}${C}|sed 's/.*/\\u&/' ${txt}")
 
   # Advanced awk
@@ -2428,7 +2428,7 @@ gen_level22() {
   questions+=("String functions: gsub in ${W}${txt}${C}|awk '{gsub(/old/,\"new\"); print}' ${txt}")
   questions+=("String functions: split in ${W}${txt}${C}|awk '{n=split(\$0,a,\":\"); print a[1]}' ${txt}")
   questions+=("Pattern range in ${W}${txt}${C}|awk '/start/,/end/' ${txt}")
-  questions+=("Print line numbers in ${W}${txt}${C}|awk '{print NR\": \"\$0}' ${txt}|cat -n ${txt}|nl ${txt}")
+  questions+=("Print line numbers in ${W}${txt}${C}|awk '{print NR\": \"\$0}' ${txt}|cat -n ${txt}|cat --number ${txt}|nl ${txt}|grep -n '' ${txt}")
   questions+=("Skip header line in ${W}${csv}${C}|awk 'NR>1' ${csv}|tail -n +2 ${csv}|sed 1d ${csv}")
   questions+=("Print every nth line in ${W}${txt}${C}|awk 'NR%${n}==0' ${txt}")
   questions+=("Reverse fields in ${W}${txt}${C}|awk '{for(i=NF;i>0;i--) printf \"%s \",\$i; print \"\"}' ${txt}")
@@ -2579,7 +2579,7 @@ gen_level24() {
   questions+=("POST form data|curl -X POST -d 'user=admin&pass=test' ${url}/login")
   questions+=("Follow redirects|curl -L ${url}|curl --location ${url}")
   questions+=("Save output to file|curl -o output.html ${url}|curl --output output.html ${url}")
-  questions+=("Send with custom header|curl -H 'Authorization: Bearer token123' ${url}/api")
+  questions+=("Send with custom header|curl -H 'Authorization: Bearer token123' ${url}/api|curl --header 'Authorization: Bearer token123' ${url}/api")
   questions+=("Silent mode (no progress)|curl -s ${url}|curl --silent ${url}")
   questions+=("Download file with original name|curl -O ${url}/file.tar.gz|curl --remote-name ${url}/file.tar.gz")
 
@@ -2591,7 +2591,7 @@ gen_level24() {
   questions+=("SSH tunnel in background|ssh -fN -L 8080:localhost:80 ${user}@${host}")
   questions+=("SSH execute remote command|ssh ${user}@${host} 'ls -la'")
   questions+=("SCP file to remote|scp file.txt ${user}@${host}:/tmp/")
-  questions+=("Rsync with progress|rsync -avz --progress file.txt ${user}@${host}:/backup/")
+  questions+=("Rsync with progress|rsync -avz --progress file.txt ${user}@${host}:/backup/|rsync -avzP file.txt ${user}@${host}:/backup/")
 
   # wget
   questions+=("Download file|wget ${url}/file.tar.gz")
@@ -2639,7 +2639,7 @@ gen_level25() {
   questions+=("Scan ${ip}, skip host discovery (treat as up)|nmap -Pn ${ip}")
 
   # Network discovery
-  questions+=("Ping sweep ${subnet} (find live hosts)|nmap -sn ${subnet}")
+  questions+=("Ping sweep ${subnet} (find live hosts)|nmap -sn ${subnet}|nmap -sP ${subnet}")
   questions+=("List targets in ${subnet} without scanning|nmap -sL ${subnet}")
   questions+=("ARP scan local network ${subnet}|nmap -PR -sn ${subnet}")
 
@@ -2715,8 +2715,8 @@ gen_level27() {
   local hmode=${HASHCAT_MODES[$hidx]} hname=${HASH_NAMES[$hidx]}
 
   # Hashcat dictionary attacks
-  questions+=("Dictionary attack on MD5 (-m 0) hashes in ${hash} using ${W}${wordlist}${C}|hashcat -m 0 ${hash} ${wordlist}")
-  questions+=("Dictionary attack on ${hname} (-m ${hmode}) hashes using ${W}${wordlist}${C}|hashcat -m ${hmode} ${hash} ${wordlist}")
+  questions+=("Dictionary attack on MD5 (-m 0) hashes in ${hash} using ${W}${wordlist}${C}|hashcat -m 0 ${hash} ${wordlist}|hashcat -a 0 -m 0 ${hash} ${wordlist}")
+  questions+=("Dictionary attack on ${hname} (-m ${hmode}) hashes using ${W}${wordlist}${C}|hashcat -m ${hmode} ${hash} ${wordlist}|hashcat -a 0 -m ${hmode} ${hash} ${wordlist}")
   questions+=("Crack Windows NTLM hashes (-m 1000) in ${hash} using ${W}${wordlist}${C}|hashcat -m 1000 ${hash} ${wordlist}")
 
   # Hashcat brute force
@@ -2777,7 +2777,7 @@ gen_level28() {
 
   # ELF analysis
   questions+=("Show ELF file header in ${W}${bin}${C}|readelf -h ${bin}|readelf --file-header ${bin}")
-  questions+=("Show ELF symbols in ${W}${bin}${C}|readelf -s ${bin}|readelf --syms ${bin}")
+  questions+=("Show ELF symbols in ${W}${bin}${C}|readelf -s ${bin}|readelf --syms ${bin}|nm ${bin}")
   questions+=("Show all ELF info in ${W}${bin}${C}|readelf -a ${bin}|readelf --all ${bin}")
   questions+=("List shared library dependencies of ${W}${bin}${C}|ldd ${bin}")
 
@@ -2838,11 +2838,11 @@ gen_level29() {
   questions+=("Check if user in docker/lxd group§id | grep -E 'docker|lxd'")
 
   # System enumeration
-  questions+=("Show OS and kernel version|uname -a")
+  questions+=("Show OS and kernel version|uname -a|uname --all|hostnamectl")
   questions+=("Show running processes|ps aux|ps -ef|ps -aux")
   questions+=("Show network connections|ss -tlpn|netstat -tlpn")
   questions+=("Show cron jobs|cat /etc/crontab; crontab -l")
-  questions+=("Show mounted filesystems|mount|df -h")
+  questions+=("Show mounted filesystems|mount|df -h|findmnt|cat /proc/mounts")
 
   # Config file hunting
   questions+=("Find config files with passwords|grep -ri 'password' /etc/ 2>/dev/null")
@@ -2870,7 +2870,7 @@ gen_level29() {
   questions+=("Check writable /etc/sudoers|ls -la /etc/sudoers")
 
   # Path hijacking
-  questions+=("Check current PATH|echo \$PATH")
+  questions+=("Check current PATH|echo \$PATH|printenv PATH")
   questions+=("Prepend current dir to PATH|export PATH=.:\$PATH")
   questions+=("Create malicious binary|echo '#!/bin/bash' > /tmp/ls && echo '/bin/bash -p' >> /tmp/ls && chmod +x /tmp/ls")
   questions+=("Exploit relative path in SUID|export PATH=/tmp:\$PATH && ./vulnerable_suid")
@@ -2888,7 +2888,7 @@ gen_level30() {
   eval "local questions=() $_QV"; _ctx
 
   # === EMERGENCY RECOVERY ===
-  questions+=("Remount root filesystem read-write|mount -o remount,rw /")
+  questions+=("Remount root filesystem read-write|mount -o remount,rw /|mount -o rw,remount /")
   questions+=("Emergency single-user mode|init 1|systemctl rescue|telinit 1|systemctl isolate rescue.target")
   questions+=("Chroot into system mounted at /mnt|chroot /mnt /bin/bash|chroot /mnt /bin/sh|chroot /mnt")
   questions+=("Regenerate initramfs (Arch)|mkinitcpio -P")
@@ -2942,13 +2942,13 @@ gen_level30() {
   questions+=("List all iptables rules|iptables -L -n -v")
   questions+=("List all nftables rules|nft list ruleset")
   questions+=("Audit failed sudo attempts|grep 'FAILED' /var/log/auth.log")
-  questions+=("Lock user account§passwd -l ${user}§usermod -L ${user}")
+  questions+=("Lock user account§passwd -l ${user}§passwd --lock ${user}§usermod -L ${user}§usermod --lock ${user}")
 
   # === PROCESS NINJA ===
   questions+=("Watch memory hogs in realtime§watch -n1 'ps aux --sort=-%mem | head -5'")
   questions+=("Find process using open file ${W}${txt}${C}§lsof ${txt}§fuser ${txt}")
   questions+=("Trace system calls of process|strace -p \$(pgrep -f process)")
-  questions+=("Kill all processes by name|pkill -9 -f pattern|killall -9 pattern|killall pattern")
+  questions+=("Kill all processes by name|pkill -9 -f pattern|pkill -f pattern|pkill pattern|killall -9 pattern|killall pattern")
   questions+=("Nice a running process|renice -n 10 -p PID")
 
   # === DISK SURVIVAL ===
@@ -2963,7 +2963,7 @@ gen_level30() {
   # === PURE BASH MAGIC ===
   questions+=("Random string generator§tr -dc 'a-zA-Z0-9' < /dev/urandom | head -c 32")
   questions+=("Timestamp in epoch|date +%s")
-  questions+=("Convert epoch to date|date -d @1234567890")
+  questions+=("Convert epoch to date|date -d @1234567890|date --date=@1234567890|date --date @1234567890")
   questions+=("Parallel execution with xargs§cat urls.txt | xargs -P 10 -I{} curl -s {}")
   questions+=("Timeout a command|timeout 5 long_running_cmd")
   questions+=("Retry command until success|until cmd; do sleep 1; done")
