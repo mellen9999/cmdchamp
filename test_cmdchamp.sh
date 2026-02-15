@@ -480,7 +480,7 @@ r=$(_run "
   echo \"name=\$PLAYER_NAME ver=\$_PROFILE_VER beaten=\$BOSS_BEATEN gauntlet=\$BEST_GAUNTLET timed=\$BEST_TIMED\"
 ")
 echo "$r" | grep -q 'name=TestPlayer' && ok "profile stores name" || fail "profile name" "$r"
-echo "$r" | grep -q 'ver=3' && ok "profile ver=3" || fail "profile ver" "$r"
+echo "$r" | grep -q 'ver=4' && ok "profile ver=4" || fail "profile ver" "$r"
 echo "$r" | grep -q 'beaten=0' && ok "new BOSS_BEATEN=0" || fail "profile beaten" "$r"
 
 # v0->v1 migration: BOSS_BEATEN=-1 (old format) -> 0
@@ -533,7 +533,7 @@ r=$(bash -c "
   _load_profile
   echo \"ver=\$_PROFILE_VER scores=\$(wc -c < \"\$DATA/scores\")\"
 " 2>/dev/null)
-echo "$r" | grep -q 'ver=3' && ok "v1->v2->v3: ver bumped" || fail "v1->v2 ver" "$r"
+echo "$r" | grep -q 'ver=4' && ok "v1->v4: ver bumped" || fail "v1->v2 ver" "$r"
 echo "$r" | grep -q 'scores=0' && ok "v1->v2: scores cleared" || fail "v1->v2 scores" "$r"
 
 # Save/load round-trip
@@ -998,12 +998,12 @@ r=$(_run 'case 90 in 60|120|300) echo valid;; *) echo invalid;; esac')
 r=$(bash -c "
   source '$SOURCE_FILE' 2>/dev/null
   DATA='$TDIR/data_timed'; mkdir -p \"\$DATA\"; touch \"\$DATA/scores\"
-  printf 'PLAYER_NAME=test\nBOSS_BEATEN=30\nBEST_GAUNTLET=0\nBEST_TIMED=8\nEGGS_FOUND=\nSC_DONE=\nPROFILE_VER=3\n' > \"\$DATA/profile\"
+  printf 'PLAYER_NAME=test\nBOSS_BEATEN=30\nBEST_GAUNTLET=0\nBEST_TIMED=0:8:0\nEGGS_FOUND=\nSC_DONE=\nPROFILE_VER=4\n' > \"\$DATA/profile\"
   _load_profile
-  score=12
-  ((score > BEST_TIMED)) && { BEST_TIMED=\$score; _save_profile; }
+  _timed_set 120 12; _save_profile
   _load_profile
-  echo \"\$BEST_TIMED\"
+  _timed_best 120
+  echo \"\$REPLY\"
 " 2>/dev/null)
 [[ "$r" == "12" ]] && ok "timed best score persists" || fail "timed best" "$r"
 
@@ -1112,7 +1112,7 @@ echo "$r" | grep -q 'tier=2' && ok "scores persist across reload" || fail "score
 r=$(bash -c "
   source '$SOURCE_FILE' 2>/dev/null
   DATA='$TDIR/data_prof_rt'; mkdir -p \"\$DATA\"; touch \"\$DATA/scores\"
-  PLAYER_NAME='testguy' BOSS_BEATEN=15 BEST_GAUNTLET=42 BEST_TIMED=99 EGGS_FOUND='sudorm,rtfm' SC_DONE='1,3' _PROFILE_VER=3
+  PLAYER_NAME='testguy' BOSS_BEATEN=15 BEST_GAUNTLET=42 BEST_TIMED='0:99:0' EGGS_FOUND='sudorm,rtfm' SC_DONE='1,3' _PROFILE_VER=4
   _save_profile
   # Reset
   PLAYER_NAME='' BOSS_BEATEN=0 BEST_GAUNTLET=0 BEST_TIMED=0 EGGS_FOUND='' SC_DONE='' _PROFILE_VER=0
@@ -1122,10 +1122,10 @@ r=$(bash -c "
 echo "$r" | grep -q 'name=testguy' && ok "profile name round-trip" || fail "prof name" "$r"
 echo "$r" | grep -q 'bb=15' && ok "profile BOSS_BEATEN round-trip" || fail "prof bb" "$r"
 echo "$r" | grep -q 'bg=42' && ok "profile BEST_GAUNTLET round-trip" || fail "prof bg" "$r"
-echo "$r" | grep -q 'bt=99' && ok "profile BEST_TIMED round-trip" || fail "prof bt" "$r"
+echo "$r" | grep -q 'bt=0:99:0' && ok "profile BEST_TIMED round-trip" || fail "prof bt" "$r"
 echo "$r" | grep -q 'eggs=sudorm,rtfm' && ok "profile EGGS_FOUND round-trip" || fail "prof eggs" "$r"
 echo "$r" | grep -q 'sc=1,3' && ok "profile SC_DONE round-trip" || fail "prof sc" "$r"
-echo "$r" | grep -q 'ver=3' && ok "profile ver=3 stable" || fail "prof ver" "$r"
+echo "$r" | grep -q 'ver=4' && ok "profile ver=4 stable" || fail "prof ver" "$r"
 
 # Session save/load with scores
 r=$(bash -c "
@@ -1146,7 +1146,7 @@ r=$(bash -c "
   _load_profile
   echo \"ver=\$_PROFILE_VER eggs=\${EGGS_FOUND:-empty} sc=\${SC_DONE:-empty}\"
 " 2>/dev/null)
-echo "$r" | grep -q 'ver=3' && ok "v2->v3: ver bumped" || fail "v2->v3 ver" "$r"
+echo "$r" | grep -q 'ver=4' && ok "v2->v4: ver bumped" || fail "v2->v3 ver" "$r"
 echo "$r" | grep -q 'eggs=empty' && ok "v2->v3: eggs initialized" || fail "v2->v3 eggs" "$r"
 echo "$r" | grep -q 'sc=empty' && ok "v2->v3: sc initialized" || fail "v2->v3 sc" "$r"
 
