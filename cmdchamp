@@ -63,7 +63,10 @@ _load_profile() {
       [[ "$BEST_TIMED" =~ ^[0-9]+$ ]] && BEST_TIMED="0:${BEST_TIMED}:0"
       _PROFILE_VER=4; _save_profile
     fi
+    [[ "$BOSS_BEATEN" =~ ^-?[0-9]+$ ]] || BOSS_BEATEN=0
+    ((BOSS_BEATEN < 0)) && BOSS_BEATEN=0
     ((BOSS_BEATEN > MAX_LEVEL)) && BOSS_BEATEN=$MAX_LEVEL
+    [[ "$BEST_GAUNTLET" =~ ^[0-9]+$ ]] || BEST_GAUNTLET=0
   fi
   [[ -z "$PLAYER_NAME" ]] && _first_run
 }
@@ -189,7 +192,7 @@ SC_FLAVOR=(""
 # Victory screen - displayed after beating the final boss (ROOT)
 _victory() {
   printf '\e[2J\e[H'
-  local -A sc; [[ -f "$DATA/scores" ]] && while IFS='|' read -r k v; do sc[$k]=$v; done < "$DATA/scores"
+  local -A sc; [[ -f "$DATA/scores" ]] && while IFS='|' read -r k v; do [[ "$k" == "#"* ]] && continue; sc[$k]=$v; done < "$DATA/scores"
   local total=0 mastered=0
   for k in "${!sc[@]}"; do
     ((++total))
@@ -705,7 +708,7 @@ _sandbox_check_state() {
 }
 # Terminal state management
 _stty_saved="" _interactive=0
-_cleanup() { ((_interactive)) && { printf '\e[?25h'; [[ -n "$_stty_saved" ]] && stty "$_stty_saved" 2>/dev/null; echo; }; }
+_cleanup() { ((_interactive)) && { _sflush_if_dirty 2>/dev/null; printf '\e[?25h'; [[ -n "$_stty_saved" ]] && stty "$_stty_saved" 2>/dev/null; echo; }; }
 trap '_cleanup; exit 0' INT TERM HUP EXIT
 PROMPT_CHAR="${CMD_PROMPT:-$([[ $EUID -eq 0 ]] && echo '# ' || echo '$ ')}"
 
@@ -900,12 +903,12 @@ declare -A MANPAGE=(
   [head]=$'output first part of files\n  \e[36m-n\e[0m \e[33mN\e[0m      first \e[33mN\e[0m lines \e[2m(or head -N)\e[0m\n  \e[2mhead file.txt    head -n 5 file.txt    head -20 file.txt\e[0m'
   [tail]=$'output last part of files\n  \e[36m-n\e[0m \e[33mN\e[0m      last \e[33mN\e[0m lines           \e[36m-f\e[0m        follow (live updates)\n  \e[2mtail file.txt    tail -n 20 file.txt    tail -f /var/log/syslog\e[0m'
   [less]=$'pager (scroll through files)\n  \e[36m-N\e[0m        show line numbers\n  \e[2mless file.txt    less -N file.txt\e[0m'
-  [cp]=$'copy files\n  \e[36m-r\e[0m        recursive (dirs)\n  \e[2mcp file.txt backup.txt    cp -r dir/ newdir/\e[0m'
+  [cp]=$'copy files\n  \e[36m-r\e[0m        recursive (dirs)       \e[36m-a\e[0m        archive (preserve all)\n  \e[2mcp file.txt backup.txt    cp -r dir/ newdir/    cp -a dir/ newdir/\e[0m'
   [mkdir]=$'make directories\n  \e[36m-p\e[0m        create parents\n  \e[2mmkdir newdir    mkdir -p path/to/dir\e[0m'
   [tree]=$'directory tree\n  \e[36m-L\e[0m \e[33mN\e[0m      depth limit\n  \e[2mtree    tree -L 2\e[0m'
   [tee]=$'copy stdin to file AND stdout\n  \e[36m-a\e[0m        append (don\x27t overwrite)\n  \e[35mvs >>\e[0m     >> sends to file only (terminal goes dark)\n          tee sends to file AND keeps output on screen\n  \e[2mecho hello | tee file.txt    ls | tee -a log.txt\e[0m'
-  [grep]=$'search text patterns\n  \e[36m-r\e[0m        recursive              \e[36m-i\e[0m        ignore case\n  \e[36m-n\e[0m        line numbers           \e[36m-c\e[0m        count matches\n  \e[36m-l\e[0m        files only             \e[36m-v\e[0m        invert match\n  \e[36m-o\e[0m        matched text only      \e[36m-q\e[0m        quiet (exit code)\n  \e[36m-w\e[0m        whole word             \e[36m-x\e[0m        whole line\n  \e[36m-E\e[0m        extended regex \e[2m(+?|)\e[0m  \e[36m-P\e[0m        perl regex \e[2m(\\d \\w lookahead)\e[0m\n  \e[36m-F\e[0m        literal string         \e[36m-f\e[0m \e[33mFILE\e[0m   patterns from file\n  \e[36m-A\e[0m \e[33mN\e[0m      lines after            \e[36m-B\e[0m \e[33mN\e[0m      lines before\n  \e[36m-C\e[0m \e[33mN\e[0m      context lines          \e[36m--include\e[0m  file pattern\n  \e[36m--exclude-dir\e[0m  skip directory\n  \e[35mvs rg\e[0m     grep is POSIX (everywhere). rg is faster, skips .gitignore,\n          recurses by default. use grep for portability, rg for speed\n  \e[2mgrep -rn TODO .    grep -ri pattern file    grep -oE '\''[0-9]+'\'' log\e[0m'
-  [rg]=$'fast grep (ripgrep)\n  \e[36m-i\e[0m        ignore case            \e[36m-v\e[0m        invert match\n  \e[36m-n\e[0m        line numbers           \e[36m-c\e[0m        count matches\n  \e[36m-l\e[0m        files only             \e[36m-o\e[0m        matched text only\n  \e[36m-q\e[0m        quiet (exit code)      \e[36m-w\e[0m        whole word\n  \e[36m-x\e[0m        whole line             \e[36m-F\e[0m        literal string\n  \e[36m-f\e[0m \e[33mFILE\e[0m   patterns from file     \e[36m-t\e[0m \e[33mTYPE\e[0m   file type filter\n  \e[36m-g\e[0m \e[33mGLOB\e[0m   file glob filter       \e[36m-A\e[0m \e[33mN\e[0m      lines after\n  \e[36m-B\e[0m \e[33mN\e[0m      lines before           \e[36m-C\e[0m \e[33mN\e[0m      context lines\n  \e[35mvs grep\e[0m   rg is faster, recursive by default, skips .gitignore.\n          grep is POSIX (works on any machine). use rg locally, grep in scripts\n  \e[2mrg pattern    rg -i todo    rg -t py import    rg -l error\e[0m'
+  [grep]=$'search text patterns\n  \e[36m-r\e[0m        recursive              \e[36m-i\e[0m        ignore case\n  \e[36m-n\e[0m        line numbers           \e[36m-c\e[0m        count matches\n  \e[36m-l\e[0m        files only             \e[36m-v\e[0m        invert match\n  \e[36m-o\e[0m        matched text only      \e[36m-q\e[0m        quiet (exit code)\n  \e[36m-w\e[0m        whole word             \e[36m-x\e[0m        whole line\n  \e[36m-E\e[0m        extended regex \e[2m(+?|)\e[0m  \e[36m-P\e[0m        perl regex \e[2m(\\d \\w lookahead)\e[0m\n  \e[36m-F\e[0m        literal string         \e[36m-f\e[0m \e[33mFILE\e[0m   patterns from file\n  \e[36m-A\e[0m \e[33mN\e[0m      lines after            \e[36m-B\e[0m \e[33mN\e[0m      lines before\n  \e[36m-m\e[0m \e[33mN\e[0m      max matches            \e[36m-C\e[0m \e[33mN\e[0m      context lines\n  \e[36m--include\e[0m  file pattern           \e[36m--exclude-dir\e[0m  skip directory\n  \e[35mvs rg\e[0m     grep is POSIX (everywhere). rg is faster, skips .gitignore,\n          recurses by default. use grep for portability, rg for speed\n  \e[2mgrep -rn TODO .    grep -ri pattern file    grep -oE '\''[0-9]+'\'' log\e[0m'
+  [rg]=$'fast grep (ripgrep)\n  \e[36m-i\e[0m        ignore case            \e[36m-v\e[0m        invert match\n  \e[36m-n\e[0m        line numbers           \e[36m-c\e[0m        count matches\n  \e[36m-l\e[0m        files only             \e[36m-o\e[0m        matched text only\n  \e[36m-q\e[0m        quiet (exit code)      \e[36m-w\e[0m        whole word\n  \e[36m-x\e[0m        whole line             \e[36m-F\e[0m        literal string\n  \e[36m-f\e[0m \e[33mFILE\e[0m   patterns from file     \e[36m-t\e[0m \e[33mTYPE\e[0m   file type filter\n  \e[36m-g\e[0m \e[33mGLOB\e[0m   file glob filter       \e[36m-m\e[0m \e[33mN\e[0m      max matches\n  \e[36m-A\e[0m \e[33mN\e[0m      lines after            \e[36m-B\e[0m \e[33mN\e[0m      lines before\n  \e[36m-C\e[0m \e[33mN\e[0m      context lines\n  \e[35mvs grep\e[0m   rg is faster, recursive by default, skips .gitignore.\n          grep is POSIX (works on any machine). use rg locally, grep in scripts\n  \e[2mrg pattern    rg -i todo    rg -t py import    rg -l error\e[0m'
   [find]=$'search for files\n  \e[36m-name\e[0m \e[2m'\''X'\''\e[0m   filename            \e[36m-iname\e[0m     case-insensitive\n  \e[36m-type\e[0m \e[2mf/d/l\e[0m  file type           \e[36m-size\e[0m \e[2m+10M\e[0m  by size\n  \e[36m-mtime\e[0m \e[2m-7\e[0m   modified days       \e[36m-mmin\e[0m \e[2m-60\e[0m   modified mins\n  \e[36m-amin\e[0m \e[2m-60\e[0m   accessed mins       \e[36m-empty\e[0m     empty files\n  \e[36m-executable\e[0m    has exec bit        \e[36m-perm\e[0m \e[2m-4000\e[0m by permission\n  \e[36m-maxdepth\e[0m \e[33mN\e[0m   limit depth         \e[36m-path\e[0m \e[2m'\''X'\''\e[0m   match path\n  \e[36m-not\e[0m          negate              \e[36m-print0\e[0m    null delimit\n  \e[36m-exec\e[0m \e[2mCMD {} \\;\e[0m  run per file  \e[36m-exec\e[0m \e[2mCMD {} +\e[0m   batch (faster)\n  \e[36m-delete\e[0m        remove\n  \e[35mvs fd\e[0m     find is POSIX (everywhere, complex predicates). fd is faster,\n          uses regex, skips .gitignore. use find for scripts, fd for speed\n  \e[2mfind . -name "*.log"    find / -size +100M    find . -type f -empty\e[0m'
   [fd]=$'fast find\n  \e[36m-e\e[0m \e[33mEXT\e[0m    file extension         \e[36m-t\e[0m \e[33mTYPE\e[0m   f/d/l/x/e\n  \e[36m-d\e[0m \e[33mN\e[0m      max depth              \e[36m-E\e[0m \e[33mPAT\e[0m    exclude pattern\n  \e[36m-H\e[0m        include hidden         \e[36m-i\e[0m        ignore case\n  \e[36m-S\e[0m \e[33mSIZE\e[0m   by size (+/-N)         \e[36m-l\e[0m        long listing\n  \e[36m-p\e[0m        match full path        \e[36m-g\e[0m        glob pattern\n  \e[36m-x\e[0m \e[33mCMD\e[0m    execute per result\n  \e[36m--changed-within\e[0m \e[33mT\e[0m             \e[36m--changed-before\e[0m \e[33mT\e[0m\n  \e[35mvs find\e[0m   fd is faster, regex by default, skips .gitignore + hidden.\n          find is POSIX (works anywhere), has -exec {} +, -delete, complex logic\n  \e[2mfd pattern    fd -e py    fd -t d    fd -S +10M    fd -x rm {}\e[0m'
   [sort]=$'sort lines of text\n  \e[36m-n\e[0m        numeric                \e[36m-r\e[0m        reverse\n  \e[36m-u\e[0m        unique                 \e[36m-k\e[0m \e[33mN\e[0m      by column \e[33mN\e[0m\n  \e[36m-t\e[0m \e[33mC\e[0m      delimiter              \e[36m-h\e[0m        human numeric\n  \e[36m-f\e[0m        ignore case\n  \e[2msort file.txt    sort -n nums.txt    sort -t, -k2 data.csv\e[0m'
@@ -1270,7 +1273,7 @@ gen_level1() {
   questions+=("Go to filesystem root (/)|cd /")
 
   # mkdir
-  questions+=("Create directory ${W}${newdir}${C}|mkdir ${newdir}|mkdir -p ${newdir}")
+  questions+=("Create directory ${W}${newdir}${C}|mkdir ${newdir}|mkdir -p ${newdir}|mkdir --parents ${newdir}")
   questions+=("Create nested directories ${W}${dir}/${newdir}${C} (parents too)|mkdir -p ${dir}/${newdir}|mkdir --parents ${dir}/${newdir}")
 
   printf '%s\n' "${questions[@]}"
@@ -1423,23 +1426,23 @@ gen_level6() {
 
   local num1=$((RANDOM % 50 + 10)) num2=$((RANDOM % 20 + 5))
 
-  questions+=("Uppercase the string ${Y}'${word}'${C} directly|tr a-z A-Z <<< '${word}'|tr a-z A-Z <<< ${word}|tr '[:lower:]' '[:upper:]' <<< '${word}'|tr '[:lower:]' '[:upper:]' <<< ${word}|echo '${word}' | tr a-z A-Z|echo ${word} | tr a-z A-Z|echo '${word}' | tr '[:lower:]' '[:upper:]'|echo ${word} | tr '[:lower:]' '[:upper:]'|#output:${word^^}")
-  questions+=("Lowercase the string ${Y}'${word2^^}'${C} directly|tr A-Z a-z <<< '${word2^^}'|tr A-Z a-z <<< ${word2^^}|tr '[:upper:]' '[:lower:]' <<< '${word2^^}'|tr '[:upper:]' '[:lower:]' <<< ${word2^^}|echo '${word2^^}' | tr A-Z a-z|echo ${word2^^} | tr A-Z a-z|echo '${word2^^}' | tr '[:upper:]' '[:lower:]'|echo ${word2^^} | tr '[:upper:]' '[:lower:]'|#output:${word2}")
+  questions+=("Uppercase the string ${Y}'${word}'${C} directly§tr a-z A-Z <<< '${word}'§tr a-z A-Z <<< ${word}§tr '[:lower:]' '[:upper:]' <<< '${word}'§tr '[:lower:]' '[:upper:]' <<< ${word}§echo '${word}' | tr a-z A-Z§echo ${word} | tr a-z A-Z§echo '${word}' | tr '[:lower:]' '[:upper:]'§echo ${word} | tr '[:lower:]' '[:upper:]'§#output:${word^^}")
+  questions+=("Lowercase the string ${Y}'${word2^^}'${C} directly§tr A-Z a-z <<< '${word2^^}'§tr A-Z a-z <<< ${word2^^}§tr '[:upper:]' '[:lower:]' <<< '${word2^^}'§tr '[:upper:]' '[:lower:]' <<< ${word2^^}§echo '${word2^^}' | tr A-Z a-z§echo ${word2^^} | tr A-Z a-z§echo '${word2^^}' | tr '[:upper:]' '[:lower:]'§echo ${word2^^} | tr '[:upper:]' '[:lower:]'§#output:${word2}")
   local _rw="" _rw2="" _i; for ((_i=${#word}-1;_i>=0;_i--)); do _rw+="${word:_i:1}"; done
   for ((_i=${#word2}-1;_i>=0;_i--)); do _rw2+="${word2:_i:1}"; done
-  questions+=("Reverse the string ${Y}'${word}'${C}|rev <<< '${word}'|rev <<< ${word}|echo '${word}' | rev|echo ${word} | rev|#output:~${_rw}")
-  questions+=("Reverse the string ${Y}'${word2}'${C}|rev <<< '${word2}'|rev <<< ${word2}|echo '${word2}' | rev|echo ${word2} | rev|#output:~${_rw2}")
+  questions+=("Reverse the string ${Y}'${word}'${C}§rev <<< '${word}'§rev <<< ${word}§echo '${word}' | rev§echo ${word} | rev§#output:~${_rw}")
+  questions+=("Reverse the string ${Y}'${word2}'${C}§rev <<< '${word2}'§rev <<< ${word2}§echo '${word2}' | rev§echo ${word2} | rev§#output:~${_rw2}")
 
-  command -v bc &>/dev/null && questions+=("Calculate ${Y}${num1}+${num2}${C} with bc|bc <<< '${num1}+${num2}'|bc <<< ${num1}+${num2}|echo '${num1}+${num2}' | bc|echo ${num1}+${num2} | bc|#output:~$((num1+num2))")
+  command -v bc &>/dev/null && questions+=("Calculate ${Y}${num1}+${num2}${C} with bc§bc <<< '${num1}+${num2}'§bc <<< ${num1}+${num2}§echo '${num1}+${num2}' | bc§echo ${num1}+${num2} | bc§#output:~$((num1+num2))")
 
-  questions+=("Extract home dir from ${Y}'root:x:0:0:root:/root:/bin/bash'${C}|cut -d: -f6 <<< 'root:x:0:0:root:/root:/bin/bash'|cut --delimiter=: --fields=6 <<< 'root:x:0:0:root:/root:/bin/bash'|echo 'root:x:0:0:root:/root:/bin/bash' | cut -d: -f6|echo 'root:x:0:0:root:/root:/bin/bash' | cut --delimiter=: --fields=6|#output:~/root")
-  questions+=("Get username from ${Y}'john:x:1000:1000:John:/home/john:/bin/bash'${C}|cut -d: -f1 <<< 'john:x:1000:1000:John:/home/john:/bin/bash'|cut --delimiter=: --fields=1 <<< 'john:x:1000:1000:John:/home/john:/bin/bash'|echo 'john:x:1000:1000:John:/home/john:/bin/bash' | cut -d: -f1|echo 'john:x:1000:1000:John:/home/john:/bin/bash' | cut --delimiter=: --fields=1|#output:~john")
+  questions+=("Extract home dir from ${Y}'root:x:0:0:root:/root:/bin/bash'${C}§cut -d: -f6 <<< 'root:x:0:0:root:/root:/bin/bash'§cut --delimiter=: --fields=6 <<< 'root:x:0:0:root:/root:/bin/bash'§echo 'root:x:0:0:root:/root:/bin/bash' | cut -d: -f6§echo 'root:x:0:0:root:/root:/bin/bash' | cut --delimiter=: --fields=6§#output:~/root")
+  questions+=("Get username from ${Y}'john:x:1000:1000:John:/home/john:/bin/bash'${C}§cut -d: -f1 <<< 'john:x:1000:1000:John:/home/john:/bin/bash'§cut --delimiter=: --fields=1 <<< 'john:x:1000:1000:John:/home/john:/bin/bash'§echo 'john:x:1000:1000:John:/home/john:/bin/bash' | cut -d: -f1§echo 'john:x:1000:1000:John:/home/john:/bin/bash' | cut --delimiter=: --fields=1§#output:~john")
 
-  questions+=("Count words in ${Y}'${word} ${word2} test'${C}|wc -w <<< '${word} ${word2} test'|wc --words <<< '${word} ${word2} test'|echo '${word} ${word2} test' | wc -w|echo '${word} ${word2} test' | wc --words|#output:~^\\s*3$")
-  questions+=("Count bytes in the string ${Y}'${word}'${C}|wc -c <<< '${word}'|wc -c <<< ${word}|wc --bytes <<< '${word}'|wc --bytes <<< ${word}|echo '${word}' | wc -c|echo ${word} | wc -c|echo '${word}' | wc --bytes|echo ${word} | wc --bytes|#output:~^\\s*$((${#word}+1))$")
+  questions+=("Count words in ${Y}'${word} ${word2} test'${C}§wc -w <<< '${word} ${word2} test'§wc --words <<< '${word} ${word2} test'§echo '${word} ${word2} test' | wc -w§echo '${word} ${word2} test' | wc --words§#output:~^\\s*3$")
+  questions+=("Count bytes in the string ${Y}'${word}'${C}§wc -c <<< '${word}'§wc -c <<< ${word}§wc --bytes <<< '${word}'§wc --bytes <<< ${word}§echo '${word}' | wc -c§echo ${word} | wc -c§echo '${word}' | wc --bytes§echo ${word} | wc --bytes§#output:~^\\s*$((${#word}+1))$")
 
-  questions+=("Replace spaces with underscores in ${Y}'hello world test'${C}|tr ' ' '_' <<< 'hello world test'|echo 'hello world test' | tr ' ' '_'|sed 's/ /_/g' <<< 'hello world test'|echo 'hello world test' | sed 's/ /_/g'|#output:~hello_world_test")
-  questions+=("Delete digits from ${Y}'abc123def456'${C}|tr -d '0-9' <<< 'abc123def456'|tr --delete '0-9' <<< 'abc123def456'|echo 'abc123def456' | tr -d '0-9'|echo 'abc123def456' | tr --delete '0-9'|sed 's/[0-9]//g' <<< 'abc123def456'|echo 'abc123def456' | sed 's/[0-9]//g'|#output:~abcdef")
+  questions+=("Replace spaces with underscores in ${Y}'hello world test'${C}§tr ' ' '_' <<< 'hello world test'§echo 'hello world test' | tr ' ' '_'§sed 's/ /_/g' <<< 'hello world test'§echo 'hello world test' | sed 's/ /_/g'§#output:~hello_world_test")
+  questions+=("Delete digits from ${Y}'abc123def456'${C}§tr -d '0-9' <<< 'abc123def456'§tr --delete '0-9' <<< 'abc123def456'§echo 'abc123def456' | tr -d '0-9'§echo 'abc123def456' | tr --delete '0-9'§sed 's/[0-9]//g' <<< 'abc123def456'§echo 'abc123def456' | sed 's/[0-9]//g'§#output:~abcdef")
 
   printf '%s\n' "${questions[@]}"
 }
@@ -1631,8 +1634,8 @@ gen_level10() {
   questions+=("Print 'failed' to stderr if command fails§ls /nonexistent 2>/dev/null ; [[ \$? -ne 0 ]] && echo failed >&2§ls /nonexistent 2>/dev/null ; [ \$? -ne 0 ] && echo failed >&2§ls /nonexistent 2>/dev/null ; test \$? -ne 0 && echo failed >&2§ls /nonexistent 2>/dev/null || echo failed >&2")
 
   # === COMPOUND: Environment variables with commands ===
-  questions+=("List files in home directory using \$HOME|ls \$HOME|ls \$HOME/|ls ~|ls ~/")
-  questions+=("Create file in home using \$HOME|touch \$HOME/test.txt|touch ~/test.txt")
+  questions+=("List files in home directory using \$HOME|ls \$HOME|ls \$HOME/|ls ~|ls ~/|ls \${HOME}|ls \${HOME}/")
+  questions+=("Create file in home using \$HOME|touch \$HOME/test.txt|touch ~/test.txt|touch \${HOME}/test.txt")
   questions+=("Search in user's home for ${Y}${term}${C}§grep -r ${term} \$HOME 2>/dev/null | head -5§grep -R ${term} \$HOME 2>/dev/null | head -5§grep --recursive ${term} \$HOME 2>/dev/null | head -5§grep -r ${term} ~ 2>/dev/null | head -5§grep -R ${term} ~ 2>/dev/null | head -5§grep --recursive ${term} ~ 2>/dev/null | head -5")
 
   printf '%s\n' "${questions[@]}"
@@ -2047,9 +2050,9 @@ gen_level17() {
 
   # === COMPOUND: Uses grep (L14), pipes (L3), wc (L2), logic (L6) ===
   questions+=("Find .${ext} files containing '${term}'§find . -name '*.${ext}' -exec grep -l ${term} {} \\;§find . -name '*.${ext}' -exec grep -l ${term} {} +§fd -e ${ext} -x grep -l ${term} {}§grep -rl --include='*.${ext}' ${term} .§grep -Rl --include='*.${ext}' ${term} .§rg -l -g '*.${ext}' ${term}§rg -l --glob '*.${ext}' ${term}")
-  questions+=("Find .${ext} files, count total lines§find . -name '*.${ext}' -exec wc -l {} + | tail -1§find . -name '*.${ext}' -exec wc -l {} + | tail -n 1")
-  questions+=("Find large files (>${size}), show sizes sorted§find . -size +${size} -exec du -h {} \\; | sort -rh")
-  questions+=("Find .${ext} files modified today, grep for '${term}'§find . -name '*.${ext}' -mtime 0 -exec grep -l ${term} {} \\;")
+  questions+=("Find .${ext} files, count total lines§find . -name '*.${ext}' -exec wc -l {} + | tail -1§find . -name '*.${ext}' -exec wc -l {} + | tail -n 1§find . -name '*.${ext}' | xargs wc -l | tail -1§find . -name '*.${ext}' | xargs wc -l | tail -n 1")
+  questions+=("Find large files (>${size}), show sizes sorted§find . -size +${size} -exec du -h {} \\; | sort -rh§find . -size +${size} -exec du -h {} + | sort -rh")
+  questions+=("Find .${ext} files modified today, grep for '${term}'§find . -name '*.${ext}' -mtime 0 -exec grep -l ${term} {} \\;§find . -name '*.${ext}' -mtime 0 -exec grep -l ${term} {} +")
   questions+=("Find empty files and delete them§find . -type f -empty -print -delete§find . -type f -empty -delete§find . -empty -type f -delete")
 
   printf '%s\n' "${questions[@]}"
@@ -2089,7 +2092,7 @@ gen_level18() {
   questions+=("Extract columns ${col} through ${col3} in ${W}${csv}${C}|cut -d',' -f${col}-${col3} ${csv}|cut -d, -f${col}-${col3} ${csv}")
   questions+=("Extract first ${chars} characters of each line in ${W}${txt}${C}|cut -c1-${chars} ${txt}")
   questions+=("Extract from character ${chars} to end of line in ${W}${txt}${C}|cut -c${chars}- ${txt}")
-  questions+=("Extract column ${col} from colon-separated file|cut -d':' -f${col} /etc/passwd|cut -d: -f${col} /etc/passwd")
+  questions+=("Extract column ${col} from colon-separated file|cut -d':' -f${col} /etc/passwd|cut -d: -f${col} /etc/passwd|awk -F: '{print \$${col}}' /etc/passwd|awk -F':' '{print \$${col}}' /etc/passwd")
   questions+=("Extract all but column ${col} in ${W}${csv}${C}|cut -d',' --complement -f${col} ${csv}|cut -d, --complement -f${col} ${csv}")
   questions+=("Extract using tab delimiter in ${W}${txt}${C}|cut -f${col} ${txt}")
 
@@ -2125,7 +2128,7 @@ gen_level18() {
 
   # Useful pipes - dynamic counts
   questions+=("Top ${n} most common lines in ${log}§sort ${log} | uniq -c | sort -rn | head -${n}§sort ${log} | uniq -c | sort -rn | head -n ${n}§sort ${log} | uniq -c | sort -nr | head -${n}§sort ${log} | uniq -c | sort -nr | head -n ${n}")
-  questions+=("Count unique values in column ${col} in ${W}${csv}${C}§cut -d',' -f${col} ${csv} | sort | uniq -c")
+  questions+=("Count unique values in column ${col} in ${W}${csv}${C}§cut -d',' -f${col} ${csv} | sort | uniq -c§awk -F',' '{print \$${col}}' ${csv} | sort | uniq -c§awk -F, '{print \$${col}}' ${csv} | sort | uniq -c")
   questions+=("Extract and count unique IPs from ${log}§grep -oE '[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+' ${log} | sort | uniq -c | sort -rn")
   questions+=("Most common words in ${txt}§tr -s ' ' '\\n' < ${txt} | sort | uniq -c | sort -rn | head")
   questions+=("Lines appearing in both ${txt} and ${txt2}|comm -12 <(sort ${txt}) <(sort ${txt2})|comm -1 -2 <(sort ${txt}) <(sort ${txt2})|grep -Fxf ${txt} ${txt2}|grep -Fxf ${txt2} ${txt}")
@@ -2290,7 +2293,7 @@ gen_level21() {
   questions+=("Count lines in each .${ext} file|find . -name '*.${ext}' -exec wc -l {} \\;|find . -name '*.${ext}' -exec wc -l {} +|fd -e ${ext} -x wc -l {}")
   questions+=("Delete all .${ext2} files|find . -name '*.${ext2}' -delete|find . -name '*.${ext2}' -exec rm {} \\;|find . -name '*.${ext2}' -exec rm {} +|fd -e ${ext2} -x rm {}|fd -e ${ext2} -X rm")
   questions+=("Make all .sh files executable|find . -name '*.sh' -exec chmod +x {} \\;|find . -name '*.sh' -exec chmod +x {} +|fd -e sh -x chmod +x {}|fd --extension sh -x chmod +x {}")
-  questions+=("Search '${term}' in each .${ext} file|find . -name '*.${ext}' -exec grep ${term} {} \\;|fd -e ${ext} -x rg ${term} {}|fd --extension ${ext} -x rg ${term} {}|grep -r --include='*.${ext}' ${term} .|grep -R --include='*.${ext}' ${term} .")
+  questions+=("Search '${term}' in each .${ext} file|find . -name '*.${ext}' -exec grep ${term} {} \\;|find . -name '*.${ext}' -exec grep ${term} {} +|fd -e ${ext} -x rg ${term} {}|fd --extension ${ext} -x rg ${term} {}|grep -r --include='*.${ext}' ${term} .|grep -R --include='*.${ext}' ${term} .")
   questions+=("Show size of files larger than ${size}|find . -size +${size} -exec du -h {} \\;|fd -S +${size} -x du -h {}")
   questions+=("Copy all .${ext} files to ${dir}/|find . -name '*.${ext}' -exec cp {} ${dir}/ \\;|fd -e ${ext} -x cp {} ${dir}/")
   questions+=("Move all .${ext2} files to ${dir}/|find . -name '*.${ext2}' -exec mv {} ${dir}/ \\;|fd -e ${ext2} -x mv {} ${dir}/")
@@ -2337,10 +2340,10 @@ gen_level21() {
   questions+=("Unmask ${svc}|systemctl unmask ${svc}|sudo systemctl unmask ${svc}")
 
   # Journalctl - L19-only commands (basics covered in L12)
-  questions+=("View last ${n2} log lines for ${svc}|journalctl -u ${svc} -n ${n2}|journalctl --unit ${svc} --lines ${n2}|journalctl --unit ${svc} --lines=${n2}|journalctl -u ${svc} --lines ${n2}|journalctl --unit ${svc} -n ${n2}")
+  questions+=("View last ${n2} log lines for ${svc}|journalctl -u ${svc} -n ${n2}|journalctl --unit ${svc} --lines ${n2}|journalctl --unit ${svc} --lines=${n2}|journalctl -u ${svc} --lines ${n2}|journalctl -u ${svc} --lines=${n2}|journalctl --unit ${svc} -n ${n2}")
   questions+=("View kernel messages|journalctl -k|journalctl --dmesg|dmesg")
-  questions+=("View logs from last hour|journalctl --since '1 hour ago'|journalctl -S '1 hour ago'")
-  questions+=("View logs from last ${n} minutes|journalctl --since '${n} minutes ago'|journalctl -S '${n} minutes ago'")
+  questions+=("View logs from last hour|journalctl --since '1 hour ago'|journalctl --since='1 hour ago'|journalctl -S '1 hour ago'")
+  questions+=("View logs from last ${n} minutes|journalctl --since '${n} minutes ago'|journalctl --since='${n} minutes ago'|journalctl -S '${n} minutes ago'")
   questions+=("View errors only|journalctl -p err|journalctl -p 3|journalctl -p error|journalctl --priority err|journalctl --priority error|journalctl --priority=err|journalctl --priority=error")
   questions+=("Disk usage of journal|journalctl --disk-usage")
   local jsize=${size/k/K}
@@ -2453,9 +2456,8 @@ gen_level22() {
   questions+=("Complex: join lines with comma in ${W}${txt}${C}|paste -sd',' ${txt}|paste -sd, ${txt}")
 
   # Process substitution - advanced piping
-  questions+=("Diff sorted contents of ${txt} and ${txt2}|diff <(sort ${txt}) <(sort ${txt2})")
   questions+=("Compare sorted ${W}${txt}${C} vs sorted ${W}${txt2}${C} output|diff <(sort ${txt}) <(sort ${txt2})")
-  questions+=("Count lines matching ${Y}${term}${C} in ${W}${log}${C} (process substitution)|wc -l <(grep ${term} ${log})")
+  questions+=("Count lines matching ${Y}${term}${C} in ${W}${log}${C} (process substitution)§wc -l <(grep ${term} ${log})§grep ${term} ${log} | wc -l")
 
   printf '%s\n' "${questions[@]}"
 }
@@ -2599,17 +2601,17 @@ gen_level24() {
 
   # SSH tunneling (CRITICAL for pentesting)
   questions+=("SSH local port forward: access remote ${port} via local 8080|ssh -L 8080:localhost:${port} ${user}@${host}|ssh -NL 8080:localhost:${port} ${user}@${host}")
-  questions+=("SSH remote port forward: expose local ${port} on remote|ssh -R ${port}:localhost:${port} ${user}@${host}")
+  questions+=("SSH remote port forward: expose local ${port} on remote|ssh -R ${port}:localhost:${port} ${user}@${host}|ssh -NR ${port}:localhost:${port} ${user}@${host}")
   questions+=("SSH dynamic SOCKS proxy on port 1080|ssh -D 1080 ${user}@${host}|ssh -ND 1080 ${user}@${host}|ssh -DN 1080 ${user}@${host}")
   questions+=("SSH through jump host to target|ssh -J ${user}@jump ${user}@target")
   questions+=("SSH tunnel in background|ssh -fN -L 8080:localhost:${port} ${user}@${host}|ssh -fNL 8080:localhost:${port} ${user}@${host}")
-  questions+=("SSH execute remote command|ssh ${user}@${host} 'ls -la'")
+  questions+=("SSH execute remote command|ssh ${user}@${host} 'ls -la'|ssh ${user}@${host} \"ls -la\"|ssh ${user}@${host} ls -la")
   questions+=("SCP ${W}${txt}${C} to remote|scp ${txt} ${user}@${host}:/tmp/")
   questions+=("Rsync ${W}${txt}${C} with progress|rsync -avz --progress ${txt} ${user}@${host}:/backup/|rsync -avzP ${txt} ${user}@${host}:/backup/")
 
   # wget
-  questions+=("Download file|wget ${url}/file.tar.gz")
-  questions+=("Continue interrupted download|wget -c ${url}/large.iso|wget --continue ${url}/large.iso")
+  questions+=("Download file|wget ${url}/file.tar.gz|curl -O ${url}/file.tar.gz|curl --remote-name ${url}/file.tar.gz")
+  questions+=("Continue interrupted download|wget -c ${url}/large.iso|wget --continue ${url}/large.iso|curl -C - -O ${url}/large.iso")
   questions+=("Mirror website for offline|wget -mk ${url}|wget --mirror -k ${url}|wget -m --convert-links ${url}|wget --mirror --convert-links ${url}")
 
   # OpenSSL (cert checking, encryption)
@@ -2763,10 +2765,10 @@ gen_level27() {
   questions+=("Brute force with ${W}${wordlist}${C}, limit to 4 parallel tasks|hydra -t 4 -l ${user} -P ${wordlist} ${ip} ssh|hydra -t 4 -l ${user} -P ${wordlist} ssh://${ip}")
 
   # Encoding/decoding
-  questions+=("Encode string 'secret' to base64§echo -n 'secret' | base64§printf 'secret' | base64")
+  questions+=("Encode string 'secret' to base64§echo -n 'secret' | base64§printf 'secret' | base64§printf '%s' 'secret' | base64")
   questions+=("Decode base64 file encoded.txt§base64 -d encoded.txt§base64 --decode encoded.txt§base64 -d < encoded.txt§base64 --decode < encoded.txt§cat encoded.txt | base64 -d§cat encoded.txt | base64 --decode")
-  questions+=("Generate MD5 hash of string 'password'§echo -n 'password' | md5sum§printf 'password' | md5sum")
-  questions+=("Generate SHA256 hash of string 'password'§echo -n 'password' | sha256sum§printf 'password' | sha256sum")
+  questions+=("Generate MD5 hash of string 'password'§echo -n 'password' | md5sum§printf 'password' | md5sum§printf '%s' 'password' | md5sum")
+  questions+=("Generate SHA256 hash of string 'password'§echo -n 'password' | sha256sum§printf 'password' | sha256sum§printf '%s' 'password' | sha256sum")
   questions+=("Generate SHA256 hash of file ${hash}|sha256sum ${hash}")
 
   # Hex operations
@@ -2786,8 +2788,9 @@ gen_level28() {
   questions+=("Extract ASCII strings from ${bin}|strings ${bin}")
   questions+=("Extract strings minimum 10 chars in ${W}${bin}${C}|strings -n 10 ${bin}|strings --bytes=10 ${bin}|strings --bytes 10 ${bin}")
   questions+=("Extract Unicode strings (Windows binaries) in ${W}${bin}${C}|strings -e l ${bin}|strings --encoding=l ${bin}|strings --encoding l ${bin}")
-  questions+=("Find URLs in ${W}${bin}${C}§strings ${bin} | grep -E 'https?://'§strings ${bin} | egrep 'https?://'")
-  questions+=("Find email addresses in ${W}${bin}${C}§strings ${bin} | grep -E '[A-Za-z0-9._%+-]+@'§strings ${bin} | egrep '[A-Za-z0-9._%+-]+@'")
+  questions+=("Find URLs in ${W}${bin}${C}§strings ${bin} | grep -E 'https?://'§strings ${bin} | egrep 'https?://'§strings ${bin} | grep -oE 'https?://[^ ]+'")
+  questions+=("Find email addresses in ${W}${bin}${C}§strings ${bin} | grep -E '[A-Za-z0-9._%+-]+@'§strings ${bin} | egrep '[A-Za-z0-9._%+-]+@'§strings ${bin} | grep -oE '[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+'")
+
 
   # ELF analysis
   questions+=("Show ELF file header in ${W}${bin}${C}|readelf -h ${bin}|readelf --file-header ${bin}")
@@ -2852,7 +2855,7 @@ gen_level29() {
   questions+=("Check if user in docker/lxd group§id | grep -E 'docker|lxd'§groups | grep -E 'docker|lxd'§id -nG | grep -E 'docker|lxd'")
 
   # System enumeration
-  questions+=("Show OS and kernel version|uname -a|uname --all|hostnamectl|cat /etc/os-release|cat /proc/version")
+  questions+=("Show OS and kernel version|uname -a|uname --all|hostnamectl|cat /proc/version")
   questions+=("Show running processes|ps aux|ps -ef|ps -aux")
   questions+=("Show network connections|ss -tlpn|netstat -tlpn|ss -tulpn|netstat -tulpn")
   questions+=("Show cron jobs|cat /etc/crontab; crontab -l|cat /etc/crontab && crontab -l|crontab -l")
@@ -2948,14 +2951,14 @@ gen_level30() {
 
   # === DEFENSIVE HARDENING ===
   questions+=("Block IP with iptables|iptables -A INPUT -s ${ip} -j DROP|iptables -I INPUT -s ${ip} -j DROP|sudo iptables -A INPUT -s ${ip} -j DROP|sudo iptables -I INPUT -s ${ip} -j DROP")
-  questions+=("Block IP with nftables|nft add rule inet filter input ip saddr ${ip} drop")
-  questions+=("Rate limit SSH connections|iptables -A INPUT -p tcp --dport 22 -m connlimit --connlimit-above 3 -j DROP")
+  questions+=("Block IP with nftables|nft add rule inet filter input ip saddr ${ip} drop|sudo nft add rule inet filter input ip saddr ${ip} drop")
+  questions+=("Rate limit SSH connections|iptables -A INPUT -p tcp --dport 22 -m connlimit --connlimit-above 3 -j DROP|sudo iptables -A INPUT -p tcp --dport 22 -m connlimit --connlimit-above 3 -j DROP")
   questions+=("Enable SYN cookies|echo 1 > /proc/sys/net/ipv4/tcp_syncookies|sysctl -w net.ipv4.tcp_syncookies=1|sysctl net.ipv4.tcp_syncookies=1")
   questions+=("Disable IP forwarding|echo 0 > /proc/sys/net/ipv4/ip_forward|sysctl -w net.ipv4.ip_forward=0|sysctl net.ipv4.ip_forward=0")
-  questions+=("Flush all firewall rules|iptables -F; iptables -X|iptables -F && iptables -X")
-  questions+=("List all iptables rules|iptables -L -n -v|iptables -S|iptables --list -n -v")
-  questions+=("List all nftables rules|nft list ruleset")
-  questions+=("Audit failed sudo attempts|grep 'FAILED' /var/log/auth.log")
+  questions+=("Flush all firewall rules|iptables -F; iptables -X|iptables -F && iptables -X|sudo iptables -F; sudo iptables -X|sudo iptables -F && sudo iptables -X")
+  questions+=("List all iptables rules|iptables -L -n -v|iptables -S|iptables --list -n -v|sudo iptables -L -n -v|sudo iptables -S|sudo iptables --list -n -v")
+  questions+=("List all nftables rules|nft list ruleset|sudo nft list ruleset")
+  questions+=("Audit failed sudo attempts|grep 'FAILED' /var/log/auth.log|grep -i 'failed' /var/log/auth.log|sudo grep 'FAILED' /var/log/auth.log")
   questions+=("Lock user account§passwd -l ${user}§passwd --lock ${user}§usermod -L ${user}§usermod --lock ${user}")
 
   # === PROCESS NINJA ===
@@ -3012,8 +3015,8 @@ _sc_setup_1() {
 _sc_steps_1() {
   cat <<'STEPS'
 Check permissions on deploy.sh§ls -l deploy.sh§ls -la deploy.sh#output:~-rw-r--r--
-Make deploy.sh executable§chmod +x deploy.sh§chmod 755 deploy.sh§chmod u+x deploy.sh§chmod a+x deploy.sh#state:perm:deploy.sh:x
-Create VERSION file with "1.0"§echo 1.0 > VERSION§printf '1.0\n' > VERSION#state:contains:VERSION:1.0,lines:VERSION:1
+Make deploy.sh executable§chmod +x deploy.sh§chmod 755 deploy.sh§chmod u+x deploy.sh§chmod a+x deploy.sh§chmod 0755 deploy.sh#state:perm:deploy.sh:x
+Create VERSION file with "1.0"§echo 1.0 > VERSION§printf '1.0\n' > VERSION§printf '%s\n' 1.0 > VERSION#state:contains:VERSION:1.0,lines:VERSION:1
 Fix the port in config.ini to 8080§sed -i 's/port=0/port=8080/' config.ini§sed -i 's/port=0/port=8080/g' config.ini#state:contains:config.ini:port=8080
 Run the deploy script§./deploy.sh§bash deploy.sh§sh deploy.sh#output:~Deploy complete
 STEPS
@@ -3037,11 +3040,11 @@ LOG
 }
 _sc_steps_2() {
   cat <<'STEPS'
-Count the ERROR lines in app.log§grep -c ERROR app.log#output:5
+Count the ERROR lines in app.log§grep -c ERROR app.log§grep --count ERROR app.log§grep -cF ERROR app.log#output:5
 Find the most common error message§grep ERROR app.log | sed 's/.* ERROR //' | sort | uniq -c | sort -rn | head -1§grep ERROR app.log | cut -d' ' -f4- | sort | uniq -c | sort -rn | head -1#output:~Connection refused
 Save all ERROR lines to errors.txt§grep ERROR app.log > errors.txt#state:contains:errors.txt:ERROR,lines:errors.txt:5
 Count unique error types§grep ERROR app.log | sed 's/.* ERROR //' | sort -u | wc -l§grep ERROR app.log | cut -d' ' -f4- | sort -u | wc -l§grep ERROR app.log | sed 's/.* ERROR //' | sort --unique | wc -l§grep ERROR app.log | sed 's/.* ERROR //' | sort -u | wc --lines§grep ERROR app.log | cut -d' ' -f4- | sort --unique | wc -l§grep ERROR app.log | cut -d' ' -f4- | sort -u | wc --lines#output:2
-Remove all ERROR lines from app.log§sed -i '/ERROR/d' app.log§grep -v ERROR app.log > tmp && mv tmp app.log#state:lines:app.log:5
+Remove all ERROR lines from app.log§sed -i '/ERROR/d' app.log§grep -v ERROR app.log > tmp && mv tmp app.log§awk '!/ERROR/' app.log > tmp && mv tmp app.log#state:lines:app.log:5
 STEPS
 }
 
@@ -3061,9 +3064,9 @@ CSV
 _sc_steps_3() {
   cat <<'STEPS'
 Count data rows (excluding header)§tail -n +2 data.csv | wc -l§sed 1d data.csv | wc -l§tail -n +2 data.csv | wc --lines§sed 1d data.csv | wc --lines#output:~^\s*6\s*$
-Find duplicate lines (excluding header)§tail -n +2 data.csv | sort | uniq -d§sed 1d data.csv | sort | uniq -d#output:~alice
+Find duplicate lines (excluding header)§tail -n +2 data.csv | sort | uniq -d§sed 1d data.csv | sort | uniq -d§tail -n +2 data.csv | sort | uniq --repeated§sed 1d data.csv | sort | uniq --repeated#output:~alice
 Sort and deduplicate (keep header)§head -1 data.csv > sorted.csv && tail -n +2 data.csv | sort -t, -k1 -n | uniq >> sorted.csv§(head -1 data.csv; tail -n +2 data.csv | sort -t, -k1,1n | uniq) > sorted.csv#state:lines:sorted.csv:5,contains:sorted.csv:id,name,status
-Count active entries in sorted file§grep -cw active sorted.csv§grep -c ',active$' sorted.csv#output:3
+Count active entries in sorted file§grep -cw active sorted.csv§grep -c ',active$' sorted.csv§grep -c ',active' sorted.csv#output:3
 STEPS
 }
 
@@ -3077,9 +3080,9 @@ _sc_setup_4() {
 }
 _sc_steps_4() {
   cat <<'STEPS'
-Make config.ini readable§chmod 644 config.ini§chmod a+r config.ini§chmod u+r config.ini§chmod +r config.ini#state:perm:config.ini:r
-Make backup.sh executable§chmod +x backup.sh§chmod 755 backup.sh§chmod u+x backup.sh§chmod a+x backup.sh#state:perm:backup.sh:x
-Make logs/ directory accessible§chmod 755 logs§chmod +rx logs§chmod a+rx logs§chmod u+rx logs#state:perm:logs:rx
+Make config.ini readable§chmod 644 config.ini§chmod a+r config.ini§chmod u+r config.ini§chmod +r config.ini§chmod 444 config.ini#state:perm:config.ini:r
+Make backup.sh executable§chmod +x backup.sh§chmod 755 backup.sh§chmod u+x backup.sh§chmod a+x backup.sh§chmod 0755 backup.sh#state:perm:backup.sh:x
+Make logs/ directory accessible§chmod 755 logs§chmod +rx logs§chmod a+rx logs§chmod u+rx logs§chmod 700 logs#state:perm:logs:rx
 Run backup.sh to verify it works§./backup.sh§bash backup.sh§sh backup.sh#output:~Backup complete
 STEPS
 }
@@ -3107,10 +3110,10 @@ PY
 }
 _sc_steps_5() {
   cat <<'STEPS'
-Find files containing TODO§grep -rl TODO .§grep -rl TODO§grep -Rl TODO .§grep -Rl TODO§grep --recursive -l TODO .#output:~main\.py
-Count total TODO/FIXME/HACK markers§grep -rE 'TODO|FIXME|HACK' . | wc -l§grep -r 'TODO\|FIXME\|HACK' . | wc -l§grep -RE 'TODO|FIXME|HACK' . | wc -l§grep -rE 'TODO|FIXME|HACK' . | wc --lines§grep -RE 'TODO|FIXME|HACK' . | wc --lines#output:4
-Show markers with line numbers§grep -rnE 'TODO|FIXME|HACK' .§grep -rn 'TODO\|FIXME\|HACK' .§grep -RnE 'TODO|FIXME|HACK' .§grep -Rn 'TODO\|FIXME\|HACK' .#output:~TODO
-Find the file with FIXME§grep -rl FIXME .§grep -rl FIXME§grep -Rl FIXME .§grep -Rl FIXME§grep --recursive -l FIXME .#output:~helpers\.py
+Find files containing TODO§grep -rl TODO .§grep -rl TODO§grep -Rl TODO .§grep -Rl TODO§grep --recursive -l TODO .§grep -rli TODO .§grep -Rli TODO .#output:~main\.py
+Count total TODO/FIXME/HACK markers§grep -rE 'TODO|FIXME|HACK' . | wc -l§grep -r 'TODO\|FIXME\|HACK' . | wc -l§grep -RE 'TODO|FIXME|HACK' . | wc -l§grep -rE 'TODO|FIXME|HACK' . | wc --lines§grep -RE 'TODO|FIXME|HACK' . | wc --lines§grep -rE 'TODO|FIXME|HACK' | wc -l§grep -rE 'TODO|FIXME|HACK' | wc --lines#output:4
+Show markers with line numbers§grep -rnE 'TODO|FIXME|HACK' .§grep -rn 'TODO\|FIXME\|HACK' .§grep -RnE 'TODO|FIXME|HACK' .§grep -Rn 'TODO\|FIXME\|HACK' .§grep -rnE 'TODO|FIXME|HACK'§grep -RnE 'TODO|FIXME|HACK'#output:~TODO
+Find the file with FIXME§grep -rl FIXME .§grep -rl FIXME§grep -Rl FIXME .§grep -Rl FIXME§grep --recursive -l FIXME .§grep --recursive -l FIXME#output:~helpers\.py
 STEPS
 }
 
@@ -3124,10 +3127,10 @@ _sc_setup_6() {
 }
 _sc_steps_6() {
   cat <<'STEPS'
-Create a tar.gz of the release/ directory§tar czf release.tar.gz release§tar -czf release.tar.gz release#state:exists:release.tar.gz
-List the archive contents§tar tzf release.tar.gz§tar -tzf release.tar.gz§tar -tf release.tar.gz#output:~release/
-Delete the original release/ directory§rm -rf release§rm -r release#state:!exists:release
-Extract the archive to restore it§tar xzf release.tar.gz§tar -xzf release.tar.gz§tar xf release.tar.gz#state:exists:release/VERSION
+Create a tar.gz of the release/ directory§tar czf release.tar.gz release§tar -czf release.tar.gz release§tar czf release.tar.gz release/§tar -czf release.tar.gz release/§tar zcf release.tar.gz release§tar -zcf release.tar.gz release#state:exists:release.tar.gz
+List the archive contents§tar tzf release.tar.gz§tar -tzf release.tar.gz§tar -tf release.tar.gz§tar tf release.tar.gz§tar -tzvf release.tar.gz§tar tzvf release.tar.gz#output:~release/
+Delete the original release/ directory§rm -rf release§rm -r release§rm -rf release/§rm -r release/§rm -Rf release#state:!exists:release
+Extract the archive to restore it§tar xzf release.tar.gz§tar -xzf release.tar.gz§tar xf release.tar.gz§tar -xf release.tar.gz§tar -xzvf release.tar.gz§tar xzvf release.tar.gz#state:exists:release/VERSION
 STEPS
 }
 
@@ -3149,11 +3152,11 @@ LOG
 }
 _sc_steps_7() {
   cat <<'STEPS'
-Find the IP with the most requests§awk '{print $3}' server.log | sort | uniq -c | sort -rn | head -1§cut -d' ' -f3 server.log | sort | uniq -c | sort -rn | head -1#output:~10\.10\.10\.50
-Count failed login attempts (401)§grep 401 server.log | wc -l§grep -c 401 server.log§grep 401 server.log | wc --lines#output:3
-Check if the attacker got in (find 200 after 401s from same IP)§grep 10.10.10.50 server.log | grep 200§grep '10.10.10.50.*200' server.log#output:~login 200
-Save all attacker activity to attacker.log§grep 10.10.10.50 server.log > attacker.log#state:contains:attacker.log:10.10.10.50,lines:attacker.log:6
-Count unique IPs in the log§awk '{print $3}' server.log | sort -u | wc -l§awk '{print $3}' server.log | sort | uniq | wc -l§awk '{print $3}' server.log | sort --unique | wc -l§awk '{print $3}' server.log | sort -u | wc --lines§awk '{print $3}' server.log | sort | uniq | wc --lines§cut -d' ' -f3 server.log | sort -u | wc -l§cut -d' ' -f3 server.log | sort --unique | wc -l§cut -d' ' -f3 server.log | sort -u | wc --lines#output:2
+Find the IP with the most requests§awk '{print $3}' server.log | sort | uniq -c | sort -rn | head -1§cut -d' ' -f3 server.log | sort | uniq -c | sort -rn | head -1§awk '{print $3}' server.log | sort | uniq -c | sort -nr | head -1§cut -d' ' -f3 server.log | sort | uniq -c | sort -nr | head -1#output:~10\.10\.10\.50
+Count failed login attempts (401)§grep 401 server.log | wc -l§grep -c 401 server.log§grep 401 server.log | wc --lines§grep -c ' 401' server.log§grep ' 401' server.log | wc -l#output:3
+Check if the attacker got in (find 200 after 401s from same IP)§grep 10.10.10.50 server.log | grep 200§grep '10.10.10.50.*200' server.log§grep 10.10.10.50 server.log | grep ' 200'#output:~login 200
+Save all attacker activity to attacker.log§grep 10.10.10.50 server.log > attacker.log§grep '10.10.10.50' server.log > attacker.log#state:contains:attacker.log:10.10.10.50,lines:attacker.log:6
+Count unique IPs in the log§awk '{print $3}' server.log | sort -u | wc -l§awk '{print $3}' server.log | sort | uniq | wc -l§awk '{print $3}' server.log | sort --unique | wc -l§awk '{print $3}' server.log | sort -u | wc --lines§awk '{print $3}' server.log | sort | uniq | wc --lines§cut -d' ' -f3 server.log | sort -u | wc -l§cut -d' ' -f3 server.log | sort --unique | wc -l§cut -d' ' -f3 server.log | sort -u | wc --lines§cut -d' ' -f3 server.log | sort | uniq | wc -l§cut -d' ' -f3 server.log | sort | uniq | wc --lines#output:2
 STEPS
 }
 
@@ -3179,11 +3182,11 @@ CFG
 }
 _sc_steps_8() {
   cat <<'STEPS'
-Find the debug setting§grep debug config.ini§grep -i debug config.ini#output:~debug=true
-Disable debug mode (set to false)§sed -i 's/debug=true/debug=false/' config.ini#state:contains:config.ini:debug=false,!contains:config.ini:debug=true
-Find the plaintext password§grep password config.ini§grep -i password config.ini#output:password=hunter2
-Remove the password line§sed -i '/password/d' config.ini§sed -i '/^password/d' config.ini#state:!contains:config.ini:password
-Fix log level to INFO§sed -i 's/level=DEBUG/level=INFO/' config.ini§sed -i 's/DEBUG/INFO/' config.ini#state:contains:config.ini:level=INFO,!contains:config.ini:level=DEBUG
+Find the debug setting§grep debug config.ini§grep -i debug config.ini§grep -n debug config.ini§grep -ni debug config.ini#output:~debug=true
+Disable debug mode (set to false)§sed -i 's/debug=true/debug=false/' config.ini§sed -i 's/true/false/' config.ini§sed -i 's/debug=true/debug=false/g' config.ini§sed -i '/debug/s/true/false/' config.ini#state:contains:config.ini:debug=false,!contains:config.ini:debug=true
+Find the plaintext password§grep password config.ini§grep -i password config.ini§grep -n password config.ini#output:~password=hunter2
+Remove the password line§sed -i '/password/d' config.ini§sed -i '/^password/d' config.ini§sed -i '/password=hunter2/d' config.ini§sed -i '/hunter2/d' config.ini#state:!contains:config.ini:password
+Fix log level to INFO§sed -i 's/level=DEBUG/level=INFO/' config.ini§sed -i 's/DEBUG/INFO/' config.ini§sed -i 's/level=DEBUG/level=INFO/g' config.ini§sed -i '/level/s/DEBUG/INFO/' config.ini#state:contains:config.ini:level=INFO,!contains:config.ini:level=DEBUG
 STEPS
 }
 
@@ -3284,6 +3287,8 @@ _fnorm() {
   for _sp in "${parts[@]}"; do
     if [[ "$_sp" =~ ^-([a-zA-Z])([0-9]+)$ ]]; then
       _sf+=("-${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}")
+    elif [[ "$_sp" =~ ^(--[a-zA-Z][-a-zA-Z]*)=(.+)$ ]]; then
+      _sf+=("${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}")
     else _sf+=("$_sp"); fi
   done
   parts=("${_sf[@]}")
@@ -3503,7 +3508,7 @@ _del() { # $1=motion
   local e=$cursor
   case "$1" in
     d|c) input="" cursor=0;;
-    w) while ((e<${#input})) && [[ "${input:e:1}" != " " ]]; do ((++e)); done; input="${input:0:cursor}${input:e}";;
+    w) while ((e<${#input})) && [[ "${input:e:1}" != " " ]]; do ((++e)); done; while ((e<${#input})) && [[ "${input:e:1}" == " " ]]; do ((++e)); done; input="${input:0:cursor}${input:e}";;
     b) ((e>0)) && ((e--)); while ((e>0)) && [[ "${input:e:1}" == " " ]]; do ((e--)); done; while ((e>0)) && [[ "${input:e-1:1}" != " " ]]; do ((e--)); done; input="${input:0:e}${input:cursor}"; cursor=$e;;
     \$) input="${input:0:cursor}";;
     0) input="${input:cursor}"; cursor=0;;
@@ -3608,7 +3613,7 @@ _read_line() {
             q) local _vbang=""; IFS= read -rsn1 -t 0.2 _vbang || _vbang=""
               [[ "$_vbang" == "!" ]] && _egg_found vimquit; _quit;;
             w) local _vq=""; IFS= read -rsn1 -t 0.2 _vq || _vq=""
-              [[ "$_vq" == "q" ]] && _egg_found vimquit; _quit;;
+              [[ "$_vq" == "q" ]] && { _egg_found vimquit; _quit; };;
           esac;;
         \?) ((_rl_hints)) && { printf '\n%s\n%s\n%s\n%s\n' "${D}hl${N} move  ${D}kj${N}/↑↓ history  ${D}wb${N} word  ${D}fFtT${N}+char find  ${D}0\$/gg/G${N} line" "${D}x/X${N} del char  ${D}dw/db/dd${N} del  ${D}cw/cb/cc${N} change  ${D}r${N} replace" "${D}s/S${N} subst  ${D}i/a/I/A${N} insert  ${D}u${N} undo(stack)  ${D}:q/:wq${N} quit" "${D}Tab${N} man  ${D}Ctrl+d${N} quit  ${D}[num]cmd${N} repeat"; read -rsn1; _REDRAW_HDR; draw; };;
         '') ((_man_open)) && printf '\e[s\n\e[J\e[u'; _man_open=0; echo; return;;
@@ -4009,6 +4014,7 @@ review() {
     _REDRAW_HDR
     while true; do
       _read_line 1 1
+      [[ -z "$input" ]] && { draw; continue; }
       if check "$input" "$_qanswers"; then
         [[ -n "$input" ]] && { HIST+=("$input"); HIST_IDX=${#HIST[@]}; HIST_SAVE=""; }
         ((_S_ANSWERED++)); ((_S_CORRECT++)); ((_S_STREAK++))
