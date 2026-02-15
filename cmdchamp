@@ -1490,7 +1490,7 @@ gen_level8() {
   # === PURE: Just && and || basics ===
   questions+=("Create ${W}${dir}${C} and cd into it, only if mkdir succeeds|mkdir ${dir} && cd ${dir}|mkdir -p ${dir} && cd ${dir}")
   questions+=("Create ${W}${dir}${C}, or echo '${msg}' if it fails§mkdir ${dir} || echo '${msg}'")
-  questions+=("Try cd to ${W}${dir}${C}, create it if that fails§cd ${dir} || mkdir ${dir}")
+  questions+=("Try cd to ${W}${dir}${C}, create it if that fails§cd ${dir} || mkdir ${dir}§cd ${dir} || mkdir -p ${dir}")
 
   # === COMPOUND: Uses cat (L3), head (L3), tail (L3) ===
   questions+=("If ${W}${txt}${C} exists, display it — one line|test -f ${txt} && cat ${txt}|[[ -f ${txt} ]] && cat ${txt}|[ -f ${txt} ] && cat ${txt}")
@@ -1670,7 +1670,7 @@ gen_level11() {
   questions+=("Disown job ${n2} (detach from shell)|disown %${n2}")
   questions+=("Wait for job ${n2} specifically|wait %${n2}")
   questions+=("Bring most recent job to foreground|fg|fg %%|fg %+")
-  questions+=("Continue stopped job in background|bg")
+  questions+=("Continue stopped job in background|bg|bg %%|bg %+")
 
   printf '%s\n' "${questions[@]}"
 }
@@ -1757,7 +1757,7 @@ gen_level13() {
   questions+=("Count words in ${txt}|wc -w ${txt}|wc --words ${txt}")
   questions+=("Count bytes in ${txt}|wc -c ${txt}|wc --bytes ${txt}")
   questions+=("Copy ${cfg} to ${cfg2}|cp ${cfg} ${cfg2}")
-  questions+=("Copy ${dir}/ recursively to ${dir2}/|cp -r ${dir}/ ${dir2}/|cp -R ${dir}/ ${dir2}/|cp --recursive ${dir}/ ${dir2}/")
+  questions+=("Copy ${dir}/ recursively to ${dir2}/|cp -r ${dir}/ ${dir2}/|cp -R ${dir}/ ${dir2}/|cp --recursive ${dir}/ ${dir2}/|cp -a ${dir}/ ${dir2}/|cp --archive ${dir}/ ${dir2}/")
   questions+=("Move ${txt} to ${dir}/|mv ${txt} ${dir}/")
   questions+=("Rename ${cfg} to ${cfg2}|mv ${cfg} ${cfg2}")
 
@@ -1845,7 +1845,7 @@ gen_level14() {
   questions+=("Reload systemd daemon|systemctl daemon-reload|sudo systemctl daemon-reload")
   questions+=("Show ${svc} logs|journalctl -u ${svc}|journalctl --unit ${svc}|journalctl --unit=${svc}")
   questions+=("Follow ${svc} logs|journalctl -fu ${svc}|journalctl --follow -u ${svc}|journalctl --follow --unit ${svc}")
-  questions+=("Show logs since boot|journalctl -b|journalctl --boot")
+  questions+=("Show logs since boot|journalctl -b|journalctl --boot|journalctl -b 0|journalctl --boot 0|journalctl --boot=0")
   questions+=("Show last 100 log lines|journalctl -n 100|journalctl --lines 100|journalctl --lines=100")
 
   # User/permission management
@@ -1855,7 +1855,7 @@ gen_level14() {
   questions+=("Add user ${user}|useradd -m ${user}|sudo useradd -m ${user}|useradd --create-home ${user}|sudo useradd --create-home ${user}|adduser ${user}|sudo adduser ${user}")
   questions+=("Delete user ${user}|userdel -r ${user}|sudo userdel -r ${user}|userdel --remove ${user}|sudo userdel --remove ${user}")
   questions+=("Change password for ${user}|passwd ${user}|sudo passwd ${user}")
-  questions+=("Add ${user} to group wheel|usermod -aG wheel ${user}|sudo usermod -aG wheel ${user}|gpasswd -a ${user} wheel|sudo gpasswd -a ${user} wheel")
+  questions+=("Add ${user} to group wheel|usermod -aG wheel ${user}|sudo usermod -aG wheel ${user}|gpasswd -a ${user} wheel|sudo gpasswd -a ${user} wheel|usermod --append --groups wheel ${user}|sudo usermod --append --groups wheel ${user}")
   questions+=("List groups for ${user}|groups ${user}|id ${user}")
   questions+=("Change owner of ${txt} to ${user}|chown ${user} ${txt}|sudo chown ${user} ${txt}")
   questions+=("Change owner and group of ${txt} to ${user}|chown ${user}:${user} ${txt}|sudo chown ${user}:${user} ${txt}")
@@ -1911,7 +1911,7 @@ gen_level15() {
   questions+=("Swap with next pane|tmux swap-pane -D|tmux swapp -D")
 
   # Scripting / automation (the real power)
-  questions+=("Send keys to session 'work'|tmux send-keys -t work 'ls -la' Enter")
+  questions+=("Send keys to session 'work'|tmux send-keys -t work 'ls -la' Enter|tmux send-keys -t work 'ls -la' C-m")
   questions+=("Capture pane output to stdout|tmux capture-pane -p|tmux capturep -p")
   questions+=("Save pane output to file§tmux capture-pane -p > output.txt")
   questions+=("Run command in new window§tmux new-window 'htop'")
@@ -2272,9 +2272,9 @@ gen_level21() {
   _fpick SERVICES; local svc2=$REPLY; _frnum 2 8; local parallel=$REPLY; _frnum 1 20; local linenum=$REPLY
 
   # find -exec - with flag alternatives
-  questions+=("Run ls -l on each .${ext} file found|find . -name '*.${ext}' -exec ls -l {} \\;|fd -e ${ext} -x ls -l {}")
+  questions+=("Run ls -l on each .${ext} file found|find . -name '*.${ext}' -exec ls -l {} \\;|find . -name '*.${ext}' -exec ls -l {} +|fd -e ${ext} -x ls -l {}")
   questions+=("Count lines in each .${ext} file|find . -name '*.${ext}' -exec wc -l {} \\;|fd -e ${ext} -x wc -l {}")
-  questions+=("Delete all .${ext2} files|find . -name '*.${ext2}' -delete|find . -name '*.${ext2}' -exec rm {} \\;|fd -e ${ext2} -x rm {}")
+  questions+=("Delete all .${ext2} files|find . -name '*.${ext2}' -delete|find . -name '*.${ext2}' -exec rm {} \\;|find . -name '*.${ext2}' -exec rm {} +|fd -e ${ext2} -x rm {}|fd -e ${ext2} -X rm")
   questions+=("Make all .sh files executable|find . -name '*.sh' -exec chmod +x {} \\;|fd -e sh -x chmod +x {}")
   questions+=("Search '${term}' in each .${ext} file|find . -name '*.${ext}' -exec grep ${term} {} \\;|fd -e ${ext} -x rg ${term} {}")
   questions+=("Show size of files larger than ${size}|find . -size +${size} -exec du -h {} \\;|fd -S +${size} -x du -h {}")
@@ -2299,7 +2299,7 @@ gen_level21() {
   questions+=("Print only lines matching '${term}' in ${W}${log}${C}|sed -n '/${term}/p' ${log}|grep '${term}' ${log}")
 
   # xargs - building commands from stdin
-  questions+=("Delete files listed in filelist.txt§xargs rm < filelist.txt§cat filelist.txt | xargs rm")
+  questions+=("Delete files listed in filelist.txt§xargs rm < filelist.txt§cat filelist.txt | xargs rm§xargs -a filelist.txt rm")
   questions+=("Grep in found files (safe with spaces)§find . -name '*.${ext}' -print0 | xargs -0 grep ${term}")
   questions+=("Count lines in found files (safe with spaces)§find . -name '*.${ext}' -print0 | xargs -0 wc -l")
   questions+=("Grep in parallel (${parallel} jobs)§find . -name '*.${ext}' -print0 | xargs -0 -P ${parallel} grep ${term}")
@@ -2550,7 +2550,7 @@ gen_level24() {
 
   # tshark - packet capture & analysis
   questions+=("Capture traffic on ${iface} to ${pcap}|tshark -i ${iface} -w ${pcap}|sudo tshark -i ${iface} -w ${pcap}")
-  questions+=("Capture only 100 packets to ${W}${pcap}${C}|tshark -i ${iface} -c 100 -w ${pcap}")
+  questions+=("Capture only 100 packets to ${W}${pcap}${C}|tshark -i ${iface} -c 100 -w ${pcap}|sudo tshark -i ${iface} -c 100 -w ${pcap}")
   questions+=("Read and display ${pcap}|tshark -r ${pcap}|tcpdump -r ${pcap}")
   questions+=("Filter HTTP traffic from ${pcap}|tshark -r ${pcap} -Y http")
   questions+=("Filter traffic to/from ${ip} in ${W}${pcap}${C}|tshark -r ${pcap} -Y 'ip.addr == ${ip}'")
@@ -2689,14 +2689,14 @@ gen_level26() {
   # Packet capture
   questions+=("Capture packets on ${iface}|tcpdump -i ${iface}|sudo tcpdump -i ${iface}")
   questions+=("Capture and save to ${W}${pcap}${C}|tcpdump -i ${iface} -w ${pcap}|sudo tcpdump -i ${iface} -w ${pcap}")
-  questions+=("Read saved ${W}${pcap}${C}|tcpdump -r ${pcap}")
-  questions+=("Capture only port ${port} traffic|tcpdump -i ${iface} port ${port}")
-  questions+=("Capture only traffic to/from ${ip}|tcpdump -i ${iface} host ${ip}")
-  questions+=("Capture first ${n} packets|tcpdump -i ${iface} -c ${n}")
-  questions+=("Capture with verbose output|tcpdump -i ${iface} -vvv")
-  questions+=("Capture DNS traffic only|tcpdump -i ${iface} port 53")
-  questions+=("Capture HTTP traffic only|tcpdump -i ${iface} port 80")
-  questions+=("Don't resolve hostnames in capture|tcpdump -i ${iface} -n")
+  questions+=("Read saved ${W}${pcap}${C}|tcpdump -r ${pcap}|sudo tcpdump -r ${pcap}")
+  questions+=("Capture only port ${port} traffic|tcpdump -i ${iface} port ${port}|sudo tcpdump -i ${iface} port ${port}")
+  questions+=("Capture only traffic to/from ${ip}|tcpdump -i ${iface} host ${ip}|sudo tcpdump -i ${iface} host ${ip}")
+  questions+=("Capture first ${n} packets|tcpdump -i ${iface} -c ${n}|sudo tcpdump -i ${iface} -c ${n}")
+  questions+=("Capture with verbose output|tcpdump -i ${iface} -vvv|sudo tcpdump -i ${iface} -vvv")
+  questions+=("Capture DNS traffic only|tcpdump -i ${iface} port 53|sudo tcpdump -i ${iface} port 53")
+  questions+=("Capture HTTP traffic only|tcpdump -i ${iface} port 80|sudo tcpdump -i ${iface} port 80")
+  questions+=("Don't resolve hostnames in capture|tcpdump -i ${iface} -n|sudo tcpdump -i ${iface} -n")
 
   # Wireless recon
   questions+=("Show wireless interfaces|iw dev")
@@ -2717,7 +2717,7 @@ gen_level27() {
   # Hashcat dictionary attacks
   questions+=("Dictionary attack on MD5 (-m 0) hashes in ${hash} using ${W}${wordlist}${C}|hashcat -m 0 ${hash} ${wordlist}|hashcat -a 0 -m 0 ${hash} ${wordlist}")
   questions+=("Dictionary attack on ${hname} (-m ${hmode}) hashes using ${W}${wordlist}${C}|hashcat -m ${hmode} ${hash} ${wordlist}|hashcat -a 0 -m ${hmode} ${hash} ${wordlist}")
-  questions+=("Crack Windows NTLM hashes (-m 1000) in ${hash} using ${W}${wordlist}${C}|hashcat -m 1000 ${hash} ${wordlist}")
+  questions+=("Crack Windows NTLM hashes (-m 1000) in ${hash} using ${W}${wordlist}${C}|hashcat -m 1000 ${hash} ${wordlist}|hashcat -a 0 -m 1000 ${hash} ${wordlist}")
 
   # Hashcat brute force
   questions+=("Brute force 4-digit PIN (MD5)|hashcat -m 0 -a 3 ${hash} ?d?d?d?d")
@@ -2750,7 +2750,7 @@ gen_level27() {
 
   # Encoding/decoding
   questions+=("Encode string 'secret' to base64§echo -n 'secret' | base64§printf 'secret' | base64")
-  questions+=("Decode base64 file encoded.txt|base64 -d encoded.txt|base64 --decode encoded.txt")
+  questions+=("Decode base64 file encoded.txt|base64 -d encoded.txt|base64 --decode encoded.txt|base64 -d < encoded.txt|base64 --decode < encoded.txt")
   questions+=("Generate MD5 hash of string 'password'§echo -n 'password' | md5sum§printf 'password' | md5sum")
   questions+=("Generate SHA256 hash of string 'password'§echo -n 'password' | sha256sum§printf 'password' | sha256sum")
   questions+=("Generate SHA256 hash of file ${hash}|sha256sum ${hash}")
@@ -2758,7 +2758,7 @@ gen_level27() {
   # Hex operations
   questions+=("Convert 'hello' to hex§echo -n 'hello' | xxd -p§printf 'hello' | xxd -p")
   questions+=("Convert hex back to ascii§echo '68656c6c6f' | xxd -r -p§printf '68656c6c6f' | xxd -r -p")
-  questions+=("Hex dump ${W}${bin}${C} with addresses|xxd ${bin}|hexdump -C ${bin}")
+  questions+=("Hex dump ${W}${bin}${C} with addresses|xxd ${bin}|hexdump -C ${bin}|hd ${bin}")
   questions+=("Hex dump ${W}${bin}${C} (no addresses)|xxd -p ${bin}")
 
   printf '%s\n' "${questions[@]}"
@@ -2807,12 +2807,12 @@ gen_level28() {
   # Disk imaging
   questions+=("Create disk image of /dev/sda to ${W}${img}${C}|dd if=/dev/sda of=${img} bs=4M status=progress")
   questions+=("Mount ${W}${img}${C} read-only|mount -o ro,loop ${img} /mnt/evidence|mount -o loop,ro ${img} /mnt/evidence")
-  questions+=("Verify checksums file|sha256sum -c ${hash}")
+  questions+=("Verify checksums file|sha256sum -c ${hash}|sha256sum --check ${hash}")
 
   # File recovery / carving
   questions+=("Recover deleted files from ${img}|foremost -i ${img}")
   questions+=("Recover specific file types from ${W}${img}${C}|foremost -t jpg,pdf -i ${img}")
-  questions+=("Foremost with custom output dir on ${W}${img}${C}|foremost -i ${img} -o ${dir}/")
+  questions+=("Foremost with custom output dir on ${W}${img}${C}|foremost -i ${img} -o ${dir}/|foremost -i ${img} -o ${dir}")
   questions+=("List files in ${W}${img}${C} (TSK)|fls ${img}")
   questions+=("List files recursively in ${W}${img}${C}|fls -r ${img}")
   questions+=("List deleted files in ${W}${img}${C}|fls -d ${img}")
@@ -2838,11 +2838,11 @@ gen_level29() {
   questions+=("Check if user in docker/lxd group§id | grep -E 'docker|lxd'")
 
   # System enumeration
-  questions+=("Show OS and kernel version|uname -a|uname --all|hostnamectl")
+  questions+=("Show OS and kernel version|uname -a|uname --all|hostnamectl|cat /etc/os-release")
   questions+=("Show running processes|ps aux|ps -ef|ps -aux")
-  questions+=("Show network connections|ss -tlpn|netstat -tlpn")
-  questions+=("Show cron jobs|cat /etc/crontab; crontab -l")
-  questions+=("Show mounted filesystems|mount|df -h|findmnt|cat /proc/mounts")
+  questions+=("Show network connections|ss -tlpn|netstat -tlpn|ss -tulpn|netstat -tulpn")
+  questions+=("Show cron jobs|cat /etc/crontab; crontab -l|cat /etc/crontab && crontab -l")
+  questions+=("Show mounted filesystems|mount|df -h|findmnt|cat /proc/mounts|cat /etc/mtab")
 
   # Config file hunting
   questions+=("Find config files with passwords|grep -ri 'password' /etc/ 2>/dev/null")
@@ -2870,7 +2870,7 @@ gen_level29() {
   questions+=("Check writable /etc/sudoers|ls -la /etc/sudoers")
 
   # Path hijacking
-  questions+=("Check current PATH|echo \$PATH|printenv PATH")
+  questions+=("Check current PATH|echo \$PATH|echo \${PATH}|printenv PATH")
   questions+=("Prepend current dir to PATH|export PATH=.:\$PATH")
   questions+=("Create malicious binary|echo '#!/bin/bash' > /tmp/ls && echo '/bin/bash -p' >> /tmp/ls && chmod +x /tmp/ls")
   questions+=("Exploit relative path in SUID|export PATH=/tmp:\$PATH && ./vulnerable_suid")
@@ -2878,7 +2878,7 @@ gen_level29() {
   # NFS
   questions+=("Check NFS exports|showmount -e ${ip}|cat /etc/exports")
   questions+=("Mount NFS share from ${ip}|mount -t nfs ${ip}:/share /mnt")
-  questions+=("Create SUID on NFS|cp /bin/bash /mnt && chmod +s /mnt/bash")
+  questions+=("Create SUID on NFS|cp /bin/bash /mnt && chmod +s /mnt/bash|cp /bin/bash /mnt && chmod u+s /mnt/bash|cp /bin/bash /mnt; chmod +s /mnt/bash|cp /bin/bash /mnt; chmod u+s /mnt/bash")
 
   printf '%s\n' "${questions[@]}"
 }
@@ -2924,7 +2924,7 @@ gen_level30() {
   questions+=("List all cron jobs system-wide|for u in \$(cut -f1 -d: /etc/passwd); do crontab -l -u \$u 2>/dev/null; done; cat /etc/crontab; ls /etc/cron.*")
   questions+=("Find files modified in last hour|find / -mmin -60 -type f 2>/dev/null")
   questions+=("List all users with shell access§grep -vE 'nologin|false' /etc/passwd")
-  questions+=("Show failed login attempts§journalctl _COMM=sshd | grep -iE 'failed|invalid'§grep 'Failed' /var/log/auth.log")
+  questions+=("Show failed login attempts§journalctl _COMM=sshd | grep -iE 'failed|invalid'§grep 'Failed' /var/log/auth.log§journalctl -u sshd | grep -iE 'failed|invalid'§journalctl -u ssh | grep -iE 'failed|invalid'")
   questions+=("Find hidden files in home dirs|find /home -name '.*' -type f 2>/dev/null")
   questions+=("Check for rootkits|chkrootkit|rkhunter --check")
   questions+=("Dump all environment variables§env; cat /proc/*/environ 2>/dev/null | tr '\\0' '\\n'")
