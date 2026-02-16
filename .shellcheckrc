@@ -1,0 +1,3 @@
+# cmdchamp shellcheck config
+# SC2155: declare and assign separately — too noisy for local vars
+disable=SC2155

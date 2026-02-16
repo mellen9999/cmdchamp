@@ -645,7 +645,10 @@ _sandbox_check_output() {
       ;;
     @*)   # Line count match
       local count="${expected:1}"
-      local lines=0; [[ -n "$actual" ]] && lines=$(printf '%s\n' "$actual" | wc -l)
+      local lines=0
+      if [[ -n "$actual" ]]; then
+        local _lc="${actual//[!$'\n']/}"; lines=$(( ${#_lc} + 1 ))
+      fi
       ((lines == count)) && return 0
       ;;
     \*)   # Any output
@@ -709,8 +712,22 @@ _sandbox_check_state() {
   return 0
 }
 # Terminal state management
-_stty_saved="" _interactive=0
-_cleanup() { ((_CLEANING)) && return; _CLEANING=1; ((_interactive)) && { _sflush_if_dirty 2>/dev/null; rm -rf "$DATA/sandbox.snap" "$DATA/sandbox.snap.perms" 2>/dev/null; printf '\e[?25h'; [[ -n "$_stty_saved" ]] && stty "$_stty_saved" 2>/dev/null; if ((_S_ANSWERED > 0)); then local el=$(( $(printf '%(%s)T' -1) - _S_START )); printf '\n%s  %s/%s (%d%%)  streak %s  %dm%ds\n' "${B}Session${N}" "${G}${_S_CORRECT}${N}" "${_S_ANSWERED}" $((_S_CORRECT*100/_S_ANSWERED)) "${W}${_S_BEST_STREAK}${N}" $((el/60)) $((el%60)); else echo; fi; }; }
+_stty_saved="" _interactive=0 _CLEANING=0
+_cleanup() {
+  ((_CLEANING)) && return; _CLEANING=1
+  ((_interactive)) || return 0
+  _sflush_if_dirty 2>/dev/null
+  rm -rf "$DATA/sandbox.snap" "$DATA/sandbox.snap.perms" 2>/dev/null
+  printf '\e[?25h'
+  [[ -n "$_stty_saved" ]] && stty "$_stty_saved" 2>/dev/null
+  if ((_S_ANSWERED > 0)); then
+    local el=$(( $(printf '%(%s)T' -1) - _S_START ))
+    printf '\n%s  %s/%s (%d%%)  streak %s  %dm%ds\n' \
+      "${B}Session${N}" "${G}${_S_CORRECT}${N}" "${_S_ANSWERED}" \
+      $((_S_CORRECT*100/_S_ANSWERED)) "${W}${_S_BEST_STREAK}${N}" \
+      $((el/60)) $((el%60))
+  else echo; fi
+}
 trap '_cleanup; exit 0' INT TERM HUP EXIT
 PROMPT_CHAR="${CMD_PROMPT:-$([[ $EUID -eq 0 ]] && echo '# ' || echo '$ ')}"
 
