@@ -10,7 +10,7 @@ DATA="${XDG_DATA_HOME:-$HOME/.local/share}/cmdchamp"; mkdir -p "$DATA"; touch "$
 # Colors (defined early so _first_run/_intro can use them)
 R=$'\e[31m' G=$'\e[32m' Y=$'\e[33m' C=$'\e[36m' W=$'\e[97m' D=$'\e[2m' B=$'\e[1m' N=$'\e[0m'
 
-VERSION="0.3"
+VERSION="1.0"
 SANDBOX_TIMEOUT=5      # Seconds before sandbox command times out
 BOSS_THRESHOLD=4       # Correct answers needed to beat boss (out of BOSS_TOTAL)
 BOSS_TOTAL=5           # Number of questions in boss round
@@ -2789,7 +2789,7 @@ _fnorm() {
       REPLY="$_r"; return
     fi
   fi
-  local parts flags=() args=() p
+  local parts flags=() args=() postdd=() p
   read -ra parts <<< "$1"
   # Preprocess: split on ; boundaries (cmd; cmd2 → cmd ; cmd2)
   local _sc=() _sp
@@ -2833,8 +2833,11 @@ _fnorm() {
   done
   parts=("${_sf[@]}")
   REPLY="${parts[0]}"
+  local _saw_dashdash=0
   for p in "${parts[@]:1}"; do
-    if [[ "$p" == -* ]]; then
+    if ((_saw_dashdash)); then postdd+=("$p")
+    elif [[ "$p" == "--" ]]; then _saw_dashdash=1
+    elif [[ "$p" == -* ]]; then
       [[ "$p" =~ ^-[a-zA-Z]+$ && ${#p} -gt 2 ]] && { for ((j=1;j<${#p};j++)); do flags+=("-${p:j:1}"); done; } || flags+=("$p")
     else args+=("$p"); fi
   done
@@ -2863,6 +2866,7 @@ _fnorm() {
   done
   ((${#flags[@]})) && { for p in "${flags[@]}"; do REPLY+=" $p"; done; }
   ((${#args[@]})) && { for p in "${args[@]}"; do REPLY+=" $p"; done; }
+  ((_saw_dashdash)) && { REPLY+=" --"; for p in "${postdd[@]}"; do REPLY+=" $p"; done; }
 }
 
 _SANDBOX_OUTPUT=""  # Store output for display after check
@@ -3066,6 +3070,61 @@ _del() { # $1=motion
   esac; _clamp
 }
 
+# Vi normal mode handler (called from _read_line, uses dynamic scope)
+# Accesses: input cursor mode _rep _man_open _rl_hints _rl_hist
+#           UNDO_STACK HIST HIST_IDX HIST_SAVE c
+_vi_normal() {
+  if [[ "$c" =~ ^[1-9]$ ]] || { [[ "$c" == "0" ]] && [[ -n "$_rep" ]]; }; then _rep+="$c"; return 1; fi
+  local _n=${_rep:-1}; _rep=""
+  case "$c" in s|S|x|X|D|C|d|c|r) UNDO_STACK+=("$cursor:$input");; esac
+  case "$c" in
+    i) mode="insert"; draw;; a) mode="insert"; ((cursor<${#input})) && ((++cursor)); draw;;
+    A) mode="insert"; cursor=${#input}; draw;; I) mode="insert"; cursor=0; draw;;
+    s) ((${#input}>0)) && input="${input:0:cursor}${input:cursor+1}"; mode="insert"; draw;;
+    S) input="" cursor=0 mode="insert"; draw;;
+    h) for ((_i=0;_i<_n&&cursor>0;_i++)); do ((cursor--)); done; draw;;
+    l) for ((_i=0;_i<_n&&cursor<${#input}-1;_i++)); do ((++cursor)); done; draw;;
+    k) ((_rl_hist)) && ((${#HIST[@]}>0&&HIST_IDX>0)) && { ((HIST_IDX==${#HIST[@]})) && HIST_SAVE="$input"; ((HIST_IDX--)); input="${HIST[$HIST_IDX]}"; cursor=${#input}; _clamp; draw; };;
+    j) ((_rl_hist)) && ((HIST_IDX<${#HIST[@]})) && { ((++HIST_IDX)); ((HIST_IDX==${#HIST[@]})) && input="$HIST_SAVE" || input="${HIST[$HIST_IDX]}"; cursor=${#input}; _clamp; draw; };;
+    0) cursor=0; draw;; \$) cursor=$((${#input}>0?${#input}-1:0)); draw;;
+    w) for ((_i=0;_i<_n;_i++)); do _wfwd; done; draw;;
+    b) for ((_i=0;_i<_n;_i++)); do _wbck; done; draw;;
+    e) for ((_i=0;_i<_n;_i++)); do _wend; done; draw;;
+    f) IFS= read -rsn1 c2; for ((_i=0;_i<_n;_i++)); do for ((p=cursor+1;p<${#input};p++)); do [[ "${input:p:1}" == "$c2" ]] && { cursor=$p; break; }; done; done; draw;;
+    F) IFS= read -rsn1 c2; for ((_i=0;_i<_n;_i++)); do for ((p=cursor-1;p>=0;p--)); do [[ "${input:p:1}" == "$c2" ]] && { cursor=$p; break; }; done; done; draw;;
+    t) IFS= read -rsn1 c2; for ((_i=0;_i<_n;_i++)); do for ((p=cursor+1;p<${#input};p++)); do [[ "${input:p:1}" == "$c2" ]] && { cursor=$((p-1)); break; }; done; done; draw;;
+    T) IFS= read -rsn1 c2; for ((_i=0;_i<_n;_i++)); do for ((p=cursor-1;p>=0;p--)); do [[ "${input:p:1}" == "$c2" ]] && { cursor=$((p+1)); break; }; done; done; draw;;
+    x) for ((_i=0;_i<_n&&${#input}>0&&cursor<${#input};_i++)); do input="${input:0:cursor}${input:cursor+1}"; done; _clamp; draw;;
+    X) for ((_i=0;_i<_n&&cursor>0;_i++)); do input="${input:0:cursor-1}${input:cursor}"; ((cursor--)); done; draw;;
+    D) input="${input:0:cursor}"; ((cursor>0)) && ((cursor--)); draw;;
+    C) input="${input:0:cursor}"; mode="insert"; draw;;
+    r) IFS= read -rsn1 c2; [[ -n "$c2" && "$c2" != $'\x1b' ]] && { input="${input:0:cursor}${c2}${input:cursor+1}"; draw; };;
+    d) IFS= read -rsn1 c2; for ((_i=0;_i<_n;_i++)); do _del "$c2"; done; draw;;
+    c) IFS= read -rsn1 c2; for ((_i=0;_i<_n;_i++)); do _del "$c2"; done; mode="insert"; draw;;
+    u) ((${#UNDO_STACK[@]}>0)) && { local _u="${UNDO_STACK[-1]}"; unset 'UNDO_STACK[-1]'; cursor="${_u%%:*}"; input="${_u#*:}"; draw; };;
+    g) IFS= read -rsn1 c2; [[ "$c2" == "g" ]] && { cursor=0; draw; };;
+    G) cursor=$((${#input}>0?${#input}-1:0)); draw;;
+    $'\x1b') local _e1 _e2; read -rsn1 -t 0.01 _e1 || _e1=""
+      if [[ "$_e1" == "[" ]]; then read -rsn1 -t 0.01 _e2 || _e2=""
+        if ((_rl_hist)); then case "$_e2" in
+          A) ((${#HIST[@]}>0&&HIST_IDX>0)) && { ((HIST_IDX==${#HIST[@]})) && HIST_SAVE="$input"; ((HIST_IDX--)); input="${HIST[$HIST_IDX]}"; cursor=${#input}; _clamp; draw; };;
+          B) ((HIST_IDX<${#HIST[@]})) && { ((++HIST_IDX)); ((HIST_IDX==${#HIST[@]})) && input="$HIST_SAVE" || input="${HIST[$HIST_IDX]}"; cursor=${#input}; _clamp; draw; };;
+        esac; fi; fi;;
+    $'\x04') _quit;;
+    q) _quit;;
+    :) local _vcmd=""; IFS= read -rsn1 -t 1 _vcmd || _vcmd=""
+      case "$_vcmd" in
+        q) local _vbang=""; IFS= read -rsn1 -t 0.2 _vbang || _vbang=""
+          [[ "$_vbang" == "!" ]] && _egg_found vimquit; _quit;;
+        w) local _vq=""; IFS= read -rsn1 -t 0.2 _vq || _vq=""
+          [[ "$_vq" == "q" ]] && { _egg_found vimquit; _quit; };;
+      esac;;
+    \?) ((_rl_hints)) && { printf '\n%s\n%s\n%s\n%s\n' "${D}hl${N} move  ${D}kj${N}/↑↓ history  ${D}wb${N} word  ${D}fFtT${N}+char find  ${D}0\$/gg/G${N} line" "${D}x/X${N} del char  ${D}dw/db/dd${N} del  ${D}cw/cb/cc${N} change  ${D}r${N} replace" "${D}s/S${N} subst  ${D}i/a/I/A${N} insert  ${D}u${N} undo(stack)  ${D}:q/:wq${N} quit" "${D}Tab${N} man  ${D}Ctrl+d${N} quit  ${D}[num]cmd${N} repeat"; read -rsn1; _REDRAW_HDR; draw; };;
+    '') ((_man_open)) && printf '\e[s\n\e[J\e[u'; _man_open=0; echo; return 0;;
+  esac
+  return 1
+}
+
 # Read one line of input with vi/insert mode (shared by practice + boss)
 # $1: 1=allow manpages, 0=boss mode  $2: 1=allow history, 0=no history
 # $3: timeout seconds (0=none). Returns 1 on timeout.
@@ -3122,54 +3181,7 @@ _read_line() {
         *) input="${input:0:cursor}${c}${input:cursor}"; ((++cursor)); draw;;
       esac
     elif ((VI_MODE)); then
-      if [[ "$c" =~ ^[1-9]$ ]] || { [[ "$c" == "0" ]] && [[ -n "$_rep" ]]; }; then _rep+="$c"; continue; fi
-      local _n=${_rep:-1}; _rep=""
-      case "$c" in s|S|x|X|D|C|d|c|r) UNDO_STACK+=("$cursor:$input");; esac
-      case "$c" in
-        i) mode="insert"; draw;; a) mode="insert"; ((cursor<${#input})) && ((++cursor)); draw;;
-        A) mode="insert"; cursor=${#input}; draw;; I) mode="insert"; cursor=0; draw;;
-        s) ((${#input}>0)) && input="${input:0:cursor}${input:cursor+1}"; mode="insert"; draw;;
-        S) input="" cursor=0 mode="insert"; draw;;
-        h) for ((_i=0;_i<_n&&cursor>0;_i++)); do ((cursor--)); done; draw;;
-        l) for ((_i=0;_i<_n&&cursor<${#input}-1;_i++)); do ((++cursor)); done; draw;;
-        k) ((_rl_hist)) && ((${#HIST[@]}>0&&HIST_IDX>0)) && { ((HIST_IDX==${#HIST[@]})) && HIST_SAVE="$input"; ((HIST_IDX--)); input="${HIST[$HIST_IDX]}"; cursor=${#input}; _clamp; draw; };;
-        j) ((_rl_hist)) && ((HIST_IDX<${#HIST[@]})) && { ((++HIST_IDX)); ((HIST_IDX==${#HIST[@]})) && input="$HIST_SAVE" || input="${HIST[$HIST_IDX]}"; cursor=${#input}; _clamp; draw; };;
-        0) cursor=0; draw;; \$) cursor=$((${#input}>0?${#input}-1:0)); draw;;
-        w) for ((_i=0;_i<_n;_i++)); do _wfwd; done; draw;;
-        b) for ((_i=0;_i<_n;_i++)); do _wbck; done; draw;;
-        e) for ((_i=0;_i<_n;_i++)); do _wend; done; draw;;
-        f) IFS= read -rsn1 c2; for ((_i=0;_i<_n;_i++)); do for ((p=cursor+1;p<${#input};p++)); do [[ "${input:p:1}" == "$c2" ]] && { cursor=$p; break; }; done; done; draw;;
-        F) IFS= read -rsn1 c2; for ((_i=0;_i<_n;_i++)); do for ((p=cursor-1;p>=0;p--)); do [[ "${input:p:1}" == "$c2" ]] && { cursor=$p; break; }; done; done; draw;;
-        t) IFS= read -rsn1 c2; for ((_i=0;_i<_n;_i++)); do for ((p=cursor+1;p<${#input};p++)); do [[ "${input:p:1}" == "$c2" ]] && { cursor=$((p-1)); break; }; done; done; draw;;
-        T) IFS= read -rsn1 c2; for ((_i=0;_i<_n;_i++)); do for ((p=cursor-1;p>=0;p--)); do [[ "${input:p:1}" == "$c2" ]] && { cursor=$((p+1)); break; }; done; done; draw;;
-        x) for ((_i=0;_i<_n&&${#input}>0&&cursor<${#input};_i++)); do input="${input:0:cursor}${input:cursor+1}"; done; _clamp; draw;;
-        X) for ((_i=0;_i<_n&&cursor>0;_i++)); do input="${input:0:cursor-1}${input:cursor}"; ((cursor--)); done; draw;;
-        D) input="${input:0:cursor}"; ((cursor>0)) && ((cursor--)); draw;;
-        C) input="${input:0:cursor}"; mode="insert"; draw;;
-        r) IFS= read -rsn1 c2; [[ -n "$c2" && "$c2" != $'\x1b' ]] && { input="${input:0:cursor}${c2}${input:cursor+1}"; draw; };;
-        d) IFS= read -rsn1 c2; for ((_i=0;_i<_n;_i++)); do _del "$c2"; done; draw;;
-        c) IFS= read -rsn1 c2; for ((_i=0;_i<_n;_i++)); do _del "$c2"; done; mode="insert"; draw;;
-        u) ((${#UNDO_STACK[@]}>0)) && { local _u="${UNDO_STACK[-1]}"; unset 'UNDO_STACK[-1]'; cursor="${_u%%:*}"; input="${_u#*:}"; draw; };;
-        g) IFS= read -rsn1 c2; [[ "$c2" == "g" ]] && { cursor=0; draw; };;
-        G) cursor=$((${#input}>0?${#input}-1:0)); draw;;
-        $'\x1b') local _e1 _e2; read -rsn1 -t 0.01 _e1 || _e1=""
-          if [[ "$_e1" == "[" ]]; then read -rsn1 -t 0.01 _e2 || _e2=""
-            if ((_rl_hist)); then case "$_e2" in
-              A) ((${#HIST[@]}>0&&HIST_IDX>0)) && { ((HIST_IDX==${#HIST[@]})) && HIST_SAVE="$input"; ((HIST_IDX--)); input="${HIST[$HIST_IDX]}"; cursor=${#input}; _clamp; draw; };;
-              B) ((HIST_IDX<${#HIST[@]})) && { ((++HIST_IDX)); ((HIST_IDX==${#HIST[@]})) && input="$HIST_SAVE" || input="${HIST[$HIST_IDX]}"; cursor=${#input}; _clamp; draw; };;
-            esac; fi; fi;;
-        $'\x04') _quit;;
-        q) _quit;;
-        :) local _vcmd=""; IFS= read -rsn1 -t 1 _vcmd || _vcmd=""
-          case "$_vcmd" in
-            q) local _vbang=""; IFS= read -rsn1 -t 0.2 _vbang || _vbang=""
-              [[ "$_vbang" == "!" ]] && _egg_found vimquit; _quit;;
-            w) local _vq=""; IFS= read -rsn1 -t 0.2 _vq || _vq=""
-              [[ "$_vq" == "q" ]] && { _egg_found vimquit; _quit; };;
-          esac;;
-        \?) ((_rl_hints)) && { printf '\n%s\n%s\n%s\n%s\n' "${D}hl${N} move  ${D}kj${N}/↑↓ history  ${D}wb${N} word  ${D}fFtT${N}+char find  ${D}0\$/gg/G${N} line" "${D}x/X${N} del char  ${D}dw/db/dd${N} del  ${D}cw/cb/cc${N} change  ${D}r${N} replace" "${D}s/S${N} subst  ${D}i/a/I/A${N} insert  ${D}u${N} undo(stack)  ${D}:q/:wq${N} quit" "${D}Tab${N} man  ${D}Ctrl+d${N} quit  ${D}[num]cmd${N} repeat"; read -rsn1; _REDRAW_HDR; draw; };;
-        '') ((_man_open)) && printf '\e[s\n\e[J\e[u'; _man_open=0; echo; return;;
-      esac
+      _vi_normal && return || continue
     fi
   done
 }

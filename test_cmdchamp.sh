@@ -113,9 +113,9 @@ r=$(run_norm "echo hello world")
 r=$(run_norm "")
 [[ -z "$r" ]] && ok "norm handles empty" || fail "norm empty" "got '$r'"
 
-# Double-dash: norm treats -- as a long flag (expected behavior)
+# Double-dash: args after -- are never split as flags
 r=$(run_norm "rm -- -file")
-[[ "$r" == "rm -- -e -f -i -l" ]] && ok "norm double-dash (splits -file)" || fail "norm --" "got '$r'"
+[[ "$r" == "rm -- -file" ]] && ok "norm double-dash preserves args" || fail "norm --" "got '$r'"
 
 # ─────────────────────────────────────────────────────────────────────────────
 section "Question Parser (_qparse)"
