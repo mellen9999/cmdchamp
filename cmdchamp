@@ -264,6 +264,7 @@ _check_bwrap() {
 }
 
 # Generate log file with realistic nginx-style entries
+# shellcheck disable=SC2034  # locals used via _fpick nameref
 _gen_log() {
   local f="$1" lines="${2:-50}"
   local ips=("192.168.1.100" "10.0.0.5" "172.16.0.50" "192.168.8.1" "10.10.10.10")
@@ -273,7 +274,7 @@ _gen_log() {
   local agents=("Mozilla/5.0" "curl/7.68" "wget" "Python-requests" "Go-http-client")
   local now; printf -v now '%(%s)T' -1
   local step=$((86400 / lines))
-  > "$f"
+  : > "$f"
   for ((i=0; i<lines; i++)); do
     _fpick ips; local ip=$REPLY; _fpick codes; local code=$REPLY
     _fpick methods; local method=$REPLY; _fpick paths; local path=$REPLY
@@ -284,6 +285,7 @@ _gen_log() {
 }
 
 # Generate app log with ERROR/WARN/INFO levels
+# shellcheck disable=SC2034  # locals used via _fpick nameref
 _gen_app_log() {
   local f="$1" lines="${2:-40}"
   local levels=("INFO" "INFO" "INFO" "INFO" "WARN" "WARN" "ERROR" "DEBUG")
@@ -292,7 +294,7 @@ _gen_app_log() {
   local msgs_error=("Connection refused" "Timeout exceeded" "Invalid request" "Permission denied" "Database error" "Null pointer")
   local now; printf -v now '%(%s)T' -1
   local step=$((86400 / lines))
-  > "$f"
+  : > "$f"
   # Guarantee at least one of each level in first 4 lines
   local forced=("INFO" "WARN" "ERROR" "DEBUG")
   for ((i=0; i<lines; i++)); do
@@ -310,6 +312,7 @@ _gen_app_log() {
 }
 
 # Generate CSV with headers and typed data
+# shellcheck disable=SC2034  # locals used via _fpick nameref
 _gen_csv() {
   local f="$1" rows="${2:-30}"
   local names=("Alice" "Bob" "Charlie" "Diana" "Eve" "Frank" "Grace" "Henry" "Ivy" "Jack")
@@ -425,6 +428,7 @@ EOF
 }
 
 # Generate user data CSV
+# shellcheck disable=SC2034  # locals used via _fpick nameref
 _gen_users_csv() {
   local f="$1" rows="${2:-20}"
   local fnames=("john" "jane" "mike" "sarah" "tom" "lisa" "david" "emma" "alex" "olivia")
@@ -678,7 +682,7 @@ _sandbox_check_state() {
       lines:*:*)
         local rest="${check#lines:}"; local file="${rest%%:*}" count="${rest#*:}"
         [[ -f "$SANDBOX_DIR/$file" ]] || { ((count == 0)) && continue || return 1; }
-        local actual=$(wc -l < "$SANDBOX_DIR/$file" 2>/dev/null)
+        local actual; actual=$(wc -l < "$SANDBOX_DIR/$file" 2>/dev/null)
         ((actual == count)) || return 1
         ;;
       line1:*:*)
@@ -754,6 +758,8 @@ _egg_check() {
   esac
 }
 
+# shellcheck disable=SC2034  # pool arrays accessed via nameref (_fpick/_ctx)
+{
 SANDBOX_LOGS=(server.log app.log logs/access.log logs/error.log)
 SANDBOX_TXTS=(notes.txt todo.txt)
 SANDBOX_CSVS=(data.csv users.csv)
@@ -827,6 +833,7 @@ PROCS=(nginx apache2 mysqld postgres redis-server mongod node python3 java ruby
 SERVICES=(nginx apache2 mysql postgresql redis docker containerd sshd
   NetworkManager bluetooth cups cronie fail2ban ufw firewalld syncthing)
 BRANCHES=(main master develop feature/auth feature/api fix/login hotfix/security release/v2)
+}
 
 # Unbiased pick from phrasings
 _phrase() {
@@ -843,10 +850,13 @@ _fpick() { local -n _a=$1; REPLY="${_a[$((RANDOM % ${#_a[@]}))]}"; }
 _fphrase() { local -a _a=("$@"); REPLY="${_a[$((RANDOM % ${#_a[@]}))]}"; }
 _frnum() { REPLY=$(($1 + RANDOM % ($2 - $1 + 1))); }
 # Fisher-Yates in-place shuffle via nameref (replaces shuf fork)
+# shellcheck disable=SC2178  # nameref pattern — _a is always an array
 _fshuffle() { local -n _a=$1; local i j t; for ((i=${#_a[@]}-1; i>0; i--)); do j=$((RANDOM % (i+1))); t="${_a[$i]}"; _a[$i]="${_a[$j]}"; _a[$j]="$t"; done; }
+# shellcheck disable=SC2178
 _fshuffle_n() { _fshuffle "$1"; local -n _a=$1; (($2 < ${#_a[@]})) && _a=("${_a[@]:0:$2}"); }
 
 _QV='log cfg cfg2 txt txt2 csv dir dir2 ext ext2 script archive bin img pcap hash photo wordlist ip subnet port port2 mac url user host term term2 term3 field key old new size iface proc svc branch n n1 n2 n3 col'
+# shellcheck disable=SC2034  # vars consumed by caller's eval scope
 _ctx() {
   _fpick LOGS; log=$REPLY; _fpick CONFIGS; cfg=$REPLY; _fpick CONFIGS; cfg2=$REPLY
   _fpick TXTS; txt=$REPLY; _fpick TXTS; txt2=$REPLY; _fpick CSVS; csv=$REPLY
@@ -1109,6 +1119,7 @@ _exp_line() {
     printf '  %s%s %s  %s\n' "${tcol}${tok}${N}" "$sp" "${D}->${N}" "${W}${exp}${N}"
   fi
 }
+# shellcheck disable=SC2128,SC2178  # _a is a string here, not the nameref array in _fshuffle
 _esc_legend() {
   local _a=$1 _leg=""
   [[ "$_a" == *'\n'* ]] && _leg+="${Y}\\n${D}=newline  "
@@ -1220,7 +1231,7 @@ gen_level1() {
   local questions=() dir dir2 word num; _ctx
   _fphrase src data logs; dir=$REPLY; _fphrase backup temp config test; dir2=$REPLY
   _fphrase projects demos tools assets; local newdir=$REPLY
-  _fphrase hello ready done test ping; word=$REPLY; num=$((RANDOM % 50 + 1))
+  _fphrase hello ready "done" test ping; word=$REPLY; num=$((RANDOM % 50 + 1))
   questions+=("$(_phrase "Print" "Show" "Display") current directory|pwd|#output:~^/sandbox")
   questions+=("$(_phrase "Where am I" "What directory" "Current path")?|pwd|#output:~^/")
   questions+=("$(_phrase "List" "Show") files in current directory|ls|#output:~server.log")
@@ -1249,11 +1260,10 @@ gen_level1() {
 
 # Level 2: Save Output (>, >>)
 gen_level2() {
-  local questions=() log txt cfg word word2 word3 outfile outfile2 num; _ctx
+  local questions=() log txt cfg word word2 outfile outfile2 num; _ctx
   _fpick SANDBOX_LOGS; log=$REPLY; _fpick SANDBOX_TXTS; txt=$REPLY; _fpick SANDBOX_CFGS; cfg=$REPLY
-  _fphrase hello done ready complete finished saved started stopped; word=$REPLY
+  _fphrase hello "done" ready complete finished saved started stopped; word=$REPLY
   _fphrase entry note line record message update backup; word2=$REPLY
-  _fphrase success error warning info debug trace; word3=$REPLY
   _fphrase output.txt files.txt list.txt result.txt; outfile=$REPLY
   _fphrase report.txt data.txt dump.txt export.txt; outfile2=$REPLY
   num=$((RANDOM % 100 + 1))
@@ -1381,7 +1391,7 @@ gen_level6() {
 
 # Level 7: Error Redirection (2>, &>, 2>&1)
 gen_level7() {
-  local questions=() script script2 ext ext2 errfile errfile2 outfile outfile2 log missing missing2; _ctx
+  local questions=() script script2 ext ext2 errfile errfile2 outfile outfile2 log missing; _ctx
   _fpick SANDBOX_SCRIPTS; script=$REPLY; _fpick SANDBOX_SCRIPTS; script2=$REPLY
   _fphrase py sh log txt; ext=$REPLY; _fphrase conf ini yaml json; ext2=$REPLY
   _fphrase errors.log err.txt stderr.log error.out; errfile=$REPLY
@@ -1390,7 +1400,6 @@ gen_level7() {
   _fphrase result.log full.txt complete.out run.log; outfile2=$REPLY
   _fpick SANDBOX_LOGS; log=$REPLY
   _fphrase old.log backup.txt archive.csv deleted.log; missing=$REPLY
-  _fphrase removed.txt gone.log lost.dat missing.cfg; missing2=$REPLY
   questions+=("Save stderr from ${W}./${script}${C} to ${W}${errfile}${C}|./${script} 2> ${errfile}")
   questions+=("${Y}cat${C} ${W}${missing}${C}, redirect the error to ${W}${errfile}${C}|cat ${missing} 2> ${errfile}|~^cat [^ ]+ 2> ?${errfile}$")
   questions+=("Find ${Y}*.${ext}${C} files, suppress any errors|find . -name '*.${ext}' 2> /dev/null|find . -type f -name '*.${ext}' 2> /dev/null|find -name '*.${ext}' 2> /dev/null|find -type f -name '*.${ext}' 2> /dev/null")
@@ -1415,7 +1424,7 @@ gen_level8() {
   _fpick SANDBOX_CFGS; cfg=$REPLY; _fpick SANDBOX_CFGS; cfg2=$REPLY
   _fpick SANDBOX_TXTS; txt=$REPLY; _fpick SANDBOX_TXTS; txt2=$REPLY
   _fpick SANDBOX_LOGS; log=$REPLY
-  _fphrase exists failed done error warning success ok; msg=$REPLY
+  _fphrase exists failed "done" error warning success ok; msg=$REPLY
   _fphrase ready complete skipped finished created started; msg2=$REPLY
   _fpick SANDBOX_SCRIPTS; script=$REPLY
   n=$((RANDOM % 5 + 3))
@@ -1453,7 +1462,7 @@ gen_level9() {
   _fpick SANDBOX_LOGS; log=$REPLY; _fpick SANDBOX_CFGS; cfg=$REPLY
   _fphrase msg name data result value output status; var=$REPLY
   _fphrase now time today count num lines; var2=$REPLY
-  _fphrase hello world test ready done success running active; val=$REPLY
+  _fphrase hello world test ready "done" success running active; val=$REPLY
   _fphrase config debug enabled production staging offline; val2=$REPLY
   _fphrase ERROR WARN INFO DEBUG; term=$REPLY; n=$((RANDOM % 5 + 3))
   questions+=("Store '${val}' in variable ${var}|${var}=${val}|${var}='${val}'|${var}=\"${val}\"")
@@ -1616,6 +1625,7 @@ gen_level13() {
   questions+=("Rename ${cfg} to ${cfg2}|mv ${cfg} ${cfg2}")
   questions+=("Disk usage of current dir, human readable|du -sh .|du -hs .|du -s -h .|du -h -s .|du --summarize --human-readable .|du --human-readable --summarize .|dust|du -sh|du --summarize --human-readable|du --human-readable --summarize")
   questions+=("Disk usage of each subdir|du -sh */|du -hs */|du -h --max-depth=1|du -hd 1|du -h -d 1|du --human-readable --max-depth=1|du -h --max-depth 1|du --human-readable --max-depth 1|dust -d 1")
+  # shellcheck disable=SC2034  # used via _fpick nameref
   local -a GZ_ARCHIVES=(backup.tar.gz archive.tar.gz files.tgz release.tar.gz package.tar.gz source.tar.gz logs.tar.gz)
   _fpick GZ_ARCHIVES; local gz_archive=$REPLY
   questions+=("Extract ${gz_archive}|tar xzf ${gz_archive}|tar -xzf ${gz_archive}|tar xf ${gz_archive}|tar -xf ${gz_archive}|tar zxf ${gz_archive}|tar -zxf ${gz_archive}|tar xfz ${gz_archive}|tar fxz ${gz_archive}|tar fzx ${gz_archive}|tar zfx ${gz_archive}|tar xvzf ${gz_archive}|tar -xvzf ${gz_archive}|tar xvf ${gz_archive}|tar -xvf ${gz_archive}")
@@ -1651,7 +1661,6 @@ gen_level13() {
 gen_level14() {
   eval "local questions=() $_QV"; _ctx
   _fphrase git vim tmux htop curl wget rsync jq; local pkg=$REPLY
-  _fphrase ls cat grep find sort awk sed head; local sysbin=$REPLY
   questions+=("Ping ${ip} 5 times|ping -c 5 ${ip}")
   questions+=("Ping ${ip} continuously|ping ${ip}")
   questions+=("Trace the network path to ${ip}|traceroute ${ip}|tracepath ${ip}|mtr ${ip}|mtr -r ${ip}|mtr --report ${ip}")
@@ -1830,7 +1839,7 @@ gen_level17() {
 # Level 18: Data Processing
 gen_level18() {
   eval "local questions=() $_QV"; _ctx
-  _fpick PROCS; local proc2=$REPLY; _frnum 1 5; local col2=$REPLY; local col3=$((col % 5 + 1)); _frnum 10 80; local chars=$REPLY; _frnum 1 25; local thresh=$REPLY
+  _frnum 1 5; local col2=$REPLY; local col3=$((col % 5 + 1)); _frnum 10 80; local chars=$REPLY; _frnum 1 25; local thresh=$REPLY
   ((col3 < col)) && { local _t=$col; col=$col3; col3=$_t; }  # ensure col <= col3 for ranges
   ((n > n2)) && { local _t2=$n; n=$n2; n2=$_t2; }
   questions+=("Sort ${txt} alphabetically|sort ${txt}")
@@ -2369,11 +2378,11 @@ gen_level27() {
   questions+=("Brute force with ${W}${wordlist}${C}, limit to 4 parallel tasks|hydra -t 4 -l ${user} -P ${wordlist} ${ip} ssh|hydra -t 4 -l ${user} -P ${wordlist} ssh://${ip}|hydra -t 4 -P ${wordlist} -l ${user} ${ip} ssh|hydra -t 4 -P ${wordlist} -l ${user} ssh://${ip}|hydra -l ${user} -P ${wordlist} -t 4 ${ip} ssh|hydra -P ${wordlist} -l ${user} -t 4 ${ip} ssh")
   questions+=("Encode string 'secret' to base64§echo -n 'secret' | base64§echo -n \"secret\" | base64§echo -n secret | base64§printf 'secret' | base64§printf \"secret\" | base64§printf secret | base64§printf '%s' 'secret' | base64§printf '%s' secret | base64")
   questions+=("Decode base64 file encoded.txt§base64 -d encoded.txt§base64 --decode encoded.txt§base64 -d < encoded.txt§base64 --decode < encoded.txt§cat encoded.txt | base64 -d§cat encoded.txt | base64 --decode")
-  questions+=("Generate MD5 hash of string 'password'§echo -n 'password' | md5sum§echo -n \"password\" | md5sum§echo -n password | md5sum§printf 'password' | md5sum§printf password | md5sum§printf '%s' 'password' | md5sum§printf '%s' password | md5sum§printf '%s' "password" | md5sum§printf "%s" "password" | md5sum§printf "%s" password | md5sum§echo -n 'password' | openssl md5§echo -n password | openssl md5§printf 'password' | openssl md5§printf password | openssl md5")
-  questions+=("Generate SHA256 hash of string 'password'§echo -n 'password' | sha256sum§echo -n \"password\" | sha256sum§echo -n password | sha256sum§printf 'password' | sha256sum§printf password | sha256sum§printf '%s' 'password' | sha256sum§printf '%s' password | sha256sum§printf '%s' "password" | sha256sum§printf "%s" "password" | sha256sum§echo -n 'password' | openssl sha256§echo -n password | openssl sha256§printf 'password' | openssl sha256§printf password | openssl sha256§echo -n 'password' | openssl dgst -sha256§echo -n password | openssl dgst -sha256§printf 'password' | openssl dgst -sha256§printf password | openssl dgst -sha256")
+  questions+=("Generate MD5 hash of string 'password'§echo -n 'password' | md5sum§echo -n \"password\" | md5sum§echo -n password | md5sum§printf 'password' | md5sum§printf password | md5sum§printf '%s' 'password' | md5sum§printf '%s' password | md5sum§printf '%s' \"password\" | md5sum§printf \"%s\" \"password\" | md5sum§printf \"%s\" password | md5sum§echo -n 'password' | openssl md5§echo -n password | openssl md5§printf 'password' | openssl md5§printf password | openssl md5")
+  questions+=("Generate SHA256 hash of string 'password'§echo -n 'password' | sha256sum§echo -n \"password\" | sha256sum§echo -n password | sha256sum§printf 'password' | sha256sum§printf password | sha256sum§printf '%s' 'password' | sha256sum§printf '%s' password | sha256sum§printf '%s' \"password\" | sha256sum§printf \"%s\" \"password\" | sha256sum§echo -n 'password' | openssl sha256§echo -n password | openssl sha256§printf 'password' | openssl sha256§printf password | openssl sha256§echo -n 'password' | openssl dgst -sha256§echo -n password | openssl dgst -sha256§printf 'password' | openssl dgst -sha256§printf password | openssl dgst -sha256")
   questions+=("Generate SHA256 hash of file ${hash}|sha256sum ${hash}|sha256sum < ${hash}|shasum -a 256 ${hash}|openssl dgst -sha256 ${hash}|openssl sha256 ${hash}")
-  questions+=("Convert 'hello' to hex§echo -n 'hello' | xxd -p§echo -n \"hello\" | xxd -p§echo -n hello | xxd -p§printf 'hello' | xxd -p§printf hello | xxd -p§printf '%s' 'hello' | xxd -p§printf '%s' hello | xxd -p§printf '%s' "hello" | xxd -p§printf "%s" "hello" | xxd -p§printf "%s" hello | xxd -p")
-  questions+=("Convert hex back to ascii§echo '68656c6c6f' | xxd -r -p§echo -n '68656c6c6f' | xxd -r -p§echo 68656c6c6f | xxd -r -p§echo -n 68656c6c6f | xxd -r -p§printf '68656c6c6f' | xxd -r -p§printf 68656c6c6f | xxd -r -p§printf '%s' '68656c6c6f' | xxd -r -p§printf '%s' 68656c6c6f | xxd -r -p§printf '%s' "68656c6c6f" | xxd -r -p§printf "%s" "68656c6c6f" | xxd -r -p")
+  questions+=("Convert 'hello' to hex§echo -n 'hello' | xxd -p§echo -n \"hello\" | xxd -p§echo -n hello | xxd -p§printf 'hello' | xxd -p§printf hello | xxd -p§printf '%s' 'hello' | xxd -p§printf '%s' hello | xxd -p§printf '%s' \"hello\" | xxd -p§printf \"%s\" \"hello\" | xxd -p§printf \"%s\" hello | xxd -p")
+  questions+=("Convert hex back to ascii§echo '68656c6c6f' | xxd -r -p§echo -n '68656c6c6f' | xxd -r -p§echo 68656c6c6f | xxd -r -p§echo -n 68656c6c6f | xxd -r -p§printf '68656c6c6f' | xxd -r -p§printf 68656c6c6f | xxd -r -p§printf '%s' '68656c6c6f' | xxd -r -p§printf '%s' 68656c6c6f | xxd -r -p§printf '%s' \"68656c6c6f\" | xxd -r -p§printf \"%s\" \"68656c6c6f\" | xxd -r -p")
   questions+=("Hex dump ${W}${bin}${C} with addresses|xxd ${bin}|hexdump -C ${bin}|hd ${bin}|od -A x -t x1z ${bin}")
   questions+=("Hex dump ${W}${bin}${C} (no addresses)|xxd -p ${bin}|xxd --plain ${bin}|xxd -ps ${bin}")
   printf '%s\n' "${questions[@]}"
@@ -2792,16 +2801,16 @@ _fnorm() {
   local parts flags=() args=() postdd=() p
   read -ra parts <<< "$1"
   # Preprocess: split on ; boundaries (cmd; cmd2 → cmd ; cmd2)
-  local _sc=() _sp
+  local _semi=() _sp
   for _sp in "${parts[@]}"; do
     if [[ "$_sp" == *';'* && "$_sp" != ';' ]]; then
       local _pre="${_sp%%;*}" _post="${_sp#*;}"
-      [[ -n "$_pre" ]] && _sc+=("$_pre")
-      _sc+=(";")
-      [[ -n "$_post" ]] && _sc+=("$_post")
-    else _sc+=("$_sp"); fi
+      [[ -n "$_pre" ]] && _semi+=("$_pre")
+      _semi+=(";")
+      [[ -n "$_post" ]] && _semi+=("$_post")
+    else _semi+=("$_sp"); fi
   done
-  parts=("${_sc[@]}")
+  parts=("${_semi[@]}")
   # Preprocess: split combined redirect tokens (>file → > file, 2>/dev/null → 2> /dev/null)
   local _redir='^(2>>|2>|>>|>&|&>|1>|>|<)([^<>&(].*)$' _pp=()
   for p in "${parts[@]}"; do
