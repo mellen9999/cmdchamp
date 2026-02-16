@@ -690,7 +690,7 @@ hr=$(grep -n '\bHINT\b' "$CMDCHAMP" | grep -v '#\|hint' || true)
 [[ -z "$hr" ]] && ok "no HINT refs" || fail "stale HINT" "$hr"
 
 # ═════════════════════════════════════════════════════════════════════════════
-# SANDBOX ANSWER VERIFICATION - The Big One
+# SANDBOX ANSWER VERIFICATION - Every alternate, every question
 # ═════════════════════════════════════════════════════════════════════════════
 section "Sandbox Answer Verification"
 
@@ -733,10 +733,10 @@ else
       [[ -z "$line" ]] && continue
 
       # Parse the question
-      read -r _qprompt _qans _qoutput _qstate _qtext _qdelim _qanswers < <(bash -c "
+      IFS=$'\x1e' read -r _qprompt _qans _qoutput _qstate _qtext _qdelim _qanswers < <(bash -c "
         source '$SB_SOURCE' 2>/dev/null
         _qparse \"\$1\"
-        printf '%s\t%s\t%s\t%s\t%s\t%s\t%s' \"\$_qprompt\" \"\$_qans\" \"\$_qoutput\" \"\$_qstate\" \"\$_qtext\" \"\$_qdelim\" \"\$_qanswers\"
+        printf '%s\x1e%s\x1e%s\x1e%s\x1e%s\x1e%s\x1e%s' \"\$_qprompt\" \"\$_qans\" \"\$_qoutput\" \"\$_qstate\" \"\$_qtext\" \"\$_qdelim\" \"\$_qanswers\"
       " _ "$line" 2>/dev/null)
 
       # Skip #text: questions (no sandbox validation possible)
@@ -751,48 +751,58 @@ else
         continue
       fi
 
-      ((++lv_total)); ((++sb_total))
+      # Split ALL answers (primary + alternates) and test each one
+      IFS="$_qdelim" read -ra all_answers <<< "$_qanswers"
+      for answer in "${all_answers[@]}"; do
+        # Trim whitespace
+        answer="${answer#"${answer%%[![:space:]]*}"}"; answer="${answer%"${answer##*[![:space:]]}"}"
+        [[ -z "$answer" ]] && continue
+        # Skip regex/marker-only answers (start with ~ or #)
+        [[ "$answer" == "~"* || "$answer" == "#"* ]] && continue
 
-      # Reset sandbox to pristine
-      rm -rf "$SB_DIR"
-      cp -a "$SB_PRISTINE" "$SB_DIR"
+        ((++lv_total)); ((++sb_total))
 
-      # Execute answer in sandbox and check
-      result=$(bash -c "
-        export DATA='$SB_DATA'
-        export SANDBOX_PRISTINE='$SB_PRISTINE'
-        export SANDBOX_DIR='$SB_DIR'
-        source '$SB_SOURCE' 2>/dev/null
-        SANDBOX_MODE=1
-        SANDBOX_PRISTINE='$SB_PRISTINE'
-        SANDBOX_DIR='$SB_DIR'
+        # Reset sandbox to pristine for each answer
+        rm -rf "$SB_DIR"
+        cp -a "$SB_PRISTINE" "$SB_DIR"
 
-        _qparse \"\$1\"
+        # Execute this answer in sandbox and check
+        result=$(bash -c "
+          export DATA='$SB_DATA'
+          export SANDBOX_PRISTINE='$SB_PRISTINE'
+          export SANDBOX_DIR='$SB_DIR'
+          source '$SB_SOURCE' 2>/dev/null
+          SANDBOX_MODE=1
+          SANDBOX_PRISTINE='$SB_PRISTINE'
+          SANDBOX_DIR='$SB_DIR'
 
-        # Execute command
-        output=\$(_sandbox_exec \"\$_qans\" 5 2>/dev/null) || true
+          _qparse \"\$1\"
 
-        passed=1
-        if [[ -n \"\$_qoutput\" ]]; then
-          _sandbox_check_output \"\$output\" \"\$_qoutput\" || passed=0
-        fi
-        if [[ -n \"\$_qstate\" ]]; then
-          _sandbox_check_state \"\$_qstate\" || passed=0
-        fi
+          # Execute the specific answer (not just primary)
+          output=\$(_sandbox_exec \"\$2\" 5 2>/dev/null) || true
 
-        if ((passed)); then
-          echo PASS
+          passed=1
+          if [[ -n \"\$_qoutput\" ]]; then
+            _sandbox_check_output \"\$output\" \"\$_qoutput\" || passed=0
+          fi
+          if [[ -n \"\$_qstate\" ]]; then
+            _sandbox_check_state \"\$_qstate\" || passed=0
+          fi
+
+          if ((passed)); then
+            echo PASS
+          else
+            echo \"FAIL|output=\${output:0:80}|expected_out=\$_qoutput|expected_state=\$_qstate\"
+          fi
+        " _ "$line" "$answer" 2>/dev/null)
+
+        if [[ "$result" == "PASS" ]]; then
+          ((++lv_pass)); ((++sb_pass))
         else
-          echo \"FAIL|output=\${output:0:80}|expected_out=\$_qoutput|expected_state=\$_qstate\"
+          ((++lv_fail)); ((++sb_fail))
+          sb_errors+=("L${lv}: ${answer} -> ${result}")
         fi
-      " _ "$line" 2>/dev/null)
-
-      if [[ "$result" == "PASS" ]]; then
-        ((++lv_pass)); ((++sb_pass))
-      else
-        ((++lv_fail)); ((++sb_fail))
-        sb_errors+=("L${lv}: ${_qans} -> ${result}")
-      fi
+      done
     done < <(bash -c "source '$SB_SOURCE' 2>/dev/null; gen_level${lv}" 2>/dev/null)
 
     # Per-level summary (compact)
@@ -812,16 +822,96 @@ else
     "$B" "$N" "$G" "$sb_pass" "$N" "$R" "$sb_fail" "$N" "$Y" "$sb_skip" "$N" "$sb_total"
 
   if ((sb_fail == 0)); then
-    ok "all $sb_total sandbox answers verified"
+    ok "all $sb_total sandbox answers verified (every alternate)"
     ((++PASS))  # extra for total
   else
     fail "sandbox verification" "$sb_fail/$sb_total failed"
     printf '\n  %sFailed sandbox answers:%s\n' "$R" "$N"
-    for e in "${sb_errors[@]:0:20}"; do
+    for e in "${sb_errors[@]:0:30}"; do
       printf '    %s• %s%s\n' "$R" "$e" "$N"
     done
-    ((${#sb_errors[@]} > 20)) && printf '    %s... and %d more%s\n' "$D" "$((${#sb_errors[@]} - 20))" "$N"
+    ((${#sb_errors[@]} > 30)) && printf '    %s... and %d more%s\n' "$D" "$((${#sb_errors[@]} - 30))" "$N"
   fi
+fi
+
+# ═════════════════════════════════════════════════════════════════════════════
+# TEXT-MATCH ALTERNATE VERIFICATION - check() accepts every alternate
+# ═════════════════════════════════════════════════════════════════════════════
+section "Text-Match Alternate Verification"
+
+tm_pass=0 tm_fail=0 tm_skip=0 tm_total=0
+tm_errors=()
+
+for lv in {1..30}; do
+  lv_pass=0 lv_fail=0 lv_skip=0 lv_total=0
+
+  while IFS= read -r line; do
+    [[ -z "$line" ]] && continue
+
+    # Parse the question
+    IFS=$'\x1e' read -r _qprompt _qans _qoutput _qstate _qtext _qdelim _qanswers < <(bash -c "
+      source '$SOURCE_FILE' 2>/dev/null
+      _qparse \"\$1\"
+      printf '%s\x1e%s\x1e%s\x1e%s\x1e%s\x1e%s\x1e%s' \"\$_qprompt\" \"\$_qans\" \"\$_qoutput\" \"\$_qstate\" \"\$_qtext\" \"\$_qdelim\" \"\$_qanswers\"
+    " _ "$line" 2>/dev/null)
+
+    # Skip #text: (no text matching)
+    if [[ "$_qtext" == "1" ]]; then
+      ((++lv_skip)); ((++tm_skip))
+      continue
+    fi
+
+    # Split ALL answers and verify check() accepts each
+    IFS="$_qdelim" read -ra all_answers <<< "$_qanswers"
+    for answer in "${all_answers[@]}"; do
+      answer="${answer#"${answer%%[![:space:]]*}"}"; answer="${answer%"${answer##*[![:space:]]}"}"
+      [[ -z "$answer" ]] && continue
+      # Skip regex answers (check() handles them differently — they're patterns, not literal answers)
+      [[ "$answer" == "~"* ]] && continue
+      # Skip sandbox marker-only answers
+      [[ "$answer" == "#"* ]] && continue
+
+      ((++lv_total)); ((++tm_total))
+
+      # Run check() in text-match mode (SANDBOX_MODE=0) with this answer as input
+      result=$(bash -c "
+        source '$SOURCE_FILE' 2>/dev/null
+        SANDBOX_MODE=0; _qdelim='$_qdelim'; _qoutput=''; _qstate=''; _qtext=0
+        check \"\$1\" \"\$2\" && echo PASS || echo FAIL
+      " _ "$answer" "$_qanswers" 2>/dev/null)
+
+      if [[ "$result" == "PASS" ]]; then
+        ((++lv_pass)); ((++tm_pass))
+      else
+        ((++lv_fail)); ((++tm_fail))
+        tm_errors+=("L${lv}: '${answer}' rejected by check()")
+      fi
+    done
+  done < <(_run "gen_level${lv}")
+
+  if ((lv_total > 0)); then
+    if ((lv_fail == 0)); then
+      printf '  %s✓%s L%-2d  %d/%d text-match pass  (%d skipped)\n' "$G" "$N" "$lv" "$lv_pass" "$lv_total" "$lv_skip"
+    else
+      printf '  %s✗%s L%-2d  %d/%d text-match pass  %s(%d FAILED)%s\n' "$R" "$N" "$lv" "$lv_pass" "$lv_total" "$R" "$lv_fail" "$N"
+    fi
+  else
+    printf '  %s-%s L%-2d  all %d questions skipped (text-only)\n' "$Y" "$N" "$lv" "$lv_skip"
+  fi
+done
+
+printf '\n  %sText-match totals:%s %s%d pass%s / %s%d fail%s / %s%d skip%s (of %d)\n' \
+  "$B" "$N" "$G" "$tm_pass" "$N" "$R" "$tm_fail" "$N" "$Y" "$tm_skip" "$N" "$tm_total"
+
+if ((tm_fail == 0)); then
+  ok "all $tm_total text-match answers verified (every alternate)"
+else
+  fail "text-match verification" "$tm_fail/$tm_total failed"
+  printf '\n  %sFailed text-match answers:%s\n' "$R" "$N"
+  for e in "${tm_errors[@]:0:30}"; do
+    printf '    %s• %s%s\n' "$R" "$e" "$N"
+  done
+  ((${#tm_errors[@]} > 30)) && printf '    %s... and %d more%s\n' "$D" "$((${#tm_errors[@]} - 30))" "$N"
 fi
 
 # ─────────────────────────────────────────────────────────────────────────────
