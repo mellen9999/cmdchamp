@@ -93,7 +93,7 @@ r=$(run_norm "sort --reverse -n file")
 
 # Flags with values
 r=$(run_norm "head --lines=5 file")
-[[ "$r" == "head --lines 5 file" ]] && ok "norm --flag=val split" || fail "norm --flag=val" "got '$r'"
+[[ "$r" == "head -n 5 file" ]] && ok "norm --flag=val split" || fail "norm --flag=val" "got '$r'"
 
 r=$(run_norm "head -n 10 file")
 [[ "$r" == "head -n 10 file" ]] && ok "norm -n 10 preserves value arg" || fail "norm -n 10" "got '$r'"
