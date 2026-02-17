@@ -2886,49 +2886,50 @@ _fnorm() {
 }
 
 _SANDBOX_OUTPUT=""  # Store output for display after check
-check() {
-  local inp="${1#"${1%%[![:space:]]*}"}" a b ninp; inp="${inp%"${inp##*[![:space:]]}"}"; _fnorm "$inp"; ninp=$REPLY
-  _SANDBOX_OUTPUT=""
 
-  # Sandbox mode: execute command and validate output/state
-  if ((SANDBOX_MODE && !_qtext)); then
-    local output _sb_err _sb_rc
-    { output=$(_sandbox_exec "$inp" 5 2>"$SANDBOX_DIR/.stderr"); } 2>/dev/null; _sb_rc=$?
-    _sb_err=$(<"$SANDBOX_DIR/.stderr") 2>/dev/null || _sb_err=""
-    _SANDBOX_OUTPUT="${output}${_sb_err:+$'\n'$_sb_err}"
-
-    # Track destructive commands for reset
-    _is_destructive "$inp" && _SANDBOX_DESTRUCTIVE=1
-
-    # Reject command-not-found (127) and cannot-execute (126) errors
-    if ((_sb_rc != 127 && _sb_rc != 126)); then
-      # Validate based on markers (AND when both present)
-      local _out_ok=0 _st_ok=0
-      [[ -n "$_qoutput" ]] && _sandbox_check_output "$output" "$_qoutput" && _out_ok=1
-      [[ -n "$_qstate" ]] && _sandbox_check_state "$_qstate" && _st_ok=1
-      if [[ -n "$_qoutput" && -n "$_qstate" ]]; then
-        ((_out_ok && _st_ok)) && return 0
-      elif ((_out_ok || _st_ok)); then
-        return 0
-      fi
-    fi
-
-    # Fall through to text matching if no markers or sandbox failed
+# Execute in sandbox, validate #output:/#state: markers
+# Sets _SANDBOX_OUTPUT, _SANDBOX_DESTRUCTIVE; reads _qoutput, _qstate
+_sandbox_validate() {
+  local inp=$1 output _sb_err _sb_rc
+  { output=$(_sandbox_exec "$inp" 5 2>"$SANDBOX_DIR/.stderr"); } 2>/dev/null; _sb_rc=$?
+  _sb_err=$(<"$SANDBOX_DIR/.stderr") 2>/dev/null || _sb_err=""
+  _SANDBOX_OUTPUT="${output}${_sb_err:+$'\n'$_sb_err}"
+  _is_destructive "$inp" && _SANDBOX_DESTRUCTIVE=1
+  # Reject command-not-found (127) and cannot-execute (126)
+  ((_sb_rc == 127 || _sb_rc == 126)) && return 1
+  local _out_ok=0 _st_ok=0
+  [[ -n "$_qoutput" ]] && _sandbox_check_output "$output" "$_qoutput" && _out_ok=1
+  [[ -n "$_qstate" ]] && _sandbox_check_state "$_qstate" && _st_ok=1
+  if [[ -n "$_qoutput" && -n "$_qstate" ]]; then
+    ((_out_ok && _st_ok)) && return 0
+  elif ((_out_ok || _st_ok)); then
+    return 0
   fi
+  return 1
+}
 
-  # Text matching fallback (§ delimiter for questions with pipes, | for legacy)
-  local delim="$_qdelim"
-  local -a opts; IFS="$delim" read -ra opts <<< "$2"
+# Text matching: delimiter split, regex/fnorm comparison
+# Args: raw_input normalized_input answers delimiter
+_text_match() {
+  local inp=$1 ninp=$2 answers=$3 delim=$4 a b
+  local -a opts; IFS="$delim" read -ra opts <<< "$answers"
   for a in "${opts[@]}"; do
     b="${a#"${a%%[![:space:]]*}"}"; b="${b%"${b##*[![:space:]]}"}"
     [[ -z "$b" ]] && continue
-    # ~pattern = regex match
     if [[ "$b" == ~* ]]; then
       local _pat="${b:1}"; [[ "$inp" =~ ${_pat} ]] && return 0
     else
       _fnorm "$b"; [[ "$inp" == "$b" || "$ninp" == "$REPLY" ]] && return 0
     fi
   done; return 1
+}
+
+# Orchestrator: normalize → sandbox → text match
+check() {
+  local inp="${1#"${1%%[![:space:]]*}"}"; inp="${inp%"${inp##*[![:space:]]}"}"; _fnorm "$inp"; local ninp=$REPLY
+  _SANDBOX_OUTPUT=""
+  ((SANDBOX_MODE && !_qtext)) && _sandbox_validate "$inp" && return 0
+  _text_match "$inp" "$ninp" "$2" "$_qdelim"
 }
 
 LVL=1 QI=0 TOT=0
