@@ -620,7 +620,7 @@ _is_destructive() {
   # File-modifying commands
   [[ "$cmd" =~ (^|[[:space:];&|])(rm|mv|cp|dd|truncate|shred|unlink|tee|chmod|chown|mkfs|fdisk|parted|install|split|patch|ln)[[:space:]] ]] && return 0
   # Output redirection
-  [[ "$cmd" =~ ([[:space:]]|[0-9&])(\>\>|\>) ]] && return 0
+  [[ "$cmd" =~ (\>\>|\>[^&]) ]] && return 0
   # In-place sed
   [[ "$cmd" =~ sed[[:space:]]+-i ]] && return 0
   # Truncation via :>
@@ -1829,7 +1829,7 @@ gen_level17() {
   questions+=("Find files smaller than ${size}|find . -size -${size}|find . -type f -size -${size}|fd -S -${size}|fd --size -${size}")
   questions+=("Find empty files|find . -type f -empty|find . -empty -type f|fd -t f -S 0b|fd --type f --size 0b")
   questions+=("Find files modified in last ${time} minutes|find . -mmin -${time}|find . -type f -mmin -${time}|fd --changed-within ${time}m")
-  questions+=("Find files NOT modified in last 7 days|find . -not -mtime -7|find . ! -mtime -7|find . \\! -mtime -7|find . -type f -not -mtime -7|find . -type f ! -mtime -7|find . -type f \\! -mtime -7|find . -mtime +7|find . -type f -mtime +7|fd --changed-before 7d|fd --changed-before 1w")
+  questions+=("Find files NOT modified in last 7 days|find . -not -mtime -7|find . ! -mtime -7|find . \\! -mtime -7|find . -type f -not -mtime -7|find . -type f ! -mtime -7|find . -type f \\! -mtime -7|fd --changed-before 7d|fd --changed-before 1w")
   questions+=("Find files modified in last hour|find . -mmin -60|find . -type f -mmin -60|fd --changed-within 1h|fd --changed-within 60m")
   questions+=("Find directories only|find . -type d|fd -t d|fd --type d|fd --type directory")
   questions+=("Find regular files only|find . -type f|fd -t f|fd --type f|fd --type file")
@@ -1886,7 +1886,7 @@ gen_level18() {
   questions+=("Print last column of each line in ${W}${txt}${C}|awk '{print \$NF}' ${txt}")
   questions+=("Print columns ${col} and ${col2} in ${W}${txt}${C}|awk '{print \$${col}, \$${col2}}' ${txt}")
   questions+=("Print lines longer than ${chars} chars in ${W}${txt}${C}|awk 'length > ${chars}' ${txt}|awk 'length(\$0) > ${chars}' ${txt}")
-  questions+=("Print line numbers with content in ${W}${txt}${C}|awk '{print NR, \$0}' ${txt}|cat -n ${txt}|nl ${txt}|grep -n '' ${txt}")
+  questions+=("Print line numbers with content in ${W}${txt}${C}|awk '{print NR, \$0}' ${txt}|cat -n ${txt}|nl -ba ${txt}|grep -n '' ${txt}")
   local _statuses=(active inactive pending); _fpick _statuses; local _status=$REPLY
   questions+=("Sum column 1 of data.csv (skip header)|awk -F',' 'NR>1{sum+=\$1} END {print sum}' data.csv|awk -F, 'NR>1{sum+=\$1} END {print sum}' data.csv")
   questions+=("Print lines where column 1 > ${thresh} (skip header)|awk -F',' 'NR>1 && \$1 > ${thresh}' data.csv|awk -F, 'NR>1 && \$1 > ${thresh}' data.csv")
@@ -2126,7 +2126,7 @@ gen_level22() {
   questions+=("Match 2 to ${n3} digits in ${W}${log}${C}|grep -E '[0-9]{2,${n3}}' ${log}|grep -P '\\d{2,${n3}}' ${log}|rg '[0-9]{2,${n3}}' ${log}|rg -P '\\d{2,${n3}}' ${log}|grep -E '[[:digit:]]{2,${n3}}' ${log}|rg '[[:digit:]]{2,${n3}}' ${log}")
   questions+=("Match optional 's' (plurals) in ${W}${log}${C}|grep -E 'errors?' ${log}|rg 'errors?' ${log}")
   questions+=("Match repeated word in ${W}${txt}${C}|grep -P '\\b(\\w+)\\s+\\1\\b' ${txt}|rg -P '\\b(\\w+)\\s+\\1\\b' ${txt}")
-  questions+=("Match repeated character in ${W}${txt}${C}|grep -E '(.)\\1' ${txt}|rg '(.)\\1' ${txt}")
+  questions+=("Match repeated character in ${W}${txt}${C}|grep -E '(.)\\1' ${txt}|rg -P '(.)\\1' ${txt}")
   questions+=("Capture and replace with sed in ${W}${log}${C}|sed -E 's/(error):\\s*(.*)/\\2 [\\1]/' ${log}|sed -r 's/(error):\\s*(.*)/\\2 [\\1]/' ${log}")
   questions+=("Swap two words in ${W}${txt}${C}|sed -E 's/(\\w+)\\s+(\\w+)/\\2 \\1/' ${txt}|sed -r 's/(\\w+)\\s+(\\w+)/\\2 \\1/' ${txt}")
   questions+=("Delete lines matching ${Y}${term}${C} in ${W}${txt}${C}|sed '/${term}/d' ${txt}|grep -v '${term}' ${txt}|rg -v '${term}' ${txt}|awk '!/${term}/' ${txt}")
@@ -3046,7 +3046,7 @@ _quit() {
   else
     printf '%s\n' "${D}[quit]${N}"
   fi
-  exit 0
+  _CLEANING=1; exit 0
 }
 
 input="" cursor=0 mode="insert" _rep=""
