@@ -706,14 +706,8 @@ _sandbox_check_state() {
         local rest="${check#perm:}"; local file="${rest%%:*}" perms="${rest#*:}"
         local path="$SANDBOX_DIR/$file"
         [[ ! -e "$path" ]] && return 1
-        local _p
-        for ((_p=0; _p<${#perms}; _p++)); do
-          case "${perms:$_p:1}" in
-            r) ((_neg)) && { [[ ! -r "$path" ]] || return 1; } || { [[ -r "$path" ]] || return 1; };;
-            w) ((_neg)) && { [[ ! -w "$path" ]] || return 1; } || { [[ -w "$path" ]] || return 1; };;
-            x) ((_neg)) && { [[ ! -x "$path" ]] || return 1; } || { [[ -x "$path" ]] || return 1; };;
-          esac
-        done
+        local _p; for ((_p=0; _p<${#perms}; _p++)); do
+          test -"${perms:$_p:1}" "$path"; ((_neg ? !$? : $?)) && return 1; done
         ;;
     esac
   done
@@ -1071,7 +1065,7 @@ declare -A EXP=(
   [renice]="change process priority" [cgcreate]="create cgroup" [cgexec]="run in cgroup"
   [enum4linux]="SMB enumeration"
   [chkrootkit]="rootkit checker" [rkhunter]="rootkit hunter"
-  [bc]="calculator" [rev]="reverse lines" [docker]="container runtime" [crontab]="schedule tasks"
+  [bc]="calculator" [rev]="reverse chars per line" [docker]="container runtime" [crontab]="schedule tasks"
   [tcpdump]="packet capture" [iw]="wireless config"
   [git]="version control" [clone]="copy repository" [commit]="save changes" [push]="upload to remote"
   [pull]="download from remote" [fetch]="download without merge" [merge]="combine branches"
@@ -1243,7 +1237,7 @@ VI_MODE=${CMD_VI:-1}  # always on (override with CMD_VI=0)
 
 # Level 1: First Commands (pwd, ls, echo, cd)
 gen_level1() {
-  local questions=() dir dir2 word num; _ctx
+  eval "local questions=() $_QV"; _ctx; local word num
   _fphrase src data logs; dir=$REPLY; _fphrase backup temp config test; dir2=$REPLY
   _fphrase projects demos tools assets; local newdir=$REPLY
   _fphrase hello ready "done" test ping; word=$REPLY; num=$((RANDOM % 50 + 1))
@@ -1275,7 +1269,7 @@ gen_level1() {
 
 # Level 2: Save Output (>, >>)
 gen_level2() {
-  local questions=() log txt cfg word word2 outfile outfile2 num; _ctx
+  eval "local questions=() $_QV"; _ctx; local word word2 outfile outfile2 num
   _fpick SANDBOX_LOGS; log=$REPLY; _fpick SANDBOX_TXTS; txt=$REPLY; _fpick SANDBOX_CFGS; cfg=$REPLY
   _fphrase hello "done" ready complete finished saved started stopped; word=$REPLY
   _fphrase entry note line record message update backup; word2=$REPLY
@@ -1297,7 +1291,7 @@ gen_level2() {
 
 # Level 3: Read Files (cat, head, tail)
 gen_level3() {
-  local questions=() log txt txt2 cfg cfg2 n n2 n3; _ctx
+  eval "local questions=() $_QV"; _ctx
   _fpick SANDBOX_LOGS; log=$REPLY
   _fpick SANDBOX_TXTS; txt=$REPLY; _fpick SANDBOX_TXTS; txt2=$REPLY
   _fpick SANDBOX_CFGS; cfg=$REPLY; _fpick SANDBOX_CFGS; cfg2=$REPLY
@@ -1318,7 +1312,7 @@ gen_level3() {
 
 # Level 4: Basic Pipes (|)
 gen_level4() {
-  local questions=() n n2 n3 log txt txt2 cfg cfg2 csv term1 term2 term3; _ctx
+  eval "local questions=() $_QV"; _ctx; local term1
   n=$((RANDOM % 5 + 3)); n2=$((RANDOM % 4 + 2)); n3=$((RANDOM % 6 + 5))
   _fpick SANDBOX_LOGS; log=$REPLY
   _fpick SANDBOX_TXTS; txt=$REPLY; _fpick SANDBOX_TXTS; txt2=$REPLY
@@ -1363,7 +1357,7 @@ gen_level4() {
 
 # Level 5: Input Redirection (<)
 gen_level5() {
-  local questions=() txt csv log; _ctx
+  eval "local questions=() $_QV"; _ctx
   _fpick SANDBOX_TXTS; txt=$REPLY
   _fpick SANDBOX_CSVS; csv=$REPLY; _fpick SANDBOX_LOGS; log=$REPLY
   questions+=("Count lines in ${W}${csv}${C} — just the number, no filename|wc -l < ${csv}|wc --lines < ${csv}")
@@ -1378,7 +1372,7 @@ gen_level5() {
   questions+=("Display ${W}${txt}${C} using input redirection|cat < ${txt}")
   questions+=("Sort ${W}${csv}${C} with redirection, save to sorted.csv|sort < ${csv} > sorted.csv|sort ${csv} > sorted.csv|sort > sorted.csv < ${csv}|#state:exists:sorted.csv")
   questions+=("Show last ${n} lines of ${W}${log}${C} using redirection|tail -${n} < ${log}|tail -n ${n} < ${log}|tail --lines ${n} < ${log}|tail --lines=${n} < ${log}")
-  questions+=("Count characters in ${W}${txt}${C} — just the number|wc -m < ${txt}|wc --chars < ${txt}|wc -c < ${txt}|wc --bytes < ${txt}")
+  questions+=("Count bytes in ${W}${txt}${C} — just the number|wc -c < ${txt}|wc --bytes < ${txt}|wc -m < ${txt}|wc --chars < ${txt}")
   printf '%s\n' "${questions[@]}"
 }
 
@@ -1406,7 +1400,7 @@ gen_level6() {
 
 # Level 7: Error Redirection (2>, &>, 2>&1)
 gen_level7() {
-  local questions=() script script2 ext ext2 errfile errfile2 outfile outfile2 log missing; _ctx
+  eval "local questions=() $_QV"; _ctx; local script2 errfile errfile2 outfile outfile2 missing
   _fpick SANDBOX_SCRIPTS; script=$REPLY; _fpick SANDBOX_SCRIPTS; script2=$REPLY
   _fphrase py sh log txt; ext=$REPLY; _fphrase conf ini yaml json; ext2=$REPLY
   _fphrase errors.log err.txt stderr.log error.out; errfile=$REPLY
@@ -1433,7 +1427,7 @@ gen_level7() {
 
 # Level 8: Logic Operators (&&, ||)
 gen_level8() {
-  local questions=() dir dir2 cfg cfg2 txt txt2 log msg msg2 script n; _ctx
+  eval "local questions=() $_QV"; _ctx; local msg msg2
   _fphrase new work build output cache proj dist bundle; dir=$REPLY
   _fphrase archive old staging release deploy results; dir2=$REPLY
   _fpick SANDBOX_CFGS; cfg=$REPLY; _fpick SANDBOX_CFGS; cfg2=$REPLY
@@ -1472,7 +1466,7 @@ gen_level8() {
 
 # Level 9: Variables & Substitution
 gen_level9() {
-  local questions=() txt txt2 log cfg var var2 val val2 term n; _ctx
+  eval "local questions=() $_QV"; _ctx; local var var2 val val2
   _fpick SANDBOX_TXTS; txt=$REPLY; _fpick SANDBOX_TXTS; txt2=$REPLY
   _fpick SANDBOX_LOGS; log=$REPLY; _fpick SANDBOX_CFGS; cfg=$REPLY
   _fphrase msg name data result value output status; var=$REPLY
@@ -1515,7 +1509,7 @@ gen_level9() {
 
 # Level 10: Special Variables ($$, $?, $!)
 gen_level10() {
-  local questions=() n n2 script log txt; _ctx
+  eval "local questions=() $_QV"; _ctx
   n=$((RANDOM % 3 + 2)); n2=$((RANDOM % 4 + 3))
   _fpick SANDBOX_SCRIPTS; script=$REPLY; _fpick SANDBOX_LOGS; log=$REPLY; _fpick SANDBOX_TXTS; txt=$REPLY
   _fphrase ERROR WARN INFO; local term=$REPLY
@@ -1541,7 +1535,7 @@ gen_level10() {
 
 # Level 11: Job Control (&, jobs, bg, fg)
 gen_level11() {
-  local questions=() n n2 n3 script script2 log outfile errfile txt term; _ctx
+  eval "local questions=() $_QV"; _ctx; local script2 outfile errfile
   n=$((RANDOM % 90 + 10)); n2=$((RANDOM % 3 + 1)); n3=$((RANDOM % 60 + 30))
   _fpick SANDBOX_SCRIPTS; script=$REPLY; _fpick SANDBOX_SCRIPTS; script2=$REPLY
   _fpick SANDBOX_LOGS; log=$REPLY; _fpick SANDBOX_TXTS; txt=$REPLY
@@ -1578,7 +1572,7 @@ gen_level11() {
 
 # Level 12: Test Operators ([[ -f ]], [[ -d ]], etc)
 gen_level12() {
-  local questions=() txt txt2 cfg cfg2 log script dir dir2 n n2 n3 term; _ctx
+  eval "local questions=() $_QV"; _ctx
   _fpick SANDBOX_TXTS; txt=$REPLY; _fpick SANDBOX_TXTS; txt2=$REPLY
   _fpick SANDBOX_CFGS; cfg=$REPLY; _fpick SANDBOX_CFGS; cfg2=$REPLY
   _fpick SANDBOX_LOGS; log=$REPLY; _fpick SANDBOX_SCRIPTS; script=$REPLY
@@ -2141,7 +2135,7 @@ gen_level22() {
   questions+=("Transform case (lowercase) in ${W}${txt}${C}|sed 's/.*/\\L&/' ${txt}|tr '[:upper:]' '[:lower:]' < ${txt}|awk '{print tolower(\$0)}' ${txt}|tr A-Z a-z < ${txt}")
   questions+=("Transform case (uppercase) in ${W}${txt}${C}|sed 's/.*/\\U&/' ${txt}|tr '[:lower:]' '[:upper:]' < ${txt}|awk '{print toupper(\$0)}' ${txt}|tr a-z A-Z < ${txt}")
   questions+=("Capitalize first letter in ${W}${txt}${C}|sed 's/.*/\\u&/' ${txt}|awk '{print toupper(substr(\$0,1,1)) substr(\$0,2)}' ${txt}")
-  questions+=("Print lines where id > ${n2} in ${W}data.csv${C}|awk -F',' '\$1 > ${n2}' data.csv|awk -F, '\$1 > ${n2}' data.csv")
+  questions+=("Print lines where id > ${n2} in ${W}data.csv${C}|awk -F',' '\$1 > ${n2}' data.csv|awk -F, '\$1 > ${n2}' data.csv|awk -F',' 'NR>1 && \$1 > ${n2}' data.csv|awk -F, 'NR>1 && \$1 > ${n2}' data.csv")
   questions+=("Print unique values from first column in ${W}${csv}${C}|awk -F',' '!seen[\$1]++' ${csv}|awk -F, '!seen[\$1]++' ${csv}")
   questions+=("Find min id (skip header) in ${W}data.csv${C}|awk -F',' 'NR==2{min=\$1} NR>1 && \$1<min{min=\$1} END{print min}' data.csv|awk -F, 'NR==2{min=\$1} NR>1 && \$1<min{min=\$1} END{print min}' data.csv")
   questions+=("Conditional print in ${W}${csv}${C}|awk -F',' '\$3==\"active\" {print \$1, \$2}' ${csv}|awk -F, '\$3==\"active\" {print \$1, \$2}' ${csv}")
@@ -2305,7 +2299,7 @@ gen_level25() {
   questions+=("Scan top 100 most common ports on ${ip}|nmap --top-ports 100 ${ip}|sudo nmap --top-ports 100 ${ip}|nmap -F ${ip}|sudo nmap -F ${ip}")
   questions+=("Scan specific ports ${port},${port2} on ${ip}|nmap -p ${port},${port2} ${ip}|nmap -p${port},${port2} ${ip}|sudo nmap -p ${port},${port2} ${ip}|sudo nmap -p${port},${port2} ${ip}|nmap -p ${port2},${port} ${ip}|nmap -p${port2},${port} ${ip}|sudo nmap -p ${port2},${port} ${ip}|sudo nmap -p${port2},${port} ${ip}")
   questions+=("Scan port range 1-1000 on ${ip}|nmap -p 1-1000 ${ip}|nmap -p1-1000 ${ip}|sudo nmap -p 1-1000 ${ip}|sudo nmap -p1-1000 ${ip}")
-  questions+=("Fast scan (top 100 ports) on ${ip}|nmap -F ${ip}|nmap --top-ports 100 ${ip}|sudo nmap -F ${ip}|sudo nmap --top-ports 100 ${ip}")
+  questions+=("Scan for open HTTP/HTTPS ports on ${ip}|nmap -p 80,443 ${ip}|nmap -p80,443 ${ip}|nmap -p 443,80 ${ip}|nmap -p443,80 ${ip}|sudo nmap -p 80,443 ${ip}|sudo nmap -p80,443 ${ip}|sudo nmap -p 443,80 ${ip}|sudo nmap -p443,80 ${ip}")
   questions+=("Detect service versions (banner grab) on ${ip}|nmap -sV ${ip}|sudo nmap -sV ${ip}")
   questions+=("OS fingerprinting via TCP/IP stack on ${ip}|nmap -O ${ip}|sudo nmap -O ${ip}")
   questions+=("Aggressive scan (-A = OS, version, scripts, traceroute)|nmap -A ${ip}|sudo nmap -A ${ip}")
@@ -2454,7 +2448,7 @@ gen_level29() {
   questions+=("Show sudoers rules|sudo -l|sudo --list")
   questions+=("Check sudo version (CVE check)|sudo --version|sudo -V")
   questions+=("Check if user in docker/lxd group§id | grep -E 'docker|lxd'§groups | grep -E 'docker|lxd'§id -nG | grep -E 'docker|lxd'§id | egrep 'docker|lxd'§groups | egrep 'docker|lxd'")
-  questions+=("Show OS and kernel version|uname -a|uname --all|hostnamectl|cat /proc/version|cat /etc/os-release|uname -r")
+  questions+=("Show OS and kernel version|uname -a|uname --all|hostnamectl|cat /proc/version|cat /etc/os-release")
   questions+=("Show running processes|ps aux|ps -ef|ps -aux|ps -e|ps -A")
   questions+=("Show network connections|ss -tlpn|netstat -tlpn|ss -tulpn|netstat -tulpn|ss -antp|netstat -antp|ss -antup|netstat -antup")
   questions+=("Show cron jobs|cat /etc/crontab; crontab -l|cat /etc/crontab && crontab -l|crontab -l|cat /etc/crontab|sudo crontab -l")
@@ -2976,7 +2970,7 @@ norm() {
 # Flush scores atomically (pure bash, no sed fork)
 _sflush() {
   local _fd; exec {_fd}>"$DATA/scores.lock"; flock -x "$_fd"
-  { printf '#v1\n'; local _keys=("${!_sc[@]}"); norm _keys; for k in "${_keys[@]}"; do printf '%s|%s\n' "$k" "${_sc[$k]}"; done; } > "$DATA/scores.tmp"
+  { printf '#v1\n'; local _keys=("${!_sc[@]+"${!_sc[@]}"}"); ((${#_keys[@]})) && { norm _keys; for k in "${_keys[@]}"; do printf '%s|%s\n' "$k" "${_sc[$k]}"; done; }; } > "$DATA/scores.tmp"
   mv "$DATA/scores.tmp" "$DATA/scores"
   exec {_fd}>&-
 }
@@ -3190,10 +3184,10 @@ _read_line() {
               esac
             fi
           elif [[ -z "$_e1" ]] && ((VI_MODE)); then
-            mode="normal"; ((cursor>0)) && ((cursor--)); draw
+            UNDO_STACK+=("$cursor:$input"); mode="normal"; ((cursor>0)) && ((cursor--)); draw
           fi;;
         $'\x7f'|$'\b') ((cursor>0)) && { input="${input:0:cursor-1}${input:cursor}"; ((cursor--)); draw; };;
-        '') ((_man_open)) && printf '\e[s\n\e[J\e[u'; _man_open=0; echo; return;;
+        '') ((_man_open)) && printf '\e[s\n\e[J\e[u'; _man_open=0; echo; return 0;;
         *) input="${input:0:cursor}${c}${input:cursor}"; ((++cursor)); draw;;
       esac
     elif ((VI_MODE)); then
@@ -3391,6 +3385,9 @@ _post_root_check() {
   fi
 }
 
+# Pick random question from a level (uses cache)
+_pick_q() { local _pq=(); while IFS= read -r line; do [[ -n "$line" ]] && _pq+=("$line"); done <<< "${_LEVEL_CACHE[$1]:=$( gen_level$1 )}"; ((${#_pq[@]})) || return 1; _qparse "${_pq[$((RANDOM % ${#_pq[@]}))]}"; }
+
 gauntlet() {
   _post_root_check
   _session_init
@@ -3404,12 +3401,7 @@ gauntlet() {
   while ((lives > 0)); do
     # Pick level based on difficulty (escalates every 5 correct)
     local pick_lv=$((difficulty > MAX_LEVEL ? MAX_LEVEL : difficulty))
-    unset '_LEVEL_CACHE[$pick_lv]'  # Fresh questions each round
-    local q_arr=()
-    while IFS= read -r line; do [[ -n "$line" ]] && q_arr+=("$line"); done <<< "${_LEVEL_CACHE[$pick_lv]:=$( gen_level${pick_lv} )}"
-    ((${#q_arr[@]} == 0)) && break
-    local q_idx=$((RANDOM % ${#q_arr[@]}))
-    _qparse "${q_arr[$q_idx]}"; local prompt=$_qprompt ans=$_qans
+    _pick_q "$pick_lv" || break; local prompt=$_qprompt ans=$_qans
 
     local hearts=""; for ((h=0;h<lives;h++)); do hearts+="${R}♥${N} "; done
     _REDRAW_HDR() {
@@ -3483,12 +3475,7 @@ timed() {
 
     # Pick random level from all unlocked
     local pick_lv=$((RANDOM % MAX_LEVEL + 1))
-    unset '_LEVEL_CACHE[$pick_lv]'  # Fresh questions each round
-    local q_arr=()
-    while IFS= read -r line; do [[ -n "$line" ]] && q_arr+=("$line"); done <<< "${_LEVEL_CACHE[$pick_lv]:=$( gen_level${pick_lv} )}"
-    ((${#q_arr[@]} == 0)) && continue
-    local q_idx=$((RANDOM % ${#q_arr[@]}))
-    _qparse "${q_arr[$q_idx]}"; local prompt=$_qprompt ans=$_qans
+    _pick_q "$pick_lv" || continue; local prompt=$_qprompt ans=$_qans
 
     _REDRAW_HDR() {
       local _now; printf -v _now '%(%s)T' -1; local _rem=$((end_t - _now))
@@ -3569,7 +3556,7 @@ review() {
   _fshuffle all_q
   ((${#all_q[@]} == 0)) && { printf '%s\n' "${D}No questions found.${N}"; return; }
 
-  local qi=0 streak=0 TOT=${#all_q[@]}
+  local qi=0 TOT=${#all_q[@]}
 
   while ((qi < ${#all_q[@]})); do
     _preq_reset
@@ -3593,12 +3580,12 @@ review() {
         _sc
         local _new_tier=$((tier<2?tier+1:2))
         ((tier < 2 && _new_tier >= 2)) && ((_S_MASTERED++))
-        ((++streak)); _sset "$prompt" "$_new_tier"
+        _sset "$prompt" "$_new_tier"
         printf '\n%s\n' "${G}${B}+${N}"
         read -rsp "${D}Press Enter to continue...${N}"; ((++qi)); break
       else
         ((_S_ANSWERED++)); _S_STREAK=0; _wrong_show; _egg_check wrong "$input"; explain "$ans"
-        streak=0; _sset "$prompt" "$((tier>0?tier-1:0))"; read -rsp "${D}Press Enter to continue...${N}"
+        _sset "$prompt" "$((tier>0?tier-1:0))"; read -rsp "${D}Press Enter to continue...${N}"
       fi
       _sget "$prompt"; tier=$REPLY; _REDRAW_HDR
     done
