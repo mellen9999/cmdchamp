@@ -26,7 +26,7 @@ Add `~/.local/bin` to PATH if needed: `echo 'export PATH="$HOME/.local/bin:$PATH
 
 ```bash
 git clone https://github.com/mellen9999/cmdchamp.git
-./cmdchamp/cmdchamp
+cd cmdchamp && make install
 ```
 
 **Requires:** bash 4.3+, coreutils, awk
@@ -89,6 +89,29 @@ cmdchamp --no-sandbox   # Disable sandbox (text-match only)
 | 28 | Forensics | strings, readelf, binwalk, volatility, exiftool |
 | 29 | Privilege Escalation | SUID, GTFOBins, enumeration |
 | 30 | ROOT | emergency recovery, chroot, offline survival |
+
+## Scenarios
+
+Multi-step sandbox challenges — state persists between steps.
+
+| # | Name | Unlocks at | Steps |
+|---|------|-----------|-------|
+| 1 | The Broken Deploy | L21 boss | 7 |
+| 2 | Log Emergency | L21 boss | 5 |
+| 3 | Messy CSV | L18 boss | 4 |
+| 4 | Permission Lockout | L13 boss | 6 |
+| 5 | Find the Needle | L16 boss | 7 |
+| 6 | Archive & Extract | L13 boss | 6 |
+| 7 | The Incident | L18 boss | 6 |
+| 8 | Config Surgery | L21 boss | 5 |
+
+## Placement test
+
+`cmdchamp place` — skip levels you already know. Asks 3 questions per level, passes at 2/3. Starts from level 1 and stops at the first failure, unlocking everything below.
+
+## Easter eggs
+
+8 hidden achievements. `cmdchamp stats` shows how many you've found.
 
 ## Controls
 
