@@ -2554,13 +2554,15 @@ _sc_setup_1() {
   local d=$1
   chmod 644 "$d/deploy.sh"
   rm -f "$d/VERSION"
-  printf '[server]\nhost=localhost\nport=0\n' > "$d/config.ini"
+  printf '[server]\nhost=CHANGEME\nport=0\n' > "$d/config.ini"
 }
 _sc_steps_1() {
   cat <<'STEPS'
 Check permissions on deploy.sh§ls -l deploy.sh§ls -la deploy.sh§ls -ld deploy.sh§ls -lh deploy.sh§stat deploy.sh#output:~-rw-r--r--
 Make deploy.sh executable§chmod +x deploy.sh§chmod 755 deploy.sh§chmod u+x deploy.sh§chmod a+x deploy.sh§chmod 0755 deploy.sh§chmod 775 deploy.sh§chmod 0775 deploy.sh§chmod ugo+x deploy.sh#state:perm:deploy.sh:x
 Create VERSION file with "1.0"§echo 1.0 > VERSION§echo '1.0' > VERSION§echo "1.0" > VERSION§printf '1.0\n' > VERSION§printf "1.0\n" > VERSION§printf '%s\n' 1.0 > VERSION#state:contains:VERSION:1.0,lines:VERSION:1
+Backup config.ini before editing§cp config.ini config.ini.bak§cp -p config.ini config.ini.bak§cp -- config.ini config.ini.bak§cp -a config.ini config.ini.bak#state:exists:config.ini.bak
+Fix the host in config.ini to localhost§sed -i 's/host=CHANGEME/host=localhost/' config.ini§sed -i 's/host=CHANGEME/host=localhost/g' config.ini§sed -i 's/CHANGEME/localhost/' config.ini§sed -i 's/CHANGEME/localhost/g' config.ini§sed -i -e 's/host=CHANGEME/host=localhost/' config.ini§sed -i -e 's/host=CHANGEME/host=localhost/g' config.ini§sed -i -e 's/CHANGEME/localhost/' config.ini§sed -i -e 's/CHANGEME/localhost/g' config.ini§sed --in-place 's/host=CHANGEME/host=localhost/' config.ini§sed --in-place 's/CHANGEME/localhost/' config.ini#state:contains:config.ini:host=localhost,!contains:config.ini:CHANGEME
 Fix the port in config.ini to 8080§sed -i 's/port=0/port=8080/' config.ini§sed -i 's/port=0/port=8080/g' config.ini§sed -i '/port/s/0/8080/' config.ini§sed -i -e 's/port=0/port=8080/' config.ini§sed -i -e 's/port=0/port=8080/g' config.ini§sed -i '/port/s/0/8080/g' config.ini§sed -i -e '/port/s/0/8080/' config.ini§sed -i -e '/port/s/0/8080/g' config.ini§sed --in-place 's/port=0/port=8080/' config.ini§sed --in-place 's/port=0/port=8080/g' config.ini#state:contains:config.ini:port=8080,!contains:config.ini:port=0
 Run the deploy script§./deploy.sh§bash deploy.sh§sh deploy.sh§source deploy.sh§. deploy.sh§. ./deploy.sh§source ./deploy.sh#output:~Deploy complete
 STEPS
@@ -2624,7 +2626,9 @@ _sc_setup_4() {
 }
 _sc_steps_4() {
   cat <<'STEPS'
+List permissions to see what's broken§ls -l§ls -la§ls -al§ls -lh§ls -lah§ls -lA§ls --long§stat config.ini backup.sh logs#output:~----------
 Make config.ini readable§chmod 644 config.ini§chmod a+r config.ini§chmod u+r config.ini§chmod +r config.ini§chmod 444 config.ini§chmod 664 config.ini§chmod 600 config.ini§chmod 400 config.ini§chmod 440 config.ini§chmod 0644 config.ini§chmod 0600 config.ini§chmod 0444 config.ini§chmod 0400 config.ini§chmod ugo+r config.ini#state:perm:config.ini:r
+Verify config.ini is readable now§cat config.ini§less config.ini§more config.ini§head config.ini§head -n 10 config.ini§tail config.ini#output:~\[server\]
 Make backup.sh executable§chmod +x backup.sh§chmod 755 backup.sh§chmod u+x backup.sh§chmod a+x backup.sh§chmod 0755 backup.sh§chmod 775 backup.sh§chmod 0775 backup.sh§chmod ugo+x backup.sh#state:perm:backup.sh:x
 Make logs/ directory accessible§chmod 755 logs§chmod +rx logs§chmod a+rx logs§chmod u+rx logs§chmod 700 logs§chmod 770 logs§chmod 750 logs§chmod 0755 logs§chmod 0700 logs§chmod 0770 logs§chmod 0750 logs§chmod u+rwx logs§chmod ugo+rx logs§chmod 755 logs/§chmod +rx logs/§chmod a+rx logs/#state:perm:logs:rx
 Run backup.sh to verify it works§./backup.sh§bash backup.sh§sh backup.sh§source backup.sh§. backup.sh§. ./backup.sh§source ./backup.sh#output:~Backup complete
@@ -2658,6 +2662,9 @@ Find files containing TODO§grep -rl TODO .§grep -rl TODO§grep -Rl TODO .§gre
 Count total TODO/FIXME/HACK markers§grep -rE 'TODO|FIXME|HACK' . | wc -l§grep -r 'TODO\|FIXME\|HACK' . | wc -l§grep -RE 'TODO|FIXME|HACK' . | wc -l§grep -rE 'TODO|FIXME|HACK' . | wc --lines§grep -RE 'TODO|FIXME|HACK' . | wc --lines§grep -rE 'TODO|FIXME|HACK' | wc -l§grep -rE 'TODO|FIXME|HACK' | wc --lines§grep -r 'TODO\|FIXME\|HACK' . | wc --lines§grep -RE 'TODO|FIXME|HACK' | wc -l§grep -RE 'TODO|FIXME|HACK' | wc --lines§grep -r 'TODO\|FIXME\|HACK' | wc -l§grep -r 'TODO\|FIXME\|HACK' | wc --lines#output:4
 Show markers with line numbers§grep -rnE 'TODO|FIXME|HACK' .§grep -rn 'TODO\|FIXME\|HACK' .§grep -RnE 'TODO|FIXME|HACK' .§grep -Rn 'TODO\|FIXME\|HACK' .§grep -rnE 'TODO|FIXME|HACK'§grep -RnE 'TODO|FIXME|HACK'§grep -rn 'TODO\|FIXME\|HACK'§grep -Rn 'TODO\|FIXME\|HACK'#output:~TODO
 Find the file with FIXME§grep -rl FIXME .§grep -rl FIXME§grep -Rl FIXME .§grep -Rl FIXME§grep --recursive -l FIXME .§grep --recursive -l FIXME§grep -rFl FIXME .§grep -RFl FIXME .§grep -rFl FIXME§grep -RFl FIXME§grep -rwl FIXME .§grep -Rwl FIXME .§grep -rwl FIXME§grep -Rwl FIXME§grep -rli FIXME .§grep -Rli FIXME .§grep -rli FIXME§grep -Rli FIXME#output:~helpers\.py
+Find markers only in .py files§grep -rnE 'TODO|FIXME|HACK' --include='*.py' .§grep -rn 'TODO\|FIXME\|HACK' --include='*.py' .§grep -rnE 'TODO|FIXME|HACK' --include='*.py'§grep -RnE 'TODO|FIXME|HACK' --include='*.py' .§grep -rn 'TODO\|FIXME\|HACK' --include='*.py'§grep -RnE 'TODO|FIXME|HACK' --include='*.py'§grep -Rn 'TODO\|FIXME\|HACK' --include='*.py' .§grep -Rn 'TODO\|FIXME\|HACK' --include='*.py'#output:~FIXME
+Extract just the marker keywords§grep -roE 'TODO|FIXME|HACK' .§grep -roE 'TODO|FIXME|HACK'§grep -RoE 'TODO|FIXME|HACK' .§grep -RoE 'TODO|FIXME|HACK'§grep -ro 'TODO\|FIXME\|HACK' .§grep -ro 'TODO\|FIXME\|HACK'§grep -Ro 'TODO\|FIXME\|HACK' .§grep -Ro 'TODO\|FIXME\|HACK'#output:~TODO
+Save all markers to report.txt§grep -rnE 'TODO|FIXME|HACK' . > report.txt§grep -rn 'TODO\|FIXME\|HACK' . > report.txt§grep -rnE 'TODO|FIXME|HACK' > report.txt§grep -RnE 'TODO|FIXME|HACK' . > report.txt§grep -RnE 'TODO|FIXME|HACK' > report.txt§grep -rn 'TODO\|FIXME\|HACK' > report.txt§grep -Rn 'TODO\|FIXME\|HACK' . > report.txt§grep -Rn 'TODO\|FIXME\|HACK' > report.txt#state:exists:report.txt,contains:report.txt:TODO,lines:report.txt:4
 STEPS
 }
 
@@ -2675,6 +2682,8 @@ Create a tar.gz of the release/ directory§tar czf release.tar.gz release§tar -
 List the archive contents§tar tzf release.tar.gz§tar -tzf release.tar.gz§tar tf release.tar.gz§tar -tf release.tar.gz§tar tzvf release.tar.gz§tar -tzvf release.tar.gz§tar tvf release.tar.gz§tar -tvf release.tar.gz#output:~release/
 Delete the original release/ directory§rm -rf release§rm -r release§rm -rf release/§rm -r release/§rm -Rf release§rm -Rf release/§rm --recursive release§rm --recursive --force release§rm --recursive release/§rm --recursive --force release/#state:!exists:release
 Extract the archive to restore it§tar xzf release.tar.gz§tar -xzf release.tar.gz§tar xf release.tar.gz§tar -xf release.tar.gz§tar xzvf release.tar.gz§tar -xzvf release.tar.gz§tar xvf release.tar.gz§tar -xvf release.tar.gz#state:exists:release/VERSION
+Verify VERSION was restored§cat release/VERSION§less release/VERSION§more release/VERSION§head release/VERSION§head -n 1 release/VERSION#output:~2\.0
+Count files in restored release/§ls release | wc -l§ls release/ | wc -l§ls -1 release | wc -l§ls -1 release/ | wc -l§ls release | wc --lines§ls release/ | wc --lines§ls -1 release | wc --lines§ls -1 release/ | wc --lines#output:3
 STEPS
 }
 
