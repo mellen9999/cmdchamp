@@ -680,12 +680,15 @@ _sandbox_check_state() {
       contains:*:*|!contains:*:*)
         local _neg=0; [[ "$check" == !* ]] && { _neg=1; check="${check:1}"; }
         local rest="${check#contains:}"; local file="${rest%%:*}" pattern="${rest#*:}"
-        ((_neg)) && { grep -qF "$pattern" -- "$SANDBOX_DIR/$file" 2>/dev/null && return 1; } || { grep -qF "$pattern" -- "$SANDBOX_DIR/$file" 2>/dev/null || return 1; }
+        local _fc; _fc=$(<"$SANDBOX_DIR/$file" 2>/dev/null) || _fc=""
+        ((_neg)) && { [[ "$_fc" == *"$pattern"* ]] && return 1; } || { [[ "$_fc" == *"$pattern"* ]] || return 1; }
         ;;
       lines:*:*)
         local rest="${check#lines:}"; local file="${rest%%:*}" count="${rest#*:}"
         [[ -f "$SANDBOX_DIR/$file" ]] || { ((count == 0)) && continue || return 1; }
-        local actual; actual=$(wc -l < "$SANDBOX_DIR/$file" 2>/dev/null)
+        local _raw; _raw=$(<"$SANDBOX_DIR/$file" 2>/dev/null) || _raw=""
+        local _lc="${_raw//[!$'\n']/}"; local actual=$(( ${#_lc} + 1 ))
+        [[ -z "$_raw" ]] && actual=0
         ((actual == count)) || return 1
         ;;
       line1:*:*)
@@ -721,7 +724,7 @@ _cleanup() {
   printf '\e[?25h'
   [[ -n "$_stty_saved" ]] && stty "$_stty_saved" 2>/dev/null
   if ((_S_ANSWERED > 0)); then
-    local el=$(( $(printf '%(%s)T' -1) - _S_START ))
+    local _ts; printf -v _ts '%(%s)T' -1; local el=$((_ts - _S_START))
     printf '\n%s  %s/%s (%d%%)  streak %s  %dm%ds\n' \
       "${B}Session${N}" "${G}${_S_CORRECT}${N}" "${_S_ANSWERED}" \
       $((_S_CORRECT*100/_S_ANSWERED)) "${W}${_S_BEST_STREAK}${N}" \
@@ -2746,15 +2749,6 @@ STEPS
 # Question cache - avoids O(n²) regeneration for review questions
 declare -A _LEVEL_CACHE=()
 
-# Get questions for a level (cached)
-_get_level_questions() {
-  local lv=$1
-  if [[ -z "${_LEVEL_CACHE[$lv]:-}" ]]; then
-    _LEVEL_CACHE[$lv]=$(gen_level${lv})
-  fi
-  printf '%s' "${_LEVEL_CACHE[$lv]}"
-}
-
 # Generate questions for a level (called once per level attempt)
 declare -a CURRENT_QUESTIONS=()
 generate_level() {
@@ -2776,7 +2770,7 @@ generate_level() {
       prev_arr=()
       while IFS= read -r line; do
         [[ -n "$line" ]] && prev_arr+=("$line")
-      done <<< "$(_get_level_questions "$prev")"
+      done <<< "${_LEVEL_CACHE[$prev]:=$( gen_level${prev} )}"
       # Pick random questions from this previous level
       if ((${#prev_arr[@]} > 0)); then
         _fshuffle_n prev_arr $REVIEW_PER_LEVEL
@@ -3036,7 +3030,7 @@ _quit() {
   _sflush_if_dirty
   printf '\n'
   if ((_S_ANSWERED > 0)); then
-    local elapsed=$(( $(printf '%(%s)T' -1) - _S_START ))
+    local _ts; printf -v _ts '%(%s)T' -1; local elapsed=$((_ts - _S_START))
     local m=$((elapsed / 60)) s=$((elapsed % 60))
     printf '%s\n%s\n  Answered:    %s\n' "${B}Session Summary${N}" "${D}----------------------------------------${N}" "${B}${_S_ANSWERED}${N}"
     printf '  Correct:     %s' "${G}${_S_CORRECT}${N}"
@@ -3407,7 +3401,7 @@ gauntlet() {
     local pick_lv=$((difficulty > MAX_LEVEL ? MAX_LEVEL : difficulty))
     unset '_LEVEL_CACHE[$pick_lv]'  # Fresh questions each round
     local q_arr=()
-    while IFS= read -r line; do [[ -n "$line" ]] && q_arr+=("$line"); done <<< "$(_get_level_questions "$pick_lv")"
+    while IFS= read -r line; do [[ -n "$line" ]] && q_arr+=("$line"); done <<< "${_LEVEL_CACHE[$pick_lv]:=$( gen_level${pick_lv} )}"
     ((${#q_arr[@]} == 0)) && break
     local q_idx=$((RANDOM % ${#q_arr[@]}))
     _qparse "${q_arr[$q_idx]}"; local prompt=$_qprompt ans=$_qans
@@ -3486,7 +3480,7 @@ timed() {
     local pick_lv=$((RANDOM % MAX_LEVEL + 1))
     unset '_LEVEL_CACHE[$pick_lv]'  # Fresh questions each round
     local q_arr=()
-    while IFS= read -r line; do [[ -n "$line" ]] && q_arr+=("$line"); done <<< "$(_get_level_questions "$pick_lv")"
+    while IFS= read -r line; do [[ -n "$line" ]] && q_arr+=("$line"); done <<< "${_LEVEL_CACHE[$pick_lv]:=$( gen_level${pick_lv} )}"
     ((${#q_arr[@]} == 0)) && continue
     local q_idx=$((RANDOM % ${#q_arr[@]}))
     _qparse "${q_arr[$q_idx]}"; local prompt=$_qprompt ans=$_qans
@@ -3541,7 +3535,8 @@ review() {
   local -A lv_total lv_mastered; _calc_mastery _sc
   local weak=()
   if ((_cm_tagged)); then
-    for lv in $(seq 1 $((BOSS_BEATEN < 1 ? 1 : BOSS_BEATEN))); do
+    local _max=$((BOSS_BEATEN < 1 ? 1 : BOSS_BEATEN))
+    for ((lv=1; lv<=_max; lv++)); do
       local lt=${lv_total[$lv]:-0} lm=${lv_mastered[$lv]:-0}
       ((lt > 0)) && { local pct=$((lm * 100 / lt)); ((pct < 80)) && weak+=("$lv"); }
     done
@@ -3550,7 +3545,7 @@ review() {
   local _review_all=0
   if ((${#weak[@]} == 0)); then
     _review_all=1
-    for lv in $(seq 1 $((BOSS_BEATEN < 1 ? 1 : BOSS_BEATEN))); do weak+=("$lv"); done
+    local _max=$((BOSS_BEATEN < 1 ? 1 : BOSS_BEATEN)); for ((lv=1; lv<=_max; lv++)); do weak+=("$lv"); done
   fi
   if ((_review_all)); then
     printf '%s\n' "${B}Review Mode${N} — ${D}reviewing all ${#weak[@]} unlocked level(s)${N}"
@@ -3563,7 +3558,7 @@ review() {
   local all_q=()
   for lv in "${weak[@]}"; do
     local prev_arr=()
-    while IFS= read -r line; do [[ -n "$line" ]] && prev_arr+=("${lv}"$'\t'"${line}"); done <<< "$(_get_level_questions "$lv")"
+    while IFS= read -r line; do [[ -n "$line" ]] && prev_arr+=("${lv}"$'\t'"${line}"); done <<< "${_LEVEL_CACHE[$lv]:=$( gen_level${lv} )}"
     all_q+=("${prev_arr[@]}")
   done
   _fshuffle all_q
@@ -3841,7 +3836,7 @@ case "${1:-}" in
   p|progress)
     _load_profile
     printf '%s\n' "${B}Progress${N}"
-    for lv in $(seq 1 $MAX_LEVEL); do
+    for ((lv=1; lv<=MAX_LEVEL; lv++)); do
       if ((lv <= BOSS_BEATEN + 1)); then
         mark="${G}✓${N}"; ((lv > BOSS_BEATEN)) && mark="${Y}→${N}"
         printf "  %s ${W}%2d${N} %s\n" "$mark" "$lv" "${LEVEL_NAMES[$lv]:-}"
