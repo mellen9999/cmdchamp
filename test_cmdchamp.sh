@@ -480,7 +480,7 @@ r=$(_run "
   echo \"name=\$PLAYER_NAME ver=\$_PROFILE_VER beaten=\$BOSS_BEATEN gauntlet=\$BEST_GAUNTLET timed=\$BEST_TIMED\"
 ")
 echo "$r" | grep -q 'name=TestPlayer' && ok "profile stores name" || fail "profile name" "$r"
-echo "$r" | grep -q 'ver=4' && ok "profile ver=4" || fail "profile ver" "$r"
+echo "$r" | grep -q 'ver=5' && ok "profile ver=5" || fail "profile ver" "$r"
 echo "$r" | grep -q 'beaten=0' && ok "new BOSS_BEATEN=0" || fail "profile beaten" "$r"
 
 # v0->v1 migration: BOSS_BEATEN=-1 (old format) -> 0
@@ -533,7 +533,7 @@ r=$(bash -c "
   _load_profile
   echo \"ver=\$_PROFILE_VER scores=\$(wc -c < \"\$DATA/scores\")\"
 " 2>/dev/null)
-echo "$r" | grep -q 'ver=4' && ok "v1->v4: ver bumped" || fail "v1->v2 ver" "$r"
+echo "$r" | grep -q 'ver=5' && ok "v1->v5: ver bumped" || fail "v1->v2 ver" "$r"
 echo "$r" | grep -q 'scores=0' && ok "v1->v2: scores cleared" || fail "v1->v2 scores" "$r"
 
 # Save/load round-trip
@@ -1215,7 +1215,7 @@ echo "$r" | grep -q 'bg=42' && ok "profile BEST_GAUNTLET round-trip" || fail "pr
 echo "$r" | grep -q 'bt=0:99:0' && ok "profile BEST_TIMED round-trip" || fail "prof bt" "$r"
 echo "$r" | grep -q 'eggs=sudorm,rtfm' && ok "profile EGGS_FOUND round-trip" || fail "prof eggs" "$r"
 echo "$r" | grep -q 'sc=1,3' && ok "profile SC_DONE round-trip" || fail "prof sc" "$r"
-echo "$r" | grep -q 'ver=4' && ok "profile ver=4 stable" || fail "prof ver" "$r"
+echo "$r" | grep -q 'ver=5' && ok "profile ver=5 stable" || fail "prof ver" "$r"
 
 # Session save/load with scores
 r=$(bash -c "
@@ -1236,7 +1236,7 @@ r=$(bash -c "
   _load_profile
   echo \"ver=\$_PROFILE_VER eggs=\${EGGS_FOUND:-empty} sc=\${SC_DONE:-empty}\"
 " 2>/dev/null)
-echo "$r" | grep -q 'ver=4' && ok "v2->v4: ver bumped" || fail "v2->v3 ver" "$r"
+echo "$r" | grep -q 'ver=5' && ok "v2->v5: ver bumped" || fail "v2->v3 ver" "$r"
 echo "$r" | grep -q 'eggs=empty' && ok "v2->v3: eggs initialized" || fail "v2->v3 eggs" "$r"
 echo "$r" | grep -q 'sc=empty' && ok "v2->v3: sc initialized" || fail "v2->v3 sc" "$r"
 
