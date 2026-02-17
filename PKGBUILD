@@ -10,6 +10,11 @@ optdepends=('bubblewrap: sandbox mode for real command execution')
 source=("$pkgname-$pkgver.tar.gz::$url/archive/v$pkgver.tar.gz")
 sha256sums=('SKIP')
 
+check() {
+  cd "$pkgname-$pkgver"
+  ./cmdchamp test
+}
+
 package() {
   cd "$pkgname-$pkgver"
   make DESTDIR="$pkgdir" PREFIX=/usr install

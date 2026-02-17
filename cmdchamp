@@ -18,6 +18,8 @@ FIRE_STREAK=5          # Streak needed for fire mode (+2 points)
 REVIEW_PER_LEVEL=2     # Review questions to pick from each previous level
 MAX_LEVEL=30           # Highest level number
 BOSS_TIMER=15          # Seconds per boss question
+_DECAY_T2=2592000     # 30 days: mastered → learning
+_DECAY_T1=1209600     # 14 days: learning → unseen
 
 PLAYER_NAME="" BOSS_BEATEN=0 BEST_GAUNTLET=0 BEST_TIMED="0:0:0" EGGS_FOUND="" SC_DONE=""
 _PROFILE_VER=1  # bump this when profile format changes; old profiles get reset
@@ -39,6 +41,10 @@ _load_profile() {
     done < "$DATA/profile"
     # Wrong version? Reset everything — beta, no migration debt
     if ((_file_ver != _PROFILE_VER)); then
+      # Back up before nuking — one bad version bump shouldn't erase progress
+      [[ -f "$DATA/profile" ]] && cp "$DATA/profile" "$DATA/profile.bak"
+      [[ -f "$DATA/scores" ]] && cp "$DATA/scores" "$DATA/scores.bak"
+      printf '%s\n' "Profile version mismatch (got $_file_ver, want $_PROFILE_VER) — reset. Backup in profile.bak/scores.bak"
       PLAYER_NAME="" BOSS_BEATEN=0 BEST_GAUNTLET=0 BEST_TIMED="0:0:0" EGGS_FOUND="" SC_DONE=""
       : > "$DATA/scores"
       rm -f "$DATA"/*.json
@@ -556,11 +562,14 @@ _sandbox_reset() {
   ((SANDBOX_MODE)) || return 0
   [[ -d "$SANDBOX_PRISTINE" ]] || return 1
   chmod -R u+rwX "$SANDBOX_DIR" 2>/dev/null  # unlock any restricted dirs (e.g. scenario 4)
-  rm -rf "$SANDBOX_DIR"
-  if ! cp -a "$SANDBOX_PRISTINE" "$SANDBOX_DIR"; then
+  local _sb_tmp="${SANDBOX_DIR}.tmp.$$"
+  if ! cp -a "$SANDBOX_PRISTINE" "$_sb_tmp"; then
+    rm -rf "$_sb_tmp"
     printf '%s\n' "${Y}Warning: sandbox reset failed, disabling${N}" >&2
     SANDBOX_MODE=0; return 1
   fi
+  rm -rf "$SANDBOX_DIR"
+  mv "$_sb_tmp" "$SANDBOX_DIR"
 }
 
 # Execute command in sandbox with bwrap isolation
@@ -588,7 +597,7 @@ _sandbox_exec() {
   [[ -e /lib64 ]] && bwrap_args+=(--ro-bind /lib64 /lib64)
 
   local _rc
-  timeout "$timeout_sec" bwrap "${bwrap_args[@]}" /bin/bash -c "$cmd"; _rc=$?
+  timeout "$timeout_sec" bwrap "${bwrap_args[@]}" /bin/bash -c 'eval "$1"' -- "$cmd"; _rc=$?
   ((_rc >= 125)) && printf '%s\n' "${R}sandbox error (exit ${_rc})${N}" >&2
   return "$_rc"
 }
@@ -600,7 +609,7 @@ _is_destructive() {
   # File-modifying commands
   [[ "$cmd" =~ (^|[[:space:];&|])(rm|mv|cp|dd|truncate|shred|unlink|tee|chmod|chown|mkfs|fdisk|parted|install|split|patch|ln|mkdir|touch)[[:space:]] ]] && return 0
   # Output redirection
-  [[ "$cmd" =~ (\>\>|\>[^&]) ]] && return 0
+  [[ "$cmd" =~ (\>\>|\>[^>]) ]] && return 0
   # In-place sed (-i or --in-place)
   [[ "$cmd" =~ sed[[:space:]]+(-i|--in-place) ]] && return 0
   # Truncation via :>
@@ -2936,9 +2945,9 @@ check() {
 LVL=1 QI=0 TOT=0
 load() {
   [[ -f "$DATA/session.json" ]] && {
-    local fd t; exec {fd}<"$DATA/session.json"; flock -s "$fd"
+    local fd t; exec {fd}<>"$DATA/session.lock"; flock -s "$fd"
     t=$(<"$DATA/session.json")
-    exec {fd}<&-
+    exec {fd}>&-
     LVL="${t#*\"level\":}"; LVL="${LVL%%[!0-9]*}"
     [[ "$t" == *'"qi":'* ]] && { QI="${t#*\"qi\":}"; QI="${QI%%[!0-9]*}"; }
   }
@@ -3207,7 +3216,7 @@ _read_line() {
 _sdirty=0
 _sflush_if_dirty() { ((_sdirty)) && { _sflush; _sdirty=0; }; }
 _MODE_TAG=""
-_sset() { _hash "$1"; _sc[$REPLY]="$2|$_MODE_TAG"; (( ++_sdirty >= 10 )) && { _sflush; _sdirty=0; }; }
+_sset() { _hash "$1"; local _ts; printf -v _ts '%(%s)T' -1; _sc[$REPLY]="$2|$_MODE_TAG|$_ts"; (( ++_sdirty >= 10 )) && { _sflush; _sdirty=0; }; }
 _mode_init() {
   _MODE_TAG=$1
   declare -gA _sc; _sc=()
@@ -3215,6 +3224,20 @@ _mode_init() {
     [[ "$k" == "#"* ]] && continue
     _sc[$k]=$v
   done < "$DATA/scores"
+  # Decay stale mastery: tier≥2 + >30d → 1, tier≥1 + >14d → 0
+  local _now _decayed=0; printf -v _now '%(%s)T' -1
+  for _dk in "${!_sc[@]}"; do
+    local _dv="${_sc[$_dk]}" _dt="${_sc[$_dk]%%|*}"
+    local _deps="${_dv##*|}"  # last field: epoch or mode_tag
+    [[ "$_deps" =~ ^[0-9]{10,}$ ]] || continue  # no timestamp = no decay
+    local _age=$((_now - _deps))
+    if ((_dt >= 2 && _age > _DECAY_T2)); then
+      local _mid="${_dv#*|}"; _sc[$_dk]="1|${_mid%|*}|$_now"; _decayed=1
+    elif ((_dt >= 1 && _age > _DECAY_T1)); then
+      local _mid="${_dv#*|}"; _sc[$_dk]="0|${_mid%|*}|$_now"; _decayed=1
+    fi
+  done
+  ((_decayed)) && _sflush
   _sget() { _hash "$1"; local _v="${_sc[$REPLY]:-1}"; REPLY="${_v%%|*}"; }
   HIST=() HIST_IDX=0 HIST_SAVE=""
   _interactive=1; _stty_saved=$(stty -g 2>/dev/null) || _stty_saved=""
@@ -3315,17 +3338,18 @@ run() {
     boss_q=("${CURRENT_QUESTIONS[@]}"); _fshuffle_n boss_q "$boss_total"
   fi
 
+  local _bt=$((BOSS_TIMER + lv / 3))  # scale: 15s@L1 → 25s@L30
   for ((bi=0; bi<${#boss_q[@]}; bi++)); do
     _qparse "${boss_q[$bi]}"; local prompt=$_qprompt ans=$_qans
     [[ -z "$prompt" ]] && { ((boss_total--)); ((boss_total > 0 && _boss_thresh > boss_total)) && _boss_thresh=$boss_total; continue; }
     _sget "$prompt"; local _boss_tier=$REPLY
     _REDRAW_HDR() {
-      local _t=$BOSS_TIMER
+      local _t=$_bt
       if ((${_rl_deadline:-0})); then local _n; printf -v _n '%(%s)T' -1; _t=$((_rl_deadline - _n)); ((_t < 0)) && _t=0; fi
       printf '\e[2J\e[H%s  %s\n\n%s\n\n' "${W}${B}═══ BOSS $((bi+1))/${boss_total} ═══${N}" "${W}${_t}s${N}" "${C}${prompt}${N}"
     }
     _REDRAW_HDR
-    if _read_line 0 0 "$BOSS_TIMER"; then
+    if _read_line 0 0 "$_bt"; then
       ((_S_ANSWERED++))
       if check "$input" "$_qanswers"; then
         ((++boss_correct)); ((_S_CORRECT++)); ((_S_STREAK++))
@@ -3670,7 +3694,8 @@ scenario() {
     local _perms_file="$_sc_snap.perms"
     find "$SANDBOX_DIR" -printf '%m %p\n' > "$_perms_file" 2>/dev/null
     chmod -R u+rwX "$SANDBOX_DIR" 2>/dev/null
-    rm -rf "$_sc_snap"; cp -a "$SANDBOX_DIR" "$_sc_snap"
+    local _snap_tmp="${_sc_snap}.tmp.$$"
+    cp -a "$SANDBOX_DIR" "$_snap_tmp" && { rm -rf "$_sc_snap"; mv "$_snap_tmp" "$_sc_snap"; } || rm -rf "$_snap_tmp"
     _perms_restore "$SANDBOX_DIR" "$_perms_file"
 
     _REDRAW_HDR() {
@@ -3692,7 +3717,8 @@ scenario() {
         explain "$ans"
         # Restore sandbox to pre-step state so retry starts clean
         chmod -R u+rwX "$SANDBOX_DIR" 2>/dev/null
-        rm -rf "$SANDBOX_DIR"; cp -a "$_sc_snap" "$SANDBOX_DIR"
+        local _roll_tmp="${SANDBOX_DIR}.tmp.$$"
+        cp -a "$_sc_snap" "$_roll_tmp" && { rm -rf "$SANDBOX_DIR"; mv "$_roll_tmp" "$SANDBOX_DIR"; } || rm -rf "$_roll_tmp"
         _perms_restore "$SANDBOX_DIR" "$_perms_file"
         _pause retry
         _REDRAW_HDR
@@ -3909,7 +3935,7 @@ case "${1:-}" in
     done
     ;;
   r|reset) rm -f "$DATA"/*.json "$DATA/scores" "$DATA/scores.lock" "$DATA/profile"; rm -rf "$DATA/sandbox" "$DATA/sandbox.pristine" 2>/dev/null; echo "Reset.";;
-  c|cleanup) [[ -f "$DATA/scores" ]] && { flock -x "$DATA/scores.lock" awk -F'|' '/^#/{next} {data[$1]=$0} END{print "#v1"; for(k in data)print data[k]}' "$DATA/scores" > "$DATA/scores.tmp" && mv "$DATA/scores.tmp" "$DATA/scores"; _cnt=$(wc -l < "$DATA/scores"); echo "Deduplicated scores."; ((_cnt > 5000)) && echo "Warning: scores file has $_cnt entries — consider resetting."; } || echo "No scores file.";;
+  c|cleanup) [[ -f "$DATA/scores" ]] && { local _fd; exec {_fd}>"$DATA/scores.lock"; flock -x "$_fd"; awk -F'|' '/^#/{next} {data[$1]=$0} END{print "#v1"; for(k in data)print data[k]}' "$DATA/scores" > "$DATA/scores.tmp" && mv "$DATA/scores.tmp" "$DATA/scores"; exec {_fd}>&-; _cnt=$(wc -l < "$DATA/scores"); echo "Deduplicated scores."; ((_cnt > 5000)) && echo "Warning: scores file has $_cnt entries — consider resetting."; } || echo "No scores file.";;
   test|selftest) _selftest;;
   s|stats) _load_profile; stats;;
   review) _tty; _load_profile; review;;
