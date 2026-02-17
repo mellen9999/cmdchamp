@@ -3728,6 +3728,110 @@ scenario() {
   echo
 }
 
+_selftest() {
+  local _pass=0 _fail=0 _t
+  _assert() {
+    local desc=$1 got=$2 want=$3
+    if [[ "$got" == "$want" ]]; then ((_pass++))
+    else ((_fail++)); printf '  FAIL: %s\n    got:  %s\n    want: %s\n' "$desc" "$got" "$want"; fi
+  }
+  _assert_match() {
+    local desc=$1 got=$2 pat=$3
+    if [[ "$got" =~ $pat ]]; then ((_pass++))
+    else ((_fail++)); printf '  FAIL: %s\n    got:  %s\n    want: ~%s\n' "$desc" "$got" "$pat"; fi
+  }
+
+  printf '%s\n' "${B}=== _fnorm ===${N}"
+  # Basic: identity
+  _fnorm "ls"; _assert "identity" "$REPLY" "ls"
+  # Whitespace trim
+  _fnorm "  ls -l  "; _assert "trim" "$REPLY" "ls -l"
+  # Flag sorting
+  _fnorm "ls -l -a"; _assert "flag sort" "$REPLY" "ls -a -l"
+  # Combined flags split + sort
+  _fnorm "ls -la"; _assert "combined split" "$REPLY" "ls -a -l"
+  # Quote stripping
+  _fnorm "grep 'foo' bar"; _assert "single quotes" "$REPLY" "grep foo bar"
+  _fnorm 'grep "foo" bar'; _assert "double quotes" "$REPLY" "grep foo bar"
+  # Flag-value quotes (comma stays glued to -F)
+  _fnorm "awk -F','"; _assert "flag quote strip" "$REPLY" "awk -F,"
+  # Redirect split
+  _fnorm "echo hi >out"; _assert "redirect split" "$REPLY" "echo hi > out"
+  _fnorm "cmd 2>/dev/null"; _assert "stderr redirect" "$REPLY" "cmd 2> /dev/null"
+  # Pipe normalization
+  _fnorm "cat f | grep x"; _assert "pipe" "$REPLY" "cat f | grep x"
+  _fnorm "cat f|grep x"; _assert "pipe no space" "$REPLY" "cat f | grep x"
+  # ./ stripping
+  _fnorm "ls ./foo"; _assert "dotslash" "$REPLY" "ls foo"
+  # head/tail -N → -n N
+  _fnorm "head -5 file"; _assert "head -N" "$REPLY" "head -n 5 file"
+  _fnorm "tail -20 log"; _assert "tail -N" "$REPLY" "tail -n 20 log"
+  _fnorm "head --lines file"; _assert "head --lines" "$REPLY" "head -n file"
+  # --long=val split
+  _fnorm "sort --field-separator=,"; _assert "long=val" "$REPLY" "sort --field-separator ,"
+  # -n5 → -n 5
+  _fnorm "head -n5 f"; _assert "-n5 split" "$REPLY" "head -n 5 f"
+  # -- passthrough (post-dash-dash order preserved)
+  _fnorm "grep -- -v file"; _assert "dashdash" "$REPLY" "grep -- -v file"
+  # Semicolon handling
+  _fnorm "cmd1; cmd2"; _assert "semicolon" "$REPLY" "cmd1 ; cmd2"
+  _fnorm "cmd1;cmd2"; _assert "semicolon glued" "$REPLY" "cmd1 ; cmd2"
+  # Empty
+  _fnorm ""; _assert "empty" "$REPLY" ""
+  # Double pipe preserved
+  _fnorm "cmd1 || cmd2"; _assert "double pipe" "$REPLY" "cmd1 || cmd2"
+  # Complex
+  _fnorm "grep -rn 'TODO' ./src"; _assert "complex" "$REPLY" "grep -n -r TODO src"
+  # find: single-dash long flags get split (known limitation, not used in questions)
+  _fnorm "awk -F: '{print \$1}' /etc/passwd"; _assert "awk -F:" "$REPLY" "awk -F: '{print \$1}' /etc/passwd"
+  # >> redirect
+  _fnorm "echo hi >>out"; _assert "append redirect" "$REPLY" "echo hi >> out"
+  # Multiple args preserved
+  _fnorm "cp a b c"; _assert "multi args" "$REPLY" "cp a b c"
+  # +N flag (tail +5 → tail -n +5 not expected, just stays)
+  _fnorm "tail -n +5 file"; _assert "tail +N" "$REPLY" "tail -n +5 file"
+
+  printf '%s\n' "${B}=== _hash ===${N}"
+  _hash "test123"; local h1=$REPLY
+  _hash "test123"; _assert "deterministic" "$REPLY" "$h1"
+  _assert_match "hex format" "$h1" '^[0-9a-f]{8}$'
+  _hash "test124"; [[ "$REPLY" != "$h1" ]]; _assert "different input" "$?" "0"
+  # Cache hit
+  _assert "cached" "${_HASH_CACHE[test123]}" "$h1"
+
+  printf '%s\n' "${B}=== norm ===${N}"
+  local -a _ta=(c a b d)
+  norm _ta; _assert "sort" "${_ta[*]}" "a b c d"
+  local -a _tb=(z)
+  norm _tb; _assert "single" "${_tb[*]}" "z"
+  local -a _tc=()
+  norm _tc; _assert "empty" "${_tc[*]}" ""
+  local -a _td=(b a c a)
+  norm _td; _assert "dupes" "${_td[*]}" "a a b c"
+
+  printf '%s\n' "${B}=== check (text match) ===${N}"
+  # Disable sandbox for these tests
+  local _save_sandbox=$SANDBOX_MODE; SANDBOX_MODE=0
+  _qdelim='|' _qtext=0 _qoutput="" _qstate=""
+  check "pwd" "pwd" && _t=0 || _t=$?; _assert "exact" "$_t" "0"
+  check "ls -la" "ls -la|ls -al" && _t=0 || _t=$?; _assert "multi answer" "$_t" "0"
+  check "  pwd  " "pwd" && _t=0 || _t=$?; _assert "trim input" "$_t" "0"
+  check "ls -al" "ls -la" && _t=0 || _t=$?; _assert "normalized" "$_t" "0"
+  check "wrong" "pwd" && _t=0 || _t=$?; _assert "wrong answer" "$_t" "1"
+  # Regex
+  check "ls /tmp/foo" '~^ls /tmp/' && _t=0 || _t=$?; _assert "regex match" "$_t" "0"
+  check "cat /etc" '~^ls /tmp/' && _t=0 || _t=$?; _assert "regex no match" "$_t" "1"
+  # § delimiter
+  _qdelim='§'
+  check "grep foo bar" 'grep foo bar§cat bar | grep foo' && _t=0 || _t=$?; _assert "§ delim" "$_t" "0"
+  _qdelim='|'
+  SANDBOX_MODE=$_save_sandbox
+
+  printf '\n%s%s%d passed%s, ' "$B" "$G" "$_pass" "$N"
+  ((_fail)) && printf '%s%s%d failed%s\n' "$B" "$R" "$_fail" "$N" || printf '%s0 failed%s\n' "$D" "$N"
+  return $((_fail > 0))
+}
+
 # Handle --no-sandbox flag (any position)
 _args=()
 for _a in "$@"; do [[ "$_a" == "--no-sandbox" ]] && SANDBOX_MODE=0 || _args+=("$_a"); done
@@ -3757,6 +3861,7 @@ case "${1:-}" in
     ;;
   r|reset) rm -f "$DATA"/*.json "$DATA/scores" "$DATA/scores.lock" "$DATA/profile"; rm -rf "$DATA/sandbox" "$DATA/sandbox.pristine" 2>/dev/null; echo "Reset.";;
   c|cleanup) [[ -f "$DATA/scores" ]] && { flock -x "$DATA/scores.lock" awk -F'|' '/^#/{next} {data[$1]=$0} END{print "#v1"; for(k in data)print data[k]}' "$DATA/scores" > "$DATA/scores.tmp" && mv "$DATA/scores.tmp" "$DATA/scores"; _cnt=$(wc -l < "$DATA/scores"); echo "Deduplicated scores."; ((_cnt > 5000)) && echo "Warning: scores file has $_cnt entries — consider resetting."; } || echo "No scores file.";;
+  test|selftest) _selftest;;
   s|stats) _load_profile; stats;;
   review) _tty; _load_profile; review;;
   gauntlet) _tty; _load_profile; gauntlet;;
@@ -3784,6 +3889,7 @@ Commands:
   scenario [N]  Sandbox investigations (unlock per-level, 1-8)
   r|reset       Reset all progress
   c|cleanup     Deduplicate score file
+  test          Run self-tests
   h|help        Show this help
 
 Controls:
