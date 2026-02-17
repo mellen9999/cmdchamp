@@ -19,11 +19,12 @@ REVIEW_PER_LEVEL=2     # Review questions to pick from each previous level
 MAX_LEVEL=30           # Highest level number
 BOSS_TIMER=15          # Seconds per boss question
 
-PLAYER_NAME="" BOSS_BEATEN=0 BEST_GAUNTLET=0 BEST_TIMED="0:0:0" EGGS_FOUND="" SC_DONE="" _PROFILE_VER=0
+PLAYER_NAME="" BOSS_BEATEN=0 BEST_GAUNTLET=0 BEST_TIMED="0:0:0" EGGS_FOUND="" SC_DONE=""
+_PROFILE_VER=1  # bump this when profile format changes; old profiles get reset
 
 _load_profile() {
-  _PROFILE_VER=0
   if [[ -f "$DATA/profile" ]]; then
+    local _file_ver=0
     while IFS='=' read -r key val; do
       [[ "$key" =~ ^[A-Z_]+$ ]] || continue
       case "$key" in
@@ -33,36 +34,16 @@ _load_profile() {
         BEST_TIMED) BEST_TIMED="$val";;
         EGGS_FOUND) EGGS_FOUND="$val";;
         SC_DONE) SC_DONE="$val";;
-        PROFILE_VER) _PROFILE_VER="$val";;
+        PROFILE_VER) _file_ver="$val";;
       esac
     done < "$DATA/profile"
-    # Migrate v0 (0-indexed) → v1 (1-indexed): BOSS_BEATEN was -1/0/1/..., now 0/1/2/...
-    if ((_PROFILE_VER < 1)); then
-      ((BOSS_BEATEN < 0)) && BOSS_BEATEN=0 || ((++BOSS_BEATEN))
-      _PROFILE_VER=1; _save_profile
-    fi
-    # Migrate v1 → v2: hash algorithm changed (md5→djb2), reset scores
-    if ((_PROFILE_VER < 2)); then
+    # Wrong version? Reset everything — beta, no migration debt
+    if ((_file_ver != _PROFILE_VER)); then
+      PLAYER_NAME="" BOSS_BEATEN=0 BEST_GAUNTLET=0 BEST_TIMED="0:0:0" EGGS_FOUND="" SC_DONE=""
       : > "$DATA/scores"
-      _PROFILE_VER=2; _save_profile
+      rm -f "$DATA"/*.json
     fi
-    # Migrate v2 → v3: add easter eggs + scenario tracking
-    if ((_PROFILE_VER < 3)); then
-      EGGS_FOUND="" SC_DONE=""
-      _PROFILE_VER=3; _save_profile
-    fi
-    # Migrate v3 → v4: BEST_TIMED int → per-duration "60:120:300"
-    if ((_PROFILE_VER < 4)); then
-      [[ "$BEST_TIMED" =~ ^[0-9]+$ ]] && BEST_TIMED="0:${BEST_TIMED}:0"
-      _PROFILE_VER=4; _save_profile
-    fi
-    # Migrate v4 → v5: fix %q name corruption (backslash-escaped spaces)
-    if ((_PROFILE_VER < 5)); then
-      PLAYER_NAME="${PLAYER_NAME//\\/}"
-      _PROFILE_VER=5; _save_profile
-    fi
-    [[ "$BOSS_BEATEN" =~ ^-?[0-9]+$ ]] || BOSS_BEATEN=0
-    ((BOSS_BEATEN < 0)) && BOSS_BEATEN=0
+    [[ "$BOSS_BEATEN" =~ ^[0-9]+$ ]] || BOSS_BEATEN=0
     ((BOSS_BEATEN > MAX_LEVEL)) && BOSS_BEATEN=$MAX_LEVEL
     [[ "$BEST_GAUNTLET" =~ ^[0-9]+$ ]] || BEST_GAUNTLET=0
     [[ "$BEST_TIMED" =~ ^[0-9]+:[0-9]+:[0-9]+$ ]] || BEST_TIMED="0:0:0"
@@ -96,7 +77,7 @@ EOF
   PLAYER_NAME="${PLAYER_NAME//$'\r'/}"            # strip carriage returns
   PLAYER_NAME="${PLAYER_NAME:0:20}"              # truncate to 20 chars
   [[ -z "$PLAYER_NAME" ]] && PLAYER_NAME="anon"
-  BOSS_BEATEN=0; _PROFILE_VER=5
+  BOSS_BEATEN=0
   _save_profile
   _intro
   _tutorial
@@ -1224,9 +1205,23 @@ explain() {
   printf '%s\n' "${D}----------------------------------------${N}"
 }
 
-# Parse question - handles both | and § delimiters (§ for answers with ||)
-# Also extracts sandbox markers: #output:, #state:, #text:
-# Marker parse order: #text: first, then #state:, then #output: (reverse of appearance order)
+# Question DSL format:
+#   prompt|answer1|answer2|...|#output:PATTERN#state:CHECKS#text:
+#   prompt§answer1§answer2§...§#output:PATTERN#state:CHECKS#text:
+#
+# Use § when answers contain pipes (e.g. "grep foo | wc -l")
+# Use | for simple answers (e.g. "pwd")
+#
+# Sandbox markers (appended after answers):
+#   #output:TEXT     exact stdout match
+#   #output:~REGEX   stdout regex match
+#   #output:@N       stdout must be exactly N lines
+#   #state:CHECKS    comma-separated: exists:F, !exists:F, contains:F:S,
+#                    !contains:F:S, lines:F:N, perm:F:M, !perm:F:M
+#   #text:           command is interactive (less/vi) — skip sandbox exec
+#
+# Level generators use: eval "local questions=() $_QV"; _ctx
+#   $_QV declares ~40 local vars, _ctx() populates them via _fpick from pools
 _qparse() {
   local q=$1
   _qoutput="" _qstate="" _qtext=0 _qdelim='|'
@@ -3833,6 +3828,34 @@ _selftest() {
   check "grep foo bar" 'grep foo bar§cat bar | grep foo' && _t=0 || _t=$?; _assert "§ delim" "$_t" "0"
   _qdelim='|'
   SANDBOX_MODE=$_save_sandbox
+
+  printf '%s\n' "${B}=== _qparse ===${N}"
+  _qparse "Print current directory|pwd|#output:~^/"
+  _assert "qparse prompt" "$_qprompt" "Print current directory"
+  _assert "qparse ans" "$_qans" "pwd"
+  _assert "qparse output" "$_qoutput" "~^/"
+  _assert "qparse delim" "$_qdelim" "|"
+  _assert "qparse text" "$_qtext" "0"
+  _qparse "Search for foo§grep foo bar§cat bar | grep foo§#output:foo#state:exists:bar"
+  _assert "qparse § prompt" "$_qprompt" "Search for foo"
+  _assert "qparse § ans" "$_qans" "grep foo bar"
+  _assert "qparse § delim" "$_qdelim" "§"
+  _assert "qparse § output" "$_qoutput" "foo"
+  _assert "qparse § state" "$_qstate" "exists:bar"
+  _qparse "View file|less file|#text:"
+  _assert "qparse text flag" "$_qtext" "1"
+  _assert "qparse text no output" "$_qoutput" ""
+
+  printf '%s\n' "${B}=== gen_level smoke ===${N}"
+  local _lv _lines _empty_ok=0
+  for ((_lv=1; _lv<=30; _lv++)); do
+    _lines=$(gen_level${_lv} | wc -l)
+    if ((_lines < 5)); then
+      ((_fail++)); printf '  FAIL: gen_level%d only produced %d questions\n' "$_lv" "$_lines"
+    else
+      ((_pass++))
+    fi
+  done
 
   printf '\n%s%s%d passed%s, ' "$B" "$G" "$_pass" "$N"
   ((_fail)) && printf '%s%s%d failed%s\n' "$B" "$R" "$_fail" "$N" || printf '%s0 failed%s\n' "$D" "$N"
