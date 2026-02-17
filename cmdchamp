@@ -852,17 +852,7 @@ SERVICES=(nginx apache2 mysql postgresql redis docker containerd sshd
 BRANCHES=(main master develop feature/auth feature/api fix/login hotfix/security release/v2)
 }
 
-# Unbiased pick from phrasings
-_phrase() {
-  local -a opts=("$@")
-  local len=${#opts[@]}
-  ((len == 0)) && { echo ""; return; }
-  local max=$((32768 - 32768 % len)) r
-  while r=$RANDOM; ((r >= max)); do :; done
-  echo "${opts[$((r % len))]}"
-}
-
-# Fast pick/rnum - set REPLY, no subshell (40 forks -> 0 in _ctx)
+# Fast pick/rnum - set REPLY, no subshell
 _fpick() { local -n _a=$1; REPLY="${_a[$((RANDOM % ${#_a[@]}))]}"; }
 _fphrase() { local -a _a=("$@"); REPLY="${_a[$((RANDOM % ${#_a[@]}))]}"; }
 _frnum() { REPLY=$(($1 + RANDOM % ($2 - $1 + 1))); }
@@ -1249,11 +1239,11 @@ gen_level1() {
   _fphrase src data logs; dir=$REPLY; _fphrase backup temp config test; dir2=$REPLY
   _fphrase projects demos tools assets; local newdir=$REPLY
   _fphrase hello ready "done" test ping; word=$REPLY; num=$((RANDOM % 50 + 1))
-  questions+=("$(_phrase "Print" "Show" "Display") current directory|pwd|#output:~^/sandbox")
-  questions+=("$(_phrase "Where am I" "What directory" "Current path")?|pwd|#output:~^/")
-  questions+=("$(_phrase "List" "Show") files in current directory|ls|#output:~server.log")
-  questions+=("List $(_phrase "all files" "files") including hidden|ls -a|ls --all|#output:~\\.\\.")
-  questions+=("List files with $(_phrase "details" "permissions" "long format")|ls -l|#output:~^total")
+  _fphrase "Print" "Show" "Display"; questions+=("${REPLY} current directory|pwd|#output:~^/sandbox")
+  _fphrase "Where am I" "What directory" "Current path"; questions+=("${REPLY}?|pwd|#output:~^/")
+  _fphrase "List" "Show"; questions+=("${REPLY} files in current directory|ls|#output:~server.log")
+  _fphrase "all files" "files"; questions+=("List ${REPLY} including hidden|ls -a|ls --all|#output:~\\.\\.")
+  _fphrase "details" "permissions" "long format"; questions+=("List files with ${REPLY}|ls -l|#output:~^total")
   local _dir_pat; case "$dir" in src) _dir_pat="utils" ;; data) _dir_pat="export" ;; logs) _dir_pat="access" ;; *) _dir_pat="." ;; esac
   questions+=("List files in ${W}${dir}${C} directory|ls ${dir}|ls ${dir}/|#output:~${_dir_pat}")
   questions+=("List ${W}${dir}${C} with details|ls -l ${dir}|ls -l ${dir}/|#output:~^total")
@@ -1264,8 +1254,8 @@ gen_level1() {
   questions+=("Print current shell using ${Y}\$SHELL${C}|echo \$SHELL|echo \${SHELL}|echo \"\$SHELL\"|echo \"\${SHELL}\"|#output:~sh")
   questions+=("Print the number ${Y}${num}${C}|echo ${num}|#output:${num}")
   questions+=("Print: ${Y}${word} ${word} ${word}${C}|echo ${word} ${word} ${word}|#output:${word} ${word} ${word}")
-  questions+=("$(_phrase "Change to" "Go to" "Enter") ${W}${dir}${C} directory|cd ${dir}|cd ${dir}/|cd ./${dir}|cd ./${dir}/")
-  questions+=("$(_phrase "Change to" "Go to") ${W}${dir2}${C}|cd ${dir2}|cd ${dir2}/|cd ./${dir2}|cd ./${dir2}/")
+  _fphrase "Change to" "Go to" "Enter"; questions+=("${REPLY} ${W}${dir}${C} directory|cd ${dir}|cd ${dir}/|cd ./${dir}|cd ./${dir}/")
+  _fphrase "Change to" "Go to"; questions+=("${REPLY} ${W}${dir2}${C}|cd ${dir2}|cd ${dir2}/|cd ./${dir2}|cd ./${dir2}/")
   questions+=("Go to home directory|cd|cd ~|cd ~/|cd \$HOME|cd \$HOME/|cd \${HOME}|cd \${HOME}/")
   questions+=("Go up one directory|cd ..|cd ../")
   questions+=("Go up two directories|cd ../..|cd ../../")
@@ -1340,7 +1330,7 @@ gen_level4() {
   fi
   _fphrase server database logging cache host port localhost info enabled; term3=$REPLY
   questions+=("Count items in current directory (pipe ${Y}ls${C} to ${Y}wc${C})§ls | wc -l§ls -1 | wc -l§ls | wc --lines§ls -1 | wc --lines")
-  questions+=("$(_phrase "Search for" "Find") ${Y}${term1}${C} in ${W}${log}${C}§grep ${term1} ${log}§cat ${log} | grep ${term1}§#output:~${term1}")
+  _fphrase "Search for" "Find"; questions+=("${REPLY} ${Y}${term1}${C} in ${W}${log}${C}§grep ${term1} ${log}§cat ${log} | grep ${term1}§#output:~${term1}")
   questions+=("Find ${Y}${term2}${C} in ${W}${txt}${C}§grep ${term2} ${txt}§cat ${txt} | grep ${term2}§#output:~${term2}")
   questions+=("Search ${W}${cfg}${C} for ${Y}${term3}${C}§grep ${term3} ${cfg}§cat ${cfg} | grep ${term3}§#output:~${term3}")
   questions+=("Count ${Y}${term2}${C} matches in ${W}${txt}${C}§grep -c ${term2} ${txt}§grep --count ${term2} ${txt}§grep ${term2} ${txt} | wc -l§grep ${term2} ${txt} | wc --lines§cat ${txt} | grep -c ${term2}§cat ${txt} | grep --count ${term2}§cat ${txt} | grep ${term2} | wc -l")
@@ -1483,7 +1473,7 @@ gen_level9() {
   _fphrase config debug enabled production staging offline; val2=$REPLY
   _fphrase ERROR WARN INFO DEBUG; term=$REPLY; n=$((RANDOM % 5 + 3))
   questions+=("Store '${val}' in variable ${var}|${var}=${val}|${var}='${val}'|${var}=\"${val}\"")
-  questions+=("$(_phrase "Print" "Echo" "Show") variable \$${var}|echo \$${var}|echo \${${var}}")
+  _fphrase "Print" "Echo" "Show"; questions+=("${REPLY} variable \$${var}|echo \$${var}|echo \${${var}}")
   questions+=("Capture date output into ${var2}|${var2}=\$(date)|${var2}=\"\$(date)\"|${var2}=\`date\`|${var2}=\"\`date\`\"")
   questions+=("Capture hostname output into ${var}|${var}=\$(hostname)|${var}=\"\$(hostname)\"|${var}=\$HOSTNAME|${var}=\${HOSTNAME}|${var}=\`hostname\`|${var}=\"\`hostname\`\"")
   questions+=("Print length of \$${var}|echo \${#${var}}")
@@ -1552,11 +1542,11 @@ gen_level11() {
   _fphrase ERROR WARN INFO; term=$REPLY
   questions+=("Run sleep ${n} in the background|sleep ${n} &")
   questions+=("Run ${W}${script}${C} in the background|./${script} &|bash ${script} &|sh ${script} &")
-  questions+=("$(_phrase "List" "Show" "View") background jobs|jobs|jobs -l")
+  _fphrase "List" "Show" "View"; questions+=("${REPLY} background jobs|jobs|jobs -l")
   questions+=("Bring job ${n2} to foreground|fg %${n2}")
-  questions+=("$(_phrase "Send" "Move" "Put") job ${n2} to background|bg %${n2}")
+  _fphrase "Send" "Move" "Put"; questions+=("${REPLY} job ${n2} to background|bg %${n2}")
   questions+=("Kill job ${n2}|kill %${n2}")
-  questions+=("$(_phrase "Wait for" "Wait until") all background jobs finish|wait")
+  _fphrase "Wait for" "Wait until"; questions+=("${REPLY} all background jobs finish|wait")
   questions+=("Run ${W}${script}${C} in background, save stdout to ${W}${outfile}${C}|./${script} > ${outfile} &|./${script} 1> ${outfile} &|bash ${script} > ${outfile} &|sh ${script} > ${outfile} &")
   questions+=("Run ${W}${script2}${C} in background, capture all output to ${W}${outfile}${C}|./${script2} &> ${outfile} &|./${script2} > ${outfile} 2>&1 &|./${script2} >& ${outfile} &|bash ${script2} &> ${outfile} &|sh ${script2} &> ${outfile} &")
   questions+=("Run ${W}${script}${C} in background, stdout to ${W}${outfile}${C}, stderr to ${W}${errfile}${C}|./${script} > ${outfile} 2> ${errfile} &|./${script} 2> ${errfile} > ${outfile} &|./${script} 1> ${outfile} 2> ${errfile} &")
@@ -1651,7 +1641,7 @@ gen_level13() {
   questions+=("List contents of ${gz_archive} without extracting|tar tzf ${gz_archive}|tar -tzf ${gz_archive}|tar tf ${gz_archive}|tar -tf ${gz_archive}|tar ztf ${gz_archive}|tar -ztf ${gz_archive}|tar tfz ${gz_archive}|tar ftz ${gz_archive}|tar fzt ${gz_archive}|tar zft ${gz_archive}|tar tvzf ${gz_archive}|tar -tvzf ${gz_archive}|tar tvf ${gz_archive}|tar -tvf ${gz_archive}")
   questions+=("Create symlink 'link' pointing to ${cfg}|ln -s ${cfg} link|ln --symbolic ${cfg} link")
   questions+=("Create symlink 'link' to ${cfg} using absolute path|ln -s \$(pwd)/${cfg} link|ln --symbolic \$(pwd)/${cfg} link|ln -s \$PWD/${cfg} link|ln --symbolic \$PWD/${cfg} link")
-  questions+=("$(_phrase "Show" "Display" "Print") where symlink points|readlink link|ls -l link")
+  _fphrase "Show" "Display" "Print"; questions+=("${REPLY} where symlink points|readlink link|ls -l link")
   questions+=("Remove symlink (not target)|rm link|unlink link")
   questions+=("Create hard link 'hardlink' pointing to ${txt}|ln ${txt} hardlink")
   questions+=("Follow symlink to find real path|readlink -f link|readlink --canonicalize link|realpath link|readlink -e link|readlink --canonicalize-existing link")
@@ -1786,7 +1776,7 @@ gen_level16() {
   questions+=("Search '${term}' with ${ctx} lines context in ${log}|grep -C ${ctx} ${term} ${log}|grep -C${ctx} ${term} ${log}|grep --context ${ctx} ${term} ${log}|rg -C ${ctx} ${term} ${log}|rg -C${ctx} ${term} ${log}|rg --context ${ctx} ${term} ${log}")
   questions+=("Show ${ctx2} lines before each '${term}' match in ${log}|grep -B ${ctx2} ${term} ${log}|grep -B${ctx2} ${term} ${log}|grep --before-context ${ctx2} ${term} ${log}|rg -B ${ctx2} ${term} ${log}|rg -B${ctx2} ${term} ${log}|rg --before-context ${ctx2} ${term} ${log}")
   questions+=("Show ${ctx} lines after each '${term}' match in ${log}|grep -A ${ctx} ${term} ${log}|grep -A${ctx} ${term} ${log}|grep --after-context ${ctx} ${term} ${log}|rg -A ${ctx} ${term} ${log}|rg -A${ctx} ${term} ${log}|rg --after-context ${ctx} ${term} ${log}")
-  questions+=("$(_phrase "List" "Show") only filenames containing '${term}'|grep -rl ${term}|grep -lr ${term}|grep --recursive --files-with-matches ${term}|rg -l ${term}|rg --files-with-matches ${term}|grep -Rl ${term}|grep -lR ${term}|grep -rl ${term} .|grep -Rl ${term} .|grep -lr ${term} .|grep -lR ${term} .")
+  _fphrase "List" "Show"; questions+=("${REPLY} only filenames containing '${term}'|grep -rl ${term}|grep -lr ${term}|grep --recursive --files-with-matches ${term}|rg -l ${term}|rg --files-with-matches ${term}|grep -Rl ${term}|grep -lR ${term}|grep -rl ${term} .|grep -Rl ${term} .|grep -lr ${term} .|grep -lR ${term} .")
   questions+=("Lines WITHOUT '${term}' in ${log}|grep -v ${term} ${log}|grep --invert-match ${term} ${log}|rg -v ${term} ${log}|rg --invert-match ${term} ${log}")
   questions+=("Search '${term}' in .${ext} files only|grep -r --include='*.${ext}' ${term}|grep -r --include=\"*.${ext}\" ${term}|grep --recursive --include='*.${ext}' ${term}|rg -g '*.${ext}' ${term}|rg --glob '*.${ext}' ${term}|grep -R --include='*.${ext}' ${term}|grep -R --include=\"*.${ext}\" ${term}")
   questions+=("Search '${term}' in .${ext} and .${ext2} files|grep -r --include='*.${ext}' --include='*.${ext2}' ${term}|rg -g '*.${ext}' -g '*.${ext2}' ${term}|rg --glob '*.${ext}' --glob '*.${ext2}' ${term}|grep -R --include='*.${ext}' --include='*.${ext2}' ${term}")
