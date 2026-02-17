@@ -848,6 +848,7 @@ _frnum() { REPLY=$(($1 + RANDOM % ($2 - $1 + 1))); }
 _fshuffle() { local -n _a=$1; local i j t; for ((i=${#_a[@]}-1; i>0; i--)); do j=$((RANDOM % (i+1))); t="${_a[$i]}"; _a[$i]="${_a[$j]}"; _a[$j]="$t"; done; }
 # shellcheck disable=SC2178
 _fshuffle_n() { _fshuffle "$1"; local -n _a=$1; (($2 < ${#_a[@]})) && _a=("${_a[@]:0:$2}"); }
+_pause() { read -rsp "${D}Press Enter to ${1:-continue}...${N}"; }
 
 _QV='log cfg cfg2 txt txt2 csv dir dir2 ext ext2 script archive bin img pcap hash photo wordlist ip subnet port port2 mac url user host term term2 term3 field key old new size iface proc svc branch n n1 n2 n3 col'
 # shellcheck disable=SC2034  # vars consumed by caller's eval scope
@@ -1220,7 +1221,7 @@ explain() {
 #                    !contains:F:S, lines:F:N, perm:F:M, !perm:F:M
 #   #text:           command is interactive (less/vi) — skip sandbox exec
 #
-# Level generators use: eval "local questions=() $_QV"; _ctx
+# Level generators use nameref: local -n questions=${1:-CURRENT_QUESTIONS}; questions=(); eval "local $_QV"; _ctx
 #   $_QV declares ~40 local vars, _ctx() populates them via _fpick from pools
 _qparse() {
   local q=$1
@@ -1255,7 +1256,7 @@ VI_MODE=${CMD_VI:-1}  # always on (override with CMD_VI=0)
 
 # Level 1: First Commands (pwd, ls, echo, cd)
 gen_level1() {
-  eval "local questions=() $_QV"; _ctx; local word num
+  local -n questions=${1:-CURRENT_QUESTIONS}; questions=(); eval "local $_QV"; _ctx; local word num
   _fphrase src data logs; dir=$REPLY; _fphrase backup temp config test; dir2=$REPLY
   _fphrase projects demos tools assets; local newdir=$REPLY
   _fphrase hello ready "done" test ping; word=$REPLY; num=$((RANDOM % 50 + 1))
@@ -1282,12 +1283,11 @@ gen_level1() {
   questions+=("Go to filesystem root (/)|cd /")
   questions+=("Create directory ${W}${newdir}${C}|mkdir ${newdir}|mkdir -p ${newdir}|mkdir --parents ${newdir}|mkdir ${newdir}/|mkdir -p ${newdir}/|mkdir --parents ${newdir}/")
   questions+=("Create nested directories ${W}${dir}/${newdir}${C} (parents too)|mkdir -p ${dir}/${newdir}|mkdir --parents ${dir}/${newdir}|mkdir -p ${dir}/${newdir}/|mkdir --parents ${dir}/${newdir}/")
-  printf '%s\n' "${questions[@]}"
 }
 
 # Level 2: Save Output (>, >>)
 gen_level2() {
-  eval "local questions=() $_QV"; _ctx; local word word2 outfile outfile2 num
+  local -n questions=${1:-CURRENT_QUESTIONS}; questions=(); eval "local $_QV"; _ctx; local word word2 outfile outfile2 num
   _fpick SANDBOX_LOGS; log=$REPLY; _fpick SANDBOX_TXTS; txt=$REPLY; _fpick SANDBOX_CFGS; cfg=$REPLY
   _fphrase hello "done" ready complete finished saved started stopped; word=$REPLY
   _fphrase entry note line record message update backup; word2=$REPLY
@@ -1304,12 +1304,11 @@ gen_level2() {
   questions+=("Echo '${word}' to screen AND save to ${W}${txt}${C}§echo ${word} | tee ${txt}§#output:${word}#state:contains:${txt}:${word}")
   questions+=("Echo '${word2}' to screen AND append to ${W}${log}${C}§echo ${word2} | tee -a ${log}§echo ${word2} | tee --append ${log}§#output:${word2}#state:contains:${log}:${word2}")
   questions+=("Run ls, show output AND save to ${W}${outfile}${C}§ls | tee ${outfile}§#output:~server.log#state:contains:${outfile}:server.log")
-  printf '%s\n' "${questions[@]}"
 }
 
 # Level 3: Read Files (cat, head, tail)
 gen_level3() {
-  eval "local questions=() $_QV"; _ctx
+  local -n questions=${1:-CURRENT_QUESTIONS}; questions=(); eval "local $_QV"; _ctx
   _fpick SANDBOX_LOGS; log=$REPLY
   _fpick SANDBOX_TXTS; txt=$REPLY; _fpick SANDBOX_TXTS; txt2=$REPLY
   _fpick SANDBOX_CFGS; cfg=$REPLY; _fpick SANDBOX_CFGS; cfg2=$REPLY
@@ -1325,12 +1324,11 @@ gen_level3() {
   questions+=("Last line only of ${W}${txt}${C}|tail -1 ${txt}|tail -n 1 ${txt}|tail --lines 1 ${txt}|tail --lines=1 ${txt}")
   questions+=("Page through ${W}${log}${C} interactively|less ${log}|more ${log}|#text:")
   questions+=("View ${W}${txt}${C} with line numbers in a pager|less -N ${txt}|less --LINE-NUMBERS ${txt}|#text:")
-  printf '%s\n' "${questions[@]}"
 }
 
 # Level 4: Basic Pipes (|)
 gen_level4() {
-  eval "local questions=() $_QV"; _ctx; local term1
+  local -n questions=${1:-CURRENT_QUESTIONS}; questions=(); eval "local $_QV"; _ctx; local term1
   n=$((RANDOM % 5 + 3)); n2=$((RANDOM % 4 + 2)); n3=$((RANDOM % 6 + 5))
   _fpick SANDBOX_LOGS; log=$REPLY
   _fpick SANDBOX_TXTS; txt=$REPLY; _fpick SANDBOX_TXTS; txt2=$REPLY
@@ -1370,12 +1368,11 @@ gen_level4() {
   questions+=("Sort ${W}${log}${C} and show first ${n}§sort ${log} | head -${n}§sort ${log} | head -n ${n}§sort ${log} | head --lines=${n}§sort ${log} | head --lines ${n}§cat ${log} | sort | head -${n}§cat ${log} | sort | head -n ${n}")
   questions+=("Show last ${n2} sorted lines of ${W}${cfg}${C}§sort ${cfg} | tail -${n2}§sort ${cfg} | tail -n ${n2}§sort ${cfg} | tail --lines=${n2}§sort ${cfg} | tail --lines ${n2}§cat ${cfg} | sort | tail -${n2}§cat ${cfg} | sort | tail -n ${n2}")
   questions+=("Find ${Y}${term1}${C} lines, then count them in ${W}${log}${C}§grep ${term1} ${log} | wc -l§grep ${term1} ${log} | wc --lines§grep -c ${term1} ${log}§grep --count ${term1} ${log}§cat ${log} | grep ${term1} | wc -l§cat ${log} | grep -c ${term1}§cat ${log} | grep --count ${term1}")
-  printf '%s\n' "${questions[@]}"
 }
 
 # Level 5: Input Redirection (<)
 gen_level5() {
-  eval "local questions=() $_QV"; _ctx
+  local -n questions=${1:-CURRENT_QUESTIONS}; questions=(); eval "local $_QV"; _ctx
   _fpick SANDBOX_TXTS; txt=$REPLY
   _fpick SANDBOX_CSVS; csv=$REPLY; _fpick SANDBOX_LOGS; log=$REPLY
   questions+=("Count lines in ${W}${csv}${C} — just the number, no filename|wc -l < ${csv}|wc --lines < ${csv}")
@@ -1391,12 +1388,11 @@ gen_level5() {
   questions+=("Sort ${W}${csv}${C} with redirection, save to sorted.csv|sort < ${csv} > sorted.csv|sort ${csv} > sorted.csv|sort > sorted.csv < ${csv}|#state:exists:sorted.csv")
   questions+=("Show last ${n} lines of ${W}${log}${C} using redirection|tail -${n} < ${log}|tail -n ${n} < ${log}|tail --lines ${n} < ${log}|tail --lines=${n} < ${log}")
   questions+=("Count bytes in ${W}${txt}${C} — just the number|wc -c < ${txt}|wc --bytes < ${txt}")
-  printf '%s\n' "${questions[@]}"
 }
 
 # Level 6: Here-Strings (<<<)
 gen_level6() {
-  local questions=() word word2
+  local -n questions=${1:-CURRENT_QUESTIONS}; questions=(); local word word2
   _fphrase hello world example config backup server admin debug; word=$REPLY
   _fphrase test data input query search token ready active; word2=$REPLY
   local num1=$((RANDOM % 50 + 10)) num2=$((RANDOM % 20 + 5))
@@ -1413,12 +1409,11 @@ gen_level6() {
   questions+=("Count bytes in the string ${Y}'${word}'${C}§wc -c <<< '${word}'§wc -c <<< ${word}§wc --bytes <<< '${word}'§wc --bytes <<< ${word}§echo '${word}' | wc -c§echo ${word} | wc -c§echo '${word}' | wc --bytes§echo ${word} | wc --bytes§#output:~^\\s*$((${#word}+1))$")
   questions+=("Replace spaces with underscores in ${Y}'hello world test'${C}§tr ' ' '_' <<< 'hello world test'§echo 'hello world test' | tr ' ' '_'§sed 's/ /_/g' <<< 'hello world test'§echo 'hello world test' | sed 's/ /_/g'§#output:~hello_world_test")
   questions+=("Delete digits from ${Y}'abc123def456'${C}§tr -d '0-9' <<< 'abc123def456'§tr --delete '0-9' <<< 'abc123def456'§tr -d '[:digit:]' <<< 'abc123def456'§tr --delete '[:digit:]' <<< 'abc123def456'§echo 'abc123def456' | tr -d '0-9'§echo 'abc123def456' | tr --delete '0-9'§echo 'abc123def456' | tr -d '[:digit:]'§echo 'abc123def456' | tr --delete '[:digit:]'§sed 's/[0-9]//g' <<< 'abc123def456'§echo 'abc123def456' | sed 's/[0-9]//g'§#output:~abcdef")
-  printf '%s\n' "${questions[@]}"
 }
 
 # Level 7: Error Redirection (2>, &>, 2>&1)
 gen_level7() {
-  eval "local questions=() $_QV"; _ctx; local script2 errfile errfile2 outfile outfile2 missing
+  local -n questions=${1:-CURRENT_QUESTIONS}; questions=(); eval "local $_QV"; _ctx; local script2 errfile errfile2 outfile outfile2 missing
   _fpick SANDBOX_SCRIPTS; script=$REPLY; _fpick SANDBOX_SCRIPTS; script2=$REPLY
   _fphrase py sh log txt; ext=$REPLY; _fphrase conf ini yaml json; ext2=$REPLY
   _fphrase errors.log err.txt stderr.log error.out; errfile=$REPLY
@@ -1440,12 +1435,11 @@ gen_level7() {
   questions+=("Run ${W}./${script}${C}: stdout to ${W}${outfile}${C}, stderr to ${W}${errfile}${C}|./${script} > ${outfile} 2> ${errfile}|./${script} 2> ${errfile} > ${outfile}|./${script} 1> ${outfile} 2> ${errfile}")
   questions+=("Separate ${W}./${script2}${C} output: results to ${W}${outfile2}${C}, errors to ${W}${errfile2}${C}|./${script2} > ${outfile2} 2> ${errfile2}|./${script2} 2> ${errfile2} > ${outfile2}|./${script2} 1> ${outfile2} 2> ${errfile2}")
   questions+=("Echo 'failed' to stderr (redirect stdout to stderr)|echo failed 1>&2|echo failed >&2|echo failed > /dev/stderr|echo 'failed' 1>&2|echo 'failed' >&2|echo 'failed' > /dev/stderr|echo \"failed\" 1>&2|echo \"failed\" >&2|echo \"failed\" > /dev/stderr|#text:")
-  printf '%s\n' "${questions[@]}"
 }
 
 # Level 8: Logic Operators (&&, ||)
 gen_level8() {
-  eval "local questions=() $_QV"; _ctx; local msg msg2
+  local -n questions=${1:-CURRENT_QUESTIONS}; questions=(); eval "local $_QV"; _ctx; local msg msg2
   _fphrase new work build output cache proj dist bundle; dir=$REPLY
   _fphrase archive old staging release deploy results; dir2=$REPLY
   _fpick SANDBOX_CFGS; cfg=$REPLY; _fpick SANDBOX_CFGS; cfg2=$REPLY
@@ -1479,12 +1473,11 @@ gen_level8() {
   questions+=("If ${W}${txt}${C} exists, sort and save to sorted.txt§test -f ${txt} && sort ${txt} > sorted.txt§[[ -f ${txt} ]] && sort ${txt} > sorted.txt§[ -f ${txt} ] && sort ${txt} > sorted.txt")
   questions+=("Search ${Y}${term}${C} in ${W}${log}${C}, save matches or echo 'none'§grep ${term} ${log} > matches.txt || echo 'none'§grep '${term}' ${log} > matches.txt || echo 'none'§grep \"${term}\" ${log} > matches.txt || echo 'none'")
   questions+=("Run pwd, ls, date one after another regardless of errors|pwd ; ls ; date|~^pwd\\s*;\\s*ls\\s*;\\s*date$")
-  printf '%s\n' "${questions[@]}"
 }
 
 # Level 9: Variables & Substitution
 gen_level9() {
-  eval "local questions=() $_QV"; _ctx; local var var2 val val2
+  local -n questions=${1:-CURRENT_QUESTIONS}; questions=(); eval "local $_QV"; _ctx; local var var2 val val2
   _fpick SANDBOX_TXTS; txt=$REPLY; _fpick SANDBOX_TXTS; txt2=$REPLY
   _fpick SANDBOX_LOGS; log=$REPLY; _fpick SANDBOX_CFGS; cfg=$REPLY
   _fphrase msg name data result value output status; var=$REPLY
@@ -1522,12 +1515,11 @@ gen_level9() {
   questions+=("Set and export ${var2} in one command|export ${var2}='${val2}'|export ${var2}=\"${val2}\"|export ${var2}=${val2}")
   questions+=("Remove variable ${var} from the environment|unset ${var}|unset -v ${var}")
   questions+=("Show all exported variables|export|export -p|env|printenv|declare -x")
-  printf '%s\n' "${questions[@]}"
 }
 
 # Level 10: Special Variables ($$, $?, $!)
 gen_level10() {
-  eval "local questions=() $_QV"; _ctx
+  local -n questions=${1:-CURRENT_QUESTIONS}; questions=(); eval "local $_QV"; _ctx
   n=$((RANDOM % 3 + 2)); n2=$((RANDOM % 4 + 3))
   _fpick SANDBOX_SCRIPTS; script=$REPLY; _fpick SANDBOX_LOGS; log=$REPLY; _fpick SANDBOX_TXTS; txt=$REPLY
   _fphrase ERROR WARN INFO; local term=$REPLY
@@ -1548,12 +1540,11 @@ gen_level10() {
   questions+=("List files in home directory using \$HOME|ls \$HOME|ls \$HOME/|ls ~|ls ~/|ls \${HOME}|ls \${HOME}/")
   questions+=("Create file in home using \$HOME|touch \$HOME/test.txt|touch ~/test.txt|touch \${HOME}/test.txt")
   questions+=("Search in user's home for ${Y}${term}${C}§grep -r ${term} \$HOME 2>/dev/null | head -5§grep -R ${term} \$HOME 2>/dev/null | head -5§grep --recursive ${term} \$HOME 2>/dev/null | head -5§grep -r ${term} ~ 2>/dev/null | head -5§grep -R ${term} ~ 2>/dev/null | head -5§grep --recursive ${term} ~ 2>/dev/null | head -5§grep -r ${term} ~/ 2>/dev/null | head -5§grep -R ${term} ~/ 2>/dev/null | head -5§grep -r ${term} \$HOME/ 2>/dev/null | head -5§grep -R ${term} \$HOME/ 2>/dev/null | head -5§grep -r ${term} \${HOME} 2>/dev/null | head -5§grep -R ${term} \${HOME} 2>/dev/null | head -5§grep --recursive ${term} \${HOME} 2>/dev/null | head -5§grep --recursive ${term} ~ 2>/dev/null | head -5§grep --recursive ${term} ~/ 2>/dev/null | head -5§grep --recursive ${term} \$HOME/ 2>/dev/null | head -5§grep --recursive ${term} \${HOME}/ 2>/dev/null | head -5§grep -r ${term} ~ | head -5§grep -R ${term} ~ | head -5§grep --recursive ${term} ~ | head -5§grep -r ${term} \$HOME | head -5§grep -R ${term} \$HOME | head -5")
-  printf '%s\n' "${questions[@]}"
 }
 
 # Level 11: Job Control (&, jobs, bg, fg)
 gen_level11() {
-  eval "local questions=() $_QV"; _ctx; local script2 outfile errfile
+  local -n questions=${1:-CURRENT_QUESTIONS}; questions=(); eval "local $_QV"; _ctx; local script2 outfile errfile
   n=$((RANDOM % 90 + 10)); n2=$((RANDOM % 3 + 1)); n3=$((RANDOM % 60 + 30))
   _fpick SANDBOX_SCRIPTS; script=$REPLY; _fpick SANDBOX_SCRIPTS; script2=$REPLY
   _fpick SANDBOX_LOGS; log=$REPLY; _fpick SANDBOX_TXTS; txt=$REPLY
@@ -1585,12 +1576,11 @@ gen_level11() {
   questions+=("Wait for job ${n2} specifically|wait %${n2}")
   questions+=("Bring most recent job to foreground|fg|fg %%|fg %+|fg %")
   questions+=("Continue stopped job in background|bg|bg %%|bg %+|bg %")
-  printf '%s\n' "${questions[@]}"
 }
 
 # Level 12: Test Operators ([[ -f ]], [[ -d ]], etc)
 gen_level12() {
-  eval "local questions=() $_QV"; _ctx
+  local -n questions=${1:-CURRENT_QUESTIONS}; questions=(); eval "local $_QV"; _ctx
   _fpick SANDBOX_TXTS; txt=$REPLY; [[ "$REPLY" == "${SANDBOX_TXTS[0]}" ]] && txt2="${SANDBOX_TXTS[1]}" || txt2="${SANDBOX_TXTS[0]}"
   _fpick SANDBOX_CFGS; cfg=$REPLY; [[ "$REPLY" == "${SANDBOX_CFGS[0]}" ]] && cfg2="${SANDBOX_CFGS[1]}" || cfg2="${SANDBOX_CFGS[0]}"
   _fpick SANDBOX_LOGS; log=$REPLY; _fpick SANDBOX_SCRIPTS; script=$REPLY
@@ -1624,12 +1614,11 @@ gen_level12() {
   questions+=("Test if ${W}${txt}${C} OR ${W}${cfg}${C} exists§[[ -f ${txt} || -f ${cfg} ]]§[[ -f ${txt} ]] || [[ -f ${cfg} ]]§[ -f ${txt} ] || [ -f ${cfg} ]§test -f ${txt} || test -f ${cfg}")
   questions+=("Test if ${W}${txt}${C} does NOT exist|[[ ! -f ${txt} ]]|test ! -f ${txt}|[ ! -f ${txt} ]|! [[ -f ${txt} ]]|! [ -f ${txt} ]|! test -f ${txt}")
   questions+=("Test if ${W}${txt}${C} is newer than ${W}${cfg}${C}|[[ ${txt} -nt ${cfg} ]]|[ ${txt} -nt ${cfg} ]|test ${txt} -nt ${cfg}")
-  printf '%s\n' "${questions[@]}"
 }
 
 # Level 13: Core File Tools
 gen_level13() {
-  eval "local questions=() $_QV"; _ctx
+  local -n questions=${1:-CURRENT_QUESTIONS}; questions=(); eval "local $_QV"; _ctx
   local perm1=$((RANDOM % 7 + 1))$((RANDOM % 8))$((RANDOM % 8))
   _fphrase ERROR WARN INFO DEBUG; local searchterm=$REPLY
   [[ "$cfg2" == "$cfg" ]] && { _fpick CONFIGS; cfg2=$REPLY; }
@@ -1655,10 +1644,10 @@ gen_level13() {
   # shellcheck disable=SC2034  # used via _fpick nameref
   local -a GZ_ARCHIVES=(backup.tar.gz archive.tar.gz files.tgz release.tar.gz package.tar.gz source.tar.gz logs.tar.gz)
   _fpick GZ_ARCHIVES; local gz_archive=$REPLY
-  questions+=("Extract ${gz_archive}|tar xzf ${gz_archive}|tar -xzf ${gz_archive}|tar xf ${gz_archive}|tar -xf ${gz_archive}|tar zxf ${gz_archive}|tar -zxf ${gz_archive}|tar xfz ${gz_archive}|tar fxz ${gz_archive}|tar fzx ${gz_archive}|tar zfx ${gz_archive}|tar xvzf ${gz_archive}|tar -xvzf ${gz_archive}|tar xvf ${gz_archive}|tar -xvf ${gz_archive}")
-  questions+=("Extract ${gz_archive} to ${dir}/|tar xzf ${gz_archive} -C ${dir}/|tar -xzf ${gz_archive} -C ${dir}/|tar xf ${gz_archive} -C ${dir}/|tar -xf ${gz_archive} -C ${dir}/|tar zxf ${gz_archive} -C ${dir}/|tar -zxf ${gz_archive} -C ${dir}/|tar xfz ${gz_archive} -C ${dir}/|tar fxz ${gz_archive} -C ${dir}/|tar fzx ${gz_archive} -C ${dir}/|tar zfx ${gz_archive} -C ${dir}/|tar xzf ${gz_archive} -C ${dir}|tar -xzf ${gz_archive} -C ${dir}|tar xf ${gz_archive} -C ${dir}|tar -xf ${gz_archive} -C ${dir}|tar zxf ${gz_archive} -C ${dir}|tar -zxf ${gz_archive} -C ${dir}|tar xzf ${gz_archive} --directory ${dir}/|tar -xzf ${gz_archive} --directory ${dir}/|tar xf ${gz_archive} --directory ${dir}/|tar -xf ${gz_archive} --directory ${dir}/|tar xzf ${gz_archive} --directory ${dir}|tar -xzf ${gz_archive} --directory ${dir}|tar xf ${gz_archive} --directory ${dir}|tar -xf ${gz_archive} --directory ${dir}|tar xvzf ${gz_archive} -C ${dir}/|tar -xvzf ${gz_archive} -C ${dir}/|tar xvzf ${gz_archive} -C ${dir}|tar -xvzf ${gz_archive} -C ${dir}")
-  questions+=("Create archive.tar.gz from ${dir}/|tar czf archive.tar.gz ${dir}/|tar -czf archive.tar.gz ${dir}/|tar czf archive.tar.gz ${dir}|tar -czf archive.tar.gz ${dir}|tar zcf archive.tar.gz ${dir}/|tar -zcf archive.tar.gz ${dir}/|tar zcf archive.tar.gz ${dir}|tar -zcf archive.tar.gz ${dir}|tar cfz archive.tar.gz ${dir}/|tar cfz archive.tar.gz ${dir}|tar fcz archive.tar.gz ${dir}/|tar fcz archive.tar.gz ${dir}|tar fzc archive.tar.gz ${dir}/|tar fzc archive.tar.gz ${dir}|tar zfc archive.tar.gz ${dir}/|tar zfc archive.tar.gz ${dir}|tar cvzf archive.tar.gz ${dir}/|tar -cvzf archive.tar.gz ${dir}/|tar cvzf archive.tar.gz ${dir}|tar -cvzf archive.tar.gz ${dir}")
-  questions+=("List contents of ${gz_archive} without extracting|tar tzf ${gz_archive}|tar -tzf ${gz_archive}|tar tf ${gz_archive}|tar -tf ${gz_archive}|tar ztf ${gz_archive}|tar -ztf ${gz_archive}|tar tfz ${gz_archive}|tar ftz ${gz_archive}|tar fzt ${gz_archive}|tar zft ${gz_archive}|tar tvzf ${gz_archive}|tar -tvzf ${gz_archive}|tar tvf ${gz_archive}|tar -tvf ${gz_archive}")
+  questions+=("Extract ${gz_archive}|tar xzf ${gz_archive}|tar -xzf ${gz_archive}|tar xf ${gz_archive}|tar -xf ${gz_archive}|tar xvzf ${gz_archive}|tar -xvzf ${gz_archive}|tar xvf ${gz_archive}|tar -xvf ${gz_archive}")
+  questions+=("Extract ${gz_archive} to ${dir}/|tar xzf ${gz_archive} -C ${dir}/|tar -xzf ${gz_archive} -C ${dir}/|tar xf ${gz_archive} -C ${dir}/|tar -xf ${gz_archive} -C ${dir}/|tar xzf ${gz_archive} -C ${dir}|tar -xzf ${gz_archive} -C ${dir}|tar xf ${gz_archive} -C ${dir}|tar -xf ${gz_archive} -C ${dir}|tar xzf ${gz_archive} --directory ${dir}/|tar xzf ${gz_archive} --directory ${dir}|tar xf ${gz_archive} --directory ${dir}/|tar xf ${gz_archive} --directory ${dir}|tar xvzf ${gz_archive} -C ${dir}/|tar -xvzf ${gz_archive} -C ${dir}/|tar xvzf ${gz_archive} -C ${dir}|tar -xvzf ${gz_archive} -C ${dir}")
+  questions+=("Create archive.tar.gz from ${dir}/|tar czf archive.tar.gz ${dir}/|tar -czf archive.tar.gz ${dir}/|tar czf archive.tar.gz ${dir}|tar -czf archive.tar.gz ${dir}|tar cvzf archive.tar.gz ${dir}/|tar -cvzf archive.tar.gz ${dir}/|tar cvzf archive.tar.gz ${dir}|tar -cvzf archive.tar.gz ${dir}")
+  questions+=("List contents of ${gz_archive} without extracting|tar tzf ${gz_archive}|tar -tzf ${gz_archive}|tar tf ${gz_archive}|tar -tf ${gz_archive}|tar tvzf ${gz_archive}|tar -tvzf ${gz_archive}|tar tvf ${gz_archive}|tar -tvf ${gz_archive}")
   questions+=("Create symlink 'link' pointing to ${cfg}|ln -s ${cfg} link|ln --symbolic ${cfg} link")
   questions+=("Create symlink 'link' to ${cfg} using absolute path|ln -s \$(pwd)/${cfg} link|ln --symbolic \$(pwd)/${cfg} link|ln -s \$PWD/${cfg} link|ln --symbolic \$PWD/${cfg} link")
   _fphrase "Show" "Display" "Print"; questions+=("${REPLY} where symlink points|readlink link|ls -l link")
@@ -1681,12 +1670,11 @@ gen_level13() {
   questions+=("Count ${Y}${searchterm}${C} in ${W}${log}${C} if exists§[[ -f ${log} ]] && grep -c ${searchterm} ${log}§[ -f ${log} ] && grep -c ${searchterm} ${log}§test -f ${log} && grep -c ${searchterm} ${log}§[[ -f ${log} ]] && grep --count ${searchterm} ${log}§[ -f ${log} ] && grep --count ${searchterm} ${log}§test -f ${log} && grep --count ${searchterm} ${log}")
   questions+=("Extract ${W}${gz_archive}${C} and list contents§tar xzf ${gz_archive} && ls -la§tar -xzf ${gz_archive} && ls -la§tar xf ${gz_archive} && ls -la§tar -xf ${gz_archive} && ls -la§tar xzf ${gz_archive} && ls§tar -xzf ${gz_archive} && ls§tar xf ${gz_archive} && ls§tar -xf ${gz_archive} && ls§tar xzf ${gz_archive} && ls -l§tar -xzf ${gz_archive} && ls -l§tar xf ${gz_archive} && ls -l§tar -xf ${gz_archive} && ls -l§tar xvzf ${gz_archive}§tar -xvzf ${gz_archive}")
   questions+=("Copy ${W}${txt}${C} to ${W}${dir}${C}/ and echo done|cp ${txt} ${dir}/ && echo done|cp ${txt} ${dir} && echo done|cp ${txt} ${dir}/ && echo 'done'|cp ${txt} ${dir} && echo 'done'")
-  printf '%s\n' "${questions[@]}"
 }
 
 # Level 14: System Admin
 gen_level14() {
-  eval "local questions=() $_QV"; _ctx
+  local -n questions=${1:-CURRENT_QUESTIONS}; questions=(); eval "local $_QV"; _ctx
   _fphrase git vim tmux htop curl wget rsync jq; local pkg=$REPLY
   questions+=("Ping ${ip} 5 times|ping -c 5 ${ip}|ping -c5 ${ip}|ping --count 5 ${ip}|ping --count=5 ${ip}")
   questions+=("Ping ${ip} continuously|ping ${ip}")
@@ -1741,11 +1729,10 @@ gen_level14() {
   questions+=("Search for package ${pkg} (Fedora)|dnf search ${pkg}|yum search ${pkg}")
   questions+=("Run full system security audit|lynis audit system|sudo lynis audit system")
   questions+=("Lynis: only audit the 'networking' category|lynis audit system --tests-from-group networking|sudo lynis audit system --tests-from-group networking|lynis audit system --tests-from-group=networking|sudo lynis audit system --tests-from-group=networking")
-  printf '%s\n' "${questions[@]}"
 }
 # Level 15: Multiplexers (tmux)
 gen_level15() {
-  eval "local questions=() $_QV"; _ctx
+  local -n questions=${1:-CURRENT_QUESTIONS}; questions=(); eval "local $_QV"; _ctx
   questions+=("Start new tmux session|tmux|tmux new|tmux new-session")
   questions+=("Start tmux session named 'work'|tmux new -s work|tmux new-session -s work")
   questions+=("List sessions|tmux ls|tmux list-sessions")
@@ -1782,12 +1769,11 @@ gen_level15() {
   questions+=("Keybinding: toggle pane zoom|Ctrl+b z|ctrl+b z|C-b z|ctrl-b z|Ctrl-b z")
   questions+=("Keybinding: enter copy mode|Ctrl+b [|ctrl+b [|C-b [|ctrl-b [|Ctrl-b [")
   questions+=("Keybinding: show all keybindings|Ctrl+b ?|ctrl+b ?|C-b ?|ctrl-b ?|Ctrl-b ?")
-  printf '%s\n' "${questions[@]}"
 }
 
 # Level 16: Text Search (grep, rg)
 gen_level16() {
-  eval "local questions=() $_QV"; _ctx
+  local -n questions=${1:-CURRENT_QUESTIONS}; questions=(); eval "local $_QV"; _ctx
   _frnum 1 10; local ctx=$REPLY; _frnum 2 5; local ctx2=$REPLY
   questions+=("Search for '${term}' recursively|grep -r ${term}|grep -r ${term} .|grep --recursive ${term}|grep --recursive ${term} .|rg ${term}|grep -R ${term}|grep -R ${term} .")
   questions+=("Case-insensitive search for '${term}'|grep -ri ${term}|grep -ir ${term}|grep -ri ${term} .|grep --recursive --ignore-case ${term}|grep --recursive --ignore-case ${term} .|rg -i ${term}|rg --ignore-case ${term}|grep -Ri ${term}|grep -iR ${term}|grep -Ri ${term} .|grep -iR ${term} .")
@@ -1827,12 +1813,11 @@ gen_level16() {
   questions+=("If ${Y}${term}${C} found, count matches; else echo 'none' in ${W}${log}${C}§grep -q ${term} ${log} && grep -c ${term} ${log} || echo 'none'§grep --quiet ${term} ${log} && grep -c ${term} ${log} || echo 'none'§grep --silent ${term} ${log} && grep -c ${term} ${log} || echo 'none'§rg -q ${term} ${log} && rg -c ${term} ${log} || echo 'none'")
   questions+=("Search ${Y}${term}${C} in all .${ext} files, save to results.txt§grep -r ${term} --include='*.${ext}' > results.txt§grep -R ${term} --include='*.${ext}' > results.txt§rg ${term} -g '*.${ext}' > results.txt§rg -g '*.${ext}' ${term} > results.txt")
   questions+=("Find ${Y}${term}${C} lines, extract IPs, count unique in ${W}${log}${C}§grep ${term} ${log} | grep -oE '[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+' | sort -u | wc -l§rg ${term} ${log} | rg -o '[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+' | sort -u | wc -l§grep ${term} ${log} | grep -oP '\\d+\\.\\d+\\.\\d+\\.\\d+' | sort -u | wc -l")
-  printf '%s\n' "${questions[@]}"
 }
 
 # Level 17: File Finding (find, fd)
 gen_level17() {
-  eval "local questions=() $_QV"; _ctx; _frnum 5 60; local time=$REPLY
+  local -n questions=${1:-CURRENT_QUESTIONS}; questions=(); eval "local $_QV"; _ctx; _frnum 5 60; local time=$REPLY
   questions+=("Find all .${ext} files|find . -name '*.${ext}'|find . -type f -name '*.${ext}'|fd -e ${ext}|fd --extension ${ext}|find -name '*.${ext}'|find -type f -name '*.${ext}'")
   questions+=("Find files named exactly 'config'|find . -name 'config'|find . -type f -name 'config'|fd -g 'config'|fd --glob 'config'|fd -t f -g 'config'|fd --type f -g 'config'|fd --type f --glob 'config'")
   questions+=("Find 'config' files (case-insensitive)|find . -iname '*config*'|find . -type f -iname '*config*'|fd -i config|fd --ignore-case config")
@@ -1860,12 +1845,11 @@ gen_level17() {
   questions+=("Find large files (>${size}), show sizes sorted§find . -size +${size} -exec du -h {} \\; | sort -rh§find . -size +${size} -exec du -h {} + | sort -rh§fd -S +${size} -x du -h {} | sort -rh")
   questions+=("Find .${ext} files modified today, grep for '${term}'§find . -name '*.${ext}' -mtime 0 -exec grep -l ${term} {} \\;§find . -name '*.${ext}' -mtime 0 -exec grep -l ${term} {} +§fd -e ${ext} --changed-within 1d -x grep -l ${term}")
   questions+=("Find empty files and delete them§find . -type f -empty -print -delete§find . -type f -empty -delete§find . -empty -type f -delete§find . -type f -empty -exec rm {} +§find . -type f -empty -exec rm {} \\;§fd -t f -S 0b -x rm {}§fd --type f --size 0b -x rm {}")
-  printf '%s\n' "${questions[@]}"
 }
 
 # Level 18: Data Processing
 gen_level18() {
-  eval "local questions=() $_QV"; _ctx
+  local -n questions=${1:-CURRENT_QUESTIONS}; questions=(); eval "local $_QV"; _ctx
   _frnum 1 5; local col2=$REPLY; local col3=$((col % 5 + 1)); _frnum 10 80; local chars=$REPLY; _frnum 1 25; local thresh=$REPLY
   ((col3 < col)) && { local _t=$col; col=$col3; col3=$_t; }  # ensure col <= col3 for ranges
   ((n > n2)) && { local _t2=$n; n=$n2; n2=$_t2; }
@@ -1925,12 +1909,11 @@ gen_level18() {
   questions+=("Most common words in ${txt}§tr -s ' ' '\\n' < ${txt} | sort | uniq -c | sort -rn | head§tr -s ' ' '\\n' < ${txt} | sort | uniq -c | sort -nr | head")
   questions+=("Lines appearing in both ${txt} and ${txt2}|comm -12 <(sort ${txt}) <(sort ${txt2})|comm -1 -2 <(sort ${txt}) <(sort ${txt2})|grep -Fxf ${txt} ${txt2}|grep -Fxf ${txt2} ${txt}")
   questions+=("Lines only in ${txt}, not ${txt2}|comm -23 <(sort ${txt}) <(sort ${txt2})|comm -2 -3 <(sort ${txt}) <(sort ${txt2})|grep -Fxvf ${txt2} ${txt}")
-  printf '%s\n' "${questions[@]}"
 }
 
 # Level 19: String & Arrays
 gen_level19() {
-  eval "local questions=() $_QV"; _ctx
+  local -n questions=${1:-CURRENT_QUESTIONS}; questions=(); eval "local $_QV"; _ctx
   questions+=("Extract filename from /path/to/${txt} (stored in \$path)|echo \${path##*/}|basename \$path")
   questions+=("Get parent directory from \$fullpath|echo \${fullpath%/*}|dirname \$fullpath")
   questions+=("Get extension from ${cfg} (stored in \$file)|echo \${file##*.}|printf '%s\\n' \${file##*.}|printf '%s\\n' \"\${file##*.}\"")
@@ -1982,12 +1965,11 @@ gen_level19() {
   questions+=("Read command output into array|mapfile -t arr < <(ls)|readarray -t arr < <(ls)")
   questions+=("Copy array|arr2=(\"\${arr[@]}\")")
   questions+=("Merge two arrays|merged=(\"\${arr1[@]}\" \"\${arr2[@]}\")")
-  printf '%s\n' "${questions[@]}"
 }
 
 # Level 20: Control Flow & Functions
 gen_level20() {
-  eval "local questions=() $_QV"; _ctx
+  local -n questions=${1:-CURRENT_QUESTIONS}; questions=(); eval "local $_QV"; _ctx
   questions+=("Basic if statement|if [[ condition ]]; then cmd; fi|if [ condition ]; then cmd; fi|if test condition; then cmd; fi")
   questions+=("if/else statement|if [[ cond ]]; then cmd1; else cmd2; fi|if [ cond ]; then cmd1; else cmd2; fi|if test cond; then cmd1; else cmd2; fi")
   questions+=("if/elif/else|if [[ c1 ]]; then cmd1; elif [[ c2 ]]; then cmd2; else cmd3; fi|if [ c1 ]; then cmd1; elif [ c2 ]; then cmd2; else cmd3; fi|if test c1; then cmd1; elif test c2; then cmd2; else cmd3; fi")
@@ -2037,12 +2019,11 @@ gen_level20() {
   questions+=("Die function|die() { echo \"\$1\" >&2; exit 1; }|die () { echo \"\$1\" >&2; exit 1; }|function die { echo \"\$1\" >&2; exit 1; }|function die() { echo \"\$1\" >&2; exit 1; }|function die () { echo \"\$1\" >&2; exit 1; }")
   questions+=("Enable debug mode (print commands)|set -x|set -o xtrace")
   questions+=("Disable debug mode|set +x|set +o xtrace")
-  printf '%s\n' "${questions[@]}"
 }
 
 # Level 21: Batch Ops
 gen_level21() {
-  eval "local questions=() $_QV"; _ctx
+  local -n questions=${1:-CURRENT_QUESTIONS}; questions=(); eval "local $_QV"; _ctx
   _frnum 2 8; local parallel=$REPLY; _frnum 1 20; local linenum=$REPLY
   questions+=("Run ls -l on each .${ext} file found|find . -name '*.${ext}' -exec ls -l {} \\;|find . -name '*.${ext}' -exec ls -l {} +|fd -e ${ext} -x ls -l {}|fd --extension ${ext} -x ls -l {}|fd -e ${ext} -X ls -l|fd --extension ${ext} -X ls -l|find . -type f -name '*.${ext}' -exec ls -l {} \\;|find . -type f -name '*.${ext}' -exec ls -l {} +")
   questions+=("Count lines in each .${ext} file|find . -name '*.${ext}' -exec wc -l {} \\;|find . -name '*.${ext}' -exec wc -l {} +|fd -e ${ext} -x wc -l {}|fd --extension ${ext} -x wc -l {}|fd -e ${ext} -X wc -l|fd --extension ${ext} -X wc -l")
@@ -2110,12 +2091,11 @@ gen_level21() {
   questions+=("Check ${svc} status, restart if not active§systemctl is-active ${svc} || systemctl restart ${svc}§systemctl is-active ${svc} || sudo systemctl restart ${svc}§sudo systemctl is-active ${svc} || sudo systemctl restart ${svc}§systemctl is-active --quiet ${svc} || systemctl restart ${svc}§systemctl is-active -q ${svc} || systemctl restart ${svc}§systemctl is-active --quiet ${svc} || sudo systemctl restart ${svc}§systemctl is-active -q ${svc} || sudo systemctl restart ${svc}")
   questions+=("View ${svc} errors, count unique messages§journalctl -u ${svc} -p err --no-pager | sort | uniq -c | sort -rn§journalctl --unit ${svc} -p err --no-pager | sort | uniq -c | sort -rn")
   questions+=("Find and grep all logs modified today§find /var/log -mtime 0 -type f -exec grep -l ${term} {} \\;§find /var/log -mtime 0 -type f -exec grep -l ${term} {} +§fd --changed-within 1d -t f . /var/log -x grep -l ${term}§fd --changed-within 1d -t f . /var/log -x rg -l ${term}")
-  printf '%s\n' "${questions[@]}"
 }
 
 # Level 22: Advanced Regex
 gen_level22() {
-  eval "local questions=() $_QV"; _ctx
+  local -n questions=${1:-CURRENT_QUESTIONS}; questions=(); eval "local $_QV"; _ctx
   questions+=("Match 'error' followed by number in ${W}${log}${C}|grep -P 'error(?=\\d)' ${log}|grep -P 'error(?=[0-9])' ${log}|rg -P 'error(?=\\d)' ${log}|rg -P 'error(?=[0-9])' ${log}")
   questions+=("Match 'error' NOT followed by number in ${W}${log}${C}|grep -P 'error(?!\\d)' ${log}|grep -P 'error(?![0-9])' ${log}|rg -P 'error(?!\\d)' ${log}|rg -P 'error(?![0-9])' ${log}")
   questions+=("Match number preceded by '$' in ${W}${log}${C}|grep -P '(?<=\\$)\\d+' ${log}|grep -P '(?<=\\$)[0-9]+' ${log}|rg -P '(?<=\\$)\\d+' ${log}|rg -P '(?<=\\$)[0-9]+' ${log}")
@@ -2172,12 +2152,11 @@ gen_level22() {
   questions+=("Complex: join lines with comma in ${W}${txt}${C}|paste -sd',' ${txt}|paste -sd, ${txt}|paste -s -d',' ${txt}|paste -s -d, ${txt}|paste -s -d ',' ${txt}")
   questions+=("Compare sorted ${W}${txt}${C} vs sorted ${W}${txt2}${C} output|diff <(sort ${txt}) <(sort ${txt2})|diff -u <(sort ${txt}) <(sort ${txt2})|diff --unified <(sort ${txt}) <(sort ${txt2})")
   questions+=("Count lines matching ${Y}${term}${C} in ${W}${log}${C} (process substitution)§wc -l <(grep ${term} ${log})§grep ${term} ${log} | wc -l§wc -l <(rg ${term} ${log})§rg ${term} ${log} | wc -l§rg -c ${term} ${log}§grep -c ${term} ${log}§grep --count ${term} ${log}")
-  printf '%s\n' "${questions[@]}"
 }
 
 # Level 23: Git
 gen_level23() {
-  eval "local questions=() $_QV"; _ctx
+  local -n questions=${1:-CURRENT_QUESTIONS}; questions=(); eval "local $_QV"; _ctx
   questions+=("Initialize new git repo|git init|git init .")
   questions+=("Clone repo from URL|~^git clone (https?://|git@)\\S+")
   questions+=("Clone repo to specific dir|~^git clone (https?://|git@)\\S+ \\S+")
@@ -2250,12 +2229,11 @@ gen_level23() {
   questions+=("Clean untracked files and dirs|git clean -fd|git clean -df|git clean -f -d|git clean --force -d|git clean -d --force")
   questions+=("Show reflog|git reflog|git reflog show")
   questions+=("Recover deleted branch from reflog|~^git (checkout -b|switch -c|switch --create|branch) \\S+ ([0-9a-f]+|HEAD@\\{[0-9]+\\})")
-  printf '%s\n' "${questions[@]}"
 }
 
 # Level 24: Network Tools
 gen_level24() {
-  eval "local questions=() $_QV"; _ctx
+  local -n questions=${1:-CURRENT_QUESTIONS}; questions=(); eval "local $_QV"; _ctx
   local key=data  # export.json only has .data array
   questions+=("Capture traffic on ${iface} to ${pcap}|tshark -i ${iface} -w ${pcap}|sudo tshark -i ${iface} -w ${pcap}|tcpdump -i ${iface} -w ${pcap}|sudo tcpdump -i ${iface} -w ${pcap}|tcpdump -w ${pcap} -i ${iface}|sudo tcpdump -w ${pcap} -i ${iface}|tshark -w ${pcap} -i ${iface}|sudo tshark -w ${pcap} -i ${iface}")
   questions+=("Capture only 100 packets to ${W}${pcap}${C}|tshark -i ${iface} -c 100 -w ${pcap}|sudo tshark -i ${iface} -c 100 -w ${pcap}|tcpdump -i ${iface} -c 100 -w ${pcap}|sudo tcpdump -i ${iface} -c 100 -w ${pcap}")
@@ -2306,12 +2284,11 @@ gen_level24() {
   questions+=("List SMB shares anonymously on ${ip}|smbclient -L //${ip} -N|smbclient -N -L //${ip}|smbclient -L //${ip} --no-pass|smbclient --no-pass -L //${ip}|smbclient -L ${ip} -N|smbclient -N -L ${ip}")
   questions+=("Connect to SMB share|smbclient //${ip}/share -U ${user}")
   questions+=("Enumerate SMB with enum4linux|enum4linux -a ${ip}")
-  printf '%s\n' "${questions[@]}"
 }
 
 # Level 25: Network Scanning (nmap)
 gen_level25() {
-  eval "local questions=() $_QV"; _ctx
+  local -n questions=${1:-CURRENT_QUESTIONS}; questions=(); eval "local $_QV"; _ctx
   local port2=$((port + 1000))
   questions+=("Scan all 65535 ports on ${ip}|nmap -p- ${ip}|nmap -p 1-65535 ${ip}|nmap -p1-65535 ${ip}|sudo nmap -p- ${ip}|sudo nmap -p 1-65535 ${ip}|sudo nmap -p1-65535 ${ip}")
   questions+=("Scan top 100 most common ports on ${ip}|nmap --top-ports 100 ${ip}|sudo nmap --top-ports 100 ${ip}|nmap -F ${ip}|sudo nmap -F ${ip}")
@@ -2340,12 +2317,11 @@ gen_level25() {
   questions+=("Slow scan ${ip} (evade IDS)|nmap -T1 ${ip}|nmap -T 1 ${ip}|nmap -T sneaky ${ip}|sudo nmap -T1 ${ip}|sudo nmap -T 1 ${ip}|sudo nmap -T sneaky ${ip}|nmap -T0 ${ip}|nmap -T paranoid ${ip}|sudo nmap -T0 ${ip}|sudo nmap -T paranoid ${ip}")
   questions+=("Aggressive timing scan ${ip} (faster)|nmap -T4 ${ip}|nmap -T 4 ${ip}|nmap -T aggressive ${ip}|sudo nmap -T4 ${ip}|sudo nmap -T 4 ${ip}|sudo nmap -T aggressive ${ip}")
   questions+=("Full scan: all ports, version, scripts, all outputs|nmap -p- -sV -sC -oA full ${ip}|nmap -p- -sC -sV -oA full ${ip}|nmap -p- -sCV -oA full ${ip}|nmap -p- -sVC -oA full ${ip}|nmap -p- -A -oA full ${ip}|sudo nmap -p- -sV -sC -oA full ${ip}|sudo nmap -p- -sC -sV -oA full ${ip}|sudo nmap -p- -sCV -oA full ${ip}|sudo nmap -p- -sVC -oA full ${ip}|sudo nmap -p- -A -oA full ${ip}")
-  printf '%s\n' "${questions[@]}"
 }
 
 # Level 26: WiFi & RF
 gen_level26() {
-  eval "local questions=() $_QV"; _ctx
+  local -n questions=${1:-CURRENT_QUESTIONS}; questions=(); eval "local $_QV"; _ctx
   _fpick WIFI_INTERFACES; local wiface=$REPLY
   questions+=("Enable monitor mode on ${wiface}|airmon-ng start ${wiface}|sudo airmon-ng start ${wiface}")
   questions+=("Scan for WiFi networks|airodump-ng ${wiface}mon|sudo airodump-ng ${wiface}mon")
@@ -2373,12 +2349,11 @@ gen_level26() {
   questions+=("Show connected WiFi info|iw dev ${wiface} link|iwconfig ${wiface}|sudo iw dev ${wiface} link|sudo iwconfig ${wiface}")
   questions+=("Set WiFi channel to 6|iw dev ${wiface}mon set channel 6|sudo iw dev ${wiface}mon set channel 6|iwconfig ${wiface}mon channel 6|sudo iwconfig ${wiface}mon channel 6")
   questions+=("Disable monitor mode|airmon-ng stop ${wiface}mon|sudo airmon-ng stop ${wiface}mon")
-  printf '%s\n' "${questions[@]}"
 }
 
 # Level 27: Hash Cracking
 gen_level27() {
-  eval "local questions=() $_QV"; _ctx
+  local -n questions=${1:-CURRENT_QUESTIONS}; questions=(); eval "local $_QV"; _ctx
   _frnum 0 $((${#HASHCAT_MODES[@]} - 1)); local hidx=$REPLY
   local hmode=${HASHCAT_MODES[$hidx]} hname=${HASH_NAMES[$hidx]}
   questions+=("Dictionary attack on MD5 (-m 0) hashes in ${hash} using ${W}${wordlist}${C}|hashcat -m 0 ${hash} ${wordlist}|hashcat -a 0 -m 0 ${hash} ${wordlist}|hashcat -m 0 -a 0 ${hash} ${wordlist}|hashcat --hash-type 0 ${hash} ${wordlist}|hashcat -a 0 --hash-type 0 ${hash} ${wordlist}|hashcat --hash-type 0 -a 0 ${hash} ${wordlist}")
@@ -2412,12 +2387,11 @@ gen_level27() {
   questions+=("Convert hex back to ascii§echo '68656c6c6f' | xxd -r -p§echo -n '68656c6c6f' | xxd -r -p§echo 68656c6c6f | xxd -r -p§echo -n 68656c6c6f | xxd -r -p§printf '68656c6c6f' | xxd -r -p§printf 68656c6c6f | xxd -r -p§printf '%s' '68656c6c6f' | xxd -r -p§printf '%s' 68656c6c6f | xxd -r -p§printf '%s' \"68656c6c6f\" | xxd -r -p§printf \"%s\" \"68656c6c6f\" | xxd -r -p")
   questions+=("Hex dump ${W}${bin}${C} with addresses|xxd ${bin}|hexdump -C ${bin}|hd ${bin}|od -A x -t x1z ${bin}")
   questions+=("Hex dump ${W}${bin}${C} (no addresses)|xxd -p ${bin}|xxd --plain ${bin}|xxd -ps ${bin}")
-  printf '%s\n' "${questions[@]}"
 }
 
 # Level 28: Forensics
 gen_level28() {
-  eval "local questions=() $_QV"; _ctx
+  local -n questions=${1:-CURRENT_QUESTIONS}; questions=(); eval "local $_QV"; _ctx
   questions+=("Extract ASCII strings from ${bin}|strings ${bin}|strings -a ${bin}|strings --all ${bin}")
   questions+=("Extract strings minimum 10 chars in ${W}${bin}${C}|strings -n 10 ${bin}|strings --bytes=10 ${bin}|strings --bytes 10 ${bin}")
   questions+=("Extract Unicode strings (Windows binaries) in ${W}${bin}${C}|strings -e l ${bin}|strings --encoding=l ${bin}|strings --encoding l ${bin}")
@@ -2453,12 +2427,11 @@ gen_level28() {
   questions+=("List deleted files in ${W}${img}${C}|fls -d ${img}")
   questions+=("Create filesystem timeline|mactime -b ${dir}/bodyfile|~^mactime -b .+$")
   questions+=("Create bodyfile from ${W}${img}${C}|fls -r -m / ${img} > ${dir}/bodyfile|fls -m / -r ${img} > ${dir}/bodyfile")
-  printf '%s\n' "${questions[@]}"
 }
 
 # Level 29: Privilege Escalation
 gen_level29() {
-  eval "local questions=() $_QV"; _ctx
+  local -n questions=${1:-CURRENT_QUESTIONS}; questions=(); eval "local $_QV"; _ctx
   questions+=("Find all SUID binaries|find / -perm -4000 -type f 2>/dev/null|find / -perm -u=s -type f 2>/dev/null|find / -perm /4000 -type f 2>/dev/null|find / -perm /u=s -type f 2>/dev/null|find / -type f -perm -4000 2>/dev/null|find / -type f -perm -u=s 2>/dev/null|find / -type f -perm /4000 2>/dev/null|find / -type f -perm /u=s 2>/dev/null")
   questions+=("Find SUID or SGID binaries|find / -perm /6000 -type f 2>/dev/null|find / -perm /u=s,g=s -type f 2>/dev/null|find / -type f -perm /6000 2>/dev/null|find / -type f -perm /u=s,g=s 2>/dev/null")
   questions+=("Find files with capabilities|getcap -r / 2>/dev/null|sudo getcap -r / 2>/dev/null")
@@ -2493,12 +2466,11 @@ gen_level29() {
   questions+=("Check NFS exports|showmount -e ${ip}|cat /etc/exports")
   questions+=("Mount NFS export ${ip}:/share at /mnt|mount -t nfs ${ip}:/share /mnt|sudo mount -t nfs ${ip}:/share /mnt|mount ${ip}:/share /mnt|mount -t nfs ${ip}:/share /mnt/|sudo mount -t nfs ${ip}:/share /mnt/|mount ${ip}:/share /mnt/|sudo mount ${ip}:/share /mnt|sudo mount ${ip}:/share /mnt/")
   questions+=("Create SUID on NFS|cp /bin/bash /mnt && chmod +s /mnt/bash|cp /bin/bash /mnt && chmod u+s /mnt/bash|cp /bin/bash /mnt; chmod +s /mnt/bash|cp /bin/bash /mnt; chmod u+s /mnt/bash|cp /bin/bash /mnt && chmod 4755 /mnt/bash|cp /bin/bash /mnt; chmod 4755 /mnt/bash|cp /bin/sh /mnt && chmod +s /mnt/sh|cp /bin/sh /mnt; chmod +s /mnt/sh|cp /bin/sh /mnt && chmod u+s /mnt/sh|cp /bin/sh /mnt; chmod u+s /mnt/sh|cp /bin/sh /mnt && chmod 4755 /mnt/sh|cp /bin/sh /mnt; chmod 4755 /mnt/sh")
-  printf '%s\n' "${questions[@]}"
 }
 
 # Level 30: ROOT
 gen_level30() {
-  eval "local questions=() $_QV"; _ctx
+  local -n questions=${1:-CURRENT_QUESTIONS}; questions=(); eval "local $_QV"; _ctx
   questions+=("Remount root filesystem read-write|mount -o remount,rw /|mount -o rw,remount /|sudo mount -o remount,rw /|sudo mount -o rw,remount /|mount / -o remount,rw|sudo mount / -o remount,rw")
   questions+=("Emergency single-user mode|init 1|systemctl rescue|telinit 1|systemctl isolate rescue.target|telinit s|telinit S|init s|init S|sudo systemctl rescue|sudo init 1|sudo telinit 1|sudo telinit s|sudo telinit S|sudo init s|sudo init S")
   questions+=("Chroot into system mounted at /mnt|chroot /mnt /bin/bash|chroot /mnt /bin/sh|chroot /mnt|arch-chroot /mnt|chroot /mnt bash|chroot /mnt sh|sudo chroot /mnt /bin/bash|sudo chroot /mnt /bin/sh|sudo chroot /mnt|sudo arch-chroot /mnt|sudo chroot /mnt bash|sudo chroot /mnt sh|arch-chroot /mnt bash|arch-chroot /mnt /bin/bash|sudo arch-chroot /mnt bash|sudo arch-chroot /mnt /bin/bash")
@@ -2568,7 +2540,6 @@ gen_level30() {
   questions+=("Create bootable USB|dd if=arch.iso of=/dev/sdb bs=4M status=progress oflag=sync|dd bs=4M if=arch.iso of=/dev/sdb status=progress oflag=sync|dd if=arch.iso bs=4M of=/dev/sdb status=progress oflag=sync|sudo dd if=arch.iso of=/dev/sdb bs=4M status=progress oflag=sync|sudo dd bs=4M if=arch.iso of=/dev/sdb status=progress oflag=sync|sudo dd if=arch.iso bs=4M of=/dev/sdb status=progress oflag=sync|dd if=arch.iso of=/dev/sdb bs=4M status=progress conv=fsync|sudo dd if=arch.iso of=/dev/sdb bs=4M status=progress conv=fsync")
   questions+=("Generate SSH key (no network needed)|ssh-keygen -t ed25519 -f ~/.ssh/offline_key|ssh-keygen -f ~/.ssh/offline_key -t ed25519|ssh-keygen -t ed25519|ssh-keygen|ssh-keygen -t rsa|ssh-keygen -t rsa -b 4096")
   questions+=("Encrypt ${W}${txt}${C} for offline transport|gpg -c --cipher-algo AES256 ${txt}|gpg --symmetric --cipher-algo AES256 ${txt}|gpg -c ${txt}|gpg --symmetric ${txt}|gpg2 -c --cipher-algo AES256 ${txt}|gpg2 --symmetric --cipher-algo AES256 ${txt}|gpg2 -c ${txt}|gpg2 --symmetric ${txt}")
-  printf '%s\n' "${questions[@]}"
 }
 
 _sc_is_done() { [[ ",$SC_DONE," == *",$1,"* ]]; }
@@ -2700,10 +2671,10 @@ _sc_setup_6() {
 }
 _sc_steps_6() {
   cat <<'STEPS'
-Create a tar.gz of the release/ directory§tar czf release.tar.gz release§tar -czf release.tar.gz release§tar czf release.tar.gz release/§tar -czf release.tar.gz release/§tar zcf release.tar.gz release§tar -zcf release.tar.gz release§tar zcf release.tar.gz release/§tar -zcf release.tar.gz release/§tar cfz release.tar.gz release§tar cfz release.tar.gz release/§tar fcz release.tar.gz release§tar fcz release.tar.gz release/§tar cvzf release.tar.gz release§tar -cvzf release.tar.gz release§tar cvzf release.tar.gz release/§tar -cvzf release.tar.gz release/#state:exists:release.tar.gz
-List the archive contents§tar tzf release.tar.gz§tar -tzf release.tar.gz§tar -tf release.tar.gz§tar tf release.tar.gz§tar -tzvf release.tar.gz§tar tzvf release.tar.gz§tar -tvf release.tar.gz§tar tvf release.tar.gz§tar ztf release.tar.gz§tar -ztf release.tar.gz#output:~release/
+Create a tar.gz of the release/ directory§tar czf release.tar.gz release§tar -czf release.tar.gz release§tar czf release.tar.gz release/§tar -czf release.tar.gz release/§tar cvzf release.tar.gz release§tar -cvzf release.tar.gz release§tar cvzf release.tar.gz release/§tar -cvzf release.tar.gz release/#state:exists:release.tar.gz
+List the archive contents§tar tzf release.tar.gz§tar -tzf release.tar.gz§tar tf release.tar.gz§tar -tf release.tar.gz§tar tzvf release.tar.gz§tar -tzvf release.tar.gz§tar tvf release.tar.gz§tar -tvf release.tar.gz#output:~release/
 Delete the original release/ directory§rm -rf release§rm -r release§rm -rf release/§rm -r release/§rm -Rf release§rm -Rf release/§rm --recursive release§rm --recursive --force release§rm --recursive release/§rm --recursive --force release/#state:!exists:release
-Extract the archive to restore it§tar xzf release.tar.gz§tar -xzf release.tar.gz§tar xf release.tar.gz§tar -xf release.tar.gz§tar -xzvf release.tar.gz§tar xzvf release.tar.gz§tar zxf release.tar.gz§tar -zxf release.tar.gz§tar -zxvf release.tar.gz§tar -xvf release.tar.gz§tar xvf release.tar.gz§tar zxvf release.tar.gz§tar fxz release.tar.gz#state:exists:release/VERSION
+Extract the archive to restore it§tar xzf release.tar.gz§tar -xzf release.tar.gz§tar xf release.tar.gz§tar -xf release.tar.gz§tar xzvf release.tar.gz§tar -xzvf release.tar.gz§tar xvf release.tar.gz§tar -xvf release.tar.gz#state:exists:release/VERSION
 STEPS
 }
 
@@ -2771,24 +2742,21 @@ declare -a CURRENT_QUESTIONS=()
 generate_level() {
   local level=$1
   CURRENT_QUESTIONS=()
-
-  # Main level questions (always fresh for variety)
-  local raw
-  raw=$(gen_level${level})
-  _LEVEL_CACHE[$level]="$raw"  # Cache for potential future use
-  while IFS= read -r line; do
-    [[ -n "$line" ]] && CURRENT_QUESTIONS+=("$line")
-  done <<< "$raw"
+  gen_level${level}  # writes directly via nameref
+  local IFS=$'\n'; _LEVEL_CACHE[$level]="${CURRENT_QUESTIONS[*]}"
 
   # Review: add questions from previous levels (O(n) with cache)
   if ((level > 1)); then
-    local review=() prev_arr=()
+    local review=() prev_arr=() _cache_tmp=()
     for ((prev=1; prev<level; prev++)); do
+      if [[ -z "${_LEVEL_CACHE[$prev]:-}" ]]; then
+        _cache_tmp=(); gen_level${prev} _cache_tmp
+        IFS=$'\n'; _LEVEL_CACHE[$prev]="${_cache_tmp[*]}"
+      fi
       prev_arr=()
       while IFS= read -r line; do
         [[ -n "$line" ]] && prev_arr+=("$line")
-      done <<< "${_LEVEL_CACHE[$prev]:=$( gen_level${prev} )}"
-      # Pick random questions from this previous level
+      done <<< "${_LEVEL_CACHE[$prev]}"
       if ((${#prev_arr[@]} > 0)); then
         _fshuffle_n prev_arr $REVIEW_PER_LEVEL
         review+=("${prev_arr[@]}")
@@ -2885,6 +2853,17 @@ _fnorm() {
   for _ai in "${!args[@]}"; do
     [[ "${args[$_ai]}" == ./* ]] && args[$_ai]="${args[$_ai]#./}"
   done
+  # Normalize tar: sort bundled option chars (xzf == fxz == zxf)
+  if [[ "$REPLY" == tar && ${#args[@]} -gt 0 && "${args[0]}" =~ ^[a-zA-Z]+$ ]]; then
+    local _tca=() _ti _tj _tt _tr=""
+    for ((_ti=0; _ti<${#args[0]}; _ti++)); do _tca+=("${args[0]:_ti:1}"); done
+    for ((_ti=1; _ti<${#_tca[@]}; _ti++)); do
+      _tt="${_tca[$_ti]}"
+      for ((_tj=_ti; _tj>0; _tj--)); do [[ "${_tca[$((_tj-1))]}" > "$_tt" ]] || break; _tca[$_tj]="${_tca[$((_tj-1))]}"; done
+      _tca[$_tj]="$_tt"
+    done
+    for _ti in "${_tca[@]}"; do _tr+="$_ti"; done; args[0]="$_tr"
+  fi
   local i j tmp
   for ((i=1; i<${#flags[@]}; i++)); do
     tmp="${flags[$i]}"
@@ -3289,7 +3268,7 @@ run() {
           local _new_tier=$((_real_tier<2?_real_tier+1:2))
           ((_real_tier < 2 && _new_tier >= 2)) && ((_S_MASTERED++))
           printf '\n%s\n' "${Y}${B}* ON FIRE! +2${N}"; ((++streak)); _sset "$prompt" "$_new_tier"
-          read -rsp "${D}Press Enter to continue...${N}"
+          _pause
           qi=$((qi+2)); ((qi >= ${#shuf[@]})) && qi=${#shuf[@]}; QI=$qi; save; break
         else
           local _new_tier=$((tier<2?tier+1:2))
@@ -3297,12 +3276,12 @@ run() {
           printf '\n%s\n' "${G}${B}+${N}"; ((++streak))
           _sset "$prompt" "$_new_tier"
         fi
-        read -rsp "${D}Press Enter to continue...${N}"
+        _pause
         ((++qi)); QI=$qi; save; break
       else
         ((_S_ANSWERED++)); _S_STREAK=0; _wrong_show; _egg_check wrong "$input"
         explain "$ans"
-        streak=0; _sset "$prompt" "$((_real_tier>0?_real_tier-1:0))"; read -rsp "${D}Press Enter to continue...${N}"
+        streak=0; _sset "$prompt" "$((_real_tier>0?_real_tier-1:0))"; _pause
       fi
       _sget "$prompt"; tier=$REPLY; _REDRAW_HDR
     done
@@ -3332,8 +3311,7 @@ run() {
     _REDRAW_HDR() {
       local _t=$BOSS_TIMER
       if ((${_rl_deadline:-0})); then local _n; printf -v _n '%(%s)T' -1; _t=$((_rl_deadline - _n)); ((_t < 0)) && _t=0; fi
-      printf '\e[2J\e[H'
-      printf '%s  %s\n\n%s\n\n' "${W}${B}═══ BOSS $((bi+1))/${boss_total} ═══${N}" "${W}${_t}s${N}" "${C}${prompt}${N}"
+      printf '\e[2J\e[H%s  %s\n\n%s\n\n' "${W}${B}═══ BOSS $((bi+1))/${boss_total} ═══${N}" "${W}${_t}s${N}" "${C}${prompt}${N}"
     }
     _REDRAW_HDR
     if _read_line 0 0 "$BOSS_TIMER"; then
@@ -3351,7 +3329,7 @@ run() {
       ((_S_ANSWERED++)); _S_STREAK=0; _sset "$prompt" "$((_boss_tier>0?_boss_tier-1:0))"; _wrong_feedback
       printf '\n%s  %s %s\n\n' "${R}${B}TIME'S UP${N}" "${D}expected:${N}" "${Y}${ans}${N}"; explain "$ans"
     fi
-    read -rsp "${D}Press Enter to continue...${N}"
+    _pause
   done
 
   # Results
@@ -3423,10 +3401,7 @@ gauntlet() {
 
     _REDRAW_HDR() {
       local hearts=""; for ((h=0;h<lives;h++)); do hearts+="${R}♥${N} "; done
-      printf '\e[2J\e[H'
-      printf '%s  %s  %s\n' "${W}${B}GAUNTLET${N}" "${B}Score: ${score}${N}" "$hearts"
-      printf '%s\n\n' "${D}Level ${pick_lv}: ${LEVEL_NAMES[$pick_lv]:-}${N}"
-      printf "${C}%s${N}\n\n" "$prompt"
+      printf '\e[2J\e[H%s  %s  %s\n%s\n\n%s\n\n' "${W}${B}GAUNTLET${N}" "${B}Score: ${score}${N}" "$hearts" "${D}Level ${pick_lv}: ${LEVEL_NAMES[$pick_lv]:-}${N}" "${C}${prompt}${N}"
     }
     _REDRAW_HDR
 
@@ -3444,7 +3419,7 @@ gauntlet() {
       _sw; explain "$ans"; _egg_check wrong "$input"
       ((lives--))
     fi
-    read -rsp "${D}Press Enter to continue...${N}"
+    _pause
   done
 
   _sflush_if_dirty
@@ -3502,10 +3477,7 @@ timed() {
       local _now; printf -v _now '%(%s)T' -1; local _rem=$((end_t - _now))
       ((_rem < 0)) && _rem=0
       local _col; ((_rem <= 10)) && _col=$R || { ((_rem <= 30)) && _col=$Y || _col=$G; }
-      printf '\e[2J\e[H'
-      printf '%s  %s  %s\n' "${W}${B}TIMED${N}" "${B}Score: ${score}${N}" "${_col}${_rem}s${N}"
-      printf '%s\n\n' "${D}Level ${pick_lv}: ${LEVEL_NAMES[$pick_lv]:-}${N}"
-      printf "${C}%s${N}\n\n" "$prompt"
+      printf '\e[2J\e[H%s  %s  %s\n%s\n\n%s\n\n' "${W}${B}TIMED${N}" "${B}Score: ${score}${N}" "${_col}${_rem}s${N}" "${D}Level ${pick_lv}: ${LEVEL_NAMES[$pick_lv]:-}${N}" "${C}${prompt}${N}"
     }
     _REDRAW_HDR
 
@@ -3574,7 +3546,11 @@ review() {
   local all_q=()
   for lv in "${weak[@]}"; do
     local prev_arr=()
-    while IFS= read -r line; do [[ -n "$line" ]] && prev_arr+=("${lv}"$'\t'"${line}"); done <<< "${_LEVEL_CACHE[$lv]:=$( gen_level${lv} )}"
+    if [[ -z "${_LEVEL_CACHE[$lv]:-}" ]]; then
+      local _cache_tmp=(); gen_level${lv} _cache_tmp
+      local IFS=$'\n'; _LEVEL_CACHE[$lv]="${_cache_tmp[*]}"
+    fi
+    while IFS= read -r line; do [[ -n "$line" ]] && prev_arr+=("${lv}"$'\t'"${line}"); done <<< "${_LEVEL_CACHE[$lv]}"
     all_q+=("${prev_arr[@]}")
   done
   _fshuffle all_q
@@ -3590,10 +3566,7 @@ review() {
     _sget "$prompt"; local tier=$REPLY
     HIST=()
     _REDRAW_HDR() {
-      printf '\e[2J\e[H'
-      printf '%s\n' "${W}${B}${PLAYER_NAME:-anon}${N}"
-      printf '%s\n' "${B}Review${N}"
-      printf '%s\n\n' "${D}[$((qi+1))/$TOT]  Tab=man${N}"
+      printf '\e[2J\e[H%s\n%s\n%s\n\n' "${W}${B}${PLAYER_NAME:-anon}${N}" "${B}Review${N}" "${D}[$((qi+1))/$TOT]  Tab=man${N}"
       qdisp "$prompt"
     }
     _REDRAW_HDR
@@ -3606,10 +3579,10 @@ review() {
         ((tier < 2 && _new_tier >= 2)) && ((_S_MASTERED++))
         _sset "$prompt" "$_new_tier"
         printf '\n%s\n' "${G}${B}+${N}"
-        read -rsp "${D}Press Enter to continue...${N}"; ((++qi)); break
+        _pause; ((++qi)); break
       else
         ((_S_ANSWERED++)); _S_STREAK=0; _wrong_show; _egg_check wrong "$input"; explain "$ans"
-        _sset "$prompt" "$((tier>0?tier-1:0))"; read -rsp "${D}Press Enter to continue...${N}"
+        _sset "$prompt" "$((tier>0?tier-1:0))"; _pause
       fi
       _sget "$prompt"; tier=$REPLY; _REDRAW_HDR
     done
@@ -3690,9 +3663,7 @@ scenario() {
     _perms_restore "$SANDBOX_DIR" "$_perms_file"
 
     _REDRAW_HDR() {
-      printf '\e[2J\e[H'
-      printf '%s  %s\n' "${W}${B}${SC_NAMES[$sc_id]}${N}" "${D}[Step $((si+1))/${total}]${N}"
-      printf '\n%s\n\n' "${C}${prompt}${N}"
+      printf '\e[2J\e[H%s  %s\n\n%s\n\n' "${W}${B}${SC_NAMES[$sc_id]}${N}" "${D}[Step $((si+1))/${total}]${N}" "${C}${prompt}${N}"
     }
     _REDRAW_HDR
     HIST=()
@@ -3703,7 +3674,7 @@ scenario() {
       if check "$input" "$_qanswers"; then
         _sc; _egg_check streak; ((++correct))
         printf '\n%s\n' "${G}${B}+${N}"
-        read -rsp "${D}Press Enter to continue...${N}"
+        _pause
         break
       else
         ((_S_ANSWERED++)); _S_STREAK=0; _wrong_show; _egg_check wrong "$input"
@@ -3712,7 +3683,7 @@ scenario() {
         chmod -R u+rwX "$SANDBOX_DIR" 2>/dev/null
         rm -rf "$SANDBOX_DIR"; cp -a "$_sc_snap" "$SANDBOX_DIR"
         _perms_restore "$SANDBOX_DIR" "$_perms_file"
-        read -rsp "${D}Press Enter to retry...${N}"
+        _pause retry
         _REDRAW_HDR
       fi
     done
@@ -3744,54 +3715,38 @@ _selftest() {
   }
 
   printf '%s\n' "${B}=== _fnorm ===${N}"
-  # Basic: identity
-  _fnorm "ls"; _assert "identity" "$REPLY" "ls"
-  # Whitespace trim
-  _fnorm "  ls -l  "; _assert "trim" "$REPLY" "ls -l"
-  # Flag sorting
-  _fnorm "ls -l -a"; _assert "flag sort" "$REPLY" "ls -a -l"
-  # Combined flags split + sort
-  _fnorm "ls -la"; _assert "combined split" "$REPLY" "ls -a -l"
-  # Quote stripping
-  _fnorm "grep 'foo' bar"; _assert "single quotes" "$REPLY" "grep foo bar"
-  _fnorm 'grep "foo" bar'; _assert "double quotes" "$REPLY" "grep foo bar"
-  # Flag-value quotes (comma stays glued to -F)
-  _fnorm "awk -F','"; _assert "flag quote strip" "$REPLY" "awk -F,"
-  # Redirect split
-  _fnorm "echo hi >out"; _assert "redirect split" "$REPLY" "echo hi > out"
-  _fnorm "cmd 2>/dev/null"; _assert "stderr redirect" "$REPLY" "cmd 2> /dev/null"
-  # Pipe normalization
-  _fnorm "cat f | grep x"; _assert "pipe" "$REPLY" "cat f | grep x"
-  _fnorm "cat f|grep x"; _assert "pipe no space" "$REPLY" "cat f | grep x"
-  # ./ stripping
-  _fnorm "ls ./foo"; _assert "dotslash" "$REPLY" "ls foo"
-  # head/tail -N → -n N
-  _fnorm "head -5 file"; _assert "head -N" "$REPLY" "head -n 5 file"
-  _fnorm "tail -20 log"; _assert "tail -N" "$REPLY" "tail -n 20 log"
-  _fnorm "head --lines file"; _assert "head --lines" "$REPLY" "head -n file"
-  # --long=val split
-  _fnorm "sort --field-separator=,"; _assert "long=val" "$REPLY" "sort --field-separator ,"
-  # -n5 → -n 5
-  _fnorm "head -n5 f"; _assert "-n5 split" "$REPLY" "head -n 5 f"
-  # -- passthrough (post-dash-dash order preserved)
-  _fnorm "grep -- -v file"; _assert "dashdash" "$REPLY" "grep -- -v file"
-  # Semicolon handling
-  _fnorm "cmd1; cmd2"; _assert "semicolon" "$REPLY" "cmd1 ; cmd2"
-  _fnorm "cmd1;cmd2"; _assert "semicolon glued" "$REPLY" "cmd1 ; cmd2"
-  # Empty
-  _fnorm ""; _assert "empty" "$REPLY" ""
-  # Double pipe preserved
-  _fnorm "cmd1 || cmd2"; _assert "double pipe" "$REPLY" "cmd1 || cmd2"
-  # Complex
-  _fnorm "grep -rn 'TODO' ./src"; _assert "complex" "$REPLY" "grep -n -r TODO src"
-  # find: single-dash long flags get split (known limitation, not used in questions)
-  _fnorm "awk -F: '{print \$1}' /etc/passwd"; _assert "awk -F:" "$REPLY" "awk -F: '{print \$1}' /etc/passwd"
-  # >> redirect
-  _fnorm "echo hi >>out"; _assert "append redirect" "$REPLY" "echo hi >> out"
-  # Multiple args preserved
-  _fnorm "cp a b c"; _assert "multi args" "$REPLY" "cp a b c"
-  # +N flag (tail +5 → tail -n +5 not expected, just stays)
-  _fnorm "tail -n +5 file"; _assert "tail +N" "$REPLY" "tail -n +5 file"
+  local -a _ft=(
+    $'identity\tls\tls'
+    $'trim\t  ls -l  \tls -l'
+    $'flag sort\tls -l -a\tls -a -l'
+    $'combined split\tls -la\tls -a -l'
+    $'single quotes\tgrep \'foo\' bar\tgrep foo bar'
+    $'double quotes\tgrep "foo" bar\tgrep foo bar'
+    $'flag quote strip\tawk -F\',\'\tawk -F,'
+    $'redirect split\techo hi >out\techo hi > out'
+    $'stderr redirect\tcmd 2>/dev/null\tcmd 2> /dev/null'
+    $'pipe\tcat f | grep x\tcat f | grep x'
+    $'pipe no space\tcat f|grep x\tcat f | grep x'
+    $'dotslash\tls ./foo\tls foo'
+    $'head -N\thead -5 file\thead -n 5 file'
+    $'tail -N\ttail -20 log\ttail -n 20 log'
+    $'head --lines\thead --lines file\thead -n file'
+    $'long=val\tsort --field-separator=,\tsort --field-separator ,'
+    $'-n5 split\thead -n5 f\thead -n 5 f'
+    $'dashdash\tgrep -- -v file\tgrep -- -v file'
+    $'semicolon\tcmd1; cmd2\tcmd1 ; cmd2'
+    $'semicolon glued\tcmd1;cmd2\tcmd1 ; cmd2'
+    $'empty\t\t'
+    $'double pipe\tcmd1 || cmd2\tcmd1 || cmd2'
+    $'complex\tgrep -rn \'TODO\' ./src\tgrep -n -r TODO src'
+    $'awk -F:\tawk -F: \'{print $1}\' /etc/passwd\tawk -F: \'{print $1}\' /etc/passwd'
+    $'append redirect\techo hi >>out\techo hi >> out'
+    $'multi args\tcp a b c\tcp a b c'
+    $'tail +N\ttail -n +5 file\ttail -n +5 file'
+    $'tar bundle sort\ttar xzf a.tar.gz\ttar fxz a.tar.gz'
+    $'tar bundle sort2\ttar czf a.tar.gz dir\ttar cfz a.tar.gz dir'
+  )
+  for _t in "${_ft[@]}"; do IFS=$'\t' read -r _d _i _w <<< "$_t"; _fnorm "$_i"; _assert "$_d" "$REPLY" "$_w"; done
 
   printf '%s\n' "${B}=== _hash ===${N}"
   _hash "test123"; local h1=$REPLY
@@ -3849,7 +3804,7 @@ _selftest() {
   printf '%s\n' "${B}=== gen_level smoke ===${N}"
   local _lv _lines _empty_ok=0
   for ((_lv=1; _lv<=30; _lv++)); do
-    _lines=$(gen_level${_lv} | wc -l)
+    local _test_q=(); gen_level${_lv} _test_q; _lines=${#_test_q[@]}
     if ((_lines < 5)); then
       ((_fail++)); printf '  FAIL: gen_level%d only produced %d questions\n' "$_lv" "$_lines"
     else
