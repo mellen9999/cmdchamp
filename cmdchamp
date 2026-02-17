@@ -57,6 +57,11 @@ _load_profile() {
       [[ "$BEST_TIMED" =~ ^[0-9]+$ ]] && BEST_TIMED="0:${BEST_TIMED}:0"
       _PROFILE_VER=4; _save_profile
     fi
+    # Migrate v4 → v5: fix %q name corruption (backslash-escaped spaces)
+    if ((_PROFILE_VER < 5)); then
+      PLAYER_NAME="${PLAYER_NAME//\\/}"
+      _PROFILE_VER=5; _save_profile
+    fi
     [[ "$BOSS_BEATEN" =~ ^-?[0-9]+$ ]] || BOSS_BEATEN=0
     ((BOSS_BEATEN < 0)) && BOSS_BEATEN=0
     ((BOSS_BEATEN > MAX_LEVEL)) && BOSS_BEATEN=$MAX_LEVEL
@@ -67,7 +72,7 @@ _load_profile() {
 }
 
 _save_profile() {
-  printf 'PLAYER_NAME=%q\nBOSS_BEATEN=%d\nBEST_GAUNTLET=%d\nBEST_TIMED=%s\nEGGS_FOUND=%s\nSC_DONE=%s\nPROFILE_VER=%d\n' \
+  printf 'PLAYER_NAME=%s\nBOSS_BEATEN=%d\nBEST_GAUNTLET=%d\nBEST_TIMED=%s\nEGGS_FOUND=%s\nSC_DONE=%s\nPROFILE_VER=%d\n' \
     "$PLAYER_NAME" "$BOSS_BEATEN" "$BEST_GAUNTLET" "$BEST_TIMED" "$EGGS_FOUND" "$SC_DONE" "$_PROFILE_VER" > "$DATA/profile"
 }
 
@@ -92,7 +97,7 @@ EOF
   PLAYER_NAME="${PLAYER_NAME//$'\r'/}"            # strip carriage returns
   PLAYER_NAME="${PLAYER_NAME:0:20}"              # truncate to 20 chars
   [[ -z "$PLAYER_NAME" ]] && PLAYER_NAME="anon"
-  BOSS_BEATEN=0; _PROFILE_VER=4
+  BOSS_BEATEN=0; _PROFILE_VER=5
   _save_profile
   _intro
   _tutorial
