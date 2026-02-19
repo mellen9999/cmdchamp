@@ -47,9 +47,13 @@ cmdchamp review         # Practice weak levels (< 80% mastery)
 cmdchamp gauntlet       # 3 lives, escalating difficulty (post-ROOT)
 cmdchamp timed          # Race the clock, default 120s (post-ROOT)
 cmdchamp timed 60       # Timed mode: 60, 120, or 300 seconds
+cmdchamp place          # Placement test — skip levels you know
+cmdchamp scenario       # List scenarios (or: cmdchamp scenario 3)
+cmdchamp tutorial       # Re-show the controls tutorial
 cmdchamp reset          # Clear all progress
 cmdchamp cleanup        # Deduplicate score file
 cmdchamp help           # Show help + level list
+cmdchamp version        # Print version
 cmdchamp --no-sandbox   # Disable sandbox (text-match only)
 ```
 
