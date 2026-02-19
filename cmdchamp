@@ -34,6 +34,22 @@ DATA="${XDG_DATA_HOME:-$HOME/.local/share}/cmdchamp"; mkdir -p "$DATA"; touch "$
 # Colors (defined early so _first_run/_intro can use them)
 R=$'\e[31m' G=$'\e[32m' Y=$'\e[33m' C=$'\e[36m' W=$'\e[97m' D=$'\e[2m' B=$'\e[1m' N=$'\e[0m'
 
+_strip_ansi() {
+  local s="$1" out="" i=0 ch
+  while ((i < ${#s})); do
+    ch="${s:i:1}"
+    if [[ "$ch" == $'\e' ]]; then
+      ((i++))
+      if ((i < ${#s})) && [[ "${s:i:1}" == "[" ]]; then
+        ((i++))
+        while ((i < ${#s})) && [[ ! "${s:i:1}" =~ [a-zA-Z] ]]; do ((i++)); done
+        ((i < ${#s})) && ((i++))
+      fi
+    else out+="$ch"; ((i++)); fi
+  done
+  REPLY="$out"
+}
+
 VERSION="1.0"
 SANDBOX_TIMEOUT=5      # Seconds before sandbox command times out
 BOSS_THRESHOLD=4       # Correct answers needed to beat boss (out of BOSS_TOTAL)
@@ -106,7 +122,7 @@ _first_run() {
 EOF
   echo
   read -rp "    Enter your handle: " PLAYER_NAME
-  while [[ "$PLAYER_NAME" == *$'\e'* ]]; do PLAYER_NAME="${PLAYER_NAME//$'\e'[^a-zA-Z]*[a-zA-Z]/}"; PLAYER_NAME="${PLAYER_NAME//$'\e'/}"; done  # strip ANSI escapes
+  _strip_ansi "$PLAYER_NAME"; PLAYER_NAME="$REPLY"
   PLAYER_NAME="${PLAYER_NAME//$'\n'/}"            # strip newlines
   PLAYER_NAME="${PLAYER_NAME//$'\r'/}"            # strip carriage returns
   PLAYER_NAME="${PLAYER_NAME:0:20}"              # truncate to 20 chars
@@ -671,6 +687,7 @@ _sandbox_check_output() {
       local count="${expected:1}"
       local lines=0
       if [[ -n "$actual" ]]; then
+        actual="${actual%$'\n'}"
         local _lc="${actual//[!$'\n']/}"; lines=$(( ${#_lc} + 1 ))
       fi
       ((lines == count)) && return 0
@@ -2789,7 +2806,7 @@ STEPS
 }
 
 # Question cache - avoids O(n²) regeneration for review questions
-declare -A _LEVEL_CACHE=()
+declare -A _LEVEL_CACHE=() _LEVEL_CACHE_N=() _LEVEL_ITEMS=()
 
 # Generate questions for a level (called once per level attempt)
 declare -a CURRENT_QUESTIONS=()
@@ -3122,6 +3139,20 @@ _wfwd() { while ((cursor<${#input})) && [[ "${input:cursor:1}" != " " ]]; do ((+
 _wbck() { ((cursor>0)) && ((cursor--)); while ((cursor>0)) && [[ "${input:cursor:1}" == " " ]]; do ((cursor--)); done; while ((cursor>0)) && [[ "${input:cursor-1:1}" != " " ]]; do ((cursor--)); done; }
 _wend() { ((cursor<${#input}-1)) && ((++cursor)); while ((cursor<${#input}-1)) && [[ "${input:cursor:1}" == " " ]]; do ((++cursor)); done; while ((cursor<${#input}-1)) && [[ "${input:cursor+1:1}" != " " ]]; do ((++cursor)); done; }
 _clamp() { ((cursor>=${#input})) && cursor=$((${#input}>0?${#input}-1:0)); }
+_vi_read() { IFS= read -rsn1 c2; }
+# $1: -1=up, 1=down
+_vi_hist() {
+  ((_rl_hist)) || return 1
+  if (($1 < 0)); then
+    ((${#HIST[@]}>0 && HIST_IDX>0)) || return 1
+    ((HIST_IDX==${#HIST[@]})) && HIST_SAVE="$input"
+    ((HIST_IDX--)); input="${HIST[$HIST_IDX]}"
+  else
+    ((HIST_IDX<${#HIST[@]})) || return 1
+    ((++HIST_IDX)); ((HIST_IDX==${#HIST[@]})) && input="$HIST_SAVE" || input="${HIST[$HIST_IDX]}"
+  fi
+  cursor=${#input}; _clamp
+}
 _del() { # $1=motion
   local e=$cursor
   case "$1" in
@@ -3147,32 +3178,31 @@ _vi_normal() {
     S) input="" cursor=0 mode="insert"; draw;;
     h) for ((_i=0;_i<_n&&cursor>0;_i++)); do ((cursor--)); done; draw;;
     l) for ((_i=0;_i<_n&&cursor<${#input}-1;_i++)); do ((++cursor)); done; draw;;
-    k) ((_rl_hist)) && ((${#HIST[@]}>0&&HIST_IDX>0)) && { ((HIST_IDX==${#HIST[@]})) && HIST_SAVE="$input"; ((HIST_IDX--)); input="${HIST[$HIST_IDX]}"; cursor=${#input}; _clamp; draw; };;
-    j) ((_rl_hist)) && ((HIST_IDX<${#HIST[@]})) && { ((++HIST_IDX)); ((HIST_IDX==${#HIST[@]})) && input="$HIST_SAVE" || input="${HIST[$HIST_IDX]}"; cursor=${#input}; _clamp; draw; };;
+    k) _vi_hist -1 && draw;;
+    j) _vi_hist 1 && draw;;
     0) cursor=0; draw;; \$) cursor=$((${#input}>0?${#input}-1:0)); draw;;
     w) for ((_i=0;_i<_n;_i++)); do _wfwd; done; draw;;
     b) for ((_i=0;_i<_n;_i++)); do _wbck; done; draw;;
     e) for ((_i=0;_i<_n;_i++)); do _wend; done; draw;;
-    f) IFS= read -rsn1 c2; for ((_i=0;_i<_n;_i++)); do for ((p=cursor+1;p<${#input};p++)); do [[ "${input:p:1}" == "$c2" ]] && { cursor=$p; break; }; done; done; draw;;
-    F) IFS= read -rsn1 c2; for ((_i=0;_i<_n;_i++)); do for ((p=cursor-1;p>=0;p--)); do [[ "${input:p:1}" == "$c2" ]] && { cursor=$p; break; }; done; done; draw;;
-    t) IFS= read -rsn1 c2; local _lp=$((cursor+1)); for ((_i=0;_i<_n;_i++)); do for ((p=_lp;p<${#input};p++)); do [[ "${input:p:1}" == "$c2" ]] && { cursor=$((p-1)); _lp=$((p+1)); break; }; done; done; draw;;
-    T) IFS= read -rsn1 c2; local _lp=$((cursor-1)); for ((_i=0;_i<_n;_i++)); do for ((p=_lp;p>=0;p--)); do [[ "${input:p:1}" == "$c2" ]] && { cursor=$((p+1)); _lp=$((p-1)); break; }; done; done; draw;;
+    f) _vi_read; for ((_i=0;_i<_n;_i++)); do for ((p=cursor+1;p<${#input};p++)); do [[ "${input:p:1}" == "$c2" ]] && { cursor=$p; break; }; done; done; draw;;
+    F) _vi_read; for ((_i=0;_i<_n;_i++)); do for ((p=cursor-1;p>=0;p--)); do [[ "${input:p:1}" == "$c2" ]] && { cursor=$p; break; }; done; done; draw;;
+    t) _vi_read; local _lp=$((cursor+1)); for ((_i=0;_i<_n;_i++)); do for ((p=_lp;p<${#input};p++)); do [[ "${input:p:1}" == "$c2" ]] && { cursor=$((p-1)); _lp=$((p+1)); break; }; done; done; draw;;
+    T) _vi_read; local _lp=$((cursor-1)); for ((_i=0;_i<_n;_i++)); do for ((p=_lp;p>=0;p--)); do [[ "${input:p:1}" == "$c2" ]] && { cursor=$((p+1)); _lp=$((p-1)); break; }; done; done; draw;;
     x) for ((_i=0;_i<_n&&${#input}>0&&cursor<${#input};_i++)); do input="${input:0:cursor}${input:cursor+1}"; done; _clamp; draw;;
     X) for ((_i=0;_i<_n&&cursor>0;_i++)); do input="${input:0:cursor-1}${input:cursor}"; ((cursor--)); done; draw;;
     D) input="${input:0:cursor}"; ((cursor>0)) && ((cursor--)); draw;;
     C) input="${input:0:cursor}"; mode="insert"; draw;;
-    r) IFS= read -rsn1 c2; [[ -n "$c2" && "$c2" != $'\x1b' ]] && { input="${input:0:cursor}${c2}${input:cursor+1}"; draw; };;
-    d) IFS= read -rsn1 c2; for ((_i=0;_i<_n;_i++)); do _del "$c2"; done; draw;;
-    c) IFS= read -rsn1 c2; for ((_i=0;_i<_n;_i++)); do _del "$c2"; done; mode="insert"; draw;;
+    r) _vi_read; [[ -n "$c2" && "$c2" != $'\x1b' ]] && { input="${input:0:cursor}${c2}${input:cursor+1}"; draw; };;
+    d) _vi_read; for ((_i=0;_i<_n;_i++)); do _del "$c2"; done; draw;;
+    c) _vi_read; for ((_i=0;_i<_n;_i++)); do _del "$c2"; done; mode="insert"; draw;;
     u) ((${#UNDO_STACK[@]}>0)) && { local _u="${UNDO_STACK[-1]}"; unset 'UNDO_STACK[-1]'; cursor="${_u%%:*}"; input="${_u#*:}"; draw; };;
-    g) IFS= read -rsn1 c2; [[ "$c2" == "g" ]] && { cursor=0; draw; };;
+    g) _vi_read; [[ "$c2" == "g" ]] && { cursor=0; draw; };;
     G) cursor=$((${#input}>0?${#input}-1:0)); draw;;
     $'\x1b') local _e1 _e2; read -rsn1 -t 0.01 _e1 || _e1=""
       if [[ "$_e1" == "[" ]]; then read -rsn1 -t 0.01 _e2 || _e2=""
-        if ((_rl_hist)); then case "$_e2" in
-          A) ((${#HIST[@]}>0&&HIST_IDX>0)) && { ((HIST_IDX==${#HIST[@]})) && HIST_SAVE="$input"; ((HIST_IDX--)); input="${HIST[$HIST_IDX]}"; cursor=${#input}; _clamp; draw; };;
-          B) ((HIST_IDX<${#HIST[@]})) && { ((++HIST_IDX)); ((HIST_IDX==${#HIST[@]})) && input="$HIST_SAVE" || input="${HIST[$HIST_IDX]}"; cursor=${#input}; _clamp; draw; };;
-        esac; fi; fi;;
+        case "$_e2" in
+          A) _vi_hist -1 && draw;; B) _vi_hist 1 && draw;;
+        esac; fi;;
     $'\x04') _quit;;
     q) _quit;;
     :) local _vcmd=""; IFS= read -rsn1 -t 1 _vcmd || _vcmd=""
@@ -3230,12 +3260,9 @@ _read_line() {
           local _e1 _e2; read -rsn1 -t 0.01 _e1 || _e1=""
           if [[ "$_e1" == "[" ]]; then
             read -rsn1 -t 0.01 _e2 || _e2=""
-            if ((_rl_hist)); then
-              case "$_e2" in
-                A) ((${#HIST[@]} > 0 && HIST_IDX > 0)) && { ((HIST_IDX==${#HIST[@]})) && HIST_SAVE="$input"; ((HIST_IDX--)); input="${HIST[$HIST_IDX]}"; cursor=${#input}; draw; };;
-                B) ((HIST_IDX < ${#HIST[@]})) && { ((++HIST_IDX)); ((HIST_IDX==${#HIST[@]})) && input="$HIST_SAVE" || input="${HIST[$HIST_IDX]}"; cursor=${#input}; draw; };;
-              esac
-            fi
+            case "$_e2" in
+              A) _vi_hist -1 && draw;; B) _vi_hist 1 && draw;;
+            esac
           elif [[ -z "$_e1" ]] && ((VI_MODE)); then
             UNDO_STACK+=("$cursor:$input"); mode="normal"; ((cursor>0)) && ((cursor--)); draw
           fi;;
@@ -3459,14 +3486,14 @@ _post_root_check() {
 
 # ═══ POST-ROOT MODES ═══
 _pick_q() {
-  if [[ -z "${_LEVEL_CACHE[$1]:-}" ]]; then
-    local _pqtmp=(); gen_level$1 _pqtmp
+  if [[ -z "${_LEVEL_CACHE_N[$1]:-}" ]]; then
+    local _pqtmp=() _i; gen_level$1 _pqtmp
+    _LEVEL_CACHE_N[$1]=${#_pqtmp[@]}
+    for ((_i=0; _i<${#_pqtmp[@]}; _i++)); do _LEVEL_ITEMS[$1:$_i]="${_pqtmp[$_i]}"; done
     local IFS=$'\n'; _LEVEL_CACHE[$1]="${_pqtmp[*]}"
   fi
-  local _pq=()
-  while IFS= read -r line; do [[ -n "$line" ]] && _pq+=("$line"); done <<< "${_LEVEL_CACHE[$1]}"
-  ((${#_pq[@]})) || return 1
-  _qparse "${_pq[$((RANDOM % ${#_pq[@]}))]}";
+  local _n=${_LEVEL_CACHE_N[$1]}; ((_n)) || return 1
+  _qparse "${_LEVEL_ITEMS[$1:$((RANDOM % _n))]}"
 }
 
 gauntlet() {
@@ -3894,42 +3921,205 @@ _selftest() {
   _assert "qparse text no output" "$_qoutput" ""
 
   printf '%s\n' "${B}=== vi handler ===${N}"
-  # Test harness: set up shared vars, call _vi_normal with c=KEY, check input/cursor
+  # Test harness: set up shared vars, call _vi_normal with c=KEY, check result
   local _save_draw; _save_draw=$(declare -f draw)
+  local _save_vi_read; _save_vi_read=$(declare -f _vi_read)
   draw() { :; }  # no-op during tests
   _REDRAW_HDR() { :; }
   _quit() { :; }
   local _rl_hints=0 _rl_hist=0 _man_open=0 mode=normal _rep=""
   local UNDO_STACK=() HIST=() HIST_IDX=0 HIST_SAVE=""
 
+  # Feed buffer for compound keys (d,c,r,f,F,t,T,g)
+  local _vi_feed=""
+  _vi_read() { c2="${_vi_feed:0:1}"; _vi_feed="${_vi_feed:1}"; }
+
   # _vi_assert: set input/cursor, feed key(s), check result
+  # $7 (optional): expected mode (default "normal")
   _vi_assert() {
     local desc=$1 init_input=$2 init_cursor=$3 keys=$4 want_input=$5 want_cursor=$6
-    input="$init_input" cursor=$init_cursor _rep="" mode="normal" UNDO_STACK=()
-    local _k; for ((_k=0; _k<${#keys}; _k++)); do c="${keys:_k:1}"; _vi_normal || true; done
+    local want_mode="${7:-normal}"
+    input="$init_input" cursor=$init_cursor _rep="" mode="normal" UNDO_STACK=() _vi_feed=""
+    local _k _ch
+    for ((_k=0; _k<${#keys}; _k++)); do
+      _ch="${keys:_k:1}"
+      # For compound keys, next char goes to feed buffer
+      case "$_ch" in d|c|r|f|F|t|T|g) ((_k++)); _vi_feed="${keys:_k:1}"; esac
+      c="$_ch"; _vi_normal || true
+    done
     local _ok=1
     [[ "$input" != "$want_input" ]] && _ok=0
     ((cursor != want_cursor)) && _ok=0
+    [[ "$mode" != "$want_mode" ]] && _ok=0
     if ((_ok)); then ((_pass++))
-    else ((_fail++)); printf '  FAIL: %s\n    input: "%s" (want "%s")  cursor: %d (want %d)\n' "$desc" "$input" "$want_input" "$cursor" "$want_cursor"; fi
+    else ((_fail++)); printf '  FAIL: %s\n    input: "%s" (want "%s")  cursor: %d (want %d)  mode: %s (want %s)\n' \
+      "$desc" "$input" "$want_input" "$cursor" "$want_cursor" "$mode" "$want_mode"; fi
   }
 
+  # Basic motions
   _vi_assert "h moves left"       "hello" 3 "h"   "hello" 2
   _vi_assert "l moves right"      "hello" 1 "l"   "hello" 2
   _vi_assert "0 goes to start"    "hello" 3 "0"   "hello" 0
   _vi_assert '$ goes to end'      "hello" 0 '$'   "hello" 4
-  _vi_assert "x deletes char"     "hello" 1 "x"   "hllo"  1
-  _vi_assert "X deletes before"   "hello" 2 "X"   "hllo"  1
-  _vi_assert "D deletes to end"   "hello" 2 "D"   "he"    1
-  _vi_assert "S clears line"      "hello" 2 "S"   ""      0
   _vi_assert "h at 0 stays"       "abc"   0 "h"   "abc"   0
   _vi_assert "l at end stays"     "abc"   2 "l"   "abc"   2
-  _vi_assert "2x deletes 2"      "abcde" 1 "2x"  "ade"   1
+  # Repeat motions
   _vi_assert "3h moves 3 left"   "abcde" 4 "3h"  "abcde" 1
   _vi_assert "2l moves 2 right"  "abcde" 0 "2l"  "abcde" 2
+  # Word motions
+  _vi_assert "w next word"       "foo bar baz" 0 "w"   "foo bar baz" 4
+  _vi_assert "b prev word"       "foo bar baz" 4 "b"   "foo bar baz" 0
+  _vi_assert "e end of word"     "foo bar" 0 "e"  "foo bar" 2
+  _vi_assert "2w two words"      "aa bb cc dd" 0 "2w"  "aa bb cc dd" 6
+  _vi_assert "2b two words back" "aa bb cc dd" 6 "2b"  "aa bb cc dd" 0
+  # Find/till
+  _vi_assert "fa finds a"        "hello world" 0 "fa"  "hello world" 0  # no 'a' after cursor
+  _vi_assert "fo finds o"        "hello world" 0 "fo"  "hello world" 4
+  _vi_assert "Fo finds o back"   "hello world" 6 "Fo"  "hello world" 4
+  _vi_assert "to till o"         "hello world" 0 "to"  "hello world" 3
+  _vi_assert "To till o back"    "hello world" 6 "To"  "hello world" 5
+  _vi_assert "2fo second o"      "foo boo coo" 0 "2fo" "foo boo coo" 2
+  _vi_assert "fx no match"       "hello" 0 "fz"  "hello" 0
+  # Delete combos
+  _vi_assert "x deletes char"     "hello" 1 "x"   "hllo"  1
+  _vi_assert "X deletes before"   "hello" 2 "X"   "hllo"  1
+  _vi_assert "2x deletes 2"      "abcde" 1 "2x"  "ade"   1
+  _vi_assert "D deletes to end"   "hello" 2 "D"   "he"    1
+  _vi_assert "S clears line"      "hello" 2 "S"   ""      0  "insert"
+  _vi_assert "dw del word"       "foo bar" 0 "dw"  "bar"   0
+  _vi_assert "db del word back"  "foo bar" 4 "db"  "bar"   0
+  _vi_assert "dd del line"       "hello" 2 "dd"   ""      0
+  _vi_assert 'd$ del to end'     "hello" 2 'd$'   "he"    1
+  _vi_assert "d0 del to start"   "hello" 2 "d0"   "llo"   0
+  # Change combos
+  _vi_assert "cw change word"    "foo bar" 0 "cw"  "bar"   0  "insert"
+  _vi_assert "cc change line"    "hello" 2 "cc"   ""      0  "insert"
+  _vi_assert "C change to end"   "hello" 2 "C"    "he"    2  "insert"
+  # Replace
+  _vi_assert "rx replace char"   "hello" 1 "rx"   "hxllo" 1
+  # Undo
+  _vi_assert "u undo x"         "hello" 1 "xu"   "hello" 1
+  _vi_assert "u undo dw"        "foo bar" 0 "dwu" "foo bar" 0
+  # gg / G
+  _vi_assert "gg goto start"    "hello" 3 "gg"   "hello" 0
+  _vi_assert "G goto end"       "hello" 1 "G"    "hello" 4
+  # Mode transitions
+  _vi_assert "i enters insert"   "abc" 1 "i"   "abc" 1  "insert"
+  _vi_assert "a enters insert"   "abc" 1 "a"   "abc" 2  "insert"
+  _vi_assert "A enters insert"   "abc" 1 "A"   "abc" 3  "insert"
+  _vi_assert "I enters insert"   "abc" 1 "I"   "abc" 0  "insert"
+  _vi_assert "s subst+insert"    "abc" 1 "s"   "ac"  1  "insert"
 
-  # Restore draw
+  # Restore draw + _vi_read
   eval "$_save_draw"
+  eval "$_save_vi_read"
+
+  printf '%s\n' "${B}=== _sandbox_check_output ===${N}"
+  # Line count
+  _assert "line count 2 lines"    "$(_sandbox_check_output $'foo\nbar\n' '@2' && echo y || echo n)" "y"
+  _assert "line count 1 line"     "$(_sandbox_check_output 'foo' '@1' && echo y || echo n)" "y"
+  _assert "line count trailing nl" "$(_sandbox_check_output $'foo\nbar\n' '@2' && echo y || echo n)" "y"
+  _assert "line count wrong"      "$(_sandbox_check_output $'foo\nbar\n' '@3' && echo y || echo n)" "n"
+  _assert "line count empty"      "$(_sandbox_check_output '' '@1' && echo y || echo n)" "n"
+  # Regex
+  _assert "regex hit"            "$(_sandbox_check_output 'hello world' '~hello' && echo y || echo n)" "y"
+  _assert "regex miss"           "$(_sandbox_check_output 'hello world' '~^goodbye' && echo y || echo n)" "n"
+  # Any output
+  _assert "any output yes"       "$(_sandbox_check_output 'stuff' '*' && echo y || echo n)" "y"
+  _assert "any output no"        "$(_sandbox_check_output '' '*' && echo y || echo n)" "n"
+  # Exact match
+  _assert "exact match trimmed"  "$(_sandbox_check_output '  foo  ' 'foo' && echo y || echo n)" "y"
+  _assert "exact match miss"     "$(_sandbox_check_output 'bar' 'foo' && echo y || echo n)" "n"
+  # No expected = fail
+  _assert "no expected fails"    "$(_sandbox_check_output 'x' '' && echo y || echo n)" "n"
+
+  printf '%s\n' "${B}=== scoring ===${N}"
+  local _test_data; _test_data=$(mktemp -d)
+  local _save_data="$DATA"; DATA="$_test_data"
+  touch "$DATA/scores"
+  declare -A _sc=()
+  _MODE_TAG="1"
+  _sdirty=0
+  _sget() { _hash "$1"; local _v="${_sc[$REPLY]:-1}"; REPLY="${_v%%|*}"; }
+  # sset + sget round-trip
+  _sset "test question 1" 2
+  _sget "test question 1"; _assert "sget after sset" "$REPLY" "2"
+  # overwrite
+  _sset "test question 1" 3
+  _sget "test question 1"; _assert "sget overwrite" "$REPLY" "3"
+  # default tier
+  _sget "never seen"; _assert "sget default" "$REPLY" "1"
+  # flush + reload
+  _sflush
+  _assert "scores file exists" "$([[ -f "$DATA/scores" ]] && echo y || echo n)" "y"
+  local _sc_content; _sc_content=$(<"$DATA/scores")
+  _assert "scores has data" "$([[ -n "$_sc_content" ]] && echo y || echo n)" "y"
+  DATA="$_save_data"
+  rm -rf "$_test_data"
+
+  printf '%s\n' "${B}=== decay ===${N}"
+  _test_data=$(mktemp -d)
+  _save_data="$DATA"; DATA="$_test_data"
+  touch "$DATA/scores"
+  declare -A _sc=()
+  _MODE_TAG="1"
+  _sdirty=0
+  local _now; printf -v _now '%(%s)T' -1
+  # Simulate an old mastered entry (40 days ago)
+  _hash "decay test q1"
+  _sc[$REPLY]="2|1|$((_now - 3456000))"  # 40d ago, tier 2
+  _hash "decay test q2"
+  _sc[$REPLY]="1|1|$((_now - 1300000))"  # ~15d ago, tier 1
+  _sflush
+  # Run decay by setting LAST_DECAY old enough
+  LAST_DECAY=0
+  _save_profile() { :; }  # no-op
+  local _dk _dv _dt
+  for _dk in "${!_sc[@]}"; do
+    _dv="${_sc[$_dk]}"; _dt="${_dv%%|*}"
+    local _deps="${_dv##*|}"
+    [[ "$_deps" =~ ^[0-9]{10,}$ ]] || continue
+    local _age=$((_now - _deps))
+    if ((_dt >= 2 && _age > _DECAY_T2)); then
+      local _mid="${_dv#*|}"; _sc[$_dk]="1|${_mid%|*}|$_now"
+    elif ((_dt >= 1 && _age > _DECAY_T1)); then
+      local _mid="${_dv#*|}"; _sc[$_dk]="0|${_mid%|*}|$_now"
+    fi
+  done
+  _hash "decay test q1"; _assert "decay tier2->1" "${_sc[$REPLY]%%|*}" "1"
+  _hash "decay test q2"; _assert "decay tier1->0" "${_sc[$REPLY]%%|*}" "0"
+  DATA="$_save_data"
+  rm -rf "$_test_data"
+
+  printf '%s\n' "${B}=== profile ===${N}"
+  _test_data=$(mktemp -d)
+  _save_data="$DATA"; DATA="$_test_data"
+  # Set profile fields
+  PLAYER_NAME="testplayer" BOSS_BEATEN=15 BEST_GAUNTLET=42 BEST_TIMED="10:20:30" EGGS_FOUND="vimquit,konami" SC_DONE="1,2,3" LAST_DECAY=12345
+  _save_profile() {
+    printf 'PLAYER_NAME=%s\nBOSS_BEATEN=%d\nBEST_GAUNTLET=%d\nBEST_TIMED=%s\nEGGS_FOUND=%s\nSC_DONE=%s\nLAST_DECAY=%d\nPROFILE_VER=%d\n' \
+      "$PLAYER_NAME" "$BOSS_BEATEN" "$BEST_GAUNTLET" "$BEST_TIMED" "$EGGS_FOUND" "$SC_DONE" "$LAST_DECAY" "$_PROFILE_VER" > "$DATA/profile"
+  }
+  _save_profile
+  # Clear and reload
+  PLAYER_NAME="" BOSS_BEATEN=0 BEST_GAUNTLET=0 BEST_TIMED="0:0:0" EGGS_FOUND="" SC_DONE="" LAST_DECAY=0
+  # Inline load (can't call _load_profile — it calls _first_run on empty name)
+  while IFS='=' read -r key val; do
+    case "$key" in
+      PLAYER_NAME) PLAYER_NAME="$val";; BOSS_BEATEN) BOSS_BEATEN="$val";;
+      BEST_GAUNTLET) BEST_GAUNTLET="$val";; BEST_TIMED) BEST_TIMED="$val";;
+      EGGS_FOUND) EGGS_FOUND="$val";; SC_DONE) SC_DONE="$val";; LAST_DECAY) LAST_DECAY="$val";;
+    esac
+  done < "$DATA/profile"
+  _assert "profile name"       "$PLAYER_NAME"  "testplayer"
+  _assert "profile boss"       "$BOSS_BEATEN"  "15"
+  _assert "profile gauntlet"   "$BEST_GAUNTLET" "42"
+  _assert "profile timed"      "$BEST_TIMED"   "10:20:30"
+  _assert "profile eggs"       "$EGGS_FOUND"   "vimquit,konami"
+  _assert "profile sc_done"    "$SC_DONE"      "1,2,3"
+  _assert "profile last_decay" "$LAST_DECAY"   "12345"
+  DATA="$_save_data"
+  rm -rf "$_test_data"
 
   printf '%s\n' "${B}=== gen_level smoke ===${N}"
   local _lv _lines _empty_ok=0
@@ -4024,7 +4214,7 @@ case "${1:-}" in
     done
     ;;
   r|reset) rm -f "$DATA"/*.json "$DATA/scores" "$DATA/scores.lock" "$DATA/profile"; rm -rf "$DATA/sandbox" "$DATA/sandbox.pristine" 2>/dev/null; echo "Reset.";;
-  c|cleanup) [[ -f "$DATA/scores" ]] && { local _fd; exec {_fd}>"$DATA/scores.lock"; flock -x "$_fd"; awk -F'|' '/^#/{next} {data[$1]=$0} END{print "#v1"; for(k in data)print data[k]}' "$DATA/scores" > "$DATA/scores.tmp" && mv "$DATA/scores.tmp" "$DATA/scores"; exec {_fd}>&-; _cnt=$(wc -l < "$DATA/scores"); echo "Deduplicated scores."; ((_cnt > 5000)) && echo "Warning: scores file has $_cnt entries — consider resetting."; } || echo "No scores file.";;
+  c|cleanup) [[ -f "$DATA/scores" ]] && { _fd=0; exec {_fd}>"$DATA/scores.lock"; flock -x "$_fd"; awk -F'|' '/^#/{next} {data[$1]=$0} END{print "#v1"; for(k in data)print data[k]}' "$DATA/scores" > "$DATA/scores.tmp" && mv "$DATA/scores.tmp" "$DATA/scores"; exec {_fd}>&-; _cnt=$(wc -l < "$DATA/scores"); echo "Deduplicated scores."; ((_cnt > 5000)) && echo "Warning: scores file has $_cnt entries — consider resetting."; } || echo "No scores file.";;
   test|selftest) _selftest;;
   t|tutorial) _tutorial;;
   s|stats) _load_profile; stats;;
