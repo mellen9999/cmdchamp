@@ -6,6 +6,7 @@
 #   PROFILE ........... load/save, first run, intro, tutorial
 #   BOSSES & LEVELS ... name arrays, scenario metadata
 #   SANDBOX ........... file generators, bwrap exec, state checks
+#   SESSION ........... cleanup trap, stty restore, session summary
 #   EASTER EGGS ....... 8 hidden achievements
 #   VARIABLE POOLS .... randomization data (logs, configs, IPs, etc.)
 #   HELPERS ........... _fpick, _frnum, _ctx, _QV
@@ -13,11 +14,11 @@
 #   QUESTION DSL ...... _qparse, format docs
 #   LEVEL GENERATORS .. gen_level1–30 (question content)
 #   SCENARIOS ......... 8 sc_setup/sc_steps functions
-#   SCORING ........... _hash, _sflush, _sset, _sget, decay
-#   SESSION ........... tracking, cleanup, terminal state
+#   ANSWER CHECK ...... _fnorm, check, load/save
+#   SCORING & UI ...... _hash, norm, stats, hdr, qdisp, draw
 #   VI HANDLER ........ _vi_normal, _read_line (shared input)
-#   ANSWER CHECK ...... _fnorm, norm, check
-#   RUN ENGINE ........ run(), _run_loop, hdr, qdisp
+#   SCORING ENGINE .... _sset, _sflush, _sget, decay, _mode_init
+#   RUN ENGINE ........ run(), _run_loop
 #   POST-ROOT MODES ... gauntlet, timed, review
 #   SCENARIO ENGINE ... scenario(), snapshot/rollback
 #   SELFTEST .......... _selftest (unit tests)
@@ -2833,6 +2834,7 @@ save() {
   mv "$DATA/session.json.tmp" "$DATA/session.json"
   exec {fd}>&-
 }
+# ═══ SCORING & UI ═══
 declare -A _HASH_CACHE=()
 _hash() {
   local key="$1"
@@ -3096,7 +3098,7 @@ _read_line() {
   done
 }
 
-# ═══ SCORING ═══
+# ═══ SCORING ENGINE ═══
 _sdirty=0
 _sflush_if_dirty() { ((_sdirty)) && { _sflush; _sdirty=0; }; }
 _MODE_TAG=""
