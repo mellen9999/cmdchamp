@@ -2903,6 +2903,20 @@ stats() {
   local egg_count=0
   [[ -n "$EGGS_FOUND" ]] && { IFS=',' read -ra _ea <<< "$EGGS_FOUND"; egg_count=${#_ea[@]}; }
   printf '  %s %s/%d\n' "${D}Easter Eggs:${N}" "${Y}${egg_count}${N}" "$_EGG_TOTAL"
+  if ((BOSS_BEATEN >= MAX_LEVEL)); then
+    printf '\n  %s\n' "${W}${B}Records${N}"
+    ((BEST_GAUNTLET > 0)) && printf '  %s %s\n' "${D}Gauntlet:${N}" "${Y}${BEST_GAUNTLET}${N}"
+    IFS=: read -r _bt60 _bt120 _bt300 <<< "$BEST_TIMED"
+    local _any=0; ((_bt60>0||_bt120>0||_bt300>0)) && _any=1
+    if ((_any)); then
+      printf '  %s' "${D}Timed:${N}"
+      ((_bt60>0))  && printf "  ${C}1m:${N}%d" "$_bt60"
+      ((_bt120>0)) && printf "  ${C}2m:${N}%d" "$_bt120"
+      ((_bt300>0)) && printf "  ${C}5m:${N}%d" "$_bt300"
+      printf '\n'
+    fi
+    ((BEST_GAUNTLET==0 && !_any)) && printf '  %s\n' "${D}No records yet — try gauntlet or timed!${N}"
+  fi
 }
 
 _S_ANSWERED=0 _S_CORRECT=0 _S_STREAK=0 _S_BEST_STREAK=0 _S_MASTERED=0 _S_START=0
