@@ -3417,7 +3417,16 @@ _post_root_check() {
 }
 
 # Pick random question from a level (uses cache)
-_pick_q() { local _pq=(); while IFS= read -r line; do [[ -n "$line" ]] && _pq+=("$line"); done <<< "${_LEVEL_CACHE[$1]:=$( gen_level$1 )}"; ((${#_pq[@]})) || return 1; _qparse "${_pq[$((RANDOM % ${#_pq[@]}))]}"; }
+_pick_q() {
+  if [[ -z "${_LEVEL_CACHE[$1]:-}" ]]; then
+    local _pqtmp=(); gen_level$1 _pqtmp
+    local IFS=$'\n'; _LEVEL_CACHE[$1]="${_pqtmp[*]}"
+  fi
+  local _pq=()
+  while IFS= read -r line; do [[ -n "$line" ]] && _pq+=("$line"); done <<< "${_LEVEL_CACHE[$1]}"
+  ((${#_pq[@]})) || return 1
+  _qparse "${_pq[$((RANDOM % ${#_pq[@]}))]}";
+}
 
 gauntlet() {
   _post_root_check
