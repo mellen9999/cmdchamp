@@ -31,7 +31,6 @@ command -v awk &>/dev/null || { echo "Error: awk not found" >&2; exit 1; }
 
 DATA="${XDG_DATA_HOME:-$HOME/.local/share}/cmdchamp"; mkdir -p "$DATA"; touch "$DATA/scores"
 
-# Colors (defined early so _first_run/_intro can use them)
 R=$'\e[31m' G=$'\e[32m' Y=$'\e[33m' C=$'\e[36m' W=$'\e[97m' D=$'\e[2m' B=$'\e[1m' N=$'\e[0m'
 
 _strip_ansi() {
@@ -83,9 +82,7 @@ _load_profile() {
         PROFILE_VER) _file_ver="$val";;
       esac
     done < "$DATA/profile"
-    # Wrong version? Reset everything — beta, no migration debt
     if ((_file_ver != _PROFILE_VER)); then
-      # Back up before nuking — one bad version bump shouldn't erase progress
       [[ -f "$DATA/profile" ]] && cp "$DATA/profile" "$DATA/profile.bak"
       [[ -f "$DATA/scores" ]] && cp "$DATA/scores" "$DATA/scores.bak"
       printf '%s\n' "Profile version mismatch (got $_file_ver, want $_PROFILE_VER) — reset. Backup in profile.bak/scores.bak"
@@ -135,7 +132,6 @@ EOF
 
 _intro() {
   printf '\e[2J\e[H'
-  # Padding: inner width 66, fixed text 41 chars ("      You are " + ". You have only your shell.")
   local pad=$((25 - ${#PLAYER_NAME})); ((pad < 0)) && pad=0
   local spaces; printf -v spaces '%*s' "$pad" ''
   cat <<EOF
@@ -218,7 +214,6 @@ SC_FLAVOR=(""
   "An attacker hit the server. Investigate the breach."
   "The config file is a mess. Perform surgery.")
 
-# Victory screen - displayed after beating the final boss (ROOT)
 _victory() {
   printf '\e[2J\e[H'
   local -A sc; [[ -f "$DATA/scores" ]] && while IFS='|' read -r k v; do [[ "$k" == "#"* ]] && continue; sc[$k]=$v; done < "$DATA/scores"
@@ -263,7 +258,6 @@ EOF
   echo
 }
 
-# Boss splash screen
 _boss_splash() {
   local lv=$1
   local boss="${BOSS_NAMES[$lv]}"
@@ -290,7 +284,6 @@ SANDBOX_MODE=1  # ON by default
 SANDBOX_PRISTINE="$DATA/sandbox.pristine"
 SANDBOX_DIR="$DATA/sandbox"
 
-# Check bwrap dependency
 _check_bwrap() {
   command -v bwrap &>/dev/null || {
     printf '%s\n' "${R}Error: bubblewrap (bwrap) not installed${N}" >&2
@@ -300,7 +293,6 @@ _check_bwrap() {
   }
 }
 
-# Generate log file with realistic nginx-style entries
 # shellcheck disable=SC2034  # locals used via _fpick nameref
 _gen_log() {
   local f="$1" lines="${2:-50}"
@@ -321,7 +313,6 @@ _gen_log() {
   done >> "$f"
 }
 
-# Generate app log with ERROR/WARN/INFO levels
 # shellcheck disable=SC2034  # locals used via _fpick nameref
 _gen_app_log() {
   local f="$1" lines="${2:-40}"
@@ -348,7 +339,6 @@ _gen_app_log() {
   done >> "$f"
 }
 
-# Generate CSV with headers and typed data
 # shellcheck disable=SC2034  # locals used via _fpick nameref
 _gen_csv() {
   local f="$1" rows="${2:-30}"
@@ -365,106 +355,34 @@ _gen_csv() {
   done >> "$f"
 }
 
-# Generate INI config
 _gen_ini() {
-  local f="$1"
-  cat > "$f" <<'EOF'
-[server]
-host = 0.0.0.0
-port = 8080
-workers = 4
-timeout = 30
-
-[database]
-type = postgresql
-host = localhost
-port = 5432
-name = appdb
-user = admin
-
-[logging]
-level = info
-file = /var/log/app.log
-rotate = daily
-
-[cache]
-enabled = true
-ttl = 3600
-backend = redis
-EOF
+  printf '%s\n' '[server]' 'host = 0.0.0.0' 'port = 8080' 'workers = 4' 'timeout = 30' '' \
+    '[database]' 'type = postgresql' 'host = localhost' 'port = 5432' 'name = appdb' 'user = admin' '' \
+    '[logging]' 'level = info' 'file = /var/log/app.log' 'rotate = daily' '' \
+    '[cache]' 'enabled = true' 'ttl = 3600' 'backend = redis' > "$1"
 }
 
-# Generate YAML config
 _gen_yaml() {
-  local f="$1"
-  cat > "$f" <<'EOF'
-server:
-  host: 0.0.0.0
-  port: 8080
-  workers: 4
-  ssl:
-    enabled: false
-    cert: /etc/ssl/cert.pem
-
-database:
-  primary:
-    host: localhost
-    port: 5432
-    name: appdb
-  replica:
-    host: replica.local
-    port: 5432
-
-logging:
-  level: info
-  outputs:
-    - stdout
-    - file:/var/log/app.log
-
-features:
-  cache: true
-  metrics: true
-  debug: false
-EOF
+  printf '%s\n' 'server:' '  host: 0.0.0.0' '  port: 8080' '  workers: 4' '  ssl:' \
+    '    enabled: false' '    cert: /etc/ssl/cert.pem' '' 'database:' '  primary:' \
+    '    host: localhost' '    port: 5432' '    name: appdb' '  replica:' \
+    '    host: replica.local' '    port: 5432' '' 'logging:' '  level: info' '  outputs:' \
+    '    - stdout' '    - file:/var/log/app.log' '' 'features:' '  cache: true' \
+    '  metrics: true' '  debug: false' > "$1"
 }
 
-# Generate plain text notes
 _gen_txt() {
-  local f="$1"
-  cat > "$f" <<'EOF'
-Meeting Notes - Project Review
-==============================
-
-Attendees: Alice, Bob, Charlie
-
-Action Items:
-1. Update documentation
-2. Fix authentication bug
-3. Deploy to staging
-4. Review security patches
-
-Discussion Points:
-- Performance improvements needed
-- New feature requests from users
-- Timeline for next release
-
-TODO: Schedule follow-up meeting
-TODO: Review pull requests
-TODO: Update dependencies
-
-Notes:
-The deployment went smoothly.
-Minor issues with caching fixed.
-Need to monitor error rates.
-
-Completed tasks:
-- Database migration
-- API versioning
-- Load testing
-EOF
+  printf '%s\n' 'Meeting Notes - Project Review' '==============================' '' \
+    'Attendees: Alice, Bob, Charlie' '' 'Action Items:' '1. Update documentation' \
+    '2. Fix authentication bug' '3. Deploy to staging' '4. Review security patches' '' \
+    'Discussion Points:' '- Performance improvements needed' '- New feature requests from users' \
+    '- Timeline for next release' '' 'TODO: Schedule follow-up meeting' \
+    'TODO: Review pull requests' 'TODO: Update dependencies' '' 'Notes:' \
+    'The deployment went smoothly.' 'Minor issues with caching fixed.' \
+    'Need to monitor error rates.' '' 'Completed tasks:' '- Database migration' \
+    '- API versioning' '- Load testing' > "$1"
 }
 
-# Generate user data CSV
 # shellcheck disable=SC2034  # locals used via _fpick nameref
 _gen_users_csv() {
   local f="$1" rows="${2:-20}"
@@ -481,27 +399,15 @@ _gen_users_csv() {
   done >> "$f"
 }
 
-# Generate JSON data
 _gen_json() {
-  local f="$1"
-  cat > "$f" <<'EOF'
-{
-  "version": "1.0.0",
-  "data": [
-    {"id": 1, "name": "Item One", "status": "active", "count": 42},
-    {"id": 2, "name": "Item Two", "status": "pending", "count": 17},
-    {"id": 3, "name": "Item Three", "status": "active", "count": 89},
-    {"id": 4, "name": "Item Four", "status": "inactive", "count": 5}
-  ],
-  "metadata": {
-    "total": 4,
-    "generated": "2024-01-15"
-  }
-}
-EOF
+  printf '%s\n' '{' '  "version": "1.0.0",' '  "data": [' \
+    '    {"id": 1, "name": "Item One", "status": "active", "count": 42},' \
+    '    {"id": 2, "name": "Item Two", "status": "pending", "count": 17},' \
+    '    {"id": 3, "name": "Item Three", "status": "active", "count": 89},' \
+    '    {"id": 4, "name": "Item Four", "status": "inactive", "count": 5}' \
+    '  ],' '  "metadata": {' '    "total": 4,' '    "generated": "2024-01-15"' '  }' '}' > "$1"
 }
 
-# Generate all sandbox files
 _gen_sandbox_files() {
   local dir="$1"
   mkdir -p "$dir"/{src/test,logs,data,backup,temp,config,test}
@@ -513,81 +419,30 @@ _gen_sandbox_files() {
   _gen_ini "$dir/config.ini"
   _gen_yaml "$dir/settings.yaml"
   _gen_txt "$dir/notes.txt"
-  # Second text file - todo list
-  cat > "$dir/todo.txt" <<'EOF'
-Task List
-=========
-
-[ ] Review PR #123
-[ ] Update API docs
-[ ] Fix login timeout
-[x] Deploy v2.1.0
-[x] Merge feature branch
-[ ] Refactor user service
-[ ] Add unit tests
-[ ] Setup CI pipeline
-EOF
+  printf '%s\n' 'Task List' '=========' '' '[ ] Review PR #123' '[ ] Update API docs' \
+    '[ ] Fix login timeout' '[x] Deploy v2.1.0' '[x] Merge feature branch' \
+    '[ ] Refactor user service' '[ ] Add unit tests' '[ ] Setup CI pipeline' > "$dir/todo.txt"
   _gen_json "$dir/data/export.json"
 
-  # Access/error logs
   _gen_log "$dir/logs/access.log" 30
   _gen_app_log "$dir/logs/error.log" 20
 
-  # Safe script (echo only)
-  cat > "$dir/backup.sh" <<'EOF'
-#!/bin/bash
-echo "Backup started at $(date)"
-echo "Backing up files..."
-echo "Backup complete!"
-EOF
+  printf '%s\n' '#!/bin/bash' 'echo "Backup started at $(date)"' 'echo "Backing up files..."' 'echo "Backup complete!"' > "$dir/backup.sh"
   chmod +x "$dir/backup.sh"
-
-  # Second script - deploy
-  cat > "$dir/deploy.sh" <<'EOF'
-#!/bin/bash
-echo "Deploying application..."
-echo "Version: $(cat VERSION 2>/dev/null || echo 'unknown')"
-echo "Deploy complete!"
-EOF
+  printf '%s\n' '#!/bin/bash' 'echo "Deploying application..."' "echo \"Version: \$(cat VERSION 2>/dev/null || echo 'unknown')\"" 'echo "Deploy complete!"' > "$dir/deploy.sh"
   chmod +x "$dir/deploy.sh"
 
-  # Python source files
-  cat > "$dir/main.py" <<'EOF'
-#!/usr/bin/env python3
-"""Main application module."""
-
-def main():
-    print("Hello, World!")
-    return 0
-
-if __name__ == "__main__":
-    main()
-EOF
-
-  cat > "$dir/src/utils.py" <<'EOF'
-"""Utility functions."""
-
-def helper(x):
-    return x * 2
-
-def process(data):
-    return [helper(item) for item in data]
-EOF
-
-  cat > "$dir/src/test/test_utils.py" <<'EOF'
-"""Tests for utils module."""
-import unittest
-
-class TestUtils(unittest.TestCase):
-    def test_helper(self):
-        self.assertEqual(helper(2), 4)
-
-if __name__ == "__main__":
-    unittest.main()
-EOF
+  printf '%s\n' '#!/usr/bin/env python3' '"""Main application module."""' '' \
+    'def main():' '    print("Hello, World!")' '    return 0' '' \
+    'if __name__ == "__main__":' '    main()' > "$dir/main.py"
+  printf '%s\n' '"""Utility functions."""' '' 'def helper(x):' '    return x * 2' '' \
+    'def process(data):' '    return [helper(item) for item in data]' > "$dir/src/utils.py"
+  printf '%s\n' '"""Tests for utils module."""' 'import unittest' '' \
+    'class TestUtils(unittest.TestCase):' '    def test_helper(self):' \
+    '        self.assertEqual(helper(2), 4)' '' 'if __name__ == "__main__":' \
+    '    unittest.main()' > "$dir/src/test/test_utils.py"
 }
 
-# Initialize sandbox (create pristine copy if needed)
 _sandbox_init() {
   ((SANDBOX_MODE)) || return 0
   _check_bwrap || return 1
@@ -603,7 +458,6 @@ _sandbox_init() {
   _sandbox_reset
 }
 
-# Reset sandbox to pristine state
 _sandbox_reset() {
   ((SANDBOX_MODE)) || return 0
   [[ -d "$SANDBOX_PRISTINE" ]] || return 1
@@ -618,12 +472,9 @@ _sandbox_reset() {
   mv "$_sb_tmp" "$SANDBOX_DIR"
 }
 
-# Execute command in sandbox with bwrap isolation
 _sandbox_exec() {
   local cmd="$1" timeout_sec="${2:-$SANDBOX_TIMEOUT}"
   ((SANDBOX_MODE)) || return 1
-
-  # Build bwrap args - bind /lib* only if they exist
   local -a bwrap_args=(
     --ro-bind /usr /usr
     --ro-bind /bin /bin
@@ -648,28 +499,20 @@ _sandbox_exec() {
   return "$_rc"
 }
 
-# Track if command was destructive (for per-question reset)
 _SANDBOX_DESTRUCTIVE=0
 _is_destructive() {
   local cmd="$1"
-  # File-modifying commands
   [[ "$cmd" =~ (^|[[:space:];&|])(rm|mv|cp|dd|truncate|shred|unlink|tee|chmod|chown|mkfs|fdisk|parted|install|split|patch|ln|mkdir|touch)[[:space:]] ]] && return 0
-  # Output redirection
   [[ "$cmd" =~ (\>\>|\>[^>]) ]] && return 0
-  # In-place sed (-i or --in-place)
   [[ "$cmd" =~ sed[[:space:]]+(-i|--in-place) ]] && return 0
-  # Truncation via :>
   [[ "$cmd" =~ :[[:space:]]*\> ]] && return 0
-  # find -delete
   [[ "$cmd" =~ find[[:space:]].*-delete ]] && return 0
-  # Recursive delete patterns
   [[ "$cmd" =~ rsync[[:space:]].*--delete|xargs[[:space:]].*(rm|mv)|find[[:space:]].*-exec[[:space:]].*(rm|mv) ]] && return 0
   return 1
 }
 
-# Validate command output
 # Returns 0 if output matches expected
-# Expected formats:
+# Formats:
 #   exact text - exact match
 #   ~regex     - regex match
 #   @N         - line count match
@@ -706,8 +549,7 @@ _sandbox_check_output() {
   return 1
 }
 
-# Validate file state after command
-# Formats: exists:file, !exists:file, contains:file:pattern, !contains:file:pattern, lines:file:N, line1:file:text, perm:file:rwx
+# Formats: exists:F, !exists:F, contains:F:S, !contains:F:S, lines:F:N, line1:F:T, perm:F:M
 _sandbox_check_state() {
   local checks="$1" checks_arr=()
   # Split on commas only when followed by a check keyword (avoids breaking values with commas)
@@ -1030,7 +872,6 @@ declare -A MANPAGE=(
   [netstat]=$'network statistics (legacy)\n  \e[36m-t\e[0m        TCP                    \e[36m-u\e[0m        UDP\n  \e[36m-l\e[0m        listening              \e[36m-n\e[0m        numeric ports\n  \e[36m-p\e[0m        show process           \e[36m-r\e[0m        routing table\n  \e[35mvs ss\e[0m     netstat is deprecated. ss is faster and modern.\n          use ss -tlnp instead of netstat -tlnp\n  \e[2mnetstat -tlnp    netstat -tunapl    netstat -r\e[0m'
   [readlink]=$'show symlink target\n  \e[36m-f\e[0m        canonicalize (full path)  \e[36m-e\e[0m    canonicalize (must exist)\n  \e[35mvs realpath\e[0m readlink shows the link target.\n          realpath resolves the full canonical path\n  \e[2mreadlink link    readlink -f link    readlink -e link\e[0m'
 )
-# Render manpage: first line as header, rest as body
 _mp_show() {
   local cmd=$1; local data="${MANPAGE[$cmd]}"
   printf "%s %s\n" "${W}${B}${cmd}${N}" "${D}- ${data%%$'\n'*}${N}"
@@ -1203,12 +1044,10 @@ _esc_legend() {
 explain() {
   local tok n=0 exp tcol cmds=() _ap=1
   printf '%s\n' "${D}----------------------------------------${N}"
-  # Collect all pipeline commands (skip env vars like VAR=val)
   for tok in $1; do
     case "$tok" in '|'|'|&'|'&&'|'||'|';'|'&') _ap=1; continue ;; esac
     ((_ap)) && [[ "$tok" != *=* ]] && { cmds+=("$tok"); _ap=0; }
   done
-  # Show manpages for pipeline commands (EXP fallback for commands without manpage)
   local _mc=0 _ml=0
   for tok in "${cmds[@]}"; do
     if [[ -n "${MANPAGE[$tok]:-}" ]]; then
@@ -1219,7 +1058,6 @@ explain() {
     fi
   done
   if ((_mc)); then
-    # Still show EXP entries for operators/redirects alongside manpages
     for tok in $1; do
       case "$tok" in '>'|'>>'|'<'|'<<<'|'2>'|'&>'|'2>&1'|'|'|'|&'|'&&'|'||'|';'|'&') ;; *) continue ;; esac
       exp="${EXP[$tok]:-}"; [[ -z "$exp" ]] && continue
@@ -1232,33 +1070,28 @@ explain() {
   fi
   local _cp=1  # command position: 1=expecting command, 0=in arguments
   for tok in $1; do
-    # Operators/pipes reset to command position
     case "$tok" in '|'|'|&'|'&&'|'||'|';'|'&') _cp=1 ;; esac
     exp="${EXP[$tok]:-}"
     if [[ -n "$exp" ]]; then
-      # Skip plain words (like 'done') when they're arguments, not commands
       if ((!_cp)); then
         case "$tok" in
-          -*|'>'|'>>'|'<'|'<<<'|'2>'|'&>'|'2>&1'|'|'|'|&'|'&&'|'||'|';'|'&') ;;  # always show these
-          *) continue ;;  # skip plain words in argument position
+          -*|'>'|'>>'|'<'|'<<<'|'2>'|'&>'|'2>&1'|'|'|'|&'|'&&'|'||'|';'|'&') ;;
+          *) continue ;;
         esac
       fi
-      # Choose token color based on type
-      tcol="${G}"  # default: green for commands
+      tcol="${G}"
       case "$tok" in
-        .|..|~|/*) tcol="${W}" ;;  # paths = white
-        '>'|'>>'|'<'|'<<<'|'2>'|'&>'|'2>&1'|'|'|'|&') tcol="${Y}" ;;  # redirects/pipes = yellow
-        '&&'|'||'|';'|'&') tcol="${Y}" ;;  # operators = yellow
-        -*) tcol="${C}" ;;  # flags = cyan
+        .|..|~|/*) tcol="${W}" ;;
+        '>'|'>>'|'<'|'<<<'|'2>'|'&>'|'2>&1'|'|'|'|&') tcol="${Y}" ;;
+        '&&'|'||'|';'|'&') tcol="${Y}" ;;
+        -*) tcol="${C}" ;;
       esac
 
       _exp_line "$tok" "$exp" "$tcol"
       ((++n))
     fi
-    # After seeing a non-operator token, we're past command position
     case "$tok" in '|'|'|&'|'&&'|'||'|';'|'&'|'>'|'>>'|'<'|'<<<'|'2>'|'&>'|'2>&1') ;; *) _cp=0 ;; esac
   done
-  # Show full answer if no explanations found
   ((n == 0)) && { printf '  %s\n' "${Y}$1${N}"; ((++n)); }
   _esc_legend "$1"; ((n += REPLY))
   printf '%s\n' "${D}----------------------------------------${N}"
@@ -1286,7 +1119,6 @@ _qparse() {
   local q=$1
   _qoutput="" _qstate="" _qtext=0 _qdelim='|'
 
-  # Extract sandbox markers from end (order matters: strip right-to-left)
   if [[ $q == *"#text:"* ]]; then
     _qtext=1
     q="${q%%#text:*}"
@@ -1301,7 +1133,6 @@ _qparse() {
     q="${q%%#output:*}"
   fi
 
-  # Parse prompt and answers
   if [[ $q == *§* ]]; then
     _qdelim='§'
     _qprompt="${q%%§*}"; _qanswers="${q#*§}"; _qans="${_qanswers%%§*}"
@@ -2700,9 +2531,7 @@ STEPS
 # --- Scenario 5: Find the Needle ---
 _sc_setup_5() {
   local d=$1
-  # Clear pre-existing TODOs from notes.txt
   printf 'Meeting Notes\n=============\nNo action items.\n' > "$d/notes.txt"
-  # Plant markers across the codebase
   mkdir -p "$d/src/lib"
   cat > "$d/main.py" <<'PY'
 #!/usr/bin/env python3
@@ -2805,10 +2634,8 @@ Fix log level to INFO§sed -i 's/level=DEBUG/level=INFO/' config.ini§sed -i 's/
 STEPS
 }
 
-# Question cache - avoids O(n²) regeneration for review questions
 declare -A _LEVEL_CACHE=() _LEVEL_CACHE_N=() _LEVEL_ITEMS=()
 
-# Generate questions for a level (called once per level attempt)
 declare -a CURRENT_QUESTIONS=()
 generate_level() {
   local level=$1
@@ -2816,7 +2643,6 @@ generate_level() {
   gen_level${level}  # writes directly via nameref
   local IFS=$'\n'; _LEVEL_CACHE[$level]="${CURRENT_QUESTIONS[*]}"
 
-  # Review: add questions from previous levels (O(n) with cache)
   if ((level > 1)); then
     local review=() prev_arr=() _cache_tmp=()
     for ((prev=1; prev<level; prev++)); do
@@ -2948,10 +2774,7 @@ _fnorm() {
   ((_saw_dashdash)) && { REPLY+=" --"; for p in "${postdd[@]}"; do REPLY+=" $p"; done; }
 }
 
-_SANDBOX_OUTPUT=""  # Store output for display after check
-
-# Execute in sandbox, validate #output:/#state: markers
-# Sets _SANDBOX_OUTPUT, _SANDBOX_DESTRUCTIVE; reads _qoutput, _qstate
+_SANDBOX_OUTPUT=""
 _sandbox_validate() {
   local inp=$1 output _sb_err _sb_rc
   { output=$(_sandbox_exec "$inp" 5 2>"$SANDBOX_DIR/.stderr"); } 2>/dev/null; _sb_rc=$?
@@ -2971,8 +2794,6 @@ _sandbox_validate() {
   return 1
 }
 
-# Text matching: delimiter split, regex/fnorm comparison
-# Args: raw_input normalized_input answers delimiter
 _text_match() {
   local inp=$1 ninp=$2 answers=$3 delim=$4 a b
   local -a opts; IFS="$delim" read -ra opts <<< "$answers"
@@ -2987,7 +2808,6 @@ _text_match() {
   done; return 1
 }
 
-# Orchestrator: normalize → sandbox → text match
 check() {
   local inp="${1#"${1%%[![:space:]]*}"}"; inp="${inp%"${inp##*[![:space:]]}"}"; _fnorm "$inp"; local ninp=$REPLY
   _SANDBOX_OUTPUT=""
@@ -3013,7 +2833,6 @@ save() {
   mv "$DATA/session.json.tmp" "$DATA/session.json"
   exec {fd}>&-
 }
-# Score tracking: tier 0=unseen/demoted, 1=learning, 2=mastered (djb2 hash keys, no forks)
 declare -A _HASH_CACHE=()
 _hash() {
   local key="$1"
@@ -3026,7 +2845,6 @@ _hash() {
   printf -v REPLY '%08x' "$h"
   _HASH_CACHE[$key]="$REPLY"
 }
-# Insertion sort a nameref array (pure bash, no forking)
 norm() {
   local -n _arr=$1; local i j tmp
   for ((i=1; i<${#_arr[@]}; i++)); do
@@ -3037,7 +2855,6 @@ norm() {
     _arr[$j]="$tmp"
   done
 }
-# Flush scores atomically (pure bash, no sed fork)
 _sflush() {
   local _fd; exec {_fd}>"$DATA/scores.lock"; flock -x "$_fd"
   { printf '#v1\n'; local _keys=("${!_sc[@]}"); norm _keys; for k in "${_keys[@]}"; do printf '%s|%s\n' "$k" "${_sc[$k]}"; done; } > "$DATA/scores.tmp"
@@ -3045,8 +2862,6 @@ _sflush() {
   exec {_fd}>&-
 }
 
-# Populate lv_total/lv_mastered from a scores array (caller must declare them)
-# Sets: _cm_seen, _cm_t1, _cm_t2, _cm_tagged (read by caller via dynamic scope)
 _calc_mastery() {
   local -n _src=$1; _cm_seen=0 _cm_t1=0 _cm_t2=0 _cm_tagged=0
   for k in "${!_src[@]}"; do
@@ -3082,17 +2897,14 @@ stats() {
       printf "  %s ${W}%2d${N} %-22s ${D}%*s${N}\n" "$boss_mark" "$lv" "${LEVEL_NAMES[$lv]:-}" "$BAR_W" "no data"
     fi
   done
-  # Scenario progress
   local sc_count=0
   [[ -n "$SC_DONE" ]] && { IFS=',' read -ra _sca <<< "$SC_DONE"; sc_count=${#_sca[@]}; }
   ((SC_TOTAL > 0)) && printf '\n  %s %s/%d\n' "${D}Scenarios:${N}" "${W}${B}${sc_count}${N}" "$SC_TOTAL"
-  # Easter eggs
   local egg_count=0
   [[ -n "$EGGS_FOUND" ]] && { IFS=',' read -ra _ea <<< "$EGGS_FOUND"; egg_count=${#_ea[@]}; }
   printf '  %s %s/%d\n' "${D}Easter Eggs:${N}" "${Y}${egg_count}${N}" "$_EGG_TOTAL"
 }
 
-# Session tracking
 _S_ANSWERED=0 _S_CORRECT=0 _S_STREAK=0 _S_BEST_STREAK=0 _S_MASTERED=0 _S_START=0
 _session_init() { printf -v _S_START '%(%s)T' -1; _S_ANSWERED=0 _S_CORRECT=0 _S_STREAK=0 _S_BEST_STREAK=0 _S_MASTERED=0; _egg_check nightowl; }
 _quit() {
@@ -3126,21 +2938,19 @@ _sc() { [[ -n "$input" ]] && { HIST+=("$input"); HIST_IDX=${#HIST[@]}; HIST_SAVE
 _sw() { ((_S_ANSWERED++)); _S_STREAK=0; _wrong_show; }
 bar() { local f e p=$((qi<TOT?qi:TOT)); printf -v f '%*s' "$p" ''; printf -v e '%*s' "$((TOT-p))" ''; printf "${B}[${G}%s${D}%s${B}]${N}" "${f// /█}" "${e// /░}"; }
 draw() {
-  printf '\e[?25l\r\e[K'  # hide cursor, clear line
+  printf '\e[?25l\r\e[K'
   ((VI_MODE)) && [[ $mode != insert ]] && printf '%s' "${R}${PROMPT_CHAR}${N}" || printf '%s' "${W}${PROMPT_CHAR}${N}"
   printf '%s' "$input"
   local _pre="${input:0:cursor}" disp_len=${#input} disp_cur; disp_cur=${#_pre}
   ((disp_cur < disp_len)) && printf '\e[%dD' "$((disp_len - disp_cur))"
-  printf '\e[?25h'  # show cursor
+  printf '\e[?25h'
 }
 
-# Vi helpers (requires UTF-8 locale for proper multi-byte char handling)
 _wfwd() { while ((cursor<${#input})) && [[ "${input:cursor:1}" != " " ]]; do ((++cursor)); done; while ((cursor<${#input})) && [[ "${input:cursor:1}" == " " ]]; do ((++cursor)); done; ((cursor>=${#input}&&${#input}>0)) && cursor=$((${#input}-1)); }
 _wbck() { ((cursor>0)) && ((cursor--)); while ((cursor>0)) && [[ "${input:cursor:1}" == " " ]]; do ((cursor--)); done; while ((cursor>0)) && [[ "${input:cursor-1:1}" != " " ]]; do ((cursor--)); done; }
 _wend() { ((cursor<${#input}-1)) && ((++cursor)); while ((cursor<${#input}-1)) && [[ "${input:cursor:1}" == " " ]]; do ((++cursor)); done; while ((cursor<${#input}-1)) && [[ "${input:cursor+1:1}" != " " ]]; do ((++cursor)); done; }
 _clamp() { ((cursor>=${#input})) && cursor=$((${#input}>0?${#input}-1:0)); }
 _vi_read() { IFS= read -rsn1 c2; }
-# $1: -1=up, 1=down
 _vi_hist() {
   ((_rl_hist)) || return 1
   if (($1 < 0)); then
@@ -3165,8 +2975,6 @@ _del() { # $1=motion
 }
 
 # ═══ VI HANDLER ═══
-# Accesses: input cursor mode _rep _man_open _rl_hints _rl_hist
-#           UNDO_STACK HIST HIST_IDX HIST_SAVE c
 _vi_normal() {
   if [[ "$c" =~ ^[1-9]$ ]] || { [[ "$c" == "0" ]] && [[ -n "$_rep" ]]; }; then _rep+="$c"; return 1; fi
   local _n=${_rep:-1}; _rep=""
@@ -3218,9 +3026,7 @@ _vi_normal() {
   return 1
 }
 
-# Read one line of input with vi/insert mode (shared by practice + boss)
-# $1: 1=allow manpages, 0=boss mode  $2: 1=allow history, 0=no history
-# $3: timeout seconds (0=none). Returns 1 on timeout.
+# $1: allow manpages  $2: allow history  $3: timeout (0=none, returns 1 on timeout)
 # Caller defines _REDRAW_HDR(). Uses dynamic scoping for ans, HIST, etc.
 _read_line() {
   local _rl_hints=${1:-1} _rl_hist=${2:-1} _rl_timeout=${3:-0} _rl_deadline=0
@@ -3318,7 +3124,7 @@ run() {
   local -a SEEN_PROMPTS=()
   _mode_init "$lv"
 
-  generate_level "$lv"  # Generate fresh questions for this level
+  generate_level "$lv"
   TOT=${#CURRENT_QUESTIONS[@]}
   # Prioritize by tier: 1 (blank) > 2 (recall) - no tier 0 copy mode
   local t1=() t2=()
@@ -3470,7 +3276,6 @@ run() {
   fi
 }
 
-# Iterative wrapper: replaces recursive run() calls
 _run_loop() {
   _session_init
   _NEXT_BOSS=0
@@ -3547,17 +3352,15 @@ gauntlet() {
   echo
 }
 
-_timed_best() {
-  # Get best score for a duration: _timed_best 60|120|300
-  IFS=: read -r _bt60 _bt120 _bt300 <<< "$BEST_TIMED"
-  case "$1" in 60) REPLY=${_bt60:-0};; 120) REPLY=${_bt120:-0};; 300) REPLY=${_bt300:-0};; esac
-}
-_timed_set() {
-  # Set best score for a duration: _timed_set 60|120|300 score
+_timed_score() { # get: _timed_score DUR  set: _timed_score DUR VAL
   IFS=: read -r _bt60 _bt120 _bt300 <<< "$BEST_TIMED"
   _bt60=${_bt60:-0}; _bt120=${_bt120:-0}; _bt300=${_bt300:-0}
-  case "$1" in 60) _bt60=$2;; 120) _bt120=$2;; 300) _bt300=$2;; esac
-  BEST_TIMED="${_bt60}:${_bt120}:${_bt300}"
+  if [[ -n "${2:-}" ]]; then
+    case "$1" in 60) _bt60=$2;; 120) _bt120=$2;; 300) _bt300=$2;; esac
+    BEST_TIMED="${_bt60}:${_bt120}:${_bt300}"
+  else
+    case "$1" in 60) REPLY=$_bt60;; 120) REPLY=$_bt120;; 300) REPLY=$_bt300;; esac
+  fi
 }
 
 timed() {
@@ -3565,7 +3368,7 @@ timed() {
   _session_init
   local duration=${1:-120}
   case "$duration" in 60|120|300) ;; *) printf '%s\n' "${R}Invalid time. Use 60, 120, or 300.${N}"; return 1;; esac
-  _timed_best "$duration"; local best=$REPLY
+  _timed_score "$duration"; local best=$REPLY
   printf '\e[2J\e[H%s\n%s\n' "${W}${B}═══ TIMED MODE ═══${N}" "${D}${duration}s on the clock. Answer fast.${N}"
   ((best > 0)) && printf '%s\n' "${D}Personal best (${duration}s): ${Y}${best}${N}"
   printf '\n'; read -rsn1 -p "${D}Press Enter to continue...${N}"; echo
@@ -3618,10 +3421,10 @@ timed() {
   printf '\e[2J\e[H'
   printf '%s\n\n' "${W}${B}═══ TIME'S UP! ═══${N}"
   printf 'Score: %s in %ds\n' "${B}${score}${N}" "$duration"
-  _timed_best "$duration"; local prev_best=$REPLY
+  _timed_score "$duration"; local prev_best=$REPLY
   if ((score > prev_best)); then
     printf '%s\n' "${Y}${B}NEW PERSONAL BEST!${N} (was ${prev_best})"
-    _timed_set "$duration" "$score"; _save_profile
+    _timed_score "$duration" "$score"; _save_profile
   else
     printf '%s\n' "${D}Best (${duration}s): ${prev_best}${N}"
   fi
@@ -3872,7 +3675,6 @@ _selftest() {
   _hash "test123"; _assert "deterministic" "$REPLY" "$h1"
   _assert_match "hex format" "$h1" '^[0-9a-f]{8}$'
   _hash "test124"; [[ "$REPLY" != "$h1" ]]; _assert "different input" "$?" "0"
-  # Cache hit
   _assert "cached" "${_HASH_CACHE[test123]}" "$h1"
 
   printf '%s\n' "${B}=== norm ===${N}"
@@ -3886,7 +3688,6 @@ _selftest() {
   norm _td; _assert "dupes" "${_td[*]}" "a a b c"
 
   printf '%s\n' "${B}=== check (text match) ===${N}"
-  # Disable sandbox for these tests
   local _save_sandbox=$SANDBOX_MODE; SANDBOX_MODE=0
   _qdelim='|' _qtext=0 _qoutput="" _qstate=""
   check "pwd" "pwd" && _t=0 || _t=$?; _assert "exact" "$_t" "0"
@@ -3894,10 +3695,8 @@ _selftest() {
   check "  pwd  " "pwd" && _t=0 || _t=$?; _assert "trim input" "$_t" "0"
   check "ls -al" "ls -la" && _t=0 || _t=$?; _assert "normalized" "$_t" "0"
   check "wrong" "pwd" && _t=0 || _t=$?; _assert "wrong answer" "$_t" "1"
-  # Regex
   check "ls /tmp/foo" '~^ls /tmp/' && _t=0 || _t=$?; _assert "regex match" "$_t" "0"
   check "cat /etc" '~^ls /tmp/' && _t=0 || _t=$?; _assert "regex no match" "$_t" "1"
-  # § delimiter
   _qdelim='§'
   check "grep foo bar" 'grep foo bar§cat bar | grep foo' && _t=0 || _t=$?; _assert "§ delim" "$_t" "0"
   _qdelim='|'
@@ -3956,31 +3755,26 @@ _selftest() {
       "$desc" "$input" "$want_input" "$cursor" "$want_cursor" "$mode" "$want_mode"; fi
   }
 
-  # Basic motions
   _vi_assert "h moves left"       "hello" 3 "h"   "hello" 2
   _vi_assert "l moves right"      "hello" 1 "l"   "hello" 2
   _vi_assert "0 goes to start"    "hello" 3 "0"   "hello" 0
   _vi_assert '$ goes to end'      "hello" 0 '$'   "hello" 4
   _vi_assert "h at 0 stays"       "abc"   0 "h"   "abc"   0
   _vi_assert "l at end stays"     "abc"   2 "l"   "abc"   2
-  # Repeat motions
   _vi_assert "3h moves 3 left"   "abcde" 4 "3h"  "abcde" 1
   _vi_assert "2l moves 2 right"  "abcde" 0 "2l"  "abcde" 2
-  # Word motions
   _vi_assert "w next word"       "foo bar baz" 0 "w"   "foo bar baz" 4
   _vi_assert "b prev word"       "foo bar baz" 4 "b"   "foo bar baz" 0
   _vi_assert "e end of word"     "foo bar" 0 "e"  "foo bar" 2
   _vi_assert "2w two words"      "aa bb cc dd" 0 "2w"  "aa bb cc dd" 6
   _vi_assert "2b two words back" "aa bb cc dd" 6 "2b"  "aa bb cc dd" 0
-  # Find/till
-  _vi_assert "fa finds a"        "hello world" 0 "fa"  "hello world" 0  # no 'a' after cursor
+  _vi_assert "fa finds a"        "hello world" 0 "fa"  "hello world" 0
   _vi_assert "fo finds o"        "hello world" 0 "fo"  "hello world" 4
   _vi_assert "Fo finds o back"   "hello world" 6 "Fo"  "hello world" 4
   _vi_assert "to till o"         "hello world" 0 "to"  "hello world" 3
   _vi_assert "To till o back"    "hello world" 6 "To"  "hello world" 5
   _vi_assert "2fo second o"      "foo boo coo" 0 "2fo" "foo boo coo" 2
   _vi_assert "fx no match"       "hello" 0 "fz"  "hello" 0
-  # Delete combos
   _vi_assert "x deletes char"     "hello" 1 "x"   "hllo"  1
   _vi_assert "X deletes before"   "hello" 2 "X"   "hllo"  1
   _vi_assert "2x deletes 2"      "abcde" 1 "2x"  "ade"   1
@@ -3991,46 +3785,35 @@ _selftest() {
   _vi_assert "dd del line"       "hello" 2 "dd"   ""      0
   _vi_assert 'd$ del to end'     "hello" 2 'd$'   "he"    1
   _vi_assert "d0 del to start"   "hello" 2 "d0"   "llo"   0
-  # Change combos
   _vi_assert "cw change word"    "foo bar" 0 "cw"  "bar"   0  "insert"
   _vi_assert "cc change line"    "hello" 2 "cc"   ""      0  "insert"
   _vi_assert "C change to end"   "hello" 2 "C"    "he"    2  "insert"
-  # Replace
   _vi_assert "rx replace char"   "hello" 1 "rx"   "hxllo" 1
-  # Undo
   _vi_assert "u undo x"         "hello" 1 "xu"   "hello" 1
   _vi_assert "u undo dw"        "foo bar" 0 "dwu" "foo bar" 0
-  # gg / G
   _vi_assert "gg goto start"    "hello" 3 "gg"   "hello" 0
   _vi_assert "G goto end"       "hello" 1 "G"    "hello" 4
-  # Mode transitions
   _vi_assert "i enters insert"   "abc" 1 "i"   "abc" 1  "insert"
   _vi_assert "a enters insert"   "abc" 1 "a"   "abc" 2  "insert"
   _vi_assert "A enters insert"   "abc" 1 "A"   "abc" 3  "insert"
   _vi_assert "I enters insert"   "abc" 1 "I"   "abc" 0  "insert"
   _vi_assert "s subst+insert"    "abc" 1 "s"   "ac"  1  "insert"
 
-  # Restore draw + _vi_read
   eval "$_save_draw"
   eval "$_save_vi_read"
 
   printf '%s\n' "${B}=== _sandbox_check_output ===${N}"
-  # Line count
   _assert "line count 2 lines"    "$(_sandbox_check_output $'foo\nbar\n' '@2' && echo y || echo n)" "y"
   _assert "line count 1 line"     "$(_sandbox_check_output 'foo' '@1' && echo y || echo n)" "y"
   _assert "line count trailing nl" "$(_sandbox_check_output $'foo\nbar\n' '@2' && echo y || echo n)" "y"
   _assert "line count wrong"      "$(_sandbox_check_output $'foo\nbar\n' '@3' && echo y || echo n)" "n"
   _assert "line count empty"      "$(_sandbox_check_output '' '@1' && echo y || echo n)" "n"
-  # Regex
   _assert "regex hit"            "$(_sandbox_check_output 'hello world' '~hello' && echo y || echo n)" "y"
   _assert "regex miss"           "$(_sandbox_check_output 'hello world' '~^goodbye' && echo y || echo n)" "n"
-  # Any output
   _assert "any output yes"       "$(_sandbox_check_output 'stuff' '*' && echo y || echo n)" "y"
   _assert "any output no"        "$(_sandbox_check_output '' '*' && echo y || echo n)" "n"
-  # Exact match
   _assert "exact match trimmed"  "$(_sandbox_check_output '  foo  ' 'foo' && echo y || echo n)" "y"
   _assert "exact match miss"     "$(_sandbox_check_output 'bar' 'foo' && echo y || echo n)" "n"
-  # No expected = fail
   _assert "no expected fails"    "$(_sandbox_check_output 'x' '' && echo y || echo n)" "n"
 
   printf '%s\n' "${B}=== scoring ===${N}"
@@ -4041,15 +3824,11 @@ _selftest() {
   _MODE_TAG="1"
   _sdirty=0
   _sget() { _hash "$1"; local _v="${_sc[$REPLY]:-1}"; REPLY="${_v%%|*}"; }
-  # sset + sget round-trip
   _sset "test question 1" 2
   _sget "test question 1"; _assert "sget after sset" "$REPLY" "2"
-  # overwrite
   _sset "test question 1" 3
   _sget "test question 1"; _assert "sget overwrite" "$REPLY" "3"
-  # default tier
   _sget "never seen"; _assert "sget default" "$REPLY" "1"
-  # flush + reload
   _sflush
   _assert "scores file exists" "$([[ -f "$DATA/scores" ]] && echo y || echo n)" "y"
   local _sc_content; _sc_content=$(<"$DATA/scores")
@@ -4065,13 +3844,11 @@ _selftest() {
   _MODE_TAG="1"
   _sdirty=0
   local _now; printf -v _now '%(%s)T' -1
-  # Simulate an old mastered entry (40 days ago)
   _hash "decay test q1"
   _sc[$REPLY]="2|1|$((_now - 3456000))"  # 40d ago, tier 2
   _hash "decay test q2"
   _sc[$REPLY]="1|1|$((_now - 1300000))"  # ~15d ago, tier 1
   _sflush
-  # Run decay by setting LAST_DECAY old enough
   LAST_DECAY=0
   _save_profile() { :; }  # no-op
   local _dk _dv _dt
@@ -4094,16 +3871,13 @@ _selftest() {
   printf '%s\n' "${B}=== profile ===${N}"
   _test_data=$(mktemp -d)
   _save_data="$DATA"; DATA="$_test_data"
-  # Set profile fields
   PLAYER_NAME="testplayer" BOSS_BEATEN=15 BEST_GAUNTLET=42 BEST_TIMED="10:20:30" EGGS_FOUND="vimquit,konami" SC_DONE="1,2,3" LAST_DECAY=12345
   _save_profile() {
     printf 'PLAYER_NAME=%s\nBOSS_BEATEN=%d\nBEST_GAUNTLET=%d\nBEST_TIMED=%s\nEGGS_FOUND=%s\nSC_DONE=%s\nLAST_DECAY=%d\nPROFILE_VER=%d\n' \
       "$PLAYER_NAME" "$BOSS_BEATEN" "$BEST_GAUNTLET" "$BEST_TIMED" "$EGGS_FOUND" "$SC_DONE" "$LAST_DECAY" "$_PROFILE_VER" > "$DATA/profile"
   }
   _save_profile
-  # Clear and reload
   PLAYER_NAME="" BOSS_BEATEN=0 BEST_GAUNTLET=0 BEST_TIMED="0:0:0" EGGS_FOUND="" SC_DONE="" LAST_DECAY=0
-  # Inline load (can't call _load_profile — it calls _first_run on empty name)
   while IFS='=' read -r key val; do
     case "$key" in
       PLAYER_NAME) PLAYER_NAME="$val";; BOSS_BEATEN) BOSS_BEATEN="$val";;
