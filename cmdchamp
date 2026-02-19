@@ -3904,6 +3904,7 @@ place() {
   local placed=$((lv - 1))
   ((qi_ok >= 2 && lv > MAX_LEVEL)) && placed=$MAX_LEVEL
   BOSS_BEATEN=$placed; _save_profile
+  LVL=$((placed >= MAX_LEVEL ? MAX_LEVEL : placed + 1)); QI=0; save
   printf '\e[2J\e[H%s\n' "${G}${B}═══ PLACEMENT COMPLETE ═══${N}"
   if ((placed == 0)); then
     printf '%s\n' "Starting from ${W}Level 1${N}"
