@@ -3915,6 +3915,7 @@ place() {
   fi
   _sflush_if_dirty
   echo
+  ((placed < MAX_LEVEL)) && { _pause; _run_loop; }
 }
 
 # Handle --no-sandbox flag (any position)
