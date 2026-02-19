@@ -3867,7 +3867,7 @@ _selftest() {
 }
 
 place() {
-  printf '\e[2J\e[H%s\n%s\n%s\n\n' "${W}${B}═══ PLACEMENT TEST ═══${N}" "${D}2 questions per level, 15s each, no manpages${N}" "${D}Miss one → that's your starting level${N}"
+  printf '\e[2J\e[H%s\n%s\n%s\n\n' "${W}${B}═══ PLACEMENT TEST ═══${N}" "${D}2 questions per level, 20s each, no manpages${N}" "${D}Miss one → that's your starting level${N}"
   read -rsn1 -p "${D}Press Enter to start...${N}"; echo
   _session_init
   _mode_init place
@@ -3878,12 +3878,12 @@ place() {
       _pick_q "$lv" || break 2
       local prompt=$_qprompt ans=$_qans
       _REDRAW_HDR() {
-        local _t=15
+        local _t=20
         if ((${_rl_deadline:-0})); then local _n; printf -v _n '%(%s)T' -1; _t=$((_rl_deadline - _n)); ((_t < 0)) && _t=0; fi
         printf '\e[2J\e[H%s  %s  %s\n\n%s\n\n' "${W}${B}Level ${lv}${N}" "${D}Q${qi}/2${N}" "${W}${_t}s${N}" "${C}${prompt}${N}"
       }
       _REDRAW_HDR
-      if _read_line 0 0 15; then
+      if _read_line 0 0 20; then
         if check "$input" "$_qanswers"; then
           printf '%s\n' "${G}${B}+${N}"; ((qi_ok++)); _pause
           continue
