@@ -3324,16 +3324,16 @@ run() {
   # === BOSS ROUND ===
   _boss_splash "$lv"
 
-  # Pick 5 random questions, excluding ones seen during practice (O(n) with assoc array)
-  local boss_q=() boss_correct=0 boss_total=$BOSS_TOTAL _boss_thresh=$BOSS_THRESHOLD unseen_q=()
+  # Pick boss questions from what was practiced (mastery check, not pop quiz)
+  local boss_q=() boss_correct=0 boss_total=$BOSS_TOTAL _boss_thresh=$BOSS_THRESHOLD seen_q=()
   local -A _seen_map; for s in "${SEEN_PROMPTS[@]}"; do _seen_map[$s]=1; done
   for q in "${CURRENT_QUESTIONS[@]}"; do
     _qparse "$q"
-    [[ -z "${_seen_map[$_qprompt]:-}" ]] && unseen_q+=("$q")
+    [[ -n "${_seen_map[$_qprompt]:-}" ]] && seen_q+=("$q")
   done
-  # Use unseen questions if enough, otherwise fall back to all
-  if ((${#unseen_q[@]} >= boss_total)); then
-    boss_q=("${unseen_q[@]}"); _fshuffle_n boss_q "$boss_total"
+  # Use seen questions if enough, otherwise fall back to all
+  if ((${#seen_q[@]} >= boss_total)); then
+    boss_q=("${seen_q[@]}"); _fshuffle_n boss_q "$boss_total"
   else
     boss_q=("${CURRENT_QUESTIONS[@]}"); _fshuffle_n boss_q "$boss_total"
   fi
