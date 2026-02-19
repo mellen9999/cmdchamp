@@ -102,12 +102,12 @@ Multi-step sandbox challenges — state persists between steps.
 | 4 | Permission Lockout | L13 boss | 6 |
 | 5 | Find the Needle | L16 boss | 7 |
 | 6 | Archive & Extract | L13 boss | 6 |
-| 7 | The Incident | L18 boss | 6 |
+| 7 | The Incident | L18 boss | 5 |
 | 8 | Config Surgery | L21 boss | 5 |
 
 ## Placement test
 
-`cmdchamp place` — skip levels you already know. Asks 3 questions per level, passes at 2/3. Starts from level 1 and stops at the first failure, unlocking everything below.
+`cmdchamp place` — skip levels you already know. Asks 2 questions per level, 20s each, no manpages. Miss one and that's your starting level.
 
 ## Easter eggs
 
