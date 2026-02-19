@@ -1061,7 +1061,7 @@ explain() {
     for tok in $1; do
       case "$tok" in '>'|'>>'|'<'|'<<<'|'2>'|'&>'|'2>&1'|'|'|'|&'|'&&'|'||'|';'|'&') ;; *) continue ;; esac
       exp="${EXP[$tok]:-}"; [[ -z "$exp" ]] && continue
-      _exp_line "$tok" "$exp" "${Y}"
+      printf "%s %s\n" "${Y}${B}${tok}${N}" "${D}- ${exp}${N}"
       ((_ml++))
     done
     _esc_legend "$1"; ((_ml += REPLY))
