@@ -3867,18 +3867,12 @@ _selftest() {
 }
 
 place() {
-  local start_lv=1
-  if ((BOSS_BEATEN > 0)); then
-    start_lv=$((BOSS_BEATEN + 1))
-    ((start_lv > MAX_LEVEL)) && { printf '%s\n' "${Y}Already cleared all levels.${N}"; return; }
-    printf '%s\n' "${D}Cleared through ${BOSS_BEATEN} — testing from Level ${start_lv}${N}"
-  fi
   printf '\e[2J\e[H%s\n%s\n%s\n\n' "${W}${B}═══ PLACEMENT TEST ═══${N}" "${D}2 questions per level, 15s each, no manpages${N}" "${D}Miss one → that's your starting level${N}"
   read -rsn1 -p "${D}Press Enter to start...${N}"; echo
   _session_init
   _mode_init place
   local lv qi_ok
-  for ((lv=start_lv; lv<=MAX_LEVEL; lv++)); do
+  for ((lv=1; lv<=MAX_LEVEL; lv++)); do
     qi_ok=0
     for ((qi=1; qi<=2; qi++)); do
       _pick_q "$lv" || break 2
@@ -3904,7 +3898,8 @@ place() {
   # Set placement
   local placed=$((lv - 1))
   ((qi_ok >= 2 && lv > MAX_LEVEL)) && placed=$MAX_LEVEL
-  BOSS_BEATEN=$placed; _save_profile
+  ((placed > BOSS_BEATEN)) && BOSS_BEATEN=$placed
+  _save_profile
   LVL=$((placed >= MAX_LEVEL ? MAX_LEVEL : placed + 1)); QI=0; save
   printf '\e[2J\e[H%s\n' "${G}${B}═══ PLACEMENT COMPLETE ═══${N}"
   if ((placed == 0)); then
