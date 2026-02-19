@@ -1,5 +1,29 @@
 #!/usr/bin/env bash
-# cmdchamp
+# cmdchamp — CLI trainer (single file, no deps beyond bash 4.3+ / bwrap)
+#
+# FILE MAP (search for ═══ SECTION ═══ markers):
+#   INIT .............. version check, XDG, colors, constants
+#   PROFILE ........... load/save, first run, intro, tutorial
+#   BOSSES & LEVELS ... name arrays, scenario metadata
+#   SANDBOX ........... file generators, bwrap exec, state checks
+#   EASTER EGGS ....... 8 hidden achievements
+#   VARIABLE POOLS .... randomization data (logs, configs, IPs, etc.)
+#   HELPERS ........... _fpick, _frnum, _ctx, _QV
+#   MANPAGES & EXP .... inline manpage data, explain() renderer
+#   QUESTION DSL ...... _qparse, format docs
+#   LEVEL GENERATORS .. gen_level1–30 (question content)
+#   SCENARIOS ......... 8 sc_setup/sc_steps functions
+#   SCORING ........... _hash, _sflush, _sset, _sget, decay
+#   SESSION ........... tracking, cleanup, terminal state
+#   VI HANDLER ........ _vi_normal, _read_line (shared input)
+#   ANSWER CHECK ...... _fnorm, norm, check
+#   RUN ENGINE ........ run(), _run_loop, hdr, qdisp
+#   POST-ROOT MODES ... gauntlet, timed, review
+#   SCENARIO ENGINE ... scenario(), snapshot/rollback
+#   SELFTEST .......... _selftest (unit tests)
+#   PLACEMENT ......... place() (skip-ahead test)
+#   CLI ENTRYPOINT .... arg parsing, dispatch
+# ═══ INIT ═══
 set -uo pipefail
 [[ ${BASH_VERSINFO[0]:-0} -lt 4 || (${BASH_VERSINFO[0]} -eq 4 && ${BASH_VERSINFO[1]:-0} -lt 3) ]] && { echo "Requires bash 4.3+"; exit 1; }
 _tty() { [[ -t 0 ]] || { echo "Error: requires interactive terminal" >&2; exit 1; }; }
@@ -20,9 +44,12 @@ MAX_LEVEL=30           # Highest level number
 BOSS_TIMER=15          # Seconds per boss question
 _DECAY_T2=2592000     # 30 days: mastered → learning
 _DECAY_T1=1209600     # 14 days: learning → unseen
+_DECAY_INTERVAL=86400  # only run decay once per 24h
 
+# ═══ PROFILE ═══
 PLAYER_NAME="" BOSS_BEATEN=0 BEST_GAUNTLET=0 BEST_TIMED="0:0:0" EGGS_FOUND="" SC_DONE=""
 _PROFILE_VER=1  # bump this when profile format changes; old profiles get reset
+LAST_DECAY=0  # epoch of last decay check (persisted in profile)
 
 _load_profile() {
   if [[ -f "$DATA/profile" ]]; then
@@ -36,6 +63,7 @@ _load_profile() {
         BEST_TIMED) BEST_TIMED="$val";;
         EGGS_FOUND) EGGS_FOUND="$val";;
         SC_DONE) SC_DONE="$val";;
+        LAST_DECAY) LAST_DECAY="$val";;
         PROFILE_VER) _file_ver="$val";;
       esac
     done < "$DATA/profile"
@@ -58,8 +86,8 @@ _load_profile() {
 }
 
 _save_profile() {
-  printf 'PLAYER_NAME=%s\nBOSS_BEATEN=%d\nBEST_GAUNTLET=%d\nBEST_TIMED=%s\nEGGS_FOUND=%s\nSC_DONE=%s\nPROFILE_VER=%d\n' \
-    "$PLAYER_NAME" "$BOSS_BEATEN" "$BEST_GAUNTLET" "$BEST_TIMED" "$EGGS_FOUND" "$SC_DONE" "$_PROFILE_VER" > "$DATA/profile"
+  printf 'PLAYER_NAME=%s\nBOSS_BEATEN=%d\nBEST_GAUNTLET=%d\nBEST_TIMED=%s\nEGGS_FOUND=%s\nSC_DONE=%s\nLAST_DECAY=%d\nPROFILE_VER=%d\n' \
+    "$PLAYER_NAME" "$BOSS_BEATEN" "$BEST_GAUNTLET" "$BEST_TIMED" "$EGGS_FOUND" "$SC_DONE" "$LAST_DECAY" "$_PROFILE_VER" > "$DATA/profile"
 }
 
 _first_run() {
@@ -139,6 +167,7 @@ EOF
   echo
 }
 
+# ═══ BOSSES & LEVELS ═══
 BOSS_NAMES=("" "n00b" "CopyPasta" "CatMan" "PipeWrench" "Redirect" "Murmur" "DevNull" "AndOr" "\$VARIABLE" "\$\$"
   "BackgroundNoise" "TestCase" "SubShell" "Globber" "QuoteMaster" "ArrayLord" "TheFork" "Regex" "Cron" "Daemon"
   "RootKit" "KernelPanic" "Segfault" "ZeroDay" "TheFirewall" "Entropy" "Singularity" "Void" "Omega" "ROOT")
@@ -240,6 +269,7 @@ _boss_splash() {
   echo
 }
 
+# ═══ SANDBOX ═══
 SANDBOX_MODE=1  # ON by default
 SANDBOX_PRISTINE="$DATA/sandbox.pristine"
 SANDBOX_DIR="$DATA/sandbox"
@@ -707,7 +737,7 @@ _sandbox_check_state() {
   done
   return 0
 }
-# Terminal state management
+# ═══ SESSION ═══
 _stty_saved="" _interactive=0 _CLEANING=0
 _cleanup() {
   ((_CLEANING)) && return; _CLEANING=1
@@ -727,6 +757,7 @@ _cleanup() {
 trap '_cleanup; exit 0' INT TERM HUP EXIT
 PROMPT_CHAR="${CMD_PROMPT:-$([[ $EUID -eq 0 ]] && echo '# ' || echo '$ ')}"
 
+# ═══ EASTER EGGS ═══
 _EGG_TOTAL=8
 declare -A _EGG_DESC=(
   [sudorm]="Answer sudo rm -rf /"
@@ -771,6 +802,7 @@ _egg_check() {
   esac
 }
 
+# ═══ VARIABLE POOLS ═══
 # shellcheck disable=SC2034  # pool arrays accessed via nameref (_fpick/_ctx)
 {
 SANDBOX_LOGS=(server.log app.log logs/access.log logs/error.log)
@@ -848,7 +880,7 @@ SERVICES=(nginx apache2 mysql postgresql redis docker containerd sshd
 BRANCHES=(main master develop feature/auth feature/api fix/login hotfix/security release/v2)
 }
 
-# Fast pick/rnum - set REPLY, no subshell
+# ═══ HELPERS ═══
 _fpick() { local -n _a=$1; REPLY="${_a[$((RANDOM % ${#_a[@]}))]}"; }
 _fphrase() { local -a _a=("$@"); REPLY="${_a[$((RANDOM % ${#_a[@]}))]}"; }
 _frnum() { REPLY=$(($1 + RANDOM % ($2 - $1 + 1))); }
@@ -878,7 +910,7 @@ _ctx() {
   _frnum 1 20; n1=$REPLY; _frnum 5 50; n2=$REPLY; _frnum 2 10; n3=$REPLY; _frnum 1 5; col=$REPLY; n=$n1
 }
 
-# Compact manpage data: first line=desc, body lines already ANSI-formatted, stored pre-rendered
+# ═══ MANPAGES & EXP ═══
 # Each entry: header\nbody lines (already formatted with escape codes)
 declare -A MANPAGE=(
   [cd]=$'change directory\n  \e[32m.\e[0m         current directory      \e[32m..\e[0m        parent directory\n  \e[32m~\e[0m         home directory         \e[32m-\e[0m         previous directory\n  \e[32m../..\e[0m     up two levels'
@@ -1215,6 +1247,7 @@ explain() {
   printf '%s\n' "${D}----------------------------------------${N}"
 }
 
+# ═══ QUESTION DSL ═══
 # Question DSL format:
 #   prompt|answer1|answer2|...|#output:PATTERN#state:CHECKS#text:
 #   prompt§answer1§answer2§...§#output:PATTERN#state:CHECKS#text:
@@ -1262,6 +1295,8 @@ _qparse() {
 }
 
 VI_MODE=${CMD_VI:-1}  # always on (override with CMD_VI=0)
+
+# ═══ LEVEL GENERATORS ═══
 
 # Level 1: First Commands (pwd, ls, echo, cd)
 gen_level1() {
@@ -2551,6 +2586,7 @@ gen_level30() {
   questions+=("Encrypt ${W}${txt}${C} for offline transport|gpg -c --cipher-algo AES256 ${txt}|gpg --symmetric --cipher-algo AES256 ${txt}|gpg -c ${txt}|gpg --symmetric ${txt}|gpg2 -c --cipher-algo AES256 ${txt}|gpg2 --symmetric --cipher-algo AES256 ${txt}|gpg2 -c ${txt}|gpg2 --symmetric ${txt}")
 }
 
+# ═══ SCENARIOS ═══
 _sc_is_done() { [[ ",$SC_DONE," == *",$1,"* ]]; }
 _sc_mark_done() {
   _sc_is_done "$1" && return
@@ -2784,7 +2820,7 @@ generate_level() {
   fi
 }
 
-# Normalize flags: -la == -al == -a -l (REPLY pattern, no fork)
+# ═══ ANSWER CHECK ═══
 _fnorm() {
   [[ -z "$1" ]] && { REPLY=""; return; }
   # Handle pipes: normalize each segment independently (protect || from splitting)
@@ -3097,7 +3133,7 @@ _del() { # $1=motion
   esac; _clamp
 }
 
-# Vi normal mode handler (called from _read_line, uses dynamic scope)
+# ═══ VI HANDLER ═══
 # Accesses: input cursor mode _rep _man_open _rl_hints _rl_hist
 #           UNDO_STACK HIST HIST_IDX HIST_SAVE c
 _vi_normal() {
@@ -3213,6 +3249,7 @@ _read_line() {
   done
 }
 
+# ═══ SCORING ═══
 _sdirty=0
 _sflush_if_dirty() { ((_sdirty)) && { _sflush; _sdirty=0; }; }
 _MODE_TAG=""
@@ -3224,20 +3261,23 @@ _mode_init() {
     [[ "$k" == "#"* ]] && continue
     _sc[$k]=$v
   done < "$DATA/scores"
-  # Decay stale mastery: tier≥2 + >30d → 1, tier≥1 + >14d → 0
+  # Decay stale mastery (once per 24h): tier≥2 + >30d → 1, tier≥1 + >14d → 0
   local _now _decayed=0; printf -v _now '%(%s)T' -1
-  for _dk in "${!_sc[@]}"; do
-    local _dv="${_sc[$_dk]}" _dt="${_sc[$_dk]%%|*}"
-    local _deps="${_dv##*|}"  # last field: epoch or mode_tag
-    [[ "$_deps" =~ ^[0-9]{10,}$ ]] || continue  # no timestamp = no decay
-    local _age=$((_now - _deps))
-    if ((_dt >= 2 && _age > _DECAY_T2)); then
-      local _mid="${_dv#*|}"; _sc[$_dk]="1|${_mid%|*}|$_now"; _decayed=1
-    elif ((_dt >= 1 && _age > _DECAY_T1)); then
-      local _mid="${_dv#*|}"; _sc[$_dk]="0|${_mid%|*}|$_now"; _decayed=1
-    fi
-  done
-  ((_decayed)) && _sflush
+  if ((_now - LAST_DECAY >= _DECAY_INTERVAL)); then
+    for _dk in "${!_sc[@]}"; do
+      local _dv="${_sc[$_dk]}" _dt="${_sc[$_dk]%%|*}"
+      local _deps="${_dv##*|}"  # last field: epoch or mode_tag
+      [[ "$_deps" =~ ^[0-9]{10,}$ ]] || continue  # no timestamp = no decay
+      local _age=$((_now - _deps))
+      if ((_dt >= 2 && _age > _DECAY_T2)); then
+        local _mid="${_dv#*|}"; _sc[$_dk]="1|${_mid%|*}|$_now"; _decayed=1
+      elif ((_dt >= 1 && _age > _DECAY_T1)); then
+        local _mid="${_dv#*|}"; _sc[$_dk]="0|${_mid%|*}|$_now"; _decayed=1
+      fi
+    done
+    LAST_DECAY=$_now; _save_profile
+    ((_decayed)) && _sflush
+  fi
   _sget() { _hash "$1"; local _v="${_sc[$REPLY]:-1}"; REPLY="${_v%%|*}"; }
   HIST=() HIST_IDX=0 HIST_SAVE=""
   _interactive=1; _stty_saved=$(stty -g 2>/dev/null) || _stty_saved=""
@@ -3245,6 +3285,7 @@ _mode_init() {
 }
 _preq_reset() { ((SANDBOX_MODE && _SANDBOX_DESTRUCTIVE)) && { _sandbox_reset; _SANDBOX_DESTRUCTIVE=0; }; }
 
+# ═══ RUN ENGINE ═══
 run() {
   local lv=$1 boss_only=${2:-0} shuf=() qi=${QI:-0} streak=0
   local -a SEEN_PROMPTS=()
@@ -3416,7 +3457,7 @@ _post_root_check() {
   fi
 }
 
-# Pick random question from a level (uses cache)
+# ═══ POST-ROOT MODES ═══
 _pick_q() {
   if [[ -z "${_LEVEL_CACHE[$1]:-}" ]]; then
     local _pqtmp=(); gen_level$1 _pqtmp
@@ -3636,6 +3677,7 @@ review() {
   printf '%s\n' "${G}${B}Review complete!${N}"
 }
 
+# ═══ SCENARIO ENGINE ═══
 _sc_menu() {
   printf '\e[2J\e[H'
   printf '%s\n' "${W}${B}═══ SCENARIOS ═══${N}"
@@ -3747,6 +3789,7 @@ scenario() {
   echo
 }
 
+# ═══ SELFTEST ═══
 _selftest() {
   local _pass=0 _fail=0 _t
   _assert() {
@@ -3850,6 +3893,44 @@ _selftest() {
   _assert "qparse text flag" "$_qtext" "1"
   _assert "qparse text no output" "$_qoutput" ""
 
+  printf '%s\n' "${B}=== vi handler ===${N}"
+  # Test harness: set up shared vars, call _vi_normal with c=KEY, check input/cursor
+  local _save_draw; _save_draw=$(declare -f draw)
+  draw() { :; }  # no-op during tests
+  _REDRAW_HDR() { :; }
+  _quit() { :; }
+  local _rl_hints=0 _rl_hist=0 _man_open=0 mode=normal _rep=""
+  local UNDO_STACK=() HIST=() HIST_IDX=0 HIST_SAVE=""
+
+  # _vi_assert: set input/cursor, feed key(s), check result
+  _vi_assert() {
+    local desc=$1 init_input=$2 init_cursor=$3 keys=$4 want_input=$5 want_cursor=$6
+    input="$init_input" cursor=$init_cursor _rep="" mode="normal" UNDO_STACK=()
+    local _k; for ((_k=0; _k<${#keys}; _k++)); do c="${keys:_k:1}"; _vi_normal || true; done
+    local _ok=1
+    [[ "$input" != "$want_input" ]] && _ok=0
+    ((cursor != want_cursor)) && _ok=0
+    if ((_ok)); then ((_pass++))
+    else ((_fail++)); printf '  FAIL: %s\n    input: "%s" (want "%s")  cursor: %d (want %d)\n' "$desc" "$input" "$want_input" "$cursor" "$want_cursor"; fi
+  }
+
+  _vi_assert "h moves left"       "hello" 3 "h"   "hello" 2
+  _vi_assert "l moves right"      "hello" 1 "l"   "hello" 2
+  _vi_assert "0 goes to start"    "hello" 3 "0"   "hello" 0
+  _vi_assert '$ goes to end'      "hello" 0 '$'   "hello" 4
+  _vi_assert "x deletes char"     "hello" 1 "x"   "hllo"  1
+  _vi_assert "X deletes before"   "hello" 2 "X"   "hllo"  1
+  _vi_assert "D deletes to end"   "hello" 2 "D"   "he"    1
+  _vi_assert "S clears line"      "hello" 2 "S"   ""      0
+  _vi_assert "h at 0 stays"       "abc"   0 "h"   "abc"   0
+  _vi_assert "l at end stays"     "abc"   2 "l"   "abc"   2
+  _vi_assert "2x deletes 2"      "abcde" 1 "2x"  "ade"   1
+  _vi_assert "3h moves 3 left"   "abcde" 4 "3h"  "abcde" 1
+  _vi_assert "2l moves 2 right"  "abcde" 0 "2l"  "abcde" 2
+
+  # Restore draw
+  eval "$_save_draw"
+
   printf '%s\n' "${B}=== gen_level smoke ===${N}"
   local _lv _lines _empty_ok=0
   for ((_lv=1; _lv<=30; _lv++)); do
@@ -3866,6 +3947,7 @@ _selftest() {
   return $((_fail > 0))
 }
 
+# ═══ PLACEMENT ═══
 place() {
   printf '\e[2J\e[H%s\n%s\n%s\n\n' "${W}${B}═══ PLACEMENT TEST ═══${N}" "${D}2 questions per level, 20s each, no manpages${N}" "${D}Miss one → that's your starting level${N}"
   read -rsn1 -p "${D}Press Enter to start...${N}"; echo
@@ -3914,7 +3996,7 @@ place() {
   ((placed < MAX_LEVEL)) && { _pause; _run_loop; }
 }
 
-# Handle --no-sandbox flag (any position)
+# ═══ CLI ENTRYPOINT ═══
 _args=()
 for _a in "$@"; do [[ "$_a" == "--no-sandbox" ]] && SANDBOX_MODE=0 || _args+=("$_a"); done
 set -- "${_args[@]+"${_args[@]}"}"
@@ -3944,6 +4026,7 @@ case "${1:-}" in
   r|reset) rm -f "$DATA"/*.json "$DATA/scores" "$DATA/scores.lock" "$DATA/profile"; rm -rf "$DATA/sandbox" "$DATA/sandbox.pristine" 2>/dev/null; echo "Reset.";;
   c|cleanup) [[ -f "$DATA/scores" ]] && { local _fd; exec {_fd}>"$DATA/scores.lock"; flock -x "$_fd"; awk -F'|' '/^#/{next} {data[$1]=$0} END{print "#v1"; for(k in data)print data[k]}' "$DATA/scores" > "$DATA/scores.tmp" && mv "$DATA/scores.tmp" "$DATA/scores"; exec {_fd}>&-; _cnt=$(wc -l < "$DATA/scores"); echo "Deduplicated scores."; ((_cnt > 5000)) && echo "Warning: scores file has $_cnt entries — consider resetting."; } || echo "No scores file.";;
   test|selftest) _selftest;;
+  t|tutorial) _tutorial;;
   s|stats) _load_profile; stats;;
   review) _tty; _load_profile; review;;
   gauntlet) _tty; _load_profile; gauntlet;;
@@ -3966,6 +4049,7 @@ Commands:
   p|progress    Show level progress
   n|new         Start fresh from level 1
   s|stats       Show mastery statistics
+  t|tutorial    Show controls and vi keybindings
   review        Practice weak levels (mastery < 80%)
   gauntlet      3 lives, escalating difficulty (post-ROOT)
   timed [60|120|300]  Race the clock (post-ROOT, default 120s)
@@ -3982,9 +4066,10 @@ Controls:
   ?        Show vi keybindings (in vi mode)
 
 EOF
+    printf '\n%s\n' "${D}Levels 24-30 are security/offensive — knowledge only, no tools needed.${N}"
     for lv in {1..30}; do printf "  %2d - %s\n" "$lv" "${LEVEL_NAMES[$lv]}"; done
     ;;
   n|new) _tty; _load_profile; LVL=1; QI=0; save; _run_loop;;
   "") _tty; _load_profile; load; ((LVL>1||QI>0)) && { read -rp "Continue Level $LVL Q$((QI+1))? [Y/n] " yn; [[ "$yn" =~ ^[Nn] ]] && { LVL=1; QI=0; save; _intro; _tutorial; }; }; _run_loop;;
-  *) echo "Usage: cmdchamp [1-30|new|progress|stats|review|gauntlet|timed|scenario|place|reset|help]"; exit 1;;
+  *) echo "Usage: cmdchamp [1-30|new|progress|stats|tutorial|review|gauntlet|timed|scenario|place|reset|help]"; exit 1;;
 esac
