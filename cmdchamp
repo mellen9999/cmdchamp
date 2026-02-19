@@ -2869,7 +2869,8 @@ _calc_mastery() {
   for k in "${!_src[@]}"; do
     local _val="${_src[$k]}" _tier _lvtag
     _tier="${_val%%|*}"
-    [[ "$_val" == *"|"* ]] && { _lvtag="${_val#*|}"; _cm_tagged=1; } || _lvtag=""
+    if [[ "$_val" == *"|"* ]]; then _lvtag="${_val#*|}"; _lvtag="${_lvtag%%|*}"; _cm_tagged=1
+    else _lvtag=""; fi
     case "$_tier" in 0|1) ((_cm_t1++));; *) ((_cm_t2++));; esac
     ((_cm_seen++))
     [[ -n "$_lvtag" ]] && {
