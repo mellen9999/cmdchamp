@@ -1278,7 +1278,7 @@ gen_level5() {
   questions+=("Shuffle lines of ${W}${csv}${C} randomly using redirection|shuf < ${csv}")
   questions+=("Show first ${n} lines of ${W}${log}${C} using redirection|head -${n} < ${log}|head -n ${n} < ${log}|head --lines ${n} < ${log}|head --lines=${n} < ${log}")
   questions+=("Display ${W}${txt}${C} using input redirection|cat < ${txt}")
-  questions+=("Sort ${W}${csv}${C} with redirection, save to ${W}sorted.csv${C}|sort < ${csv} > sorted.csv|sort ${csv} > sorted.csv|sort > sorted.csv < ${csv}|#state:exists:sorted.csv")
+  questions+=("Sort ${W}${csv}${C} and save output to ${W}sorted.csv${C}|sort < ${csv} > sorted.csv|sort ${csv} > sorted.csv|sort > sorted.csv < ${csv}|#state:exists:sorted.csv")
   questions+=("Show last ${n} lines of ${W}${log}${C} using redirection|tail -${n} < ${log}|tail -n ${n} < ${log}|tail --lines ${n} < ${log}|tail --lines=${n} < ${log}")
   questions+=("Count bytes in ${W}${txt}${C} — just the number|wc -c < ${txt}|wc --bytes < ${txt}")
 }
@@ -2816,6 +2816,29 @@ check() {
   _text_match "$inp" "$ninp" "$2" "$_qdelim"
 }
 
+_show_alts() {
+  local inp=$1 answers=$2 delim=$3
+  _fnorm "$inp"; local ninp=$REPLY
+  local -a opts shown=()
+  IFS="$delim" read -ra opts <<< "$answers"
+  local a b max=3
+  for a in "${opts[@]}"; do
+    b="${a#"${a%%[![:space:]]*}"}"; b="${b%"${b##*[![:space:]]}"}"
+    [[ -z "$b" || "$b" == ~* ]] && continue
+    _fnorm "$b"
+    [[ "$inp" == "$b" || "$ninp" == "$REPLY" ]] && continue
+    shown+=("$b")
+    ((${#shown[@]} >= max)) && break
+  done
+  ((${#shown[@]})) || return 0
+  local out=""
+  for a in "${shown[@]}"; do
+    [[ -n "$out" ]] && out+=", "
+    out+="$a"
+  done
+  printf '  %s %s\n' "${D}Also:" "$out${N}"
+}
+
 LVL=1 QI=0 TOT=0
 load() {
   [[ -f "$DATA/session.json" ]] && {
@@ -3188,7 +3211,7 @@ run() {
       _read_line 1 1
       [[ -z "$input" ]] && { draw; continue; }
       if check "$input" "$_qanswers"; then
-        _sc; _egg_check streak
+        _sc; _show_alts "$input" "$_qanswers" "$_qdelim"; _egg_check streak
         if ((streak>=FIRE_STREAK)); then
           local _new_tier=$((_real_tier<2?_real_tier+1:2))
           ((_real_tier < 2 && _new_tier >= 2)) && ((_S_MASTERED++))
@@ -3509,7 +3532,7 @@ review() {
       _read_line 1 1
       [[ -z "$input" ]] && { draw; continue; }
       if check "$input" "$_qanswers"; then
-        _sc; _egg_check streak
+        _sc; _show_alts "$input" "$_qanswers" "$_qdelim"; _egg_check streak
         local _new_tier=$((tier<2?tier+1:2))
         ((tier < 2 && _new_tier >= 2)) && ((_S_MASTERED++))
         _sset "$prompt" "$_new_tier"
