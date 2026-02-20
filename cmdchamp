@@ -3290,7 +3290,7 @@ run() {
     printf '%s\n' "${D}r = retry boss, p = practice level${N}"
     read -rsn1 choice
     case "$choice" in
-      p) QI=0; save; _sflush_if_dirty; _NEXT_LV=$lv _NEXT_BOSS=0; return 0 ;;
+      p|P) QI=0; save; _sflush_if_dirty; _NEXT_LV=$lv _NEXT_BOSS=0; return 0 ;;
       *) save; _sflush_if_dirty; _NEXT_LV=$lv _NEXT_BOSS=1; return 0 ;;
     esac
   fi
