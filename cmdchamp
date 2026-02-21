@@ -2831,12 +2831,10 @@ _show_alts() {
     ((${#shown[@]} >= max)) && break
   done
   ((${#shown[@]})) || return 0
-  local out=""
-  for a in "${shown[@]}"; do
-    [[ -n "$out" ]] && out+=", "
-    out+="$a"
+  printf '  %s %s\n' "${D}Also:" "${shown[0]}${N}"
+  local a; for a in "${shown[@]:1}"; do
+    printf '         %s\n' "$a${N}"
   done
-  printf '  %s %s\n' "${D}Also:" "$out${N}"
 }
 
 LVL=1 QI=0 TOT=0
