@@ -2831,9 +2831,9 @@ _show_alts() {
     ((${#shown[@]} >= max)) && break
   done
   ((${#shown[@]})) || return 0
-  printf '  %s %s\n' "${D}Also:" "${shown[0]}${N}"
-  local a; for a in "${shown[@]:1}"; do
-    printf '         %s\n' "$a${N}"
+  printf '    %s\n' "${D}Also:${N}"
+  local a; for a in "${shown[@]}"; do
+    printf '  %s\n' "${D}$a${N}"
   done
 }
 
@@ -3059,7 +3059,7 @@ _vi_normal() {
           [[ "$_vq" == "q" ]] && { _egg_found vimquit; _quit; };;
       esac;;
     \?) ((_rl_hints)) && { printf '\n%s\n%s\n%s\n%s\n' "${D}hl${N} move  ${D}kj${N}/↑↓ history  ${D}wb${N} word  ${D}fFtT${N}+char find  ${D}0\$/gg/G${N} line" "${D}x/X${N} del char  ${D}dw/db/dd${N} del  ${D}cw/cb/cc${N} change  ${D}r${N} replace" "${D}s/S${N} subst  ${D}i/a/I/A${N} insert  ${D}u${N} undo(stack)  ${D}:q/:wq${N} quit" "${D}Tab${N} man  ${D}Ctrl+d${N} quit  ${D}[num]cmd${N} repeat"; read -rsn1; _REDRAW_HDR; draw; };;
-    '') ((_man_open)) && printf '\e[s\n\e[J\e[u'; _man_open=0; echo; return 0;;
+    '') ((_man_open)) && printf '\e7\n\e[J\e8'; _man_open=0; echo; return 0;;
   esac
   return 1
 }
@@ -3091,9 +3091,9 @@ _read_line() {
     if [[ "$c" == $'\t' ]]; then
       if ((_rl_hints)); then
         ((_man_open)) && _man_open=0 || _man_open=1
-        printf '\e[?25l\e[s\n\e[J'  # hide cursor, save pos, clear below
+        printf '\e[?25l\e7\n\e[J'  # hide cursor, save pos (DEC), clear below
         ((_man_open)) && explain "$ans"
-        printf '\e[u\e[?25h'  # restore pos, show cursor
+        printf '\e8\e[?25h'  # restore pos (DEC), show cursor
       else printf '\n%s\n' "${R}Not available in this mode!${N}"; sleep 0.5; printf '\e[A\e[2K'; fi
       continue
     fi
@@ -3111,7 +3111,7 @@ _read_line() {
             UNDO_STACK+=("$cursor:$input"); mode="normal"; ((cursor>0)) && ((cursor--)); draw
           fi;;
         $'\x7f'|$'\b') ((cursor>0)) && { input="${input:0:cursor-1}${input:cursor}"; ((cursor--)); draw; };;
-        '') ((_man_open)) && printf '\e[s\n\e[J\e[u'; _man_open=0; echo; return 0;;
+        '') ((_man_open)) && printf '\e7\n\e[J\e8'; _man_open=0; echo; return 0;;
         *) input="${input:0:cursor}${c}${input:cursor}"; ((++cursor)); draw;;
       esac
     elif ((VI_MODE)); then
