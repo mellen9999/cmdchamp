@@ -1,2 +1,3 @@
 # User data (stored in ~/.local/share/cmdchamp/)
 *.tmp
+cmdchamp.bak.*
