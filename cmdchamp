@@ -504,7 +504,7 @@ _SANDBOX_DESTRUCTIVE=0
 _is_destructive() {
   local cmd="$1"
   [[ "$cmd" =~ (^|[[:space:];&|])(rm|mv|cp|dd|truncate|shred|unlink|tee|chmod|chown|mkfs|fdisk|parted|install|split|patch|ln|mkdir|touch)[[:space:]] ]] && return 0
-  [[ "$cmd" =~ (\>\>|\>[^>]) ]] && return 0
+  [[ "$cmd" =~ [^0-9](\>\>|\>[^>])|^(\>\>|\>[^>]) ]] && return 0
   [[ "$cmd" =~ sed[[:space:]]+(-i|--in-place) ]] && return 0
   [[ "$cmd" =~ :[[:space:]]*\> ]] && return 0
   [[ "$cmd" =~ find[[:space:]].*-delete ]] && return 0
@@ -556,8 +556,8 @@ _sandbox_check_state() {
   # Split on commas only when followed by a check keyword (avoids breaking values with commas)
   local _rem="$checks" _seg
   while [[ -n "$_rem" ]]; do
-    if [[ "$_rem" =~ ^((!?(exists|contains|lines|line1|perm)):.*),((!?(exists|contains|lines|line1|perm)):) ]]; then
-      _seg="${_rem%%,"${BASH_REMATCH[4]}"*}"
+    if [[ "$_rem" =~ ^((!?(exists|contains|lines|line1|perm)):[^,]*),((!?(exists|contains|lines|line1|perm)):) ]]; then
+      _seg="${BASH_REMATCH[1]}"
       _rem="${_rem:${#_seg}+1}"
     else _seg="$_rem"; _rem=""; fi
     checks_arr+=("$_seg")
@@ -572,7 +572,8 @@ _sandbox_check_state() {
       contains:*:*|!contains:*:*)
         local _neg=0; [[ "$check" == !* ]] && { _neg=1; check="${check:1}"; }
         local rest="${check#contains:}"; local file="${rest%%:*}" pattern="${rest#*:}"
-        ((_neg)) && { grep -qF "$pattern" -- "$SANDBOX_DIR/$file" 2>/dev/null && return 1; } || { grep -qF "$pattern" -- "$SANDBOX_DIR/$file" 2>/dev/null || return 1; }
+        if ((_neg)); then grep -qF "$pattern" -- "$SANDBOX_DIR/$file" 2>/dev/null && return 1
+        else grep -qF "$pattern" -- "$SANDBOX_DIR/$file" 2>/dev/null || return 1; fi
         ;;
       lines:*:*)
         local rest="${check#lines:}"; local file="${rest%%:*}" count="${rest#*:}"
@@ -1649,7 +1650,7 @@ gen_level15() {
   questions+=("Resize pane down by 10 lines|tmux resize-pane -D 10|tmux resizep -D 10")
   questions+=("Resize pane right by 20 columns|tmux resize-pane -R 20|tmux resizep -R 20")
   questions+=("Swap with next pane|tmux swap-pane -D|tmux swapp -D")
-  questions+=("Send 'ls -la' + Enter to session 'work'|tmux send-keys -t work 'ls -la' Enter|tmux send-keys -t work 'ls -la' C-m|~^tmux send-keys -t work ['\"]ls -la['\"] (Enter|C-m)$")
+  questions+=("Send 'ls -la' + Enter to session 'work'§tmux send-keys -t work 'ls -la' Enter§tmux send-keys -t work 'ls -la' C-m§~^tmux send-keys -t work ['\"]ls -la['\"] (Enter|C-m)$")
   questions+=("Capture pane output to stdout|tmux capture-pane -p|tmux capturep -p")
   questions+=("Save pane output to file§tmux capture-pane -p > output.txt§tmux capturep -p > output.txt")
   questions+=("Run command in new window§tmux new-window 'htop'§tmux neww 'htop'§tmux new-window htop§tmux neww htop§tmux new-window \"htop\"§tmux neww \"htop\"")
@@ -1868,7 +1869,7 @@ gen_level20() {
   questions+=("if/elif/else|if [[ c1 ]]; then cmd1; elif [[ c2 ]]; then cmd2; else cmd3; fi|if [ c1 ]; then cmd1; elif [ c2 ]; then cmd2; else cmd3; fi|if test c1; then cmd1; elif test c2; then cmd2; else cmd3; fi")
   questions+=("Test if ${W}${txt}${C} exists and display it|[[ -f ${txt} ]] && cat ${txt}|[ -f ${txt} ] && cat ${txt}|test -f ${txt} && cat ${txt}|[[ -e ${txt} ]] && cat ${txt}|[ -e ${txt} ] && cat ${txt}|test -e ${txt} && cat ${txt}")
   questions+=("Test if grep finds ${Y}${term}${C} in ${W}${log}${C}|if grep -q ${term} ${log}; then echo found; fi|grep -q ${term} ${log} && echo found|if grep --quiet ${term} ${log}; then echo found; fi|grep --quiet ${term} ${log} && echo found|if grep --silent ${term} ${log}; then echo found; fi|grep --silent ${term} ${log} && echo found|rg -q ${term} ${log} && echo found|rg --quiet ${term} ${log} && echo found")
-  questions+=("Negate condition in ${W}${txt}${C}|if ! [[ -f ${txt} ]]; then echo missing; fi|if ! [ -f ${txt} ]; then echo missing; fi|if [ ! -f ${txt} ]; then echo missing; fi|if [[ ! -f ${txt} ]]; then echo missing; fi|if ! test -f ${txt}; then echo missing; fi|[[ ! -f ${txt} ]] && echo missing|[[ -f ${txt} ]] || echo missing|[ -f ${txt} ] || echo missing|test -f ${txt} || echo missing")
+  questions+=("Negate condition in ${W}${txt}${C}§if ! [[ -f ${txt} ]]; then echo missing; fi§if ! [ -f ${txt} ]; then echo missing; fi§if [ ! -f ${txt} ]; then echo missing; fi§if [[ ! -f ${txt} ]]; then echo missing; fi§if ! test -f ${txt}; then echo missing; fi§[[ ! -f ${txt} ]] && echo missing§[[ -f ${txt} ]] || echo missing§[ -f ${txt} ] || echo missing§test -f ${txt} || echo missing")
   questions+=("Compound AND condition in ${W}${txt}${C}|if [[ -f ${txt} && -r ${txt} ]]; then cat ${txt}; fi|if [ -f ${txt} ] && [ -r ${txt} ]; then cat ${txt}; fi|[[ -f ${txt} && -r ${txt} ]] && cat ${txt}|[ -f ${txt} ] && [ -r ${txt} ] && cat ${txt}|test -f ${txt} && test -r ${txt} && cat ${txt}")
   questions+=("Compound OR condition§if [[ -z \"\$var\" || \"\$var\" == \"default\" ]]; then echo empty; fi§if [ -z \"\$var\" ] || [ \"\$var\" = \"default\" ]; then echo empty; fi§if test -z \"\$var\" || test \"\$var\" = \"default\"; then echo empty; fi")
   questions+=("Process all .${ext} files in current dir|for f in *.${ext}; do echo \"Processing \$f\"; done|for f in *.${ext}; do echo \"Processing \${f}\"; done")
@@ -2051,8 +2052,8 @@ gen_level22() {
 gen_level23() {
   local -n questions=${1:-CURRENT_QUESTIONS}; questions=(); eval "local $_QV"; _ctx
   questions+=("Initialize new git repo|git init|git init .")
-  questions+=("Clone repo from URL|~^git clone (https?://|git@)\\S+")
-  questions+=("Clone repo to specific dir|~^git clone (https?://|git@)\\S+ \\S+")
+  questions+=("Clone repo from URL§~^git clone (https?://|git@)\\S+")
+  questions+=("Clone repo to specific dir§~^git clone (https?://|git@)\\S+ \\S+")
   questions+=("Check repo status|git status|git status -s|git status --short")
   questions+=("Show current branch|git branch --show-current|git rev-parse --abbrev-ref HEAD")
   questions+=("Stage file '${txt}' for commit|git add ${txt}|git stage ${txt}")
@@ -2060,7 +2061,7 @@ gen_level23() {
   questions+=("Stage all files including untracked|git add -A|git add --all|git add .")
   questions+=("Stage interactively (hunks)|git add -p|git add --patch")
   questions+=("Commit with message|git commit -m \"message\"|git commit -m 'message'|~^git commit -m .+$")
-  questions+=("Commit all tracked changes|git commit -am \"message\"|git commit -a -m \"message\"|git commit -am 'message'|git commit -a -m 'message'|~^git commit (-am?|-a -m) .+$")
+  questions+=("Commit all tracked changes§git commit -am \"message\"§git commit -a -m \"message\"§git commit -am 'message'§git commit -a -m 'message'§~^git commit (-am?|-a -m) .+$")
   questions+=("Amend last commit message|git commit --amend -m \"new message\"|git commit --amend -m 'new message'|~^git commit --amend -m .+$")
   questions+=("Amend last commit (add files)|git commit --amend --no-edit")
   questions+=("List all branches|git branch -a|git branch --all")
@@ -2095,7 +2096,7 @@ gen_level23() {
   questions+=("Reset to last commit (discard changes)|git reset --hard HEAD~1|git reset --hard HEAD^|git reset --hard HEAD~")
   questions+=("Revert a commit (new commit)|git revert HEAD|git revert --no-edit HEAD")
   questions+=("Stash changes|git stash|git stash push")
-  questions+=("Stash with message|git stash push -m \"message\"|git stash save \"message\"|git stash push -m 'message'|git stash save 'message'|~^git stash (push -m|save) .+$")
+  questions+=("Stash with message§git stash push -m \"message\"§git stash save \"message\"§git stash push -m 'message'§git stash save 'message'§~^git stash (push -m|save) .+$")
   questions+=("Apply latest stash (keep in stash list)|git stash apply|git stash apply stash@{0}")
   questions+=("Apply latest stash and remove from stash list|git stash pop|git stash pop stash@{0}")
   questions+=("List stashes|git stash list")
@@ -2111,7 +2112,7 @@ gen_level23() {
   questions+=("Create lightweight tag|~^git tag v[0-9]")
   questions+=("Create annotated tag|~^git tag -a v[0-9].* -m ")
   questions+=("Push tags to remote|git push --tags|git push origin --tags")
-  questions+=("Delete a tag|~^git tag (-d|--delete) v[0-9]")
+  questions+=("Delete a tag§~^git tag (-d|--delete) v[0-9]")
   questions+=("Set user name globally|~^git config --global user\\.name .+")
   questions+=("Set user email globally|~^git config --global user\\.email .+@.+")
   questions+=("List all config|git config --list|git config -l")
@@ -2121,7 +2122,7 @@ gen_level23() {
   questions+=("Clean untracked files|git clean -f|git clean --force")
   questions+=("Clean untracked files and dirs|git clean -fd|git clean -df|git clean -f -d|git clean --force -d|git clean -d --force")
   questions+=("Show reflog|git reflog|git reflog show")
-  questions+=("Recover deleted branch from reflog|~^git (checkout -b|switch -c|switch --create|branch) \\S+ ([0-9a-f]+|HEAD@\\{[0-9]+\\})")
+  questions+=("Recover deleted branch from reflog§~^git (checkout -b|switch -c|switch --create|branch) \\S+ ([0-9a-f]+|HEAD@\\{[0-9]+\\})")
 }
 
 # Level 24: Network Tools
@@ -3141,8 +3142,8 @@ _mode_init() {
       [[ "$_deps" =~ ^[0-9]{10,}$ ]] || continue  # no timestamp = no decay
       local _age=$((_now - _deps))
       if ((_dt >= 2 && _age > _DECAY_T2)); then
-        local _mid="${_dv#*|}"; _sc[$_dk]="1|${_mid%|*}|$_now"; _decayed=1
-      elif ((_dt >= 1 && _age > _DECAY_T1)); then
+        local _mid="${_dv#*|}"; _sc[$_dk]="$((_dt - 1))|${_mid%|*}|$_now"; _decayed=1
+      elif ((_dt == 1 && _age > _DECAY_T1)); then
         local _mid="${_dv#*|}"; _sc[$_dk]="0|${_mid%|*}|$_now"; _decayed=1
       fi
     done
@@ -3899,8 +3900,8 @@ _selftest() {
     [[ "$_deps" =~ ^[0-9]{10,}$ ]] || continue
     local _age=$((_now - _deps))
     if ((_dt >= 2 && _age > _DECAY_T2)); then
-      local _mid="${_dv#*|}"; _sc[$_dk]="1|${_mid%|*}|$_now"
-    elif ((_dt >= 1 && _age > _DECAY_T1)); then
+      local _mid="${_dv#*|}"; _sc[$_dk]="$((_dt - 1))|${_mid%|*}|$_now"
+    elif ((_dt == 1 && _age > _DECAY_T1)); then
       local _mid="${_dv#*|}"; _sc[$_dk]="0|${_mid%|*}|$_now"
     fi
   done
