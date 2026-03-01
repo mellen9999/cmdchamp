@@ -1068,7 +1068,7 @@ explain() {
     done
     _esc_legend "$1"; ((_ml += REPLY))
     printf '%s\n' "${D}----------------------------------------${N}"
-    return
+    _EXP_LINES=$((_ml + 2)); return
   fi
   local _cp=1  # command position: 1=expecting command, 0=in arguments
   for tok in $1; do
@@ -1097,6 +1097,7 @@ explain() {
   ((n == 0)) && { printf '  %s\n' "${Y}$1${N}"; ((++n)); }
   _esc_legend "$1"; ((n += REPLY))
   printf '%s\n' "${D}----------------------------------------${N}"
+  _EXP_LINES=$((n + 2))
 }
 
 # ═══ QUESTION DSL ═══
@@ -3092,10 +3093,11 @@ _read_line() {
     if [[ "$c" == $'\t' ]]; then
       if ((_rl_hints)); then
         ((_man_open)) && _man_open=0 || _man_open=1
-        printf '\e[?25l\e7\n\e[J'  # hide cursor, save pos (DEC), clear below
-        ((_man_open)) && explain "$ans"
-        printf '\e8\e[?25h'  # restore pos (DEC), show cursor
-      else printf '\n%s\n' "${R}Not available in this mode!${N}"; sleep 0.5; printf '\e[A\e[2K'; fi
+        printf '\e[?25l\n\e[J'
+        if ((_man_open)); then explain "$ans"; printf "\e[$((_EXP_LINES + 1))A\r"
+        else printf '\e[A\r'; fi
+        draw
+      else printf '\e[?25l\n%s' "${R}Not available in this mode!${N}"; sleep 0.5; printf '\e[A\r\e[J'; draw; fi
       continue
     fi
     if [[ "$mode" == "insert" ]]; then
