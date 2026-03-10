@@ -3975,7 +3975,7 @@ place() {
   elif ((placed >= MAX_LEVEL)); then
     printf '%s\n' "${Y}${B}Perfect!${N} All levels cleared — post-ROOT modes unlocked"
   else
-    printf '%s\n' "Placed at ${W}Level $((placed + 1))${N} (cleared through ${placed})"
+    printf '%s\n' "Placed at ${W}Level $((placed + 1))${N}"
   fi
   _sflush_if_dirty
   echo
