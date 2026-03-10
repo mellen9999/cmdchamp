@@ -4,7 +4,7 @@ Bash CLI trainer — 30 levels from `ls` to privilege escalation.
 
 ![demo](demo.gif)
 
-Drill real commands until they're muscle memory. Every question asks you to type a real command — get instant feedback, move on.
+Drill real commands until they're muscle memory. Every question asks you to type a real command — get it right or get corrected.
 
 - Accepts multiple valid syntaxes (`sort -u` and `sort | uniq` both work)
 - With [bubblewrap](https://github.com/containers/bubblewrap), questions run against real files in a sandbox
