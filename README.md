@@ -105,7 +105,7 @@ First run includes an automatic placement test after the tutorial — 2 question
 
 ## Floppy disks
 
-8 hidden floppy disks to collect. `cmdchamp stats` shows how many you've found.
+8 hidden floppy disks to collect.
 
 ## Controls
 
