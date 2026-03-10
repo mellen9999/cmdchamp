@@ -162,8 +162,9 @@ _tutorial() {
     ${C}h l${N}       Move cursor          ${C}w b e${N}     Word navigation
     ${C}f t ; ,${N}   Find char/repeat     ${C}i a I A${N}   Insert mode
     ${C}d{motion}${N} Delete               ${C}c{motion}${N} Change
-    ${C}y{motion}${N} Yank    ${C}p P${N} Paste   ${C}~ ${N}Toggle case
-    ${C}u${N}         Undo (multi-level)   ${C}?${N}         Full vi help
+    ${C}y{motion}${N} Yank                 ${C}p P${N}       Paste
+    ${C}u${N}         Undo (multi-level)   ${C}~${N}         Toggle case
+    ${C}?${N}         Full vi help
 
 EOF
   read -rsn1 -p "                            Press Enter to continue..."
