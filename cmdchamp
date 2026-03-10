@@ -4101,6 +4101,80 @@ case "${1:-}" in
   r|reset) rm -f "$DATA"/*.json "$DATA/scores" "$DATA/scores.lock" "$DATA/profile"; rm -rf "$DATA/sandbox" "$DATA/sandbox.pristine" 2>/dev/null; echo "Reset.";;
   c|cleanup) [[ -f "$DATA/scores" ]] && { _fd=0; exec {_fd}>"$DATA/scores.lock"; flock -x "$_fd"; awk -F'|' '/^#/{next} {data[$1]=$0} END{print "#v1"; for(k in data)print data[k]}' "$DATA/scores" > "$DATA/scores.tmp" && mv "$DATA/scores.tmp" "$DATA/scores"; exec {_fd}>&-; _cnt=$(wc -l < "$DATA/scores"); echo "Deduplicated scores."; ((_cnt > 5000)) && echo "Warning: scores file has $_cnt entries — consider resetting."; } || echo "No scores file.";;
   test|selftest) _selftest;;
+  preview)
+    # Dev-only: dump all visual content for review
+    [[ "${CMDCHAMP_DEV:-}" != "1" ]] && { echo "Unknown command. Try: cmdchamp help"; exit 1; }
+    _preview() {
+    PLAYER_NAME="${PLAYER_NAME:-preview}" BOSS_BEATEN=30
+
+    printf '%s\n' "${B}═══ INTRO SCREEN ═══${N}"
+    local pad=$((25 - ${#PLAYER_NAME})); ((pad < 0)) && pad=0
+    local spaces; printf -v spaces '%*s' "$pad" ''
+    cat <<INTROEOF
+
+    ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
+    ░░                                                                  ░░
+    ░░      The networks are dead. The sky is ash.                      ░░
+    ░░      What remains runs on bone and silicon.                      ░░
+    ░░                                                                  ░░
+    ░░      You are ${W}${B}${PLAYER_NAME}${N}. You have only your shell.${spaces}░░
+    ░░                                                                  ░░
+    ░░      30 daemons guard the descent to ROOT.                       ░░
+    ░░                                                                  ░░
+    ░░      ${D}Know the words, or be forgotten.${N}                            ░░
+    ░░                                                                  ░░
+    ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
+INTROEOF
+
+    printf '\n%s\n' "${B}═══ LEVELS & BOSSES ═══${N}"
+    for ((lv=1; lv<=MAX_LEVEL; lv++)); do
+      printf '\n  %s %2d: %-22s  %sBoss: %-16s%s  %s\n' "${W}${B}Level${N}" "$lv" "${LEVEL_NAMES[$lv]:-}" "${C}" "${BOSS_NAMES[$lv]:-}" "${N}" "${D}\"${BOSS_FLAVOR[$lv]:-}\"${N}"
+      local _pq=(); gen_level$lv _pq
+      for ((_si=0; _si<3 && _si<${#_pq[@]}; _si++)); do
+        _qparse "${_pq[$_si]}"
+        printf '    %s → %s\n' "${D}$_qprompt${N}" "${G}$_qans${N}"
+      done
+    done
+
+    printf '\n\n%s\n' "${B}═══ BOSS SPLASH (sample: Level 15) ═══${N}"
+    local _sboss="${BOSS_NAMES[15]}" _sflavor="${BOSS_FLAVOR[15]}"
+    local s; printf -v s '%*s' $(( (80 - 12) / 2 )) ''
+    printf '\n%s%s\n\n' "$s" "${W}${B}═══ BOSS ═══${N}"
+    printf -v s '%*s' $(( (80 - ${#_sboss}) / 2 )) ''
+    printf '%s%s\n\n' "$s" "${W}${B}${_sboss}${N}"
+    printf -v s '%*s' $(( (80 - ${#_sflavor} - 2) / 2 )) ''
+    printf '%s%s\n' "$s" "${D}\"${_sflavor}\"${N}"
+
+    printf '\n\n%s\n' "${B}═══ SCENARIOS ═══${N}"
+    for ((si=1; si<=SC_TOTAL; si++)); do
+      printf '\n  %s %d: %-22s  %s(unlocks at boss %d)%s\n' "${W}${B}Scenario${N}" "$si" "${SC_NAMES[$si]:-}" "${D}" "${SC_UNLOCK[$si]:-0}" "${N}"
+      printf '    %s\n' "${D}${SC_FLAVOR[$si]:-}${N}"
+    done
+
+    printf '\n\n%s\n' "${B}═══ VICTORY SCREEN ═══${N}"
+    cat <<'VICEOF'
+
+    ██████╗  ██████╗  ██████╗ ████████╗
+    ██╔══██╗██╔═══██╗██╔═══██╗╚══██╔══╝
+    ██████╔╝██║   ██║██║   ██║   ██║
+    ██╔══██╗██║   ██║██║   ██║   ██║
+    ██║  ██║╚██████╔╝╚██████╔╝   ██║
+    ╚═╝  ╚═╝ ╚═════╝  ╚═════╝    ╚═╝
+
+VICEOF
+    printf '%s\n\n' "${G}${B}ACCESS GRANTED: ${W}${PLAYER_NAME}${N}"
+    local br="${D}░░${N}" edge="${D}░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░${N}"
+    printf '    %s\n' "$edge"
+    printf '    %s                                                              %s\n' "$br" "$br"
+    printf '    %s      The daemons are silent. The descent is complete.        %s\n' "$br" "$br"
+    printf '    %s      You spoke the words. They yielded.                     %s\n' "$br" "$br"
+    printf '    %s                                                              %s\n' "$br" "$br"
+    printf '    %s      30 bosses defeated. The shell is yours.                %s\n' "$br" "$br"
+    printf '    %s                                                              %s\n' "$br" "$br"
+    printf '    %s                      %sYou are ROOT.%s                          %s\n' "$br" "${B}" "${N}" "$br"
+    printf '    %s                                                              %s\n' "$br" "$br"
+    printf '    %s\n\n' "$edge"
+    }; _preview;;
   t|tutorial) _tutorial;;
   s|stats) _load_profile; stats;;
   review) _tty; _load_profile; review;;
