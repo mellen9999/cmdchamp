@@ -49,9 +49,10 @@ cmdchamp reset          # Clear all progress
 
 ## Levels
 
+**Fundamentals**
+
 | # | Name | Focus |
 |---|------|-------|
-| | **Fundamentals** | |
 | 1 | First Steps | pwd, ls, echo, cd, mkdir |
 | 2 | Save Your Work | >, >>, tee |
 | 3 | Reading Files | cat, head, tail, less |
@@ -74,7 +75,11 @@ cmdchamp reset          # Clear all progress
 | 20 | Control Flow | if/else, loops, case, functions |
 | 21 | Batch Ops | find -exec, xargs, sed -i, crontab |
 | 22 | Advanced Regex | lookahead, sed, awk |
-| | **DevOps & Security** | |
+
+**DevOps & Security**
+
+| # | Name | Focus |
+|---|------|-------|
 | 23 | Git | branches, remotes, rebasing, stashing, bisect |
 | 24 | Network Tools | tshark, curl, jq, ssh tunnels, openssl, SMB |
 | 25 | Network Scanning | nmap, service detection, scripts |
