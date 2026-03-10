@@ -632,7 +632,7 @@ _disk_found() {
   printf '%s\n'   "${Y}${B}█ ░░░ █${N}  ${Y}${B}FLOPPY DISK: ${name}${N}"
   printf '%s\n'   "${Y}${B}█▄▄▄▄▄█${N}  ${D}${_DISK_DESC[$name]:-}${N}"
   printf '%s\n\n' "${Y}${B}▀▀▀▀▀▀▀${N}  ${D}${disk_count}/${_DISK_TOTAL} collected${N}"
-  sleep 3
+  sleep 5
 }
 _disk_check() {
   local trigger=$1 ctx=${2:-}
@@ -734,7 +734,7 @@ BRANCHES=(main master develop feature/auth feature/api fix/login hotfix/security
 }
 
 # ═══ HELPERS ═══
-_fpick() { local -n _a=$1; REPLY="${_a[$((RANDOM % ${#_a[@]}))]}"; }
+_fpick() { local -n _a=$1; ((${#_a[@]})) || { REPLY=""; return 1; }; REPLY="${_a[$((RANDOM % ${#_a[@]}))]}"; }
 _fphrase() { local -a _a=("$@"); REPLY="${_a[$((RANDOM % ${#_a[@]}))]}"; }
 _frnum() { REPLY=$(($1 + RANDOM % ($2 - $1 + 1))); }
 # Fisher-Yates in-place shuffle via nameref (replaces shuf fork)
@@ -1120,6 +1120,7 @@ _qparse() {
   fi
   if [[ $q == *"#state:"* ]]; then
     _qstate="${q##*#state:}"
+    _qstate="${_qstate%%#*}"
     q="${q%%#state:*}"
   fi
   if [[ $q == *"#output:"* ]]; then
@@ -2938,6 +2939,7 @@ stats() {
 
 _S_ANSWERED=0 _S_CORRECT=0 _S_STREAK=0 _S_BEST_STREAK=0 _S_MASTERED=0 _S_START=0
 _session_init() { printf -v _S_START '%(%s)T' -1; _S_ANSWERED=0 _S_CORRECT=0 _S_STREAK=0 _S_BEST_STREAK=0 _S_MASTERED=0; _disk_check nightowl; }
+_QUIT=0
 _quit() {
   _sflush_if_dirty
   printf '\n'
@@ -2950,10 +2952,9 @@ _quit() {
     printf '\n  Best streak: %s\n' "${W}${B}${_S_BEST_STREAK}${N}"
     ((_S_MASTERED > 0)) && printf '  Mastered:    %s\n' "${G}${_S_MASTERED}${N}"
     printf '  Time:        %dm %ds\n%s\n' "$m" "$s" "${D}----------------------------------------${N}"
-  else
-    printf '%s\n' "${D}[quit]${N}"
+    read -rsn1 -p "${D}Press any key...${N}"; echo
   fi
-  _CLEANING=1; exit 0
+  _QUIT=1
 }
 
 input="" cursor=0 mode="insert" _rep=""
@@ -2998,7 +2999,7 @@ _del() { # $1=motion  (also used by c via _vi_normal)
   local e=$cursor _s=$cursor
   case "$1" in
     d|c) _vi_reg="$input"; input="" cursor=0; return;;
-    h) ((e>0)) && e=$((cursor-1)) || return; _s=$e;;
+    h) ((cursor>0)) && _s=$((cursor-1)) || return;;
     l) ((e<${#input})) && e=$((cursor+1)) || return;;
     w) while ((e<${#input})) && [[ "${input:e:1}" != " " ]]; do ((++e)); done; while ((e<${#input})) && [[ "${input:e:1}" == " " ]]; do ((++e)); done;;
     e) ((e<${#input}-1)) && ((++e)); while ((e<${#input}-1)) && [[ "${input:e:1}" == " " ]]; do ((++e)); done; while ((e<${#input}-1)) && [[ "${input:e+1:1}" != " " ]]; do ((++e)); done; ((++e));;
@@ -3114,7 +3115,7 @@ _vi_normal() {
       "${D}hl${N} move  ${D}kj${N} history  ${D}wb${N} word  ${D}fFtT${N}+char find  ${D};,${N} repeat find  ${D}0\$^/gg/G${N} line" \
       "${D}x/X${N} del char  ${D}dw/db/de/dd${N} del  ${D}cw/cb/ce/cc${N} change  ${D}r${N} replace  ${D}~${N} case" \
       "${D}y${N}+motion yank  ${D}p/P${N} paste  ${D}s/S${N} subst  ${D}i/a/I/A${N} insert  ${D}u${N} undo(stack)" \
-      "${D}Tab${N} man  ${D}Ctrl+d${N} quit  ${D}Ctrl+w${N} del word  ${D}Ctrl+u${N} del line  ${D}[num]cmd${N} repeat" \
+      "${D}Tab${N} man  ${D}Ctrl+d${N} menu  ${D}Ctrl+w${N} del word  ${D}Ctrl+u${N} del line  ${D}[num]cmd${N} repeat" \
       "${W}${B}vi mode for your shell${N} ${D}(~/.inputrc):${N}" \
       "${D}  set editing-mode vi${N}" \
       "${D}  set show-mode-in-prompt on${N}" \
@@ -3183,6 +3184,7 @@ _read_line() {
     elif ((VI_MODE)); then
       _vi_normal && return || continue
     fi
+    ((_QUIT)) && return 2
   done
 }
 
@@ -3273,6 +3275,7 @@ run() {
     _REDRAW_HDR
     while true; do
       _read_line 1 1
+      ((_QUIT)) && break
       [[ -z "$input" ]] && { draw; continue; }
       if check "$input" "$_qanswers"; then
         _sc; _show_alts "$input" "$_qanswers" "$_qdelim"; _disk_check streak
@@ -3297,8 +3300,10 @@ run() {
       fi
       _sget "$prompt"; tier=$REPLY; _REDRAW_HDR
     done
+    ((_QUIT)) && break
   done
   fi  # !boss_only
+  ((_QUIT)) && { _sflush_if_dirty; return 1; }
   # === BOSS ROUND ===
   _boss_splash "$lv"
 
@@ -3331,6 +3336,7 @@ run() {
     }
     _REDRAW_HDR
     if _read_line 0 0 "$_bt"; then
+      ((_QUIT)) && break
       ((_S_ANSWERED++))
       if check "$input" "$_qanswers"; then
         ((++boss_correct)); ((_S_CORRECT++)); ((_S_STREAK++))
@@ -3342,11 +3348,13 @@ run() {
         explain "$ans"
       fi
     else
+      ((_QUIT)) && break
       ((_S_ANSWERED++)); _S_STREAK=0; _sset "$prompt" "$((_boss_tier>0?_boss_tier-1:0))"; _wrong_feedback
       printf '\n%s  %s %s\n\n' "${R}${B}TIME'S UP${N}" "${D}expected:${N}" "${Y}${ans}${N}"; explain "$ans"
     fi
     _pause
   done
+  ((_QUIT)) && { _sflush_if_dirty; return 1; }
 
   # Results
   printf '\e[2J\e[H'
@@ -3385,8 +3393,8 @@ run() {
 
 _run_loop() {
   _session_init
-  _NEXT_BOSS=0
-  while run "$LVL" "$_NEXT_BOSS"; do LVL=$_NEXT_LV; done
+  _QUIT=0; _NEXT_BOSS=0
+  while run "$LVL" "$_NEXT_BOSS"; do ((_QUIT)) && break; LVL=$_NEXT_LV; done
 }
 
 _post_root_check() {
@@ -3437,16 +3445,20 @@ challenge() {
     _preq_reset
     local _ok=0
     if _read_line 0 0 20; then
+      ((_QUIT)) && break
       if check "$input" "$_qanswers"; then
         _sc; ((++score)); _ok=1
         printf '%s\n' "${G}${B}+${N}"
         _pause; continue
       fi
+    else
+      ((_QUIT)) && break
     fi
     ((_ok)) || { _sw; printf '\n%s  %s %s\n' "${R}${B}✗${N}" "${D}expected:${N}" "${Y}${ans}${N}"; _pause; break; }
   done
 
   _sflush_if_dirty
+  if ((_QUIT)); then return; fi
   printf '\e[2J\e[H'
   printf '%s\n\n' "${R}${B}═══ GAME OVER ═══${N}"
   printf 'Score: %s\n' "${B}${score}${N}"
@@ -3481,7 +3493,7 @@ _sel() {
       j) local _p=$((c+1)); while ((_p<n)) && [[ "${it[$_p]:0:1}" == $'\x01' ]]; do ((_p++)); done; ((_p<n)) && c=$_p;;
       k) local _p=$((c-1)); while ((_p>=0)) && [[ "${it[$_p]:0:1}" == $'\x01' ]]; do ((_p--)); done; ((_p>=0)) && c=$_p;;
       ''|l) REPLY=$c; return 0;;
-      q|h) return 1;;
+      q|h|$'\x04') return 1;;
     esac
   done
 }
@@ -3528,13 +3540,14 @@ _main_menu() {
       "  ${W}${B}╚██████╗██║ ╚═╝ ██║██████╔╝╚██████╗██║  ██║██║  ██║██║ ╚═╝ ██║██║${N}" \
       "   ${W}${B}╚═════╝╚═╝     ╚═╝╚═════╝  ╚═════╝╚═╝  ╚═╝╚═╝  ╚═╝╚═╝     ╚═╝╚═╝${N}" \
       "                     ${D}░▒▓█ MASTER THE COMMAND LINE █▓▒░${N}"
-    _sel "$_banner" "${it[@]}" || return
+    _sel "$_banner" "${it[@]}" || { _CLEANING=1; exit 0; }
     _SEL_CUR=$REPLY
+    _QUIT=0
     case "${act[$REPLY]}" in
-      cont) _run_loop; return;;
-      new) _first_run; _run_loop; return;;
+      cont) _run_loop;;
+      new) _first_run; _run_loop;;
       sc) _sc_sel;;
-      challenge) challenge; return;;
+      challenge) challenge;;
       stats) printf '\e[2J\e[H'; stats; local _sk; while read -rsn1 _sk; do [[ "$_sk" == h || "$_sk" == q ]] && break; done;;
       reset) printf '\n'; read -rp "  ${R}Reset all progress? [y/N]${N} " yn
         [[ "$yn" =~ ^[Yy] ]] && { rm -f "$DATA"/*.json "$DATA/scores" "$DATA/scores.lock" "$DATA/profile"; rm -rf "$DATA/sandbox" "$DATA/sandbox.pristine" 2>/dev/null; PLAYER_NAME="" BOSS_BEATEN=0; _load_profile; load; };;
@@ -3598,6 +3611,7 @@ scenario() {
 
     while true; do
       _read_line 1 1
+      ((_QUIT)) && break
       [[ -z "$input" ]] && { draw; continue; }
       if check "$input" "$_qanswers"; then
         _sc; _disk_check streak; ((++correct))
@@ -3616,9 +3630,11 @@ scenario() {
         _REDRAW_HDR
       fi
     done
+    ((_QUIT)) && break
   done
   rm -rf "$_sc_snap" "$_sc_snap.perms" 2>/dev/null
 
+  if ((_QUIT)); then rm -rf "$_sc_snap" "$_sc_snap.perms" 2>/dev/null; _sflush_if_dirty; return; fi
   # Completion
   printf '\e[2J\e[H'
   printf '%s\n' "${G}${B}═══ SCENARIO COMPLETE ═══${N}"
