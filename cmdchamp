@@ -3166,7 +3166,7 @@ _read_line() {
         *) ((${#input} < 512)) && { input="${input:0:cursor}${c}${input:cursor}"; ((++cursor)); draw; };;
       esac
     elif ((VI_MODE)); then
-      _vi_normal && return || continue
+      _vi_normal && return || { ((_QUIT)) && return 2; continue; }
     fi
     ((_QUIT)) && return 2
   done
