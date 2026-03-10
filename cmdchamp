@@ -32,7 +32,7 @@ command -v awk &>/dev/null || { echo "Error: awk not found" >&2; exit 1; }
 
 DATA="${XDG_DATA_HOME:-$HOME/.local/share}/cmdchamp"; mkdir -p "$DATA"; touch "$DATA/scores"
 
-R=$'\e[31m' G=$'\e[32m' Y=$'\e[33m' U=$'\e[34m' M=$'\e[35m' C=$'\e[36m' W=$'\e[37m' B=$'\e[1m' N=$'\e[0m' D=$'\e[2m'
+R=$'\e[31m' G=$'\e[32m' Y=$'\e[33m' U=$'\e[1;34m' M=$'\e[35m' C=$'\e[36m' W=$'\e[37m' B=$'\e[1m' N=$'\e[0m' D=$'\e[2m'
 
 _strip_ansi() {
   local s="$1" out="" i=0 ch
