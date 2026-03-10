@@ -3529,12 +3529,12 @@ _main_menu() {
     _QUIT=0
     case "${act[$REPLY]}" in
       cont) _run_loop;;
-      new) if [[ -n "$PLAYER_NAME" ]]; then
+      new) if [[ -n "$PLAYER_NAME" ]] && ((LVL>1||QI>0)); then
           printf '\n'; read -rp "  ${R}Reset all progress? [y/N]${N} " yn
           [[ "$yn" =~ ^[Yy] ]] || continue
-          rm -f "$DATA"/*.json "$DATA/scores" "$DATA/scores.lock" "$DATA/profile"; rm -rf "$DATA/sandbox" "$DATA/sandbox.pristine" 2>/dev/null
-          PLAYER_NAME="" BOSS_BEATEN=0; _load_profile; load
         fi
+        rm -f "$DATA"/*.json "$DATA/scores" "$DATA/scores.lock" "$DATA/profile"; rm -rf "$DATA/sandbox" "$DATA/sandbox.pristine" 2>/dev/null
+        PLAYER_NAME="" BOSS_BEATEN=0; _load_profile; load
         _first_run; _run_loop;;
       sc) _sc_sel;;
       challenge) challenge;;
