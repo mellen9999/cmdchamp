@@ -3533,7 +3533,7 @@ _main_menu() {
       sc) _sc_sel;;
       challenge) challenge;;
       stats) printf '\e[2J\e[H'; stats; local _sk; while read -rsn1 _sk; do
-        [[ "$_sk" == h || "$_sk" == q ]] && break
+        [[ "$_sk" == h || "$_sk" == q || -z "$_sk" ]] && break
         [[ "$_sk" == $'\e' ]] && { read -rsn2 -t 0.1 _sk; [[ "${_sk:1}" == D ]] && break; [[ -z "$_sk" ]] && break; }
         done;;
       reset) printf '\n'; read -rp "  ${R}Reset all progress? [y/N]${N} " yn
