@@ -101,7 +101,7 @@ Multi-step sandbox challenges — state persists between steps.
 
 ## Placement test
 
-First run includes an automatic placement test after the tutorial — 2 questions per level, 20s each, no manpages. Miss one and that's your starting level.
+First run includes an automatic placement test after the tutorial — 2 questions per level, 30s each, no manpages. Miss one and that's your starting level.
 
 ## Floppy disks
 
