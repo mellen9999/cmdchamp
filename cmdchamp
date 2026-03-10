@@ -64,7 +64,8 @@ _DECAY_INTERVAL=86400  # only run decay once per 24h
 
 # ═══ PROFILE ═══
 PLAYER_NAME="" BOSS_BEATEN=0 BEST_CHALLENGE=0 DISKS_FOUND="" SC_DONE=""
-_PROFILE_VER=3  # bump this when profile format changes; old profiles get reset
+OPT_VI=1 OPT_SOUND=1 OPT_ALTS=1
+_PROFILE_VER=4  # bump this when profile format changes; old profiles get reset
 LAST_DECAY=0  # epoch of last decay check (persisted in profile)
 
 _load_profile() {
@@ -79,11 +80,14 @@ _load_profile() {
         DISKS_FOUND|EGGS_FOUND) DISKS_FOUND="$val";;
         SC_DONE) SC_DONE="$val";;
         LAST_DECAY) LAST_DECAY="$val";;
+        OPT_VI) OPT_VI="$val";;
+        OPT_SOUND) OPT_SOUND="$val";;
+        OPT_ALTS) OPT_ALTS="$val";;
         PROFILE_VER) _file_ver="$val";;
       esac
     done < "$DATA/profile"
-    if ((_file_ver == 2)); then
-      # v2→v3: field renames only, migrate in place
+    if ((_file_ver == 2 || _file_ver == 3)); then
+      # v2→v4, v3→v4: add option fields, migrate in place
       _save_profile
     elif ((_file_ver != _PROFILE_VER)); then
       [[ -f "$DATA/profile" ]] && cp "$DATA/profile" "$DATA/profile.bak"
@@ -100,8 +104,8 @@ _load_profile() {
 }
 
 _save_profile() {
-  printf 'PLAYER_NAME=%s\nBOSS_BEATEN=%d\nBEST_CHALLENGE=%d\nDISKS_FOUND=%s\nSC_DONE=%s\nLAST_DECAY=%d\nPROFILE_VER=%d\n' \
-    "$PLAYER_NAME" "$BOSS_BEATEN" "$BEST_CHALLENGE" "$DISKS_FOUND" "$SC_DONE" "$LAST_DECAY" "$_PROFILE_VER" > "$DATA/profile.tmp"
+  printf 'PLAYER_NAME=%s\nBOSS_BEATEN=%d\nBEST_CHALLENGE=%d\nDISKS_FOUND=%s\nSC_DONE=%s\nLAST_DECAY=%d\nOPT_VI=%d\nOPT_SOUND=%d\nOPT_ALTS=%d\nPROFILE_VER=%d\n' \
+    "$PLAYER_NAME" "$BOSS_BEATEN" "$BEST_CHALLENGE" "$DISKS_FOUND" "$SC_DONE" "$LAST_DECAY" "$OPT_VI" "$OPT_SOUND" "$OPT_ALTS" "$_PROFILE_VER" > "$DATA/profile.tmp"
   mv "$DATA/profile.tmp" "$DATA/profile"
 }
 
@@ -149,8 +153,13 @@ EOF
 _tutorial() {
   printf '\e[2J\e[H\n'
   cat <<EOF
-    ${C}Tab${N}     Manpage    ${C}Enter${N}   Submit    ${C}q${N}  Quit
-    ${C}?${N}       Vi help    ${D}Vi mode on by default (CMD_VI=0 to disable)${N}
+    ${B}Controls${N}
+    ${C}Tab${N}   Manpage   ${C}Enter${N}  Submit   ${C}Ctrl+d${N}  Quit
+
+    ${B}Vi Mode${N} ${D}(toggle in Options)${N}
+    ${C}Esc${N}   Normal mode        ${C}i a${N}   Insert mode
+    ${C}h l${N}   Move cursor        ${C}w b${N}   Word jump
+    ${C}d${N}w ${C}c${N}w  Delete/change word  ${C}?${N}     Full vi help
 
 EOF
   read -rsn1 -p "                            Press Enter to continue..."
@@ -1127,7 +1136,8 @@ _qparse() {
   fi
 }
 
-VI_MODE=${CMD_VI:-1}  # always on (override with CMD_VI=0)
+_apply_opts() { VI_MODE=${CMD_VI:-$OPT_VI}; }  # env var overrides profile
+_apply_opts
 
 # ═══ LEVEL GENERATORS ═══
 
@@ -2805,6 +2815,7 @@ check() {
 }
 
 _show_alts() {
+  ((OPT_ALTS)) || return 0
   local inp=$1 answers=$2 delim=$3
   _fnorm "$inp"; local ninp=$REPLY
   local -a opts shown=()
@@ -2953,7 +2964,7 @@ hdr() {
   printf '\e[2J\e[H%s\n%s\n%s\n\n' "${W}${B}${PLAYER_NAME:-anon}${N}${fire}" "${B}Level $1: ${LEVEL_NAMES[$1]:-}${N}" "${D}[$2/$3]  Tab=man${N}"
 }
 qdisp() { bar; printf "\n${C}%s${N}\n\n" "$1"; }
-_wrong_feedback() { [[ "${CMD_BELL:-1}" != "0" ]] && printf '\a'; printf '\e[7m'; read -t 0.05 -rsn1 _ ||:; printf '\e[0m'; }
+_wrong_feedback() { [[ "${CMD_BELL:-$OPT_SOUND}" != "0" ]] && printf '\a'; printf '\e[7m'; read -t 0.05 -rsn1 _ ||:; printf '\e[0m'; }
 _wrong_show() { _wrong_feedback; [[ -n "$_SANDBOX_OUTPUT" ]] && printf '\n%s %s\n' "${D}output:${N}" "$_SANDBOX_OUTPUT"; printf '%s  %s %s\n\n' "${R}x${N}" "${D}expected:${N}" "${Y}${ans}${N}"; }
 _sc() { [[ -n "$input" ]] && { HIST+=("$input"); HIST_IDX=${#HIST[@]}; HIST_SAVE=""; }; ((_S_ANSWERED++)); ((_S_CORRECT++)); ((_S_STREAK++)); ((_S_STREAK > _S_BEST_STREAK)) && _S_BEST_STREAK=$_S_STREAK; [[ -n "$_SANDBOX_OUTPUT" ]] && printf '\n%s\n' "${W}${_SANDBOX_OUTPUT}${N}"; }
 _sw() { ((_S_ANSWERED++)); _S_STREAK=0; _wrong_show; }
@@ -3139,6 +3150,17 @@ _read_line() {
           if [[ "$_e1" == "[" ]]; then
             read -rsn1 -t 0.01 _e2 || _e2=""
             case "$_e2" in A) _vi_hist -1 && draw;; B) _vi_hist 1 && draw;; C) ((cursor<${#input})) && ((++cursor)) && draw;; D) ((cursor>0)) && ((cursor--)) && draw;; esac
+          elif [[ "$_e1" == f ]]; then  # Alt-f: forward word
+            while ((cursor<${#input})) && [[ "${input:cursor:1}" == " " ]]; do ((++cursor)); done
+            while ((cursor<${#input})) && [[ "${input:cursor:1}" != " " ]]; do ((++cursor)); done; draw
+          elif [[ "$_e1" == b ]]; then  # Alt-b: back word
+            while ((cursor>0)) && [[ "${input:cursor-1:1}" == " " ]]; do ((cursor--)); done
+            while ((cursor>0)) && [[ "${input:cursor-1:1}" != " " ]]; do ((cursor--)); done; draw
+          elif [[ "$_e1" == d ]]; then  # Alt-d: delete word forward
+            local _wp=$cursor
+            while ((_wp<${#input})) && [[ "${input:_wp:1}" == " " ]]; do ((_wp++)); done
+            while ((_wp<${#input})) && [[ "${input:_wp:1}" != " " ]]; do ((_wp++)); done
+            input="${input:0:cursor}${input:_wp}"; draw
           elif [[ -z "$_e1" ]] && ((VI_MODE)); then
             UNDO_STACK+=("$cursor:$input"); mode="normal"; ((cursor>0)) && ((cursor--)); draw
           fi;;
@@ -3148,6 +3170,14 @@ _read_line() {
           while ((_wp>0)) && [[ "${input:_wp-1:1}" != " " ]]; do ((_wp--)); done
           input="${input:0:_wp}${input:cursor}"; cursor=$_wp; draw; fi;;
         $'\x15') ((cursor>0)) && { input="${input:cursor}"; cursor=0; draw; };;  # Ctrl-u: delete to start
+        $'\x01') cursor=0; draw;;  # Ctrl-a: beginning of line
+        $'\x05') cursor=${#input}; draw;;  # Ctrl-e: end of line
+        $'\x02') ((cursor>0)) && ((cursor--)) && draw;;  # Ctrl-b: back one char
+        $'\x06') ((cursor<${#input})) && ((++cursor)) && draw;;  # Ctrl-f: forward one char
+        $'\x0b') input="${input:0:cursor}"; draw;;  # Ctrl-k: kill to end of line
+        $'\x14') if ((cursor>0 && ${#input}>=2)); then  # Ctrl-t: transpose chars
+          local _tc; if ((cursor>=${#input})); then _tc=$((cursor-2)); else _tc=$((cursor-1)); fi
+          ((_tc>=0)) && { input="${input:0:_tc}${input:_tc+1:1}${input:_tc:1}${input:_tc+2}"; ((cursor<${#input})) && ((++cursor)); draw; }; fi;;
         '') ((_man_open)) && printf '\e7\n\e[J\e8'; _man_open=0; echo; return 0;;
         *) ((${#input} < 512)) && { input="${input:0:cursor}${c}${input:cursor}"; ((++cursor)); draw; };;
       esac
@@ -3483,6 +3513,25 @@ _sc_sel() {
 }
 
 
+_opt_tag() { ((${!1})) && REPLY="${G}on${N}" || REPLY="${R}off${N}"; }
+_options_menu() {
+  local _c=0
+  while true; do
+    local -a it=()
+    _opt_tag OPT_VI;    it+=("Vi Mode          $REPLY")
+    _opt_tag OPT_SOUND;  it+=("Sound            $REPLY")
+    _opt_tag OPT_ALTS;   it+=("Show Alternates  $REPLY")
+    _SEL_BACK=1; _SEL_CUR=$_c; _sel "${W}${B}═══ OPTIONS ═══${N}" "${it[@]}" || break
+    _c=$REPLY
+    case "$REPLY" in
+      0) ((OPT_VI=!OPT_VI)); _apply_opts;;
+      1) ((OPT_SOUND=!OPT_SOUND));;
+      2) ((OPT_ALTS=!OPT_ALTS));;
+    esac
+    _save_profile
+  done
+}
+
 _main_menu() {
   while true; do
     local -a it=() act=()
@@ -3501,6 +3550,7 @@ _main_menu() {
     fi
     if [[ -n "$PLAYER_NAME" ]]; then it+=("Stats"); act+=(stats)
     else it+=($'\x01'"Stats"); act+=(x); fi
+    it+=("Options"); act+=(opts)
     local _banner
     printf -v _banner '%s\n%s\n%s\n%s\n%s\n%s\n\n%s' \
       "   ${W}${B}██████╗███╗   ███╗██████╗  ██████╗██╗  ██╗ █████╗ ███╗   ███╗██████╗${N}" \
@@ -3524,6 +3574,7 @@ _main_menu() {
         _first_run; _run_loop;;
       sc) _sc_sel;;
       challenge) challenge;;
+      opts) _options_menu;;
       stats) printf '\e[2J\e[H'; stats; local _sk; while read -rsn1 _sk; do
         [[ "$_sk" == h || "$_sk" == q || -z "$_sk" ]] && break
         [[ "$_sk" == $'\e' ]] && { read -rsn2 -t 0.1 _sk; [[ "${_sk:1}" == D ]] && break; [[ -z "$_sk" ]] && break; }
@@ -4033,6 +4084,6 @@ Commands:
   h|help        Show this help
 EOF
     ;;
-  "") _tty; _load_profile; _main_menu;;
+  "") _tty; _load_profile; _apply_opts; _main_menu;;
   *) echo "Usage: cmdchamp [--no-sandbox] [reset|version|test|help]"; echo "Run with no arguments for the game menu."; exit 1;;
 esac
