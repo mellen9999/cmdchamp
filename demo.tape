@@ -27,35 +27,34 @@ Sleep 2.5s
 # Continue (first menu item)
 Enter
 Sleep 2s
+# Q1: answer hidden so GIF starts clean on Q2
+Set TypingSpeed 1ms
+Type "cd .."
+Enter
+Sleep 1.5s
+Enter
+# Wait for Q2 screen to fully render (past the flash)
+Sleep 1.5s
 Show
 
-# ── Q1: "Go up one directory" → correct ──
-Set TypingSpeed 70ms
-Sleep 600ms
-Type "cd .."
-Sleep 300ms
-Enter
-Sleep 1s
-Enter
-Sleep 800ms
-
 # ── Q2: "Create nested directories src/assets" → wrong then correct ──
-Sleep 400ms
+Set TypingSpeed 70ms
+Sleep 800ms
 Type "mkdir src/assets"
 Sleep 300ms
 Enter
 Sleep 1.8s
 Enter
-Sleep 800ms
+Sleep 1s
 Type "mkdir -p src/assets"
 Sleep 300ms
 Enter
 Sleep 1s
 Enter
-Sleep 800ms
+Sleep 1s
 
 # ── Q3: "Print hello world" → Tab manpage, then correct ──
-Sleep 400ms
+Sleep 600ms
 Tab
 Sleep 2.5s
 Set TypingSpeed 60ms
@@ -64,23 +63,24 @@ Sleep 300ms
 Enter
 Sleep 1s
 Enter
-Sleep 800ms
+Sleep 1s
 
 # ── Q4: "Change to src directory" → correct ──
 Set TypingSpeed 70ms
-Sleep 400ms
+Sleep 600ms
 Type "cd src"
 Sleep 300ms
 Enter
 Sleep 1s
 Enter
-Sleep 800ms
+Sleep 1s
 
 # ── Q5: "Go to filesystem root (/)" → correct ──
-Sleep 400ms
+Sleep 600ms
 Type "cd /"
 Sleep 300ms
 Enter
 Sleep 1s
-Enter
-Sleep 1.2s
+# Don't press Enter — freeze on the correct feedback
+# When it loops, jumps back to Q2 prompt (both are static game screens)
+Sleep 2s
