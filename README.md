@@ -38,18 +38,9 @@ cd cmdchamp && make install
 ## Usage
 
 ```bash
-cmdchamp                # Resume from last position
-cmdchamp n              # Start fresh from level 1
-cmdchamp 14             # Jump to level (must be unlocked)
-cmdchamp progress       # Show level progress
-cmdchamp stats          # Show mastery statistics
-cmdchamp review         # Practice weak levels (< 80% mastery)
-cmdchamp gauntlet       # 3 lives, escalating difficulty (post-ROOT)
-cmdchamp timed          # Race the clock (post-ROOT, 60/120/300s)
-cmdchamp scenario       # Sandbox investigations (or: cmdchamp scenario 3)
+cmdchamp                # Game menu (j/k to navigate, Enter to select)
+cmdchamp --no-sandbox   # Menu without sandbox (text-match only)
 cmdchamp reset          # Clear all progress
-cmdchamp help           # Show help + level list
-cmdchamp --no-sandbox   # Disable sandbox (text-match only)
 ```
 
 ## Levels

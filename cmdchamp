@@ -96,7 +96,6 @@ _load_profile() {
     [[ "$BEST_GAUNTLET" =~ ^[0-9]+$ ]] || BEST_GAUNTLET=0
     [[ "$BEST_TIMED" =~ ^[0-9]+:[0-9]+:[0-9]+$ ]] || BEST_TIMED="0:0:0"
   fi
-  [[ -z "$PLAYER_NAME" ]] && _first_run
 }
 
 _save_profile() {
@@ -129,7 +128,7 @@ EOF
   _save_profile
   _intro
   _tutorial
-  place; exit 0
+  place
 }
 
 _intro() {
@@ -3624,36 +3623,120 @@ review() {
   printf '%s\n' "${G}${B}Review complete!${N}"
 }
 
-# ═══ SCENARIO ENGINE ═══
-_sc_menu() {
-  printf '\e[2J\e[H'
-  printf '%s\n' "${W}${B}═══ SCENARIOS ═══${N}"
-  printf '%s\n\n' "${D}Multi-step sandbox investigations${N}"
-  local i mark req
-  for ((i=1; i<=SC_TOTAL; i++)); do
-    req=${SC_UNLOCK[$i]:-$MAX_LEVEL}
-    if ((BOSS_BEATEN < req)); then
-      printf '  %s %d. %s %s\n' "${D}[-]${N}" "$i" "${D}${SC_NAMES[$i]}${N}" "${D}(beat L${req} boss)${N}"
-    elif _sc_is_done "$i"; then
-      printf '  %s %d. %s\n' "${G}[+]${N}" "$i" "${SC_NAMES[$i]}"
+# ═══ MENU ═══
+# Generic j/k selector. Args: title item1 item2 ...
+# Items prefixed with $'\x01' are disabled (dimmed, skipped).
+# Sets REPLY to selected index (0-based). Returns 1 on quit.
+_sel() {
+  local title=$1; shift; local -a it=("$@") n=$# c=0 k
+  while ((c<n)) && [[ "${it[$c]:0:1}" == $'\x01' ]]; do ((c++)); done
+  ((c>=n)) && return 1
+  while true; do
+    printf '\e[2J\e[H%s\n\n' "$title"
+    local i; for ((i=0;i<n;i++)); do
+      if [[ "${it[$i]:0:1}" == $'\x01' ]]; then printf '    %s\n' "${D}${it[$i]:1}${N}"
+      elif ((i==c)); then printf '  %s\n' "${W}${B}▸ ${it[$i]}${N}"
+      else printf '    %s\n' "${it[$i]}"; fi
+    done
+    read -rsn1 k
+    [[ "$k" == $'\e' ]] && { read -rsn2 -t 0.1 k; k="${k:1}"; }
+    case "$k" in
+      j|B) local _p=$((c+1)); while ((_p<n)) && [[ "${it[$_p]:0:1}" == $'\x01' ]]; do ((_p++)); done; ((_p<n)) && c=$_p;;
+      k|A) local _p=$((c-1)); while ((_p>=0)) && [[ "${it[$_p]:0:1}" == $'\x01' ]]; do ((_p--)); done; ((_p>=0)) && c=$_p;;
+      '') REPLY=$c; return 0;;
+      q) return 1;;
+    esac
+  done
+}
+
+_level_menu() {
+  local -a it=()
+  for ((lv=1;lv<=MAX_LEVEL;lv++)); do
+    if ((lv<=BOSS_BEATEN)); then
+      it+=("$(printf "${G}✓${N} %2d  %s" "$lv" "${LEVEL_NAMES[$lv]}")")
+    elif ((lv==BOSS_BEATEN+1)); then
+      it+=("$(printf "${Y}→${N} %2d  %s" "$lv" "${LEVEL_NAMES[$lv]}")")
     else
-      printf '  %s %d. %s\n' "${Y}[ ]${N}" "$i" "${SC_NAMES[$i]}"
+      it+=($'\x01'"$(printf "  %2d  %s" "$lv" "${LEVEL_NAMES[$lv]}")")
     fi
   done
-  printf '\n%s ' "${D}Pick 1-${SC_TOTAL} (q=quit):${N}"
-  local choice; read -r choice
-  [[ "$choice" == "q" || -z "$choice" ]] && return
-  if [[ "$choice" =~ ^[0-9]+$ ]] && ((choice >= 1 && choice <= SC_TOTAL)); then
-    scenario "$choice"
-  else
-    printf '%s\n' "${R}Invalid choice${N}"; sleep 1
-  fi
+  _sel "${W}${B}═══ LEVEL SELECT ═══${N}" "${it[@]}" || return
+  LVL=$((REPLY+1)); QI=0; save; _run_loop
 }
+
+_sc_sel() {
+  local -a it=()
+  for ((i=1;i<=SC_TOTAL;i++)); do
+    local req=${SC_UNLOCK[$i]:-$MAX_LEVEL}
+    if ((BOSS_BEATEN<req)); then it+=($'\x01'"${SC_NAMES[$i]} (beat L${req})")
+    elif _sc_is_done "$i"; then it+=("${G}✓${N} ${SC_NAMES[$i]}")
+    else it+=("${SC_NAMES[$i]}"); fi
+  done
+  _sel "${W}${B}═══ SCENARIOS ═══${N}" "${it[@]}" || return
+  scenario "$((REPLY+1))"
+}
+
+_timed_sel() {
+  _sel "${W}${B}═══ TIMED ═══${N}" "60 seconds" "120 seconds" "300 seconds" || return
+  local -a _ts=(60 120 300); timed "${_ts[$REPLY]}"
+}
+
+_main_menu() {
+  while true; do
+    local -a it=() act=()
+    load
+    if [[ -n "$PLAYER_NAME" ]] && ((LVL>1||QI>0)); then
+      it+=("Continue  ${D}Level $LVL Q$((QI+1))${N}"); act+=(cont)
+    fi
+    it+=("New Game"); act+=(new)
+    if [[ -n "$PLAYER_NAME" ]]; then it+=("Level Select"); act+=(lvl)
+    else it+=($'\x01'"Level Select"); act+=(x); fi
+    local _any=0; for ((i=1;i<=SC_TOTAL;i++)); do ((BOSS_BEATEN>=${SC_UNLOCK[$i]:-$MAX_LEVEL})) && _any=1; done
+    if ((_any)); then it+=("Scenarios"); act+=(sc)
+    else it+=($'\x01'"Scenarios"); act+=(x); fi
+    if ((BOSS_BEATEN>=1)); then it+=("Review"); act+=(rev)
+    else it+=($'\x01'"Review"); act+=(x); fi
+    if ((BOSS_BEATEN>=MAX_LEVEL)); then
+      it+=("Gauntlet"); act+=(gaunt)
+      it+=("Timed"); act+=(timed)
+    else
+      it+=($'\x01'"Gauntlet"); act+=(x)
+      it+=($'\x01'"Timed"); act+=(x)
+    fi
+    if [[ -n "$PLAYER_NAME" ]]; then it+=("Stats"); act+=(stats)
+    else it+=($'\x01'"Stats"); act+=(x); fi
+    it+=("Reset"); act+=(reset)
+    local _banner
+    printf -v _banner '%s\n%s\n%s\n%s\n%s\n%s\n\n%s' \
+      "   ${W}${B}██████╗███╗   ███╗██████╗  ██████╗██╗  ██╗ █████╗ ███╗   ███╗██████╗${N}" \
+      "  ${W}${B}██╔════╝████╗ ████║██╔══██╗██╔════╝██║  ██║██╔══██╗████╗ ████║██╔══██╗${N}" \
+      "  ${W}${B}██║     ██╔████╔██║██║  ██║██║     ███████║███████║██╔████╔██║██████╔╝${N}" \
+      "  ${W}${B}██║     ██║╚██╔╝██║██║  ██║██║     ██╔══██║██╔══██║██║╚██╔╝██║██╔═══╝${N}" \
+      "  ${W}${B}╚██████╗██║ ╚═╝ ██║██████╔╝╚██████╗██║  ██║██║  ██║██║ ╚═╝ ██║██║${N}" \
+      "   ${W}${B}╚═════╝╚═╝     ╚═╝╚═════╝  ╚═════╝╚═╝  ╚═╝╚═╝  ╚═╝╚═╝     ╚═╝╚═╝${N}" \
+      "                     ${D}░▒▓█ MASTER THE COMMAND LINE █▓▒░${N}"
+    _sel "$_banner" "${it[@]}" || return
+    case "${act[$REPLY]}" in
+      cont) _run_loop; return;;
+      new) _first_run; LVL=1; QI=0; save; _run_loop; return;;
+      lvl) _level_menu && return;;
+      sc) _sc_sel;;
+      rev) review; return;;
+      gaunt) gauntlet; return;;
+      timed) _timed_sel;;
+      stats) printf '\e[2J\e[H'; stats; printf '\n'; read -rsn1 -p "${D}Press any key...${N}";;
+      reset) printf '\n'; read -rp "  ${R}Reset all progress? [y/N]${N} " yn
+        [[ "$yn" =~ ^[Yy] ]] && { rm -f "$DATA"/*.json "$DATA/scores" "$DATA/scores.lock" "$DATA/profile"; rm -rf "$DATA/sandbox" "$DATA/sandbox.pristine" 2>/dev/null; PLAYER_NAME="" BOSS_BEATEN=0; _load_profile; load; };;
+    esac
+  done
+}
+
+# ═══ SCENARIO ENGINE ═══
 
 _perms_restore() { while IFS=' ' read -r _pmode _ppath; do [[ -n "$_ppath" ]] && chmod "$_pmode" "$_ppath" 2>/dev/null; done < "$2"; }
 scenario() {
   local sc_id=${1:-0}
-  ((sc_id == 0)) && { _sc_menu; return; }
+  ((sc_id == 0)) && { _sc_sel; return; }
   ((sc_id < 1 || sc_id > SC_TOTAL)) && { printf '%s\n' "${R}Scenario ${sc_id} does not exist.${N}"; return 1; }
   local _sc_req=${SC_UNLOCK[$sc_id]:-$MAX_LEVEL}
   if ((BOSS_BEATEN < _sc_req)); then
@@ -4074,7 +4157,7 @@ place() {
   fi
   _sflush_if_dirty
   echo
-  ((placed < MAX_LEVEL)) && { _pause; _run_loop; }
+  _pause
 }
 
 # ═══ CLI ENTRYPOINT ═══
@@ -4083,29 +4166,8 @@ for _a in "$@"; do [[ "$_a" == "--no-sandbox" ]] && SANDBOX_MODE=0 || _args+=("$
 set -- "${_args[@]+"${_args[@]}"}"
 
 case "${1:-}" in
-  [1-9]|[12][0-9]|30)
-    _tty; _load_profile
-    LVL=$1
-    if ((LVL > 1 && LVL > BOSS_BEATEN + 1)); then
-      printf '%s\n' "${R}Level $LVL locked${N} - beat Level $((LVL-1)) boss first"
-      exit 1
-    fi
-    QI=0; save; _run_loop
-    ;;
-  p|progress)
-    _load_profile
-    printf '%s\n' "${B}Progress${N}"
-    for ((lv=1; lv<=MAX_LEVEL; lv++)); do
-      if ((lv <= BOSS_BEATEN + 1)); then
-        mark="${G}✓${N}"; ((lv > BOSS_BEATEN)) && mark="${Y}→${N}"
-        printf "  %s ${W}%2d${N} %s\n" "$mark" "$lv" "${LEVEL_NAMES[$lv]:-}"
-      else
-        printf "  ${D}  %2d %s${N}\n" "$lv" "${LEVEL_NAMES[$lv]:-}"
-      fi
-    done
-    ;;
-  r|reset) rm -f "$DATA"/*.json "$DATA/scores" "$DATA/scores.lock" "$DATA/profile"; rm -rf "$DATA/sandbox" "$DATA/sandbox.pristine" 2>/dev/null; echo "Reset.";;
   test|selftest) _selftest;;
+  r|reset) rm -f "$DATA"/*.json "$DATA/scores" "$DATA/scores.lock" "$DATA/profile"; rm -rf "$DATA/sandbox" "$DATA/sandbox.pristine" 2>/dev/null; echo "Reset.";;
   preview)
     # Dev-only: dump all visual content for review
     [[ "${CMDCHAMP_DEV:-}" != "1" ]] && { echo "Unknown command. Try: cmdchamp help"; exit 1; }
@@ -4180,47 +4242,26 @@ VICEOF
     printf '    %s                                                              %s\n' "$br" "$br"
     printf '    %s\n\n' "$edge"
     }; _preview;;
-  s|stats) _load_profile; stats;;
-  review) _tty; _load_profile; review;;
-  gauntlet) _tty; _load_profile; gauntlet;;
-  timed) _tty; _load_profile; timed "${2:-120}";;
-  scenario|sc) _tty; _load_profile; scenario "${2:-0}";;
-
   v|version|-v|--version) echo "cmdchamp $VERSION";;
   h|help|-h|--help)
     cat <<EOF
 ${B}cmdchamp${N} - CLI trainer
 ${D}30 levels, spaced repetition, sandbox execution${N}
 
-Usage: cmdchamp [--no-sandbox] [level|command]
+Usage: cmdchamp [--no-sandbox] [command]
+
+Run with no arguments for the game menu.
 
 Options:
   --no-sandbox  Disable sandbox (text-match only)
 
 Commands:
-  1-30          Start level (must be unlocked)
-  p|progress    Show level progress
-  n|new         Start fresh from level 1
-  s|stats       Show mastery statistics
-  review        Practice weak levels (mastery < 80%)
-  gauntlet      3 lives, escalating difficulty (post-ROOT)
-  timed [60|120|300]  Race the clock (post-ROOT, default 120s)
-  scenario [N]  Sandbox investigations (unlock per-level, 1-8)
   r|reset       Reset all progress
   v|version     Print version
   test          Run self-tests
   h|help        Show this help
-
-Controls:
-  Tab      Show manpage for the command
-  Ctrl+d   Quit (shows session summary)
-  ?        Show vi keybindings (in vi mode)
-
 EOF
-    printf '\n%s\n' "${D}Levels 24-30 are security/offensive — knowledge only, no tools needed.${N}"
-    for lv in {1..30}; do printf "  %2d - %s\n" "$lv" "${LEVEL_NAMES[$lv]}"; done
     ;;
-  n|new) _tty; _load_profile; LVL=1; QI=0; save; _run_loop;;
-  "") _tty; _load_profile; load; ((LVL>1||QI>0)) && { read -rp "Continue Level $LVL Q$((QI+1))? [Y/n] " yn; [[ "$yn" =~ ^[Nn] ]] && { LVL=1; QI=0; save; _intro; _tutorial; }; }; _run_loop;;
-  *) echo "Usage: cmdchamp [1-30|new|progress|stats|review|gauntlet|timed|scenario|reset|help]"; exit 1;;
+  "") _tty; _load_profile; _main_menu;;
+  *) echo "Usage: cmdchamp [--no-sandbox] [reset|version|test|help]"; echo "Run with no arguments for the game menu."; exit 1;;
 esac
