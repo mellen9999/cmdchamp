@@ -19,7 +19,7 @@
 #   VI HANDLER ........ _vi_normal, _read_line (shared input)
 #   SCORING ENGINE .... _sset, _sflush, _sget, decay, _mode_init
 #   RUN ENGINE ........ run(), _run_loop
-#   POST-ROOT MODES ... challenge, scenario, placement
+#   POST-ROOT ......... challenge, scenario, placement
 #   SCENARIO ENGINE ... scenario(), snapshot/rollback
 #   SELFTEST .......... _selftest (unit tests)
 #   PLACEMENT ......... place() (skip-ahead test)
@@ -162,7 +162,7 @@ _tutorial() {
     ${C}d${N}w ${C}c${N}w  Delete/change word  ${C}?${N}     Full vi help
 
 EOF
-  read -rsn1 -p "                            Press Enter to continue..."
+  read -rsn1 -p "    Press Enter to continue..."
   echo
 }
 
@@ -629,7 +629,8 @@ _disk_found() {
   printf '\n%s\n' "${Y}${B}▄▄▄▄▄▄▄${N}"
   printf '%s\n'   "${Y}${B}█ ░░░ █${N}  ${Y}${B}FLOPPY DISK: ${name}${N}"
   printf '%s\n'   "${Y}${B}█▄▄▄▄▄█${N}  ${D}${_DISK_DESC[$name]:-}${N}"
-  printf '%s\n\n' "${Y}${B}▀▀▀▀▀▀▀${N}  ${D}${disk_count}/${_DISK_TOTAL} collected${N}"
+  printf '%s\n'   "${Y}${B}███████${N}  ${D}${disk_count}/${_DISK_TOTAL} collected${N}"
+  printf '%s\n\n' "${Y}${B}▀▀▀▀▀▀▀${N}"
   sleep 5
 }
 _disk_check() {
@@ -2964,7 +2965,7 @@ hdr() {
   printf '\e[2J\e[H%s\n%s\n%s\n\n' "${W}${B}${PLAYER_NAME:-anon}${N}${fire}" "${B}Level $1: ${LEVEL_NAMES[$1]:-}${N}" "${D}[$2/$3]  Tab=man${N}"
 }
 qdisp() { bar; printf "\n${C}%s${N}\n\n" "$1"; }
-_wrong_feedback() { [[ "${CMD_BELL:-$OPT_SOUND}" != "0" ]] && printf '\a'; printf '\e[7m'; read -t 0.05 -rsn1 _ ||:; printf '\e[0m'; }
+_wrong_feedback() { ((OPT_SOUND)) && printf '\a'; printf '\e[7m'; read -t 0.05 -rsn1 _ ||:; printf '\e[0m'; }
 _wrong_show() { _wrong_feedback; [[ -n "$_SANDBOX_OUTPUT" ]] && printf '\n%s %s\n' "${D}output:${N}" "$_SANDBOX_OUTPUT"; printf '%s  %s %s\n\n' "${R}x${N}" "${D}expected:${N}" "${Y}${ans}${N}"; }
 _sc() { [[ -n "$input" ]] && { HIST+=("$input"); HIST_IDX=${#HIST[@]}; HIST_SAVE=""; }; ((_S_ANSWERED++)); ((_S_CORRECT++)); ((_S_STREAK++)); ((_S_STREAK > _S_BEST_STREAK)) && _S_BEST_STREAK=$_S_STREAK; [[ -n "$_SANDBOX_OUTPUT" ]] && printf '\n%s\n' "${W}${_SANDBOX_OUTPUT}${N}"; }
 _sw() { ((_S_ANSWERED++)); _S_STREAK=0; _wrong_show; }
