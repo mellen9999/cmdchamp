@@ -141,6 +141,7 @@ _intro() {
     ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
 
 EOF
+  [[ "${1:-}" == nopause ]] && return
   read -rsn1 -p "                            Press Enter to continue..."
   echo
 }
@@ -244,6 +245,7 @@ EOF
   printf '    %s                                                              %s\n' "$br" "$br"
   printf '    %s\n' "$edge"
   echo
+  [[ "${1:-}" == nopause ]] && return
   read -rsn1 -p "                          Press any key to exit..."
   echo
 }
@@ -2995,56 +2997,48 @@ _vi_hist() {
   fi
   cursor=${#input}; _clamp
 }
-_del() { # $1=motion  (also used by c via _vi_normal)
-  local e=$cursor _s=$cursor
-  case "$1" in
-    d|c) _vi_reg="$input"; input="" cursor=0; return;;
-    h) ((cursor>0)) && _s=$((cursor-1)) || return;;
-    l) ((e<${#input})) && e=$((cursor+1)) || return;;
-    w) while ((e<${#input})) && [[ "${input:e:1}" != " " ]]; do ((++e)); done; while ((e<${#input})) && [[ "${input:e:1}" == " " ]]; do ((++e)); done;;
-    e) ((e<${#input}-1)) && ((++e)); while ((e<${#input}-1)) && [[ "${input:e:1}" == " " ]]; do ((++e)); done; while ((e<${#input}-1)) && [[ "${input:e+1:1}" != " " ]]; do ((++e)); done; ((++e));;
-    b) ((e>0)) && ((e--)); while ((e>0)) && [[ "${input:e:1}" == " " ]]; do ((e--)); done; while ((e>0)) && [[ "${input:e-1:1}" != " " ]]; do ((e--)); done; _s=$e; e=$cursor;;
+# Sets _rs/_re (start/end exclusive) for a vi motion. Returns 1 if no range.
+_vi_range() {
+  local m=$1; _re=$cursor _rs=$cursor
+  case "$m" in
+    h) ((cursor>0)) && _rs=$((cursor-1)) || return 1;;
+    l) ((_re<${#input})) && _re=$((cursor+1)) || return 1;;
+    w) while ((_re<${#input})) && [[ "${input:_re:1}" != " " ]]; do ((++_re)); done; while ((_re<${#input})) && [[ "${input:_re:1}" == " " ]]; do ((++_re)); done;;
+    e) ((_re<${#input}-1)) && ((++_re)); while ((_re<${#input}-1)) && [[ "${input:_re:1}" == " " ]]; do ((++_re)); done; while ((_re<${#input}-1)) && [[ "${input:_re+1:1}" != " " ]]; do ((++_re)); done; ((++_re));;
+    b) ((_re>0)) && ((_re--)); while ((_re>0)) && [[ "${input:_re:1}" == " " ]]; do ((_re--)); done; while ((_re>0)) && [[ "${input:_re-1:1}" != " " ]]; do ((_re--)); done; _rs=$_re; _re=$cursor;;
     f|F|t|T) _vi_read; local p
-      if [[ "$1" == [fF] ]]; then
-        if [[ "$1" == "f" ]]; then for ((p=cursor+1;p<${#input};p++)); do [[ "${input:p:1}" == "$c2" ]] && { e=$((p+1)); break; }; done
-        else for ((p=cursor-1;p>=0;p--)); do [[ "${input:p:1}" == "$c2" ]] && { _s=$p; e=$cursor; break; }; done; fi
-      else
-        if [[ "$1" == "t" ]]; then for ((p=cursor+1;p<${#input};p++)); do [[ "${input:p:1}" == "$c2" ]] && { e=$p; break; }; done
-        else for ((p=cursor-1;p>=0;p--)); do [[ "${input:p:1}" == "$c2" ]] && { _s=$((p+1)); e=$cursor; break; }; done; fi
-      fi;;
-    \$) e=${#input};;
-    0) _s=0; e=$cursor;;
-    *) return;;
+      if [[ "$m" == "f" ]]; then for ((p=cursor+1;p<${#input};p++)); do [[ "${input:p:1}" == "$c2" ]] && { _re=$((p+1)); break; }; done
+      elif [[ "$m" == "F" ]]; then for ((p=cursor-1;p>=0;p--)); do [[ "${input:p:1}" == "$c2" ]] && { _rs=$p; _re=$cursor; break; }; done
+      elif [[ "$m" == "t" ]]; then for ((p=cursor+1;p<${#input};p++)); do [[ "${input:p:1}" == "$c2" ]] && { _re=$p; break; }; done
+      else for ((p=cursor-1;p>=0;p--)); do [[ "${input:p:1}" == "$c2" ]] && { _rs=$((p+1)); _re=$cursor; break; }; done; fi;;
+    \$) _re=${#input};; 0) _rs=0; _re=$cursor;;
+    *) return 1;;
   esac
-  # Normalize: _s=start, e=end (exclusive)
-  ((_s>e)) && { local _t=$_s; _s=$e; e=$_t; }
-  ((_s==e)) && return
-  _vi_reg="${input:_s:e-_s}"
-  input="${input:0:_s}${input:e}"
-  cursor=$_s; _clamp
+  ((_rs>_re)) && { local _t=$_rs; _rs=$_re; _re=$_t; }
+  ((_rs==_re)) && return 1
+  return 0
+}
+_del() { # $1=motion  (also used by c via _vi_normal)
+  case "$1" in d|c) _vi_reg="$input"; input="" cursor=0; return;; esac
+  _vi_range "$1" || return
+  _vi_reg="${input:_rs:_re-_rs}"; input="${input:0:_rs}${input:_re}"; cursor=$_rs; _clamp
 }
 
 # ═══ VI HANDLER ═══
 _yank() { # $1=motion — like _del but only copies to register
-  local e=$cursor _s=$cursor
-  case "$1" in
-    y) _vi_reg="$input"; return;;
-    h) ((e>0)) && { _s=$((cursor-1)); } || return;;
-    l) ((e<${#input})) && e=$((cursor+1)) || return;;
-    w) while ((e<${#input})) && [[ "${input:e:1}" != " " ]]; do ((++e)); done; while ((e<${#input})) && [[ "${input:e:1}" == " " ]]; do ((++e)); done;;
-    e) ((e<${#input}-1)) && ((++e)); while ((e<${#input}-1)) && [[ "${input:e:1}" == " " ]]; do ((++e)); done; while ((e<${#input}-1)) && [[ "${input:e+1:1}" != " " ]]; do ((++e)); done; ((++e));;
-    b) ((e>0)) && ((e--)); while ((e>0)) && [[ "${input:e:1}" == " " ]]; do ((e--)); done; while ((e>0)) && [[ "${input:e-1:1}" != " " ]]; do ((e--)); done; _s=$e; e=$cursor;;
-    f|F|t|T) _vi_read; local p
-      if [[ "$1" == "f" ]]; then for ((p=cursor+1;p<${#input};p++)); do [[ "${input:p:1}" == "$c2" ]] && { e=$((p+1)); break; }; done
-      elif [[ "$1" == "F" ]]; then for ((p=cursor-1;p>=0;p--)); do [[ "${input:p:1}" == "$c2" ]] && { _s=$p; e=$cursor; break; }; done
-      elif [[ "$1" == "t" ]]; then for ((p=cursor+1;p<${#input};p++)); do [[ "${input:p:1}" == "$c2" ]] && { e=$p; break; }; done
-      else for ((p=cursor-1;p>=0;p--)); do [[ "${input:p:1}" == "$c2" ]] && { _s=$((p+1)); e=$cursor; break; }; done; fi;;
-    \$) e=${#input};; 0) _s=0; e=$cursor;;
-    *) return;;
+  case "$1" in y) _vi_reg="$input"; return;; esac
+  _vi_range "$1" || return
+  _vi_reg="${input:_rs:_re-_rs}"
+}
+# $1=dir(f/F/t/T) $2=char $3=count
+_vi_fmove() {
+  local _d=$1 _ch=$2 _cnt=$3 p
+  case "$_d" in
+    f) for ((_i=0;_i<_cnt;_i++)); do for ((p=cursor+1;p<${#input};p++)); do [[ "${input:p:1}" == "$_ch" ]] && { cursor=$p; break; }; done; done;;
+    F) for ((_i=0;_i<_cnt;_i++)); do for ((p=cursor-1;p>=0;p--)); do [[ "${input:p:1}" == "$_ch" ]] && { cursor=$p; break; }; done; done;;
+    t) local _lp=$((cursor+1)); for ((_i=0;_i<_cnt;_i++)); do for ((p=_lp;p<${#input};p++)); do [[ "${input:p:1}" == "$_ch" ]] && { cursor=$((p-1)); _lp=$((p+1)); break; }; done; done;;
+    T) local _lp=$((cursor-1)); for ((_i=0;_i<_cnt;_i++)); do for ((p=_lp;p>=0;p--)); do [[ "${input:p:1}" == "$_ch" ]] && { cursor=$((p+1)); _lp=$((p-1)); break; }; done; done;;
   esac
-  ((_s>e)) && { local _t=$_s; _s=$e; e=$_t; }
-  ((_s==e)) && return
-  _vi_reg="${input:_s:e-_s}"
 }
 _vi_normal() {
   if [[ "$c" =~ ^[1-9]$ ]] || { [[ "$c" == "0" ]] && [[ -n "$_rep" ]]; }; then _rep+="$c"; return 1; fi
@@ -3064,26 +3058,11 @@ _vi_normal() {
     w) for ((_i=0;_i<_n;_i++)); do _wfwd; done; draw;;
     b) for ((_i=0;_i<_n;_i++)); do _wbck; done; draw;;
     e) for ((_i=0;_i<_n;_i++)); do _wend; done; draw;;
-    f) _vi_read; _vi_lastf="f$c2"; for ((_i=0;_i<_n;_i++)); do for ((p=cursor+1;p<${#input};p++)); do [[ "${input:p:1}" == "$c2" ]] && { cursor=$p; break; }; done; done; draw;;
-    F) _vi_read; _vi_lastf="F$c2"; for ((_i=0;_i<_n;_i++)); do for ((p=cursor-1;p>=0;p--)); do [[ "${input:p:1}" == "$c2" ]] && { cursor=$p; break; }; done; done; draw;;
-    t) _vi_read; _vi_lastf="t$c2"; local _lp=$((cursor+1)); for ((_i=0;_i<_n;_i++)); do for ((p=_lp;p<${#input};p++)); do [[ "${input:p:1}" == "$c2" ]] && { cursor=$((p-1)); _lp=$((p+1)); break; }; done; done; draw;;
-    T) _vi_read; _vi_lastf="T$c2"; local _lp=$((cursor-1)); for ((_i=0;_i<_n;_i++)); do for ((p=_lp;p>=0;p--)); do [[ "${input:p:1}" == "$c2" ]] && { cursor=$((p+1)); _lp=$((p-1)); break; }; done; done; draw;;
-    \;) [[ -n "$_vi_lastf" ]] && { c="${_vi_lastf:0:1}"; c2="${_vi_lastf:1:1}"; local _sv="$_vi_lastf"
-      case "$c" in
-        f) for ((_i=0;_i<_n;_i++)); do for ((p=cursor+1;p<${#input};p++)); do [[ "${input:p:1}" == "$c2" ]] && { cursor=$p; break; }; done; done;;
-        F) for ((_i=0;_i<_n;_i++)); do for ((p=cursor-1;p>=0;p--)); do [[ "${input:p:1}" == "$c2" ]] && { cursor=$p; break; }; done; done;;
-        t) local _lp=$((cursor+1)); for ((_i=0;_i<_n;_i++)); do for ((p=_lp;p<${#input};p++)); do [[ "${input:p:1}" == "$c2" ]] && { cursor=$((p-1)); _lp=$((p+1)); break; }; done; done;;
-        T) local _lp=$((cursor-1)); for ((_i=0;_i<_n;_i++)); do for ((p=_lp;p>=0;p--)); do [[ "${input:p:1}" == "$c2" ]] && { cursor=$((p+1)); _lp=$((p-1)); break; }; done; done;;
-      esac; _vi_lastf="$_sv"; draw; };;
-    ,) [[ -n "$_vi_lastf" ]] && { local _rc="${_vi_lastf:0:1}" _rv; c2="${_vi_lastf:1:1}"
-      case "$_rc" in f) _rv=F;; F) _rv=f;; t) _rv=T;; T) _rv=t;; esac; c="$_rv"
-      local _sv="$_vi_lastf"
-      case "$c" in
-        f) for ((_i=0;_i<_n;_i++)); do for ((p=cursor+1;p<${#input};p++)); do [[ "${input:p:1}" == "$c2" ]] && { cursor=$p; break; }; done; done;;
-        F) for ((_i=0;_i<_n;_i++)); do for ((p=cursor-1;p>=0;p--)); do [[ "${input:p:1}" == "$c2" ]] && { cursor=$p; break; }; done; done;;
-        t) local _lp=$((cursor+1)); for ((_i=0;_i<_n;_i++)); do for ((p=_lp;p<${#input};p++)); do [[ "${input:p:1}" == "$c2" ]] && { cursor=$((p-1)); _lp=$((p+1)); break; }; done; done;;
-        T) local _lp=$((cursor-1)); for ((_i=0;_i<_n;_i++)); do for ((p=_lp;p>=0;p--)); do [[ "${input:p:1}" == "$c2" ]] && { cursor=$((p+1)); _lp=$((p-1)); break; }; done; done;;
-      esac; _vi_lastf="$_sv"; draw; };;
+    f|F|t|T) _vi_read; _vi_lastf="${c}${c2}"; _vi_fmove "$c" "$c2" "$_n"; draw;;
+    \;) [[ -n "$_vi_lastf" ]] && { local _sv="$_vi_lastf"; _vi_fmove "${_vi_lastf:0:1}" "${_vi_lastf:1:1}" "$_n"; _vi_lastf="$_sv"; draw; };;
+    ,) [[ -n "$_vi_lastf" ]] && { local _sv="$_vi_lastf" _rv
+      case "${_vi_lastf:0:1}" in f) _rv=F;; F) _rv=f;; t) _rv=T;; T) _rv=t;; esac
+      _vi_fmove "$_rv" "${_vi_lastf:1:1}" "$_n"; _vi_lastf="$_sv"; draw; };;
     x) _vi_reg=""; for ((_i=0;_i<_n&&${#input}>0&&cursor<${#input};_i++)); do _vi_reg+="${input:cursor:1}"; input="${input:0:cursor}${input:cursor+1}"; done; _clamp; draw;;
     X) _vi_reg=""; for ((_i=0;_i<_n&&cursor>0;_i++)); do _vi_reg="${input:cursor-1:1}$_vi_reg"; input="${input:0:cursor-1}${input:cursor}"; ((cursor--)); done; draw;;
     D) _vi_reg="${input:cursor}"; input="${input:0:cursor}"; ((cursor>0)) && ((cursor--)); draw;;
@@ -3094,9 +3073,9 @@ _vi_normal() {
       input="${input:0:cursor}${_ch}${input:cursor+1}"; ((cursor<${#input}-1)) && ((++cursor)); done; draw;;
     p) for ((_i=0;_i<_n;_i++)); do [[ -n "$_vi_reg" ]] && { input="${input:0:cursor+1}${_vi_reg}${input:cursor+1}"; ((cursor+=${#_vi_reg})); }; done; draw;;
     P) for ((_i=0;_i<_n;_i++)); do [[ -n "$_vi_reg" ]] && { input="${input:0:cursor}${_vi_reg}${input:cursor}"; ((cursor+=${#_vi_reg}-1)); }; done; draw;;
-    y) _vi_read; local _ic=""; while [[ "$c2" =~ ^[0-9]$ ]]; do _ic+="$c2"; _vi_read; done; local _yn=$((_n * ${_ic:-1})); for ((_i=0;_i<_yn;_i++)); do _yank "$c2"; done; draw;;
-    d) _vi_read; local _ic=""; while [[ "$c2" =~ ^[0-9]$ ]]; do _ic+="$c2"; _vi_read; done; local _dn=$((_n * ${_ic:-1})); for ((_i=0;_i<_dn;_i++)); do _del "$c2"; done; draw;;
-    c) _vi_read; local _ic=""; while [[ "$c2" =~ ^[0-9]$ ]]; do _ic+="$c2"; _vi_read; done; local _dn=$((_n * ${_ic:-1})); for ((_i=0;_i<_dn;_i++)); do _del "$c2"; done; mode="insert"; draw;;
+    y) _vi_read; local _ic=""; [[ "$c2" =~ ^[1-9]$ ]] && { _ic="$c2"; _vi_read; while [[ "$c2" =~ ^[0-9]$ ]]; do _ic+="$c2"; _vi_read; done; }; local _yn=$((_n * ${_ic:-1})); for ((_i=0;_i<_yn;_i++)); do _yank "$c2"; done; draw;;
+    d) _vi_read; local _ic=""; [[ "$c2" =~ ^[1-9]$ ]] && { _ic="$c2"; _vi_read; while [[ "$c2" =~ ^[0-9]$ ]]; do _ic+="$c2"; _vi_read; done; }; local _dn=$((_n * ${_ic:-1})); for ((_i=0;_i<_dn;_i++)); do _del "$c2"; done; draw;;
+    c) _vi_read; local _ic=""; [[ "$c2" =~ ^[1-9]$ ]] && { _ic="$c2"; _vi_read; while [[ "$c2" =~ ^[0-9]$ ]]; do _ic+="$c2"; _vi_read; done; }; local _dn=$((_n * ${_ic:-1})); for ((_i=0;_i<_dn;_i++)); do _del "$c2"; done; mode="insert"; draw;;
     u) ((${#UNDO_STACK[@]}>0)) && { local _u="${UNDO_STACK[-1]}"; unset 'UNDO_STACK[-1]'; cursor="${_u%%:*}"; input="${_u#*:}"; draw; };;
     g) _vi_read; [[ "$c2" == "g" ]] && { cursor=0; draw; };;
     G) cursor=$((${#input}>0?${#input}-1:0)); draw;;
@@ -3126,6 +3105,8 @@ _vi_normal() {
   esac
   return 1
 }
+
+_rl_rem() { local _n; printf -v _n '%(%s)T' -1; REPLY=$((_rl_deadline - _n)); ((REPLY < 0)) && REPLY=0; }
 
 # $1: allow manpages  $2: allow history  $3: timeout (0=none, returns 1 on timeout)
 # Caller defines _REDRAW_HDR(). Uses dynamic scoping for ans, HIST, etc.
@@ -3331,7 +3312,7 @@ run() {
     _sget "$prompt"; local _boss_tier=$REPLY
     _REDRAW_HDR() {
       local _t=$_bt
-      if ((${_rl_deadline:-0})); then local _n; printf -v _n '%(%s)T' -1; _t=$((_rl_deadline - _n)); ((_t < 0)) && _t=0; fi
+      if ((${_rl_deadline:-0})); then _rl_rem; _t=$REPLY; fi
       printf '\e[2J\e[H%s  %s\n\n%s\n\n' "${W}${B}═══ BOSS $((bi+1))/${boss_total} ═══${N}" "${W}${_t}s${N}" "${C}${prompt}${N}"
     }
     _REDRAW_HDR
@@ -3437,7 +3418,7 @@ challenge() {
 
     _REDRAW_HDR() {
       local _t=20
-      if ((${_rl_deadline:-0})); then local _n; printf -v _n '%(%s)T' -1; _t=$((_rl_deadline - _n)); ((_t < 0)) && _t=0; fi
+      if ((${_rl_deadline:-0})); then _rl_rem; _t=$REPLY; fi
       printf '\e[2J\e[H%s  %s  %s\n\n%s\n\n' "${W}${B}CHALLENGE${N}" "${B}Score: ${score}${N}" "${W}${_t}s${N}" "${C}${prompt}${N}"
     }
     _REDRAW_HDR
@@ -3558,6 +3539,20 @@ _main_menu() {
 # ═══ SCENARIO ENGINE ═══
 
 _perms_restore() { while IFS=' ' read -r _pmode _ppath; do [[ -n "$_ppath" ]] && chmod "$_pmode" "$_ppath" 2>/dev/null; done < "$2"; }
+# Uses dynamic-scoped _sc_snap, _perms_file from scenario()
+_sc_snap_save() {
+  find "$SANDBOX_DIR" -printf '%m %p\n' > "$_perms_file" 2>/dev/null
+  chmod -R u+rwX "$SANDBOX_DIR" 2>/dev/null
+  local _t="${_sc_snap}.tmp.$$"
+  cp -a "$SANDBOX_DIR" "$_t" && { rm -rf "$_sc_snap"; mv "$_t" "$_sc_snap"; } || rm -rf "$_t"
+  _perms_restore "$SANDBOX_DIR" "$_perms_file"
+}
+_sc_snap_restore() {
+  chmod -R u+rwX "$SANDBOX_DIR" 2>/dev/null
+  local _t="${SANDBOX_DIR}.tmp.$$"
+  cp -a "$_sc_snap" "$_t" && { rm -rf "$SANDBOX_DIR"; mv "$_t" "$SANDBOX_DIR"; } || rm -rf "$_t"
+  _perms_restore "$SANDBOX_DIR" "$_perms_file"
+}
 scenario() {
   local sc_id=${1:-0}
   ((sc_id == 0)) && { _sc_sel; return; }
@@ -3594,14 +3589,8 @@ scenario() {
     _qparse "${steps[$si]}"
     local prompt=$_qprompt ans=$_qans
 
-    # Snapshot sandbox before each step so wrong answers can be rolled back
-    # Save perms, relax so cp -a can read restricted files (e.g. scenario 4's chmod 000)
     local _perms_file="$_sc_snap.perms"
-    find "$SANDBOX_DIR" -printf '%m %p\n' > "$_perms_file" 2>/dev/null
-    chmod -R u+rwX "$SANDBOX_DIR" 2>/dev/null
-    local _snap_tmp="${_sc_snap}.tmp.$$"
-    cp -a "$SANDBOX_DIR" "$_snap_tmp" && { rm -rf "$_sc_snap"; mv "$_snap_tmp" "$_sc_snap"; } || rm -rf "$_snap_tmp"
-    _perms_restore "$SANDBOX_DIR" "$_perms_file"
+    _sc_snap_save
 
     _REDRAW_HDR() {
       printf '\e[2J\e[H%s  %s\n\n%s\n\n' "${W}${B}${SC_NAMES[$sc_id]}${N}" "${D}[Step $((si+1))/${total}]${N}" "${C}${prompt}${N}"
@@ -3621,11 +3610,7 @@ scenario() {
       else
         ((_S_ANSWERED++)); _S_STREAK=0; _wrong_show; _disk_check wrong "$input"
         explain "$ans"
-        # Restore sandbox to pre-step state so retry starts clean
-        chmod -R u+rwX "$SANDBOX_DIR" 2>/dev/null
-        local _roll_tmp="${SANDBOX_DIR}.tmp.$$"
-        cp -a "$_sc_snap" "$_roll_tmp" && { rm -rf "$SANDBOX_DIR"; mv "$_roll_tmp" "$SANDBOX_DIR"; } || rm -rf "$_roll_tmp"
-        _perms_restore "$SANDBOX_DIR" "$_perms_file"
+        _sc_snap_restore
         _pause retry
         _REDRAW_HDR
       fi
@@ -3952,7 +3937,7 @@ place() {
       local prompt=$_qprompt ans=$_qans
       _REDRAW_HDR() {
         local _t=20
-        if ((${_rl_deadline:-0})); then local _n; printf -v _n '%(%s)T' -1; _t=$((_rl_deadline - _n)); ((_t < 0)) && _t=0; fi
+        if ((${_rl_deadline:-0})); then _rl_rem; _t=$REPLY; fi
         printf '\e[2J\e[H%s  %s  %s\n\n%s\n\n' "${W}${B}Level ${lv}${N}" "${D}Q${qi}/2${N}" "${W}${_t}s${N}" "${C}${prompt}${N}"
       }
       _REDRAW_HDR
@@ -4002,23 +3987,7 @@ case "${1:-}" in
     PLAYER_NAME="${PLAYER_NAME:-preview}" BOSS_BEATEN=30
 
     printf '%s\n' "${B}═══ INTRO SCREEN ═══${N}"
-    local pad=$((25 - ${#PLAYER_NAME})); ((pad < 0)) && pad=0
-    local spaces; printf -v spaces '%*s' "$pad" ''
-    cat <<INTROEOF
-
-    ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
-    ░░                                                                  ░░
-    ░░      The networks are dead. The sky is ash.                      ░░
-    ░░      What remains runs on bone and silicon.                      ░░
-    ░░                                                                  ░░
-    ░░      You are ${W}${B}${PLAYER_NAME}${N}. You have only your shell.${spaces}░░
-    ░░                                                                  ░░
-    ░░      30 daemons guard the descent to ROOT.                       ░░
-    ░░                                                                  ░░
-    ░░      ${D}Know the words, or be forgotten.${N}                            ░░
-    ░░                                                                  ░░
-    ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
-INTROEOF
+    _intro nopause
 
     printf '\n%s\n' "${B}═══ LEVELS & BOSSES ═══${N}"
     for ((lv=1; lv<=MAX_LEVEL; lv++)); do
@@ -4046,28 +4015,7 @@ INTROEOF
     done
 
     printf '\n\n%s\n' "${B}═══ VICTORY SCREEN ═══${N}"
-    cat <<'VICEOF'
-
-    ██████╗  ██████╗  ██████╗ ████████╗
-    ██╔══██╗██╔═══██╗██╔═══██╗╚══██╔══╝
-    ██████╔╝██║   ██║██║   ██║   ██║
-    ██╔══██╗██║   ██║██║   ██║   ██║
-    ██║  ██║╚██████╔╝╚██████╔╝   ██║
-    ╚═╝  ╚═╝ ╚═════╝  ╚═════╝    ╚═╝
-
-VICEOF
-    printf '%s\n\n' "${G}${B}ACCESS GRANTED: ${W}${PLAYER_NAME}${N}"
-    local br="${D}░░${N}" edge="${D}░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░${N}"
-    printf '    %s\n' "$edge"
-    printf '    %s                                                              %s\n' "$br" "$br"
-    printf '    %s      The daemons are silent. The descent is complete.        %s\n' "$br" "$br"
-    printf '    %s      What remains bends to your command.                     %s\n' "$br" "$br"
-    printf '    %s                                                              %s\n' "$br" "$br"
-    printf '    %s      30 bosses defeated. The shell is yours.                 %s\n' "$br" "$br"
-    printf '    %s                                                              %s\n' "$br" "$br"
-    printf '    %s                      %sYou are ROOT.%s                           %s\n' "$br" "${B}" "${N}" "$br"
-    printf '    %s                                                              %s\n' "$br" "$br"
-    printf '    %s\n\n' "$edge"
+    _victory nopause
     }; _preview;;
   v|version|-v|--version) echo "cmdchamp $VERSION";;
   h|help|-h|--help)
