@@ -876,7 +876,9 @@ declare -A EXP=(
   [pwd]="print working directory (where you are)"
   [echo]="print text to stdout" [cat]="concatenate and display file contents" [ls]="list directory contents"
   [cd]="change directory" [cp]="copy files" [mv]="move/rename files" [rm]="delete files permanently"
-  [mkdir]="create directory" [touch]="create file/update timestamp"
+  [mkdir]="create directory" [rmdir]="remove empty directory" [touch]="create file/update timestamp"
+  [which]="find command location" [type]="describe command" [alias]="create shortcut" [unalias]="remove alias"
+  [watch]="repeat command on interval" [ssh-keygen]="generate SSH keys" [ssh-copy-id]="install SSH key on remote"
   [head]="head -N FILE: first ${Y}N${N} lines (default 10)"
   [tail]="tail -N FILE: last ${Y}N${N} lines (-f to follow)"
   [grep]="grep PATTERN FILE: search lines matching pattern"
@@ -1172,6 +1174,13 @@ gen_level1() {
   questions+=("Go to filesystem root (/)|cd /")
   questions+=("Create directory ${W}${newdir}${C}|mkdir ${newdir}|mkdir -p ${newdir}|mkdir --parents ${newdir}|mkdir ${newdir}/|mkdir -p ${newdir}/|mkdir --parents ${newdir}/")
   questions+=("Create nested directories ${W}${dir}/${newdir}${C} (parents too)|mkdir -p ${dir}/${newdir}|mkdir --parents ${dir}/${newdir}|mkdir -p ${dir}/${newdir}/|mkdir --parents ${dir}/${newdir}/")
+  _fphrase output.txt temp.txt scratch.txt; local newfile=$REPLY
+  questions+=("Create empty file ${W}${newfile}${C}|touch ${newfile}|> ${newfile}|: > ${newfile}|#state:exists:${newfile}")
+  questions+=("Update timestamp of ${W}${txt}${C}|touch ${txt}")
+  _fpick SANDBOX_TXTS; local rmfile=$REPLY
+  questions+=("Delete ${W}${rmfile}${C}|rm ${rmfile}|rm -f ${rmfile}|rm -- ${rmfile}")
+  questions+=("Delete ${W}${dir2}${C} and everything in it|rm -r ${dir2}|rm -rf ${dir2}|rm -r ${dir2}/|rm -rf ${dir2}/|rm --recursive ${dir2}|rm --recursive --force ${dir2}")
+  questions+=("Remove empty directory ${W}${newdir}${C}|rmdir ${newdir}|rmdir ${newdir}/|rm -d ${newdir}|rm -d ${newdir}/")
 }
 
 # Level 2: Save Output (>, >>)
@@ -1404,6 +1413,15 @@ gen_level9() {
   questions+=("Set and export ${var2} in one command|export ${var2}='${val2}'|export ${var2}=\"${val2}\"|export ${var2}=${val2}")
   questions+=("Remove variable ${var} from the environment|unset ${var}|unset -v ${var}")
   questions+=("Show all exported variables|export|export -p|env|printenv|declare -x")
+  _fphrase grep awk sed curl; local findcmd=$REPLY
+  questions+=("Find where ${Y}${findcmd}${C} is installed|which ${findcmd}|type ${findcmd}|command -v ${findcmd}|type -p ${findcmd}|type -P ${findcmd}")
+  questions+=("Check if ${Y}${findcmd}${C} is available|command -v ${findcmd}|which ${findcmd}|type ${findcmd}|type -p ${findcmd}|hash ${findcmd}")
+  _fphrase ll gs glog dps; local aname=$REPLY
+  _fphrase "ls -la" "git status" "git log --oneline" "docker ps"; local acmd=$REPLY
+  questions+=("Create alias ${Y}${aname}${C} for '${acmd}'|alias ${aname}='${acmd}'|alias ${aname}=\"${acmd}\"")
+  questions+=("Show what ${Y}${aname}${C} is aliased to|alias ${aname}|type ${aname}")
+  questions+=("Remove alias ${Y}${aname}${C}|unalias ${aname}")
+  questions+=("List all current aliases|alias")
 }
 
 # Level 10: Special Variables ($$, $?, $!)
@@ -1428,6 +1446,10 @@ gen_level10() {
   questions+=("Print 'failed' to stderr if command fails§ls /nonexistent 2>/dev/null ; [[ \$? -ne 0 ]] && echo failed >&2§ls /nonexistent 2>/dev/null ; [ \$? -ne 0 ] && echo failed >&2§ls /nonexistent 2>/dev/null ; test \$? -ne 0 && echo failed >&2§ls /nonexistent 2>/dev/null || echo failed >&2§ls /nonexistent 2>/dev/null ; [[ \$? -ne 0 ]] && echo failed 1>&2§ls /nonexistent 2>/dev/null ; [ \$? -ne 0 ] && echo failed 1>&2§ls /nonexistent 2>/dev/null ; test \$? -ne 0 && echo failed 1>&2§ls /nonexistent 2>/dev/null || echo failed 1>&2§ls /nonexistent 2>/dev/null ; [[ \$? != 0 ]] && echo failed >&2§ls /nonexistent 2>/dev/null ; [ \$? != 0 ] && echo failed >&2§ls /nonexistent 2>/dev/null ; [[ \$? != 0 ]] && echo failed 1>&2§ls /nonexistent 2>/dev/null ; [ \$? != 0 ] && echo failed 1>&2")
   questions+=("List files in home directory using \$HOME|ls \$HOME|ls \$HOME/|ls ~|ls ~/|ls \${HOME}|ls \${HOME}/")
   questions+=("Create file in home using \$HOME|touch \$HOME/test.txt|touch ~/test.txt|touch \${HOME}/test.txt")
+  questions+=("Print your username|whoami|id -un")
+  questions+=("Print your numeric user ID|id -u")
+  questions+=("Print all your group names|id -Gn|id -nG")
+  questions+=("Show full identity info (UID, GID, groups)|id")
   questions+=("Search in user's home for ${Y}${term}${C}§grep -r ${term} \$HOME 2>/dev/null | head -5§grep -R ${term} \$HOME 2>/dev/null | head -5§grep --recursive ${term} \$HOME 2>/dev/null | head -5§grep -r ${term} ~ 2>/dev/null | head -5§grep -R ${term} ~ 2>/dev/null | head -5§grep --recursive ${term} ~ 2>/dev/null | head -5§grep -r ${term} ~/ 2>/dev/null | head -5§grep -R ${term} ~/ 2>/dev/null | head -5§grep -r ${term} \$HOME/ 2>/dev/null | head -5§grep -R ${term} \$HOME/ 2>/dev/null | head -5§grep -r ${term} \${HOME} 2>/dev/null | head -5§grep -R ${term} \${HOME} 2>/dev/null | head -5§grep --recursive ${term} \${HOME} 2>/dev/null | head -5§grep --recursive ${term} ~ 2>/dev/null | head -5§grep --recursive ${term} ~/ 2>/dev/null | head -5§grep --recursive ${term} \$HOME/ 2>/dev/null | head -5§grep --recursive ${term} \${HOME}/ 2>/dev/null | head -5§grep -r ${term} ~ | head -5§grep -R ${term} ~ | head -5§grep --recursive ${term} ~ | head -5§grep -r ${term} \$HOME | head -5§grep -R ${term} \$HOME | head -5")
 }
 
@@ -1465,6 +1487,12 @@ gen_level11() {
   questions+=("Wait for job ${n2} specifically|wait %${n2}")
   questions+=("Bring most recent job to foreground|fg|fg %%|fg %+|fg %")
   questions+=("Continue stopped job in background|bg|bg %%|bg %+|bg %")
+  questions+=("List all running processes|ps aux|ps -ef|ps -aux")
+  questions+=("Find processes by name '${script}'§ps aux | grep ${script}§ps -ef | grep ${script}§pgrep -a ${script}§pgrep -fl ${script}")
+  questions+=("Kill process with PID ${n}|kill ${n}|kill -TERM ${n}|kill -15 ${n}|kill -s TERM ${n}")
+  questions+=("Force kill process with PID ${n}|kill -9 ${n}|kill -KILL ${n}|kill -s KILL ${n}|kill -s 9 ${n}")
+  questions+=("Kill all processes named '${script}'|pkill ${script}|killall ${script}|pkill -f ${script}")
+  questions+=("List PIDs of processes named '${script}'|pgrep ${script}|pgrep -f ${script}|pidof ${script}")
 }
 
 # Level 12: Test Operators ([[ -f ]], [[ -d ]], etc)
@@ -1559,6 +1587,14 @@ gen_level13() {
   questions+=("Count ${Y}${searchterm}${C} in ${W}${log}${C} if exists§[[ -f ${log} ]] && grep -c ${searchterm} ${log}§[ -f ${log} ] && grep -c ${searchterm} ${log}§test -f ${log} && grep -c ${searchterm} ${log}§[[ -f ${log} ]] && grep --count ${searchterm} ${log}§[ -f ${log} ] && grep --count ${searchterm} ${log}§test -f ${log} && grep --count ${searchterm} ${log}")
   questions+=("Extract ${W}${gz_archive}${C} and list contents§tar xzf ${gz_archive} && ls -la§tar -xzf ${gz_archive} && ls -la§tar xf ${gz_archive} && ls -la§tar -xf ${gz_archive} && ls -la§tar xzf ${gz_archive} && ls§tar -xzf ${gz_archive} && ls§tar xf ${gz_archive} && ls§tar -xf ${gz_archive} && ls§tar xzf ${gz_archive} && ls -l§tar -xzf ${gz_archive} && ls -l§tar xf ${gz_archive} && ls -l§tar -xf ${gz_archive} && ls -l§tar xvzf ${gz_archive}§tar -xvzf ${gz_archive}")
   questions+=("Copy ${W}${txt}${C} to ${W}${dir}${C}/ and echo done|cp ${txt} ${dir}/ && echo done|cp ${txt} ${dir} && echo done|cp ${txt} ${dir}/ && echo 'done'|cp ${txt} ${dir} && echo 'done'")
+  _fphrase alice bob deploy www-data; local owner=$REPLY
+  _fphrase staff www-data developers users; local group=$REPLY
+  questions+=("Change owner of ${W}${txt}${C} to ${owner}|sudo chown ${owner} ${txt}|chown ${owner} ${txt}")
+  questions+=("Change owner and group of ${W}${cfg}${C} to ${owner}:${group}|sudo chown ${owner}:${group} ${cfg}|chown ${owner}:${group} ${cfg}|sudo chown ${owner}.${group} ${cfg}|chown ${owner}.${group} ${cfg}")
+  questions+=("Change group of ${W}${txt}${C} to ${group}|sudo chgrp ${group} ${txt}|chgrp ${group} ${txt}|sudo chown :${group} ${txt}|chown :${group} ${txt}")
+  questions+=("Recursively change owner of ${W}${dir}${C}/ to ${owner}|sudo chown -R ${owner} ${dir}/|chown -R ${owner} ${dir}/|sudo chown -R ${owner} ${dir}|chown -R ${owner} ${dir}|sudo chown --recursive ${owner} ${dir}/|chown --recursive ${owner} ${dir}/|sudo chown --recursive ${owner} ${dir}|chown --recursive ${owner} ${dir}")
+  questions+=("Identify file type of ${W}${txt}${C}|file ${txt}|file -- ${txt}")
+  questions+=("Identify file type of ${W}${script}${C}|file ${script}|file -- ${script}")
 }
 
 # Level 14: System Admin
@@ -1616,6 +1652,10 @@ gen_level14() {
   questions+=("Upgrade all packages (Fedora/RHEL)|dnf upgrade|sudo dnf upgrade|yum upgrade|sudo yum upgrade|dnf upgrade -y|sudo dnf upgrade -y|yum upgrade -y|sudo yum upgrade -y|dnf update|sudo dnf update|yum update|sudo yum update|dnf update -y|sudo dnf update -y|yum update -y|sudo yum update -y|dnf upgrade --yes|sudo dnf upgrade --yes|yum upgrade --yes|sudo yum upgrade --yes|dnf update --yes|sudo dnf update --yes|yum update --yes|sudo yum update --yes")
   questions+=("Search for package ${pkg} (Debian)|apt search ${pkg}|apt-cache search ${pkg}")
   questions+=("Search for package ${pkg} (Fedora)|dnf search ${pkg}|yum search ${pkg}")
+  _fphrase "df -h" "free -h" "ss -tlnp" "ps aux"; local watchcmd=$REPLY
+  _fphrase 2 5 10; local watchn=$REPLY
+  questions+=("Run '${watchcmd}' every ${watchn} seconds|watch -n ${watchn} ${watchcmd}|watch -n${watchn} ${watchcmd}|watch --interval ${watchn} ${watchcmd}|watch --interval=${watchn} ${watchcmd}")
+  questions+=("Watch disk space, highlight changes|watch -d df -h|watch --differences df -h|watch -d 'df -h'|watch --differences 'df -h'")
   questions+=("Run full system security audit|lynis audit system|sudo lynis audit system")
   questions+=("Lynis: only audit the 'networking' category|lynis audit system --tests-from-group networking|sudo lynis audit system --tests-from-group networking|lynis audit system --tests-from-group=networking|sudo lynis audit system --tests-from-group=networking")
 }
@@ -2154,6 +2194,10 @@ gen_level24() {
   questions+=("Send with custom header|curl -H 'Authorization: Bearer token123' ${url}/api|curl --header 'Authorization: Bearer token123' ${url}/api")
   questions+=("Silent mode (no progress)|curl -s ${url}|curl --silent ${url}")
   questions+=("Download file with original name|curl -O ${url}/file.tar.gz|curl --remote-name ${url}/file.tar.gz|wget ${url}/file.tar.gz|curl -LO ${url}/file.tar.gz")
+  questions+=("Connect to remote host via SSH|ssh ${user}@${host}")
+  questions+=("SSH as ${user} on port ${port}|ssh -p ${port} ${user}@${host}|ssh -p${port} ${user}@${host}|ssh ${user}@${host} -p ${port}|ssh ${user}@${host} -p${port}")
+  questions+=("Generate SSH key pair|ssh-keygen|ssh-keygen -t ed25519|ssh-keygen -t rsa|ssh-keygen -t rsa -b 4096|ssh-keygen -t ed25519 -C ''|ssh-keygen -t ed25519 -C \"\"")
+  questions+=("Copy SSH key to remote host|ssh-copy-id ${user}@${host}|ssh-copy-id -i ~/.ssh/id_ed25519.pub ${user}@${host}|ssh-copy-id -i ~/.ssh/id_rsa.pub ${user}@${host}")
   questions+=("SSH local port forward: access remote ${port} via local 8080|ssh -L 8080:localhost:${port} ${user}@${host}|ssh -NL 8080:localhost:${port} ${user}@${host}|ssh -L8080:localhost:${port} ${user}@${host}|ssh -NL8080:localhost:${port} ${user}@${host}|ssh -L 8080:127.0.0.1:${port} ${user}@${host}|ssh -NL 8080:127.0.0.1:${port} ${user}@${host}|ssh -L 8080:localhost:${port} -N ${user}@${host}")
   questions+=("SSH remote port forward: expose local ${port} on remote|ssh -R ${port}:localhost:${port} ${user}@${host}|ssh -NR ${port}:localhost:${port} ${user}@${host}|ssh -R${port}:localhost:${port} ${user}@${host}|ssh -NR${port}:localhost:${port} ${user}@${host}")
   questions+=("SSH dynamic SOCKS proxy on port 1080|ssh -D 1080 ${user}@${host}|ssh -ND 1080 ${user}@${host}|ssh -DN 1080 ${user}@${host}|ssh -D1080 ${user}@${host}|ssh -ND1080 ${user}@${host}")

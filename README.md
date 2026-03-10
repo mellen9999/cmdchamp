@@ -53,7 +53,7 @@ cmdchamp reset          # Clear all progress
 
 | # | Name | Focus |
 |---|------|-------|
-| 1 | First Steps | pwd, ls, echo, cd, mkdir |
+| 1 | First Steps | pwd, ls, echo, cd, mkdir, rm, touch |
 | 2 | Save Your Work | >, >>, tee |
 | 3 | Reading Files | cat, head, tail, less |
 | 4 | Basic Pipes | pipes, grep, wc, sort, uniq |
@@ -61,12 +61,12 @@ cmdchamp reset          # Clear all progress
 | 6 | Here-Strings | <<<, tr, cut, rev, bc |
 | 7 | Error Handling | 2>, 2>&1, &>, /dev/null |
 | 8 | Logic Gates | &&, \|\| |
-| 9 | Variables | `$VAR`, assignment, expansion |
-| 10 | Special Variables | `$$`, `$?`, `$!`, `$#`, `$@`, `$0` |
-| 11 | Job Control | bg, fg, jobs, &, Ctrl+Z |
+| 9 | Variables | `$VAR`, assignment, expansion, which, alias |
+| 10 | Special Variables | `$$`, `$?`, `$!`, `$#`, `$@`, `$0`, whoami, id |
+| 11 | Job Control | bg, fg, jobs, &, ps, kill, pkill |
 | 12 | Test Conditions | -f, -d, -z, -n, -eq, -lt |
-| 13 | Core File Tools | cp, mv, ln, chmod, du, tar, diff |
-| 14 | System Admin | ping, df, free, ss, systemctl, ip |
+| 13 | Core File Tools | cp, mv, ln, chmod, chown, du, tar, diff, file |
+| 14 | System Admin | ping, df, free, ss, systemctl, ip, watch |
 | 15 | Multiplexers | tmux: sessions, windows, panes |
 | 16 | Text Search | grep, ripgrep, regex |
 | 17 | File Finding | find, fd, by name/size/time/type |
@@ -81,7 +81,7 @@ cmdchamp reset          # Clear all progress
 | # | Name | Focus |
 |---|------|-------|
 | 23 | Git | branches, remotes, rebasing, stashing, bisect |
-| 24 | Network Tools | tshark, curl, jq, ssh tunnels, openssl, SMB |
+| 24 | Network Tools | ssh, tshark, curl, jq, ssh tunnels, openssl, SMB |
 | 25 | Network Scanning | nmap, service detection, scripts |
 | 26 | WiFi & RF | aircrack-ng, netcat, tcpdump, wireless recon |
 | 27 | Hash Cracking | hashcat, john, hydra, encoding |
