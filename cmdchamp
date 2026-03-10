@@ -3514,7 +3514,6 @@ _main_menu() {
     fi
     if [[ -n "$PLAYER_NAME" ]]; then it+=("Stats"); act+=(stats)
     else it+=($'\x01'"Stats"); act+=(x); fi
-    it+=("Reset"); act+=(reset)
     local _banner
     printf -v _banner '%s\n%s\n%s\n%s\n%s\n%s\n\n%s' \
       "   ${W}${B}██████╗███╗   ███╗██████╗  ██████╗██╗  ██╗ █████╗ ███╗   ███╗██████╗${N}" \
@@ -3529,15 +3528,19 @@ _main_menu() {
     _QUIT=0
     case "${act[$REPLY]}" in
       cont) _run_loop;;
-      new) _first_run; _run_loop;;
+      new) if [[ -n "$PLAYER_NAME" ]]; then
+          printf '\n'; read -rp "  ${R}Reset all progress and start over? [y/N]${N} " yn
+          [[ "$yn" =~ ^[Yy] ]] || continue
+          rm -f "$DATA"/*.json "$DATA/scores" "$DATA/scores.lock" "$DATA/profile"; rm -rf "$DATA/sandbox" "$DATA/sandbox.pristine" 2>/dev/null
+          PLAYER_NAME="" BOSS_BEATEN=0; _load_profile; load
+        fi
+        _first_run; _run_loop;;
       sc) _sc_sel;;
       challenge) challenge;;
       stats) printf '\e[2J\e[H'; stats; local _sk; while read -rsn1 _sk; do
         [[ "$_sk" == h || "$_sk" == q || -z "$_sk" ]] && break
         [[ "$_sk" == $'\e' ]] && { read -rsn2 -t 0.1 _sk; [[ "${_sk:1}" == D ]] && break; [[ -z "$_sk" ]] && break; }
         done;;
-      reset) printf '\n'; read -rp "  ${R}Reset all progress? [y/N]${N} " yn
-        [[ "$yn" =~ ^[Yy] ]] && { rm -f "$DATA"/*.json "$DATA/scores" "$DATA/scores.lock" "$DATA/profile"; rm -rf "$DATA/sandbox" "$DATA/sandbox.pristine" 2>/dev/null; PLAYER_NAME="" BOSS_BEATEN=0; _load_profile; load; };;
     esac
   done
 }
