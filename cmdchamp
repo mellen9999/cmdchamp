@@ -188,17 +188,17 @@ LEVEL_NAMES=("" "First Steps" "Save Your Work" "Reading Files" "Basic Pipes" "In
   "Hash Cracking" "Forensics" "Privilege Escalation" "ROOT")
 
 SC_TOTAL=8
-SC_NAMES=("" "The Broken Deploy" "Log Emergency" "Messy CSV" "Permission Lockout"
-  "Find the Needle" "Archive & Extract" "The Incident" "Config Surgery")
-SC_UNLOCK=("" 21 21 18 13 16 13 18 21)  # boss level needed to unlock each scenario
+SC_NAMES=("" "Permission Lockout" "Archive & Extract" "Find the Needle" "Messy CSV"
+  "The Incident" "The Broken Deploy" "Log Emergency" "Config Surgery")
+SC_UNLOCK=("" 13 13 16 18 18 21 21 21)  # boss level needed to unlock each scenario
 SC_FLAVOR=(""
+  "Everything is locked down. Restore access."
+  "Package it up, ship it out, bring it back."
+  "Hidden markers are buried in the codebase. Hunt them down."
+  "Someone dumped messy data. Clean it up."
+  "An attacker hit the server. Investigate the breach."
   "The deploy pipeline is broken. Find the problems and fix them."
   "The logs are screaming. Triage the errors before it gets worse."
-  "Someone dumped messy data. Clean it up."
-  "Everything is locked down. Restore access."
-  "Hidden markers are buried in the codebase. Hunt them down."
-  "Package it up, ship it out, bring it back."
-  "An attacker hit the server. Investigate the breach."
   "The config file is a mess. Perform surgery.")
 
 _victory() {
@@ -2439,82 +2439,15 @@ _sc_mark_done() {
   _save_profile
 }
 
-# --- Scenario 1: The Broken Deploy ---
+# --- Scenario 1: Permission Lockout ---
 _sc_setup_1() {
-  local d=$1
-  chmod 644 "$d/deploy.sh"
-  rm -f "$d/VERSION"
-  printf '[server]\nhost=CHANGEME\nport=0\n' > "$d/config.ini"
-}
-_sc_steps_1() {
-  cat <<'STEPS'
-Check permissions on deploy.sh§ls -l deploy.sh§ls -la deploy.sh§ls -ld deploy.sh§ls -lh deploy.sh§stat deploy.sh#output:~-rw-r--r--
-Make deploy.sh executable§chmod +x deploy.sh§chmod 755 deploy.sh§chmod u+x deploy.sh§chmod a+x deploy.sh§chmod 0755 deploy.sh§chmod 775 deploy.sh§chmod 0775 deploy.sh§chmod ugo+x deploy.sh#state:perm:deploy.sh:x
-Create VERSION file with "1.0"§echo 1.0 > VERSION§echo '1.0' > VERSION§echo "1.0" > VERSION§printf '1.0\n' > VERSION§printf "1.0\n" > VERSION§printf '%s\n' 1.0 > VERSION#state:contains:VERSION:1.0,lines:VERSION:1
-Backup config.ini before editing§cp config.ini config.ini.bak§cp -p config.ini config.ini.bak§cp -- config.ini config.ini.bak§cp -a config.ini config.ini.bak#state:exists:config.ini.bak
-Fix the host in config.ini to localhost§sed -i 's/host=CHANGEME/host=localhost/' config.ini§sed -i 's/host=CHANGEME/host=localhost/g' config.ini§sed -i 's/CHANGEME/localhost/' config.ini§sed -i 's/CHANGEME/localhost/g' config.ini§sed -i -e 's/host=CHANGEME/host=localhost/' config.ini§sed -i -e 's/host=CHANGEME/host=localhost/g' config.ini§sed -i -e 's/CHANGEME/localhost/' config.ini§sed -i -e 's/CHANGEME/localhost/g' config.ini§sed --in-place 's/host=CHANGEME/host=localhost/' config.ini§sed --in-place 's/CHANGEME/localhost/' config.ini#state:contains:config.ini:host=localhost,!contains:config.ini:CHANGEME
-Fix the port in config.ini to 8080§sed -i 's/port=0/port=8080/' config.ini§sed -i 's/port=0/port=8080/g' config.ini§sed -i '/port/s/0/8080/' config.ini§sed -i -e 's/port=0/port=8080/' config.ini§sed -i -e 's/port=0/port=8080/g' config.ini§sed -i '/port/s/0/8080/g' config.ini§sed -i -e '/port/s/0/8080/' config.ini§sed -i -e '/port/s/0/8080/g' config.ini§sed --in-place 's/port=0/port=8080/' config.ini§sed --in-place 's/port=0/port=8080/g' config.ini#state:contains:config.ini:port=8080,!contains:config.ini:port=0
-Run the deploy script§./deploy.sh§bash deploy.sh§sh deploy.sh§source deploy.sh§. deploy.sh§. ./deploy.sh§source ./deploy.sh#output:~Deploy complete
-STEPS
-}
-
-# --- Scenario 2: Log Emergency ---
-_sc_setup_2() {
-  local d=$1
-  cat > "$d/app.log" <<'LOG'
-2024-01-15 08:00:01 INFO Application started
-2024-01-15 08:01:12 ERROR Connection refused to database
-2024-01-15 08:01:15 ERROR Connection refused to database
-2024-01-15 08:02:30 WARN Disk usage at 85%
-2024-01-15 08:03:01 INFO Health check passed
-2024-01-15 08:03:45 ERROR Connection refused to database
-2024-01-15 08:04:10 ERROR Database error: timeout
-2024-01-15 08:04:30 WARN Memory usage high
-2024-01-15 08:05:00 INFO Retry succeeded
-2024-01-15 08:05:30 ERROR Connection refused to database
-LOG
-}
-_sc_steps_2() {
-  cat <<'STEPS'
-Count the ERROR lines in app.log§grep -c ERROR app.log§grep --count ERROR app.log§grep -cF ERROR app.log§grep -cw ERROR app.log§grep -cE ERROR app.log§grep ERROR app.log | wc -l§grep ERROR app.log | wc --lines#output:5
-Find the most common error message§grep ERROR app.log | sed 's/.* ERROR //' | sort | uniq -c | sort -rn | head -1§grep ERROR app.log | cut -d' ' -f4- | sort | uniq -c | sort -rn | head -1§grep ERROR app.log | cut -d' ' -f4- | sort | uniq -c | sort -nr | head -1§grep ERROR app.log | sed 's/.* ERROR //' | sort | uniq -c | sort -nr | head -1#output:~Connection refused
-Save all ERROR lines to errors.txt§grep ERROR app.log > errors.txt§grep -F ERROR app.log > errors.txt§grep -w ERROR app.log > errors.txt§grep -E ERROR app.log > errors.txt§grep 'ERROR' app.log > errors.txt#state:contains:errors.txt:ERROR,lines:errors.txt:5
-Count unique error types§grep ERROR app.log | sed 's/.* ERROR //' | sort -u | wc -l§grep ERROR app.log | cut -d' ' -f4- | sort -u | wc -l§grep ERROR app.log | sed 's/.* ERROR //' | sort --unique | wc -l§grep ERROR app.log | sed 's/.* ERROR //' | sort -u | wc --lines§grep ERROR app.log | cut -d' ' -f4- | sort --unique | wc -l§grep ERROR app.log | cut -d' ' -f4- | sort -u | wc --lines#output:2
-Remove all ERROR lines from app.log§sed -i '/ERROR/d' app.log§sed -i -e '/ERROR/d' app.log§sed --in-place '/ERROR/d' app.log§sed --in-place -e '/ERROR/d' app.log§grep -v ERROR app.log > tmp && mv tmp app.log§grep -vF ERROR app.log > tmp && mv tmp app.log§grep -vw ERROR app.log > tmp && mv tmp app.log§grep -vE ERROR app.log > tmp && mv tmp app.log§awk '!/ERROR/' app.log > tmp && mv tmp app.log#state:lines:app.log:5,!contains:app.log:ERROR
-STEPS
-}
-
-# --- Scenario 3: Messy CSV ---
-_sc_setup_3() {
-  local d=$1
-  cat > "$d/data.csv" <<'CSV'
-id,name,status
-3,charlie,active
-1,alice,active
-2,bob,inactive
-1,alice,active
-4,dave,active
-2,bob,inactive
-CSV
-}
-_sc_steps_3() {
-  cat <<'STEPS'
-Count data rows (excluding header)§tail -n +2 data.csv | wc -l§sed 1d data.csv | wc -l§tail -n +2 data.csv | wc --lines§sed 1d data.csv | wc --lines§awk 'NR>1' data.csv | wc -l§awk 'NR>1' data.csv | wc --lines§awk 'END{print NR-1}' data.csv#output:~^\s*6\s*$
-Find duplicate lines (excluding header)§tail -n +2 data.csv | sort | uniq -d§sed 1d data.csv | sort | uniq -d§tail -n +2 data.csv | sort | uniq --repeated§sed 1d data.csv | sort | uniq --repeated§awk 'NR>1' data.csv | sort | uniq -d§awk 'NR>1' data.csv | sort | uniq --repeated§tail -n +2 data.csv | sort | uniq -D§sed 1d data.csv | sort | uniq -D§awk 'NR>1' data.csv | sort | uniq -D§tail -n +2 data.csv | sort | uniq --all-repeated§sed 1d data.csv | sort | uniq --all-repeated§awk 'NR>1' data.csv | sort | uniq --all-repeated#output:~alice
-Sort and deduplicate (keep header)§head -1 data.csv > sorted.csv && tail -n +2 data.csv | sort -t, -k1 -n | uniq >> sorted.csv§(head -1 data.csv; tail -n +2 data.csv | sort -t, -k1,1n | uniq) > sorted.csv§head -1 data.csv > sorted.csv && tail -n +2 data.csv | sort -u >> sorted.csv§(head -1 data.csv; tail -n +2 data.csv | sort -u) > sorted.csv§(head -1 data.csv; tail -n +2 data.csv | sort --unique) > sorted.csv§head -1 data.csv > sorted.csv && tail -n +2 data.csv | sort --unique >> sorted.csv§(head -1 data.csv && tail -n +2 data.csv | sort -u) > sorted.csv#state:lines:sorted.csv:5,line1:sorted.csv:id,name,status
-Count active entries in sorted file§grep -cw active sorted.csv§grep -c ',active$' sorted.csv§grep -c ',active' sorted.csv§grep -cF ',active' sorted.csv§grep -w active sorted.csv | wc -l§grep ',active' sorted.csv | wc -l§grep ',active$' sorted.csv | wc -l#output:3
-STEPS
-}
-
-# --- Scenario 4: Permission Lockout ---
-_sc_setup_4() {
   local d=$1
   chmod 000 "$d/config.ini"
   chmod 644 "$d/backup.sh"
   mkdir -p "$d/logs"
   chmod 000 "$d/logs"
 }
-_sc_steps_4() {
+_sc_steps_1() {
   cat <<'STEPS'
 List permissions to see what's broken§ls -l§ls -la§ls -al§ls -lh§ls -lah§ls -lA§ls --long§stat config.ini backup.sh logs#output:~----------
 Make config.ini readable§chmod 644 config.ini§chmod a+r config.ini§chmod u+r config.ini§chmod +r config.ini§chmod 444 config.ini§chmod 664 config.ini§chmod 600 config.ini§chmod 400 config.ini§chmod 440 config.ini§chmod 0644 config.ini§chmod 0600 config.ini§chmod 0444 config.ini§chmod 0400 config.ini§chmod ugo+r config.ini#state:perm:config.ini:r
@@ -2525,8 +2458,27 @@ Run backup.sh to verify it works§./backup.sh§bash backup.sh§sh backup.sh§sou
 STEPS
 }
 
-# --- Scenario 5: Find the Needle ---
-_sc_setup_5() {
+# --- Scenario 2: Archive & Extract ---
+_sc_setup_2() {
+  local d=$1
+  mkdir -p "$d/release"
+  printf '2.0\n' > "$d/release/VERSION"
+  printf '# Release Notes\nNew features.\n' > "$d/release/README.md"
+  printf 'print("hello")\n' > "$d/release/app.py"
+}
+_sc_steps_2() {
+  cat <<'STEPS'
+Create a tar.gz of the release/ directory§tar czf release.tar.gz release§tar -czf release.tar.gz release§tar czf release.tar.gz release/§tar -czf release.tar.gz release/§tar cvzf release.tar.gz release§tar -cvzf release.tar.gz release§tar cvzf release.tar.gz release/§tar -cvzf release.tar.gz release/#state:exists:release.tar.gz
+List the archive contents§tar tzf release.tar.gz§tar -tzf release.tar.gz§tar tf release.tar.gz§tar -tf release.tar.gz§tar tzvf release.tar.gz§tar -tzvf release.tar.gz§tar tvf release.tar.gz§tar -tvf release.tar.gz#output:~release/
+Delete the original release/ directory§rm -rf release§rm -r release§rm -rf release/§rm -r release/§rm -Rf release§rm -Rf release/§rm --recursive release§rm --recursive --force release§rm --recursive release/§rm --recursive --force release/#state:!exists:release
+Extract the archive to restore it§tar xzf release.tar.gz§tar -xzf release.tar.gz§tar xf release.tar.gz§tar -xf release.tar.gz§tar xzvf release.tar.gz§tar -xzvf release.tar.gz§tar xvf release.tar.gz§tar -xvf release.tar.gz#state:exists:release/VERSION
+Verify VERSION was restored§cat release/VERSION§less release/VERSION§more release/VERSION§head release/VERSION§head -n 1 release/VERSION#output:~2\.0
+Count files in restored release/§ls release | wc -l§ls release/ | wc -l§ls -1 release | wc -l§ls -1 release/ | wc -l§ls release | wc --lines§ls release/ | wc --lines§ls -1 release | wc --lines§ls -1 release/ | wc --lines#output:3
+STEPS
+}
+
+# --- Scenario 3: Find the Needle ---
+_sc_setup_3() {
   local d=$1
   printf 'Meeting Notes\n=============\nNo action items.\n' > "$d/notes.txt"
   mkdir -p "$d/src/lib"
@@ -2544,7 +2496,7 @@ PY
   printf '# HACK: temporary workaround\necho "ok"\n' >> "$d/deploy.sh"
   printf '# TODO: add error handling\n' >> "$d/backup.sh"
 }
-_sc_steps_5() {
+_sc_steps_3() {
   cat <<'STEPS'
 Find files containing TODO§grep -rl TODO .§grep -rl TODO§grep -Rl TODO .§grep -Rl TODO§grep --recursive -l TODO .§grep --recursive -l TODO§grep -rli TODO .§grep -Rli TODO .§grep -rli TODO§grep -Rli TODO§grep -rwl TODO .§grep -Rwl TODO .§grep -rwl TODO§grep -Rwl TODO#output:~main\.py
 Count total TODO/FIXME/HACK markers§grep -rE 'TODO|FIXME|HACK' . | wc -l§grep -r 'TODO\|FIXME\|HACK' . | wc -l§grep -RE 'TODO|FIXME|HACK' . | wc -l§grep -rE 'TODO|FIXME|HACK' . | wc --lines§grep -RE 'TODO|FIXME|HACK' . | wc --lines§grep -rE 'TODO|FIXME|HACK' | wc -l§grep -rE 'TODO|FIXME|HACK' | wc --lines§grep -r 'TODO\|FIXME\|HACK' . | wc --lines§grep -RE 'TODO|FIXME|HACK' | wc -l§grep -RE 'TODO|FIXME|HACK' | wc --lines§grep -r 'TODO\|FIXME\|HACK' | wc -l§grep -r 'TODO\|FIXME\|HACK' | wc --lines#output:4
@@ -2556,27 +2508,30 @@ Save all markers to report.txt§grep -rnE 'TODO|FIXME|HACK' . > report.txt§grep
 STEPS
 }
 
-# --- Scenario 6: Archive & Extract ---
-_sc_setup_6() {
+# --- Scenario 4: Messy CSV ---
+_sc_setup_4() {
   local d=$1
-  mkdir -p "$d/release"
-  printf '2.0\n' > "$d/release/VERSION"
-  printf '# Release Notes\nNew features.\n' > "$d/release/README.md"
-  printf 'print("hello")\n' > "$d/release/app.py"
+  cat > "$d/data.csv" <<'CSV'
+id,name,status
+3,charlie,active
+1,alice,active
+2,bob,inactive
+1,alice,active
+4,dave,active
+2,bob,inactive
+CSV
 }
-_sc_steps_6() {
+_sc_steps_4() {
   cat <<'STEPS'
-Create a tar.gz of the release/ directory§tar czf release.tar.gz release§tar -czf release.tar.gz release§tar czf release.tar.gz release/§tar -czf release.tar.gz release/§tar cvzf release.tar.gz release§tar -cvzf release.tar.gz release§tar cvzf release.tar.gz release/§tar -cvzf release.tar.gz release/#state:exists:release.tar.gz
-List the archive contents§tar tzf release.tar.gz§tar -tzf release.tar.gz§tar tf release.tar.gz§tar -tf release.tar.gz§tar tzvf release.tar.gz§tar -tzvf release.tar.gz§tar tvf release.tar.gz§tar -tvf release.tar.gz#output:~release/
-Delete the original release/ directory§rm -rf release§rm -r release§rm -rf release/§rm -r release/§rm -Rf release§rm -Rf release/§rm --recursive release§rm --recursive --force release§rm --recursive release/§rm --recursive --force release/#state:!exists:release
-Extract the archive to restore it§tar xzf release.tar.gz§tar -xzf release.tar.gz§tar xf release.tar.gz§tar -xf release.tar.gz§tar xzvf release.tar.gz§tar -xzvf release.tar.gz§tar xvf release.tar.gz§tar -xvf release.tar.gz#state:exists:release/VERSION
-Verify VERSION was restored§cat release/VERSION§less release/VERSION§more release/VERSION§head release/VERSION§head -n 1 release/VERSION#output:~2\.0
-Count files in restored release/§ls release | wc -l§ls release/ | wc -l§ls -1 release | wc -l§ls -1 release/ | wc -l§ls release | wc --lines§ls release/ | wc --lines§ls -1 release | wc --lines§ls -1 release/ | wc --lines#output:3
+Count data rows (excluding header)§tail -n +2 data.csv | wc -l§sed 1d data.csv | wc -l§tail -n +2 data.csv | wc --lines§sed 1d data.csv | wc --lines§awk 'NR>1' data.csv | wc -l§awk 'NR>1' data.csv | wc --lines§awk 'END{print NR-1}' data.csv#output:~^\s*6\s*$
+Find duplicate lines (excluding header)§tail -n +2 data.csv | sort | uniq -d§sed 1d data.csv | sort | uniq -d§tail -n +2 data.csv | sort | uniq --repeated§sed 1d data.csv | sort | uniq --repeated§awk 'NR>1' data.csv | sort | uniq -d§awk 'NR>1' data.csv | sort | uniq --repeated§tail -n +2 data.csv | sort | uniq -D§sed 1d data.csv | sort | uniq -D§awk 'NR>1' data.csv | sort | uniq -D§tail -n +2 data.csv | sort | uniq --all-repeated§sed 1d data.csv | sort | uniq --all-repeated§awk 'NR>1' data.csv | sort | uniq --all-repeated#output:~alice
+Sort and deduplicate (keep header)§head -1 data.csv > sorted.csv && tail -n +2 data.csv | sort -t, -k1 -n | uniq >> sorted.csv§(head -1 data.csv; tail -n +2 data.csv | sort -t, -k1,1n | uniq) > sorted.csv§head -1 data.csv > sorted.csv && tail -n +2 data.csv | sort -u >> sorted.csv§(head -1 data.csv; tail -n +2 data.csv | sort -u) > sorted.csv§(head -1 data.csv; tail -n +2 data.csv | sort --unique) > sorted.csv§head -1 data.csv > sorted.csv && tail -n +2 data.csv | sort --unique >> sorted.csv§(head -1 data.csv && tail -n +2 data.csv | sort -u) > sorted.csv#state:lines:sorted.csv:5,line1:sorted.csv:id,name,status
+Count active entries in sorted file§grep -cw active sorted.csv§grep -c ',active$' sorted.csv§grep -c ',active' sorted.csv§grep -cF ',active' sorted.csv§grep -w active sorted.csv | wc -l§grep ',active' sorted.csv | wc -l§grep ',active$' sorted.csv | wc -l#output:3
 STEPS
 }
 
-# --- Scenario 7: The Incident ---
-_sc_setup_7() {
+# --- Scenario 5: The Incident ---
+_sc_setup_5() {
   local d=$1
   cat > "$d/server.log" <<'LOG'
 2024-01-15 08:00:01 192.168.1.100 GET /index.html 200
@@ -2591,13 +2546,58 @@ _sc_setup_7() {
 2024-01-15 08:05:00 192.168.1.100 GET /index.html 200
 LOG
 }
-_sc_steps_7() {
+_sc_steps_5() {
   cat <<'STEPS'
 Find the IP with the most requests§awk '{print $3}' server.log | sort | uniq -c | sort -rn | head -1§cut -d' ' -f3 server.log | sort | uniq -c | sort -rn | head -1§awk '{print $3}' server.log | sort | uniq -c | sort -nr | head -1§cut -d' ' -f3 server.log | sort | uniq -c | sort -nr | head -1§cut -d ' ' -f3 server.log | sort | uniq -c | sort -rn | head -1§cut -d ' ' -f3 server.log | sort | uniq -c | sort -nr | head -1#output:~10\.10\.10\.50
 Count failed login attempts (401)§grep 401 server.log | wc -l§grep -c 401 server.log§grep 401 server.log | wc --lines§grep -c ' 401' server.log§grep ' 401' server.log | wc -l§grep -cF 401 server.log§grep ' 401' server.log | wc --lines§grep -w 401 server.log | wc -l§grep -cw 401 server.log§grep -F 401 server.log | wc -l§grep -F 401 server.log | wc --lines§grep -w 401 server.log | wc --lines§awk '/401/{c++}END{print c}' server.log§awk '/ 401/{c++}END{print c}' server.log#output:3
 Check if the attacker got in (find 200 after 401s from same IP)§grep 10.10.10.50 server.log | grep 200§grep '10.10.10.50.*200' server.log§grep 10.10.10.50 server.log | grep ' 200'§grep -F 10.10.10.50 server.log | grep 200§grep -F 10.10.10.50 server.log | grep -F 200§grep 10.10.10.50 server.log | grep -F 200§grep -w 10.10.10.50 server.log | grep 200§grep -Fw 10.10.10.50 server.log | grep 200§awk '/10.10.10.50/ && /200/' server.log§awk '/10\.10\.10\.50/ && /200/' server.log#output:~login 200
 Save all attacker activity to attacker.log§grep 10.10.10.50 server.log > attacker.log§grep '10.10.10.50' server.log > attacker.log§grep -F 10.10.10.50 server.log > attacker.log§grep "10.10.10.50" server.log > attacker.log§grep -Fw 10.10.10.50 server.log > attacker.log§grep -w 10.10.10.50 server.log > attacker.log§grep -E 10.10.10.50 server.log > attacker.log§grep -E '10.10.10.50' server.log > attacker.log§awk '/10.10.10.50/' server.log > attacker.log§awk '/10\.10\.10\.50/' server.log > attacker.log#state:contains:attacker.log:10.10.10.50,lines:attacker.log:6
 Count unique IPs in the log§awk '{print $3}' server.log | sort -u | wc -l§awk '{print $3}' server.log | sort | uniq | wc -l§awk '{print $3}' server.log | sort --unique | wc -l§awk '{print $3}' server.log | sort -u | wc --lines§awk '{print $3}' server.log | sort | uniq | wc --lines§cut -d' ' -f3 server.log | sort -u | wc -l§cut -d' ' -f3 server.log | sort --unique | wc -l§cut -d' ' -f3 server.log | sort -u | wc --lines§cut -d' ' -f3 server.log | sort | uniq | wc -l§cut -d' ' -f3 server.log | sort | uniq | wc --lines§cut -d ' ' -f3 server.log | sort -u | wc -l§cut -d ' ' -f3 server.log | sort -u | wc --lines§cut -d ' ' -f3 server.log | sort | uniq | wc -l§cut -d ' ' -f3 server.log | sort | uniq | wc --lines§awk '!seen[$3]++{c++}END{print c}' server.log#output:2
+STEPS
+}
+
+# --- Scenario 6: The Broken Deploy ---
+_sc_setup_6() {
+  local d=$1
+  chmod 644 "$d/deploy.sh"
+  rm -f "$d/VERSION"
+  printf '[server]\nhost=CHANGEME\nport=0\n' > "$d/config.ini"
+}
+_sc_steps_6() {
+  cat <<'STEPS'
+Check permissions on deploy.sh§ls -l deploy.sh§ls -la deploy.sh§ls -ld deploy.sh§ls -lh deploy.sh§stat deploy.sh#output:~-rw-r--r--
+Make deploy.sh executable§chmod +x deploy.sh§chmod 755 deploy.sh§chmod u+x deploy.sh§chmod a+x deploy.sh§chmod 0755 deploy.sh§chmod 775 deploy.sh§chmod 0775 deploy.sh§chmod ugo+x deploy.sh#state:perm:deploy.sh:x
+Create VERSION file with "1.0"§echo 1.0 > VERSION§echo '1.0' > VERSION§echo "1.0" > VERSION§printf '1.0\n' > VERSION§printf "1.0\n" > VERSION§printf '%s\n' 1.0 > VERSION#state:contains:VERSION:1.0,lines:VERSION:1
+Backup config.ini before editing§cp config.ini config.ini.bak§cp -p config.ini config.ini.bak§cp -- config.ini config.ini.bak§cp -a config.ini config.ini.bak#state:exists:config.ini.bak
+Fix the host in config.ini to localhost§sed -i 's/host=CHANGEME/host=localhost/' config.ini§sed -i 's/host=CHANGEME/host=localhost/g' config.ini§sed -i 's/CHANGEME/localhost/' config.ini§sed -i 's/CHANGEME/localhost/g' config.ini§sed -i -e 's/host=CHANGEME/host=localhost/' config.ini§sed -i -e 's/host=CHANGEME/host=localhost/g' config.ini§sed -i -e 's/CHANGEME/localhost/' config.ini§sed -i -e 's/CHANGEME/localhost/g' config.ini§sed --in-place 's/host=CHANGEME/host=localhost/' config.ini§sed --in-place 's/CHANGEME/localhost/' config.ini#state:contains:config.ini:host=localhost,!contains:config.ini:CHANGEME
+Fix the port in config.ini to 8080§sed -i 's/port=0/port=8080/' config.ini§sed -i 's/port=0/port=8080/g' config.ini§sed -i '/port/s/0/8080/' config.ini§sed -i -e 's/port=0/port=8080/' config.ini§sed -i -e 's/port=0/port=8080/g' config.ini§sed -i '/port/s/0/8080/g' config.ini§sed -i -e '/port/s/0/8080/' config.ini§sed -i -e '/port/s/0/8080/g' config.ini§sed --in-place 's/port=0/port=8080/' config.ini§sed --in-place 's/port=0/port=8080/g' config.ini#state:contains:config.ini:port=8080,!contains:config.ini:port=0
+Run the deploy script§./deploy.sh§bash deploy.sh§sh deploy.sh§source deploy.sh§. deploy.sh§. ./deploy.sh§source ./deploy.sh#output:~Deploy complete
+STEPS
+}
+
+# --- Scenario 7: Log Emergency ---
+_sc_setup_7() {
+  local d=$1
+  cat > "$d/app.log" <<'LOG'
+2024-01-15 08:00:01 INFO Application started
+2024-01-15 08:01:12 ERROR Connection refused to database
+2024-01-15 08:01:15 ERROR Connection refused to database
+2024-01-15 08:02:30 WARN Disk usage at 85%
+2024-01-15 08:03:01 INFO Health check passed
+2024-01-15 08:03:45 ERROR Connection refused to database
+2024-01-15 08:04:10 ERROR Database error: timeout
+2024-01-15 08:04:30 WARN Memory usage high
+2024-01-15 08:05:00 INFO Retry succeeded
+2024-01-15 08:05:30 ERROR Connection refused to database
+LOG
+}
+_sc_steps_7() {
+  cat <<'STEPS'
+Count the ERROR lines in app.log§grep -c ERROR app.log§grep --count ERROR app.log§grep -cF ERROR app.log§grep -cw ERROR app.log§grep -cE ERROR app.log§grep ERROR app.log | wc -l§grep ERROR app.log | wc --lines#output:5
+Find the most common error message§grep ERROR app.log | sed 's/.* ERROR //' | sort | uniq -c | sort -rn | head -1§grep ERROR app.log | cut -d' ' -f4- | sort | uniq -c | sort -rn | head -1§grep ERROR app.log | cut -d' ' -f4- | sort | uniq -c | sort -nr | head -1§grep ERROR app.log | sed 's/.* ERROR //' | sort | uniq -c | sort -nr | head -1#output:~Connection refused
+Save all ERROR lines to errors.txt§grep ERROR app.log > errors.txt§grep -F ERROR app.log > errors.txt§grep -w ERROR app.log > errors.txt§grep -E ERROR app.log > errors.txt§grep 'ERROR' app.log > errors.txt#state:contains:errors.txt:ERROR,lines:errors.txt:5
+Count unique error types§grep ERROR app.log | sed 's/.* ERROR //' | sort -u | wc -l§grep ERROR app.log | cut -d' ' -f4- | sort -u | wc -l§grep ERROR app.log | sed 's/.* ERROR //' | sort --unique | wc -l§grep ERROR app.log | sed 's/.* ERROR //' | sort -u | wc --lines§grep ERROR app.log | cut -d' ' -f4- | sort --unique | wc -l§grep ERROR app.log | cut -d' ' -f4- | sort -u | wc --lines#output:2
+Remove all ERROR lines from app.log§sed -i '/ERROR/d' app.log§sed -i -e '/ERROR/d' app.log§sed --in-place '/ERROR/d' app.log§sed --in-place -e '/ERROR/d' app.log§grep -v ERROR app.log > tmp && mv tmp app.log§grep -vF ERROR app.log > tmp && mv tmp app.log§grep -vw ERROR app.log > tmp && mv tmp app.log§grep -vE ERROR app.log > tmp && mv tmp app.log§awk '!/ERROR/' app.log > tmp && mv tmp app.log#state:lines:app.log:5,!contains:app.log:ERROR
 STEPS
 }
 

@@ -90,13 +90,13 @@ Multi-step sandbox challenges — state persists between steps.
 
 | # | Name | Unlocks at | Steps |
 |---|------|-----------|-------|
-| 4 | Permission Lockout | L13 boss | 6 |
-| 6 | Archive & Extract | L13 boss | 6 |
-| 5 | Find the Needle | L16 boss | 7 |
-| 3 | Messy CSV | L18 boss | 4 |
-| 7 | The Incident | L18 boss | 5 |
-| 1 | The Broken Deploy | L21 boss | 7 |
-| 2 | Log Emergency | L21 boss | 5 |
+| 1 | Permission Lockout | L13 boss | 6 |
+| 2 | Archive & Extract | L13 boss | 6 |
+| 3 | Find the Needle | L16 boss | 7 |
+| 4 | Messy CSV | L18 boss | 4 |
+| 5 | The Incident | L18 boss | 5 |
+| 6 | The Broken Deploy | L21 boss | 7 |
+| 7 | Log Emergency | L21 boss | 5 |
 | 8 | Config Surgery | L21 boss | 5 |
 
 ## Placement test
