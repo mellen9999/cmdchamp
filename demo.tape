@@ -11,7 +11,7 @@ Set Framerate 24
 Set TypingSpeed 1ms
 Set Padding 20
 Set LoopOffset 0
-Set Theme {"black":"#000000","red":"#aa0000","green":"#00aa00","yellow":"#aa5500","blue":"#0000aa","magenta":"#aa00aa","cyan":"#00aaaa","white":"#aaaaaa","brightBlack":"#555555","brightRed":"#ff5555","brightGreen":"#55ff55","brightYellow":"#ffff55","brightBlue":"#5555ff","brightMagenta":"#ff55ff","brightCyan":"#55ffff","brightWhite":"#ffffff","background":"#000000","foreground":"#aaaaaa","selectionBackground":"#555555","cursorColor":"#aaaaaa"}
+Set Theme {"black":"#000000","red":"#aa0000","green":"#00aa00","yellow":"#aa5500","blue":"#5555ff","magenta":"#aa00aa","cyan":"#00aaaa","white":"#aaaaaa","brightBlack":"#555555","brightRed":"#ff5555","brightGreen":"#55ff55","brightYellow":"#ffff55","brightBlue":"#5555ff","brightMagenta":"#ff55ff","brightCyan":"#55ffff","brightWhite":"#ffffff","background":"#000000","foreground":"#aaaaaa","selectionBackground":"#555555","cursorColor":"#aaaaaa"}
 
 # Setup: seeded profile, skip to gameplay (hidden)
 Hide
