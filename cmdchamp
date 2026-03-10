@@ -183,8 +183,8 @@ EOF
 BOSS_NAMES=("" "n00b" "CopyPasta" "CatMan" "PipeWrench" "Redirect" "Murmur" "DevNull" "AndOr" "\$VARIABLE" "\$\$"
   "BackgroundNoise" "TestCase" "SubShell" "Globber" "QuoteMaster" "ArrayLord" "TheFork" "Regex" "Cron" "Daemon"
   "RootKit" "KernelPanic" "Segfault" "ZeroDay" "TheFirewall" "Entropy" "Singularity" "Void" "Omega" "ROOT")
-BOSS_FLAVOR=("" "We all die as n00bs first." "Your keystrokes echo in empty halls." "I read the bones of dead files."
-  "Data flows through me like blood." "I send your output to the grave." "I feed the silence into your commands."
+BOSS_FLAVOR=("" "There is no shortcut. Only the first step." "Your keystrokes echo in empty halls." "I read the bones of dead files."
+  "Data is blood. I am the vein." "I send your output to the grave." "I feed the silence into your commands."
   "Your stderr falls into the void." "True or false. Live or die." "I hold what you've forgotten."
   "Every process has a death." "I wait in the dark between processes." "Pass my test or be terminated."
   "Trapped in shells within shells." "I match everything. I consume all." "Escape is just another cage."
