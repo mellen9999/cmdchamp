@@ -2636,7 +2636,7 @@ Fix log level to INFO§sed -i 's/level=DEBUG/level=INFO/' config.ini§sed -i 's/
 STEPS
 }
 
-declare -A _LEVEL_CACHE=() _LEVEL_CACHE_N=() _LEVEL_ITEMS=()
+declare -A _LEVEL_CACHE=() _LEVEL_CACHE_N=() _LEVEL_ITEMS=() _LAST_PICK=()
 
 declare -a CURRENT_QUESTIONS=()
 generate_level() {
@@ -3409,7 +3409,12 @@ _pick_q() {
     local IFS=$'\n'; _LEVEL_CACHE[$1]="${_pqtmp[*]}"
   fi
   local _n=${_LEVEL_CACHE_N[$1]}; ((_n)) || return 1
-  _qparse "${_LEVEL_ITEMS[$1:$((RANDOM % _n))]}"
+  local _idx=$((RANDOM % _n))
+  if ((_n > 1)) && [[ "${_LAST_PICK[$1]:-}" == "$_idx" ]]; then
+    _idx=$(( (_idx + 1) % _n ))
+  fi
+  _LAST_PICK[$1]=$_idx
+  _qparse "${_LEVEL_ITEMS[$1:$_idx]}"
 }
 
 gauntlet() {
