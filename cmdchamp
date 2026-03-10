@@ -168,12 +168,11 @@ _tutorial() {
     ${B}Vi Mode${N} ${D}(on by default, CMD_VI=0 to disable)${N}
 
     ${C}Esc${N}       Normal mode
-    ${C}h l${N}       Move cursor
-    ${C}w b e${N}     Word navigation
-    ${C}i a I A${N}   Enter insert mode
-    ${C}d{motion}${N} Delete  ${C}c{motion}${N} Change
-    ${C}u${N}         Undo (multi-level)
-    ${C}?${N}         Full vi help (in normal mode)
+    ${C}h l${N}       Move cursor          ${C}w b e${N}     Word navigation
+    ${C}f t ; ,${N}   Find char/repeat     ${C}i a I A${N}   Insert mode
+    ${C}d{motion}${N} Delete               ${C}c{motion}${N} Change
+    ${C}y{motion}${N} Yank    ${C}p P${N} Paste   ${C}~ ${N}Toggle case
+    ${C}u${N}         Undo (multi-level)   ${C}?${N}         Full vi help
 
 EOF
   read -rsn1 -p "                            Press Enter to continue..."
@@ -3004,55 +3003,105 @@ _vi_hist() {
   cursor=${#input}; _clamp
 }
 _del() { # $1=motion  (also used by c via _vi_normal)
-  local e=$cursor
+  local e=$cursor _s=$cursor
   case "$1" in
-    d|c) input="" cursor=0;;
-    h) ((e>0)) && { input="${input:0:e-1}${input:e}"; cursor=$((e-1)); };;
-    l) ((e<${#input})) && input="${input:0:e}${input:e+1}";;
-    w) while ((e<${#input})) && [[ "${input:e:1}" != " " ]]; do ((++e)); done; while ((e<${#input})) && [[ "${input:e:1}" == " " ]]; do ((++e)); done; input="${input:0:cursor}${input:e}";;
-    e) ((e<${#input}-1)) && ((++e)); while ((e<${#input}-1)) && [[ "${input:e:1}" == " " ]]; do ((++e)); done; while ((e<${#input}-1)) && [[ "${input:e+1:1}" != " " ]]; do ((++e)); done; input="${input:0:cursor}${input:e+1}";;
-    b) ((e>0)) && ((e--)); while ((e>0)) && [[ "${input:e:1}" == " " ]]; do ((e--)); done; while ((e>0)) && [[ "${input:e-1:1}" != " " ]]; do ((e--)); done; input="${input:0:e}${input:cursor}"; cursor=$e;;
+    d|c) _vi_reg="$input"; input="" cursor=0; return;;
+    h) ((e>0)) && e=$((cursor-1)) || return; _s=$e;;
+    l) ((e<${#input})) && e=$((cursor+1)) || return;;
+    w) while ((e<${#input})) && [[ "${input:e:1}" != " " ]]; do ((++e)); done; while ((e<${#input})) && [[ "${input:e:1}" == " " ]]; do ((++e)); done;;
+    e) ((e<${#input}-1)) && ((++e)); while ((e<${#input}-1)) && [[ "${input:e:1}" == " " ]]; do ((++e)); done; while ((e<${#input}-1)) && [[ "${input:e+1:1}" != " " ]]; do ((++e)); done; ((++e));;
+    b) ((e>0)) && ((e--)); while ((e>0)) && [[ "${input:e:1}" == " " ]]; do ((e--)); done; while ((e>0)) && [[ "${input:e-1:1}" != " " ]]; do ((e--)); done; _s=$e; e=$cursor;;
     f|F|t|T) _vi_read; local p
       if [[ "$1" == [fF] ]]; then
-        if [[ "$1" == "f" ]]; then for ((p=e+1;p<${#input};p++)); do [[ "${input:p:1}" == "$c2" ]] && { e=$((p+1)); break; }; done
-        else for ((p=e-1;p>=0;p--)); do [[ "${input:p:1}" == "$c2" ]] && { e=$p; break; }; done; fi
+        if [[ "$1" == "f" ]]; then for ((p=cursor+1;p<${#input};p++)); do [[ "${input:p:1}" == "$c2" ]] && { e=$((p+1)); break; }; done
+        else for ((p=cursor-1;p>=0;p--)); do [[ "${input:p:1}" == "$c2" ]] && { _s=$p; e=$cursor; break; }; done; fi
       else
-        if [[ "$1" == "t" ]]; then for ((p=e+1;p<${#input};p++)); do [[ "${input:p:1}" == "$c2" ]] && { e=$p; break; }; done
-        else for ((p=e-1;p>=0;p--)); do [[ "${input:p:1}" == "$c2" ]] && { e=$((p+1)); break; }; done; fi
-      fi
-      if ((e>cursor)); then input="${input:0:cursor}${input:e}"; elif ((e<cursor)); then input="${input:0:e}${input:cursor}"; cursor=$e; fi;;
-    \$) input="${input:0:cursor}";;
-    0) input="${input:cursor}"; cursor=0;;
-  esac; _clamp
+        if [[ "$1" == "t" ]]; then for ((p=cursor+1;p<${#input};p++)); do [[ "${input:p:1}" == "$c2" ]] && { e=$p; break; }; done
+        else for ((p=cursor-1;p>=0;p--)); do [[ "${input:p:1}" == "$c2" ]] && { _s=$((p+1)); e=$cursor; break; }; done; fi
+      fi;;
+    \$) e=${#input};;
+    0) _s=0; e=$cursor;;
+    *) return;;
+  esac
+  # Normalize: _s=start, e=end (exclusive)
+  ((_s>e)) && { local _t=$_s; _s=$e; e=$_t; }
+  ((_s==e)) && return
+  _vi_reg="${input:_s:e-_s}"
+  input="${input:0:_s}${input:e}"
+  cursor=$_s; _clamp
 }
 
 # ═══ VI HANDLER ═══
+_yank() { # $1=motion — like _del but only copies to register
+  local e=$cursor _s=$cursor
+  case "$1" in
+    y) _vi_reg="$input"; return;;
+    h) ((e>0)) && { _s=$((cursor-1)); } || return;;
+    l) ((e<${#input})) && e=$((cursor+1)) || return;;
+    w) while ((e<${#input})) && [[ "${input:e:1}" != " " ]]; do ((++e)); done; while ((e<${#input})) && [[ "${input:e:1}" == " " ]]; do ((++e)); done;;
+    e) ((e<${#input}-1)) && ((++e)); while ((e<${#input}-1)) && [[ "${input:e:1}" == " " ]]; do ((++e)); done; while ((e<${#input}-1)) && [[ "${input:e+1:1}" != " " ]]; do ((++e)); done; ((++e));;
+    b) ((e>0)) && ((e--)); while ((e>0)) && [[ "${input:e:1}" == " " ]]; do ((e--)); done; while ((e>0)) && [[ "${input:e-1:1}" != " " ]]; do ((e--)); done; _s=$e; e=$cursor;;
+    f|F|t|T) _vi_read; local p
+      if [[ "$1" == "f" ]]; then for ((p=cursor+1;p<${#input};p++)); do [[ "${input:p:1}" == "$c2" ]] && { e=$((p+1)); break; }; done
+      elif [[ "$1" == "F" ]]; then for ((p=cursor-1;p>=0;p--)); do [[ "${input:p:1}" == "$c2" ]] && { _s=$p; e=$cursor; break; }; done
+      elif [[ "$1" == "t" ]]; then for ((p=cursor+1;p<${#input};p++)); do [[ "${input:p:1}" == "$c2" ]] && { e=$p; break; }; done
+      else for ((p=cursor-1;p>=0;p--)); do [[ "${input:p:1}" == "$c2" ]] && { _s=$((p+1)); e=$cursor; break; }; done; fi;;
+    \$) e=${#input};; 0) _s=0; e=$cursor;;
+    *) return;;
+  esac
+  ((_s>e)) && { local _t=$_s; _s=$e; e=$_t; }
+  ((_s==e)) && return
+  _vi_reg="${input:_s:e-_s}"
+}
 _vi_normal() {
   if [[ "$c" =~ ^[1-9]$ ]] || { [[ "$c" == "0" ]] && [[ -n "$_rep" ]]; }; then _rep+="$c"; return 1; fi
   local _n=${_rep:-1}; _rep=""
-  case "$c" in s|S|x|X|D|C|d|c|r) UNDO_STACK+=("$cursor:$input");; esac
+  case "$c" in s|S|x|X|D|C|d|c|r|'~'|p|P) UNDO_STACK+=("$cursor:$input");; esac
   case "$c" in
     i) mode="insert"; draw;; a) mode="insert"; ((cursor<${#input})) && ((++cursor)); draw;;
     A) mode="insert"; cursor=${#input}; draw;; I) mode="insert"; cursor=0; draw;;
-    s) ((${#input}>0)) && input="${input:0:cursor}${input:cursor+1}"; mode="insert"; draw;;
-    S) input="" cursor=0 mode="insert"; draw;;
+    s) ((${#input}>0)) && { _vi_reg="${input:cursor:1}"; input="${input:0:cursor}${input:cursor+1}"; }; mode="insert"; draw;;
+    S) _vi_reg="$input"; input="" cursor=0 mode="insert"; draw;;
     h) for ((_i=0;_i<_n&&cursor>0;_i++)); do ((cursor--)); done; draw;;
     l) for ((_i=0;_i<_n&&cursor<${#input}-1;_i++)); do ((++cursor)); done; draw;;
     k) _vi_hist -1 && draw;;
     j) _vi_hist 1 && draw;;
     0) cursor=0; draw;; \$) cursor=$((${#input}>0?${#input}-1:0)); draw;;
+    ^) cursor=0; while ((cursor<${#input})) && [[ "${input:cursor:1}" == " " ]]; do ((++cursor)); done; draw;;
     w) for ((_i=0;_i<_n;_i++)); do _wfwd; done; draw;;
     b) for ((_i=0;_i<_n;_i++)); do _wbck; done; draw;;
     e) for ((_i=0;_i<_n;_i++)); do _wend; done; draw;;
-    f) _vi_read; for ((_i=0;_i<_n;_i++)); do for ((p=cursor+1;p<${#input};p++)); do [[ "${input:p:1}" == "$c2" ]] && { cursor=$p; break; }; done; done; draw;;
-    F) _vi_read; for ((_i=0;_i<_n;_i++)); do for ((p=cursor-1;p>=0;p--)); do [[ "${input:p:1}" == "$c2" ]] && { cursor=$p; break; }; done; done; draw;;
-    t) _vi_read; local _lp=$((cursor+1)); for ((_i=0;_i<_n;_i++)); do for ((p=_lp;p<${#input};p++)); do [[ "${input:p:1}" == "$c2" ]] && { cursor=$((p-1)); _lp=$((p+1)); break; }; done; done; draw;;
-    T) _vi_read; local _lp=$((cursor-1)); for ((_i=0;_i<_n;_i++)); do for ((p=_lp;p>=0;p--)); do [[ "${input:p:1}" == "$c2" ]] && { cursor=$((p+1)); _lp=$((p-1)); break; }; done; done; draw;;
-    x) for ((_i=0;_i<_n&&${#input}>0&&cursor<${#input};_i++)); do input="${input:0:cursor}${input:cursor+1}"; done; _clamp; draw;;
-    X) for ((_i=0;_i<_n&&cursor>0;_i++)); do input="${input:0:cursor-1}${input:cursor}"; ((cursor--)); done; draw;;
-    D) input="${input:0:cursor}"; ((cursor>0)) && ((cursor--)); draw;;
-    C) input="${input:0:cursor}"; mode="insert"; draw;;
+    f) _vi_read; _vi_lastf="f$c2"; for ((_i=0;_i<_n;_i++)); do for ((p=cursor+1;p<${#input};p++)); do [[ "${input:p:1}" == "$c2" ]] && { cursor=$p; break; }; done; done; draw;;
+    F) _vi_read; _vi_lastf="F$c2"; for ((_i=0;_i<_n;_i++)); do for ((p=cursor-1;p>=0;p--)); do [[ "${input:p:1}" == "$c2" ]] && { cursor=$p; break; }; done; done; draw;;
+    t) _vi_read; _vi_lastf="t$c2"; local _lp=$((cursor+1)); for ((_i=0;_i<_n;_i++)); do for ((p=_lp;p<${#input};p++)); do [[ "${input:p:1}" == "$c2" ]] && { cursor=$((p-1)); _lp=$((p+1)); break; }; done; done; draw;;
+    T) _vi_read; _vi_lastf="T$c2"; local _lp=$((cursor-1)); for ((_i=0;_i<_n;_i++)); do for ((p=_lp;p>=0;p--)); do [[ "${input:p:1}" == "$c2" ]] && { cursor=$((p+1)); _lp=$((p-1)); break; }; done; done; draw;;
+    \;) [[ -n "$_vi_lastf" ]] && { c="${_vi_lastf:0:1}"; c2="${_vi_lastf:1:1}"; local _sv="$_vi_lastf"
+      case "$c" in
+        f) for ((_i=0;_i<_n;_i++)); do for ((p=cursor+1;p<${#input};p++)); do [[ "${input:p:1}" == "$c2" ]] && { cursor=$p; break; }; done; done;;
+        F) for ((_i=0;_i<_n;_i++)); do for ((p=cursor-1;p>=0;p--)); do [[ "${input:p:1}" == "$c2" ]] && { cursor=$p; break; }; done; done;;
+        t) local _lp=$((cursor+1)); for ((_i=0;_i<_n;_i++)); do for ((p=_lp;p<${#input};p++)); do [[ "${input:p:1}" == "$c2" ]] && { cursor=$((p-1)); _lp=$((p+1)); break; }; done; done;;
+        T) local _lp=$((cursor-1)); for ((_i=0;_i<_n;_i++)); do for ((p=_lp;p>=0;p--)); do [[ "${input:p:1}" == "$c2" ]] && { cursor=$((p+1)); _lp=$((p-1)); break; }; done; done;;
+      esac; _vi_lastf="$_sv"; draw; };;
+    ,) [[ -n "$_vi_lastf" ]] && { local _rc="${_vi_lastf:0:1}" _rv; c2="${_vi_lastf:1:1}"
+      case "$_rc" in f) _rv=F;; F) _rv=f;; t) _rv=T;; T) _rv=t;; esac; c="$_rv"
+      local _sv="$_vi_lastf"
+      case "$c" in
+        f) for ((_i=0;_i<_n;_i++)); do for ((p=cursor+1;p<${#input};p++)); do [[ "${input:p:1}" == "$c2" ]] && { cursor=$p; break; }; done; done;;
+        F) for ((_i=0;_i<_n;_i++)); do for ((p=cursor-1;p>=0;p--)); do [[ "${input:p:1}" == "$c2" ]] && { cursor=$p; break; }; done; done;;
+        t) local _lp=$((cursor+1)); for ((_i=0;_i<_n;_i++)); do for ((p=_lp;p<${#input};p++)); do [[ "${input:p:1}" == "$c2" ]] && { cursor=$((p-1)); _lp=$((p+1)); break; }; done; done;;
+        T) local _lp=$((cursor-1)); for ((_i=0;_i<_n;_i++)); do for ((p=_lp;p>=0;p--)); do [[ "${input:p:1}" == "$c2" ]] && { cursor=$((p+1)); _lp=$((p-1)); break; }; done; done;;
+      esac; _vi_lastf="$_sv"; draw; };;
+    x) _vi_reg=""; for ((_i=0;_i<_n&&${#input}>0&&cursor<${#input};_i++)); do _vi_reg+="${input:cursor:1}"; input="${input:0:cursor}${input:cursor+1}"; done; _clamp; draw;;
+    X) _vi_reg=""; for ((_i=0;_i<_n&&cursor>0;_i++)); do _vi_reg="${input:cursor-1:1}$_vi_reg"; input="${input:0:cursor-1}${input:cursor}"; ((cursor--)); done; draw;;
+    D) _vi_reg="${input:cursor}"; input="${input:0:cursor}"; ((cursor>0)) && ((cursor--)); draw;;
+    C) _vi_reg="${input:cursor}"; input="${input:0:cursor}"; mode="insert"; draw;;
     r) _vi_read; [[ -n "$c2" && "$c2" != $'\x1b' ]] && { input="${input:0:cursor}${c2}${input:cursor+1}"; draw; };;
+    '~') for ((_i=0;_i<_n&&cursor<${#input};_i++)); do local _ch="${input:cursor:1}"
+      if [[ "$_ch" =~ [a-z] ]]; then _ch="${_ch^^}"; elif [[ "$_ch" =~ [A-Z] ]]; then _ch="${_ch,,}"; fi
+      input="${input:0:cursor}${_ch}${input:cursor+1}"; ((cursor<${#input}-1)) && ((++cursor)); done; draw;;
+    p) for ((_i=0;_i<_n;_i++)); do [[ -n "$_vi_reg" ]] && { input="${input:0:cursor+1}${_vi_reg}${input:cursor+1}"; ((cursor+=${#_vi_reg})); }; done; draw;;
+    P) for ((_i=0;_i<_n;_i++)); do [[ -n "$_vi_reg" ]] && { input="${input:0:cursor}${_vi_reg}${input:cursor}"; ((cursor+=${#_vi_reg}-1)); }; done; draw;;
+    y) _vi_read; local _ic=""; while [[ "$c2" =~ ^[0-9]$ ]]; do _ic+="$c2"; _vi_read; done; local _yn=$((_n * ${_ic:-1})); for ((_i=0;_i<_yn;_i++)); do _yank "$c2"; done; draw;;
     d) _vi_read; local _ic=""; while [[ "$c2" =~ ^[0-9]$ ]]; do _ic+="$c2"; _vi_read; done; local _dn=$((_n * ${_ic:-1})); for ((_i=0;_i<_dn;_i++)); do _del "$c2"; done; draw;;
     c) _vi_read; local _ic=""; while [[ "$c2" =~ ^[0-9]$ ]]; do _ic+="$c2"; _vi_read; done; local _dn=$((_n * ${_ic:-1})); for ((_i=0;_i<_dn;_i++)); do _del "$c2"; done; mode="insert"; draw;;
     u) ((${#UNDO_STACK[@]}>0)) && { local _u="${UNDO_STACK[-1]}"; unset 'UNDO_STACK[-1]'; cursor="${_u%%:*}"; input="${_u#*:}"; draw; };;
@@ -3072,7 +3121,7 @@ _vi_normal() {
         w) local _vq=""; IFS= read -rsn1 -t 0.2 _vq || _vq=""
           [[ "$_vq" == "q" ]] && { _egg_found vimquit; _quit; };;
       esac;;
-    \?) ((_rl_hints)) && { printf '\n%s\n%s\n%s\n%s\n' "${D}hl${N} move  ${D}kj${N}/↑↓ history  ${D}wb${N} word  ${D}fFtT${N}+char find  ${D}0\$/gg/G${N} line" "${D}x/X${N} del char  ${D}dw/db/dd${N} del  ${D}cw/cb/cc${N} change  ${D}r${N} replace" "${D}s/S${N} subst  ${D}i/a/I/A${N} insert  ${D}u${N} undo(stack)  ${D}:q/:wq${N} quit" "${D}Tab${N} man  ${D}Ctrl+d${N} quit  ${D}[num]cmd${N} repeat"; read -rsn1; _REDRAW_HDR; draw; };;
+    \?) ((_rl_hints)) && { printf '\n%s\n%s\n%s\n%s\n' "${D}hl${N} move  ${D}kj${N}/↑↓ history  ${D}wb${N} word  ${D}fFtT${N}+char find  ${D};,${N} repeat find  ${D}0\$^/gg/G${N} line" "${D}x/X${N} del char  ${D}dw/db/de/dd${N} del  ${D}cw/cb/ce/cc${N} change  ${D}r${N} replace  ${D}~${N} case" "${D}y${N}+motion yank  ${D}p/P${N} paste  ${D}s/S${N} subst  ${D}i/a/I/A${N} insert  ${D}u${N} undo(stack)" "${D}Tab${N} man  ${D}Ctrl+d${N} quit  ${D}Ctrl+w${N} del word  ${D}Ctrl+u${N} del line  ${D}[num]cmd${N} repeat"; read -rsn1; _REDRAW_HDR; draw; };;
     '') ((_man_open)) && printf '\e7\n\e[J\e8'; _man_open=0; echo; return 0;;
   esac
   return 1
@@ -3084,6 +3133,7 @@ _read_line() {
   local _rl_hints=${1:-1} _rl_hist=${2:-1} _rl_timeout=${3:-0} _rl_deadline=0
   input="" cursor=0 mode="insert" _rep="" _man_open=0
   UNDO_STACK=()
+  _vi_reg="" _vi_lastf="" _vi_dot="" _vi_dotrep=""
   local _rl_last_sec=0
   if ((_rl_timeout > 0)); then printf -v _rl_deadline '%(%s)T' -1; ((_rl_deadline += _rl_timeout)); _rl_last_sec=$_rl_deadline; fi
   ((_rl_hist)) && { HIST_IDX=${#HIST[@]}; HIST_SAVE=""; }
@@ -3126,6 +3176,11 @@ _read_line() {
             UNDO_STACK+=("$cursor:$input"); mode="normal"; ((cursor>0)) && ((cursor--)); draw
           fi;;
         $'\x7f'|$'\b') ((cursor>0)) && { input="${input:0:cursor-1}${input:cursor}"; ((cursor--)); draw; };;
+        $'\x17') if ((cursor>0)); then local _wp=$((cursor-1))  # Ctrl-w: delete word back
+          while ((_wp>0)) && [[ "${input:_wp:1}" == " " ]]; do ((_wp--)); done
+          while ((_wp>0)) && [[ "${input:_wp-1:1}" != " " ]]; do ((_wp--)); done
+          input="${input:0:_wp}${input:cursor}"; cursor=$_wp; draw; fi;;
+        $'\x15') ((cursor>0)) && { input="${input:cursor}"; cursor=0; draw; };;  # Ctrl-u: delete to start
         '') ((_man_open)) && printf '\e7\n\e[J\e8'; _man_open=0; echo; return 0;;
         *) input="${input:0:cursor}${c}${input:cursor}"; ((++cursor)); draw;;
       esac
