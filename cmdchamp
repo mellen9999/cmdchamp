@@ -3053,8 +3053,8 @@ _vi_normal() {
     D) input="${input:0:cursor}"; ((cursor>0)) && ((cursor--)); draw;;
     C) input="${input:0:cursor}"; mode="insert"; draw;;
     r) _vi_read; [[ -n "$c2" && "$c2" != $'\x1b' ]] && { input="${input:0:cursor}${c2}${input:cursor+1}"; draw; };;
-    d) _vi_read; for ((_i=0;_i<_n;_i++)); do _del "$c2"; done; draw;;
-    c) _vi_read; for ((_i=0;_i<_n;_i++)); do _del "$c2"; done; mode="insert"; draw;;
+    d) _vi_read; local _ic=""; while [[ "$c2" =~ ^[0-9]$ ]]; do _ic+="$c2"; _vi_read; done; local _dn=$((_n * ${_ic:-1})); for ((_i=0;_i<_dn;_i++)); do _del "$c2"; done; draw;;
+    c) _vi_read; local _ic=""; while [[ "$c2" =~ ^[0-9]$ ]]; do _ic+="$c2"; _vi_read; done; local _dn=$((_n * ${_ic:-1})); for ((_i=0;_i<_dn;_i++)); do _del "$c2"; done; mode="insert"; draw;;
     u) ((${#UNDO_STACK[@]}>0)) && { local _u="${UNDO_STACK[-1]}"; unset 'UNDO_STACK[-1]'; cursor="${_u%%:*}"; input="${_u#*:}"; draw; };;
     g) _vi_read; [[ "$c2" == "g" ]] && { cursor=0; draw; };;
     G) cursor=$((${#input}>0?${#input}-1:0)); draw;;
