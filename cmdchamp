@@ -3473,10 +3473,10 @@ _sel() {
     read -rsn1 k
     [[ "$k" == $'\e' ]] && { read -rsn2 -t 0.1 k; k="${k:1}"; }
     case "$k" in
-      j) local _p=$((c+1)); while ((_p<n)) && [[ "${it[$_p]:0:1}" == $'\x01' ]]; do ((_p++)); done; ((_p<n)) && c=$_p;;
-      k) local _p=$((c-1)); while ((_p>=0)) && [[ "${it[$_p]:0:1}" == $'\x01' ]]; do ((_p--)); done; ((_p>=0)) && c=$_p;;
-      ''|l) REPLY=$c; return 0;;
-      q|h|$'\x04') return 1;;
+      j|B) local _p=$((c+1)); while ((_p<n)) && [[ "${it[$_p]:0:1}" == $'\x01' ]]; do ((_p++)); done; ((_p<n)) && c=$_p;;
+      k|A) local _p=$((c-1)); while ((_p>=0)) && [[ "${it[$_p]:0:1}" == $'\x01' ]]; do ((_p--)); done; ((_p>=0)) && c=$_p;;
+      ''|l|C) REPLY=$c; return 0;;
+      q|h|D|$'\x04') return 1;;
     esac
   done
 }
