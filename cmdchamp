@@ -3530,7 +3530,7 @@ _main_menu() {
     case "${act[$REPLY]}" in
       cont) _run_loop;;
       new) if [[ -n "$PLAYER_NAME" ]]; then
-          printf '\n'; read -rp "  ${R}Reset all progress and start over? [y/N]${N} " yn
+          printf '\n'; read -rp "  ${R}Reset all progress? [y/N]${N} " yn
           [[ "$yn" =~ ^[Yy] ]] || continue
           rm -f "$DATA"/*.json "$DATA/scores" "$DATA/scores.lock" "$DATA/profile"; rm -rf "$DATA/sandbox" "$DATA/sandbox.pristine" 2>/dev/null
           PLAYER_NAME="" BOSS_BEATEN=0; _load_profile; load
