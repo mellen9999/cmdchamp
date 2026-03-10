@@ -32,7 +32,7 @@ command -v awk &>/dev/null || { echo "Error: awk not found" >&2; exit 1; }
 
 DATA="${XDG_DATA_HOME:-$HOME/.local/share}/cmdchamp"; mkdir -p "$DATA"; touch "$DATA/scores"
 
-R=$'\e[31m' G=$'\e[32m' Y=$'\e[33m' U=$'\e[34m' M=$'\e[35m' C=$'\e[36m' W=$'\e[97m' B=$'\e[1m' N=$'\e[0m'
+R=$'\e[31m' G=$'\e[32m' Y=$'\e[33m' U=$'\e[94m' M=$'\e[35m' C=$'\e[36m' W=$'\e[97m' B=$'\e[1m' N=$'\e[0m'
 [[ $TERM == linux ]] && D=$'\e[90m' || D=$'\e[2m'
 
 _strip_ansi() {
@@ -2994,7 +2994,7 @@ stats() {
   done
   local sc_count=0
   [[ -n "$SC_DONE" ]] && { IFS=',' read -ra _sca <<< "$SC_DONE"; sc_count=${#_sca[@]}; }
-  ((SC_TOTAL > 0)) && printf '\n  %s %s/%d\n' "${U}Scenarios:${N}" "${M}${sc_count}${N}" "$SC_TOTAL"
+  ((SC_TOTAL > 0)) && printf '\n  %s %s/%d\n' "${U}Scenarios:${N}" "${M}${B}${sc_count}${N}" "$SC_TOTAL"
   local disk_count=0
   [[ -n "$DISKS_FOUND" ]] && { IFS=',' read -ra _ea <<< "$DISKS_FOUND"; disk_count=${#_ea[@]}; }
   printf '  %s %s/%d\n' "${U}Floppy Disks:${N}" "${Y}${disk_count}${N}" "$_DISK_TOTAL"
@@ -3671,7 +3671,7 @@ scenario() {
   ((sc_id < 1 || sc_id > SC_TOTAL)) && { printf '%s\n' "${R}Scenario ${sc_id} does not exist.${N}"; return 1; }
   local _sc_req=${SC_UNLOCK[$sc_id]:-$MAX_LEVEL}
   if ((BOSS_BEATEN < _sc_req)); then
-    printf '%s\n' "${R}Locked${N} — beat the ${U}Level ${_sc_req}${N} boss (${M}${LEVEL_NAMES[$_sc_req]}${N}) first."
+    printf '%s\n' "${R}Locked${N} — beat the ${U}Level ${_sc_req}${N} boss (${M}${B}${LEVEL_NAMES[$_sc_req]}${N}) first."
     return 1
   fi
   if ! ((SANDBOX_MODE)); then
@@ -3735,7 +3735,7 @@ scenario() {
   # Completion
   printf '\e[2J\e[H'
   printf '%s\n' "${G}${B}═══ SCENARIO COMPLETE ═══${N}"
-  printf '%s\n' "${M}${SC_NAMES[$sc_id]}${N}"
+  printf '%s\n' "${M}${B}${SC_NAMES[$sc_id]}${N}"
   printf '%s\n' "${G}${correct}/${total}${N} steps"
   _sc_mark_done "$sc_id"
   _disk_check completionist
