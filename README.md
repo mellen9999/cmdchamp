@@ -1,18 +1,22 @@
 # cmdchamp
 
-Pure bash CLI trainer — 30 levels from `ls` to privilege escalation.
+Single-file bash CLI trainer — 30 levels from `ls` to privilege escalation.
 
 ![demo](demo.gif)
 
-Drill real commands until they're muscle memory. Every question asks you to type a real command — get instant feedback, move on. Many questions run against real files in the sandbox, all accept multiple valid syntaxes (both `sort -u` and `sort | uniq`), and Tab pulls up the manpage when you need a reference. Randomized each run so you can't memorize the order. A mastery system tracks what you know and what you don't: get a question right twice to master it, get it wrong and it demotes so you see it again sooner. Hit a 5-answer streak and you enter fire mode for bonus points.
+Drill real commands until they're muscle memory. Every question asks you to type a real command — get instant feedback, move on.
 
-Each level ends with a boss round — no manpages, 4/5 to pass. Fail and you can retry the boss immediately or go back to practice. Beat all 30 and challenge mode unlocks — random questions from all levels, 20s timer, no manpages, one miss and you're done. Each level auto-mixes weak questions from previous levels so you stay sharp. First run includes a short tutorial.
+- Accepts multiple valid syntaxes (`sort -u` and `sort | uniq` both work)
+- With [bubblewrap](https://github.com/containers/bubblewrap), questions run against real files in a sandbox
+- Tab pulls up the manpage when you need a reference
+- Randomized each run so you can't memorize the order
+- Spaced repetition tracks what you know — get it right twice to master, wrong to demote
+- Hit a 5-answer streak for fire mode bonus points
+- Vi line editing built in
 
-With [bubblewrap](https://github.com/containers/bubblewrap), commands run in a real sandboxed filesystem. Without it, answers are text-matched. Search levels (16-17) accept both modern (`rg`, `fd`) and classic (`grep`, `find`) syntax. Vi line editing built in.
+Each level ends with a boss round — no manpages, 4/5 to pass. Beat all 30 and challenge mode unlocks: random questions, 20s timer, one miss and you're done. Weak questions auto-mix into later levels so you stay sharp. First run includes a tutorial and placement test.
 
-### How scoring works
-
-Each question has three mastery tiers (unseen → learning → mastered). Get it right to promote, wrong to demote. Tab toggles the manpage for the relevant command — a reference, not a spoiler. You still have to figure out the answer yourself.
+Search levels (16-17) accept both modern (`rg`, `fd`) and classic (`grep`, `find`) syntax.
 
 ## Install
 
