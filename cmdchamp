@@ -63,8 +63,8 @@ _DECAY_T1=1209600     # 14 days: learning → unseen
 _DECAY_INTERVAL=86400  # only run decay once per 24h
 
 # ═══ PROFILE ═══
-PLAYER_NAME="" BOSS_BEATEN=0 BEST_GAUNTLET=0 BEST_TIMED="0:0:0" EGGS_FOUND="" SC_DONE=""
-_PROFILE_VER=1  # bump this when profile format changes; old profiles get reset
+PLAYER_NAME="" BOSS_BEATEN=0 BEST_GAUNTLET=0 EGGS_FOUND="" SC_DONE=""
+_PROFILE_VER=2  # bump this when profile format changes; old profiles get reset
 LAST_DECAY=0  # epoch of last decay check (persisted in profile)
 
 _load_profile() {
@@ -76,7 +76,6 @@ _load_profile() {
         PLAYER_NAME) PLAYER_NAME="$val";;
         BOSS_BEATEN) BOSS_BEATEN="$val";;
         BEST_GAUNTLET) BEST_GAUNTLET="$val";;
-        BEST_TIMED) BEST_TIMED="$val";;
         EGGS_FOUND) EGGS_FOUND="$val";;
         SC_DONE) SC_DONE="$val";;
         LAST_DECAY) LAST_DECAY="$val";;
@@ -87,38 +86,25 @@ _load_profile() {
       [[ -f "$DATA/profile" ]] && cp "$DATA/profile" "$DATA/profile.bak"
       [[ -f "$DATA/scores" ]] && cp "$DATA/scores" "$DATA/scores.bak"
       printf '%s\n' "Profile version mismatch (got $_file_ver, want $_PROFILE_VER) — reset. Backup in profile.bak/scores.bak"
-      PLAYER_NAME="" BOSS_BEATEN=0 BEST_GAUNTLET=0 BEST_TIMED="0:0:0" EGGS_FOUND="" SC_DONE=""
+      PLAYER_NAME="" BOSS_BEATEN=0 BEST_GAUNTLET=0 EGGS_FOUND="" SC_DONE=""
       : > "$DATA/scores"
       rm -f "$DATA"/*.json
     fi
     [[ "$BOSS_BEATEN" =~ ^[0-9]+$ ]] || BOSS_BEATEN=0
     ((BOSS_BEATEN > MAX_LEVEL)) && BOSS_BEATEN=$MAX_LEVEL
     [[ "$BEST_GAUNTLET" =~ ^[0-9]+$ ]] || BEST_GAUNTLET=0
-    [[ "$BEST_TIMED" =~ ^[0-9]+:[0-9]+:[0-9]+$ ]] || BEST_TIMED="0:0:0"
   fi
 }
 
 _save_profile() {
-  printf 'PLAYER_NAME=%s\nBOSS_BEATEN=%d\nBEST_GAUNTLET=%d\nBEST_TIMED=%s\nEGGS_FOUND=%s\nSC_DONE=%s\nLAST_DECAY=%d\nPROFILE_VER=%d\n' \
-    "$PLAYER_NAME" "$BOSS_BEATEN" "$BEST_GAUNTLET" "$BEST_TIMED" "$EGGS_FOUND" "$SC_DONE" "$LAST_DECAY" "$_PROFILE_VER" > "$DATA/profile"
+  printf 'PLAYER_NAME=%s\nBOSS_BEATEN=%d\nBEST_GAUNTLET=%d\nEGGS_FOUND=%s\nSC_DONE=%s\nLAST_DECAY=%d\nPROFILE_VER=%d\n' \
+    "$PLAYER_NAME" "$BOSS_BEATEN" "$BEST_GAUNTLET" "$EGGS_FOUND" "$SC_DONE" "$LAST_DECAY" "$_PROFILE_VER" > "$DATA/profile"
 }
 
 _first_run() {
   printf '\e[2J\e[H'
-  cat <<'EOF'
-
-    ██████╗███╗   ███╗██████╗  ██████╗██╗  ██╗ █████╗ ███╗   ███╗██████╗
-   ██╔════╝████╗ ████║██╔══██╗██╔════╝██║  ██║██╔══██╗████╗ ████║██╔══██╗
-   ██║     ██╔████╔██║██║  ██║██║     ███████║███████║██╔████╔██║██████╔╝
-   ██║     ██║╚██╔╝██║██║  ██║██║     ██╔══██║██╔══██║██║╚██╔╝██║██╔═══╝
-   ╚██████╗██║ ╚═╝ ██║██████╔╝╚██████╗██║  ██║██║  ██║██║ ╚═╝ ██║██║
-    ╚═════╝╚═╝     ╚═╝╚═════╝  ╚═════╝╚═╝  ╚═╝╚═╝  ╚═╝╚═╝     ╚═╝╚═╝
-
-                      ░▒▓█ MASTER THE COMMAND LINE █▓▒░
-
-EOF
   echo
-  read -rp "    Enter your handle: " PLAYER_NAME
+  read -rp "  Enter your handle: " PLAYER_NAME
   _strip_ansi "$PLAYER_NAME"; PLAYER_NAME="$REPLY"
   PLAYER_NAME="${PLAYER_NAME//$'\n'/}"            # strip newlines
   PLAYER_NAME="${PLAYER_NAME//$'\r'/}"            # strip carriage returns
@@ -2934,17 +2920,11 @@ stats() {
   printf '  %s %s/%d\n' "${D}Easter Eggs:${N}" "${Y}${egg_count}${N}" "$_EGG_TOTAL"
   if ((BOSS_BEATEN >= MAX_LEVEL)); then
     printf '\n  %s\n' "${W}${B}Records${N}"
-    ((BEST_GAUNTLET > 0)) && printf '  %s %s\n' "${D}Gauntlet:${N}" "${Y}${BEST_GAUNTLET}${N}"
-    IFS=: read -r _bt60 _bt120 _bt300 <<< "$BEST_TIMED"
-    local _any=0; ((_bt60>0||_bt120>0||_bt300>0)) && _any=1
-    if ((_any)); then
-      printf '  %s' "${D}Timed:${N}"
-      ((_bt60>0))  && printf "  ${C}1m:${N}%d" "$_bt60"
-      ((_bt120>0)) && printf "  ${C}2m:${N}%d" "$_bt120"
-      ((_bt300>0)) && printf "  ${C}5m:${N}%d" "$_bt300"
-      printf '\n'
+    if ((BEST_GAUNTLET > 0)); then
+      printf '  %s %s\n' "${D}Challenge:${N}" "${Y}${BEST_GAUNTLET}${N}"
+    else
+      printf '  %s\n' "${D}No records yet — try challenge!${N}"
     fi
-    ((BEST_GAUNTLET==0 && !_any)) && printf '  %s\n' "${D}No records yet — try gauntlet or timed!${N}"
   fi
 }
 
@@ -3125,7 +3105,17 @@ _vi_normal() {
         w) local _vq=""; IFS= read -rsn1 -t 0.2 _vq || _vq=""
           [[ "$_vq" == "q" ]] && { _egg_found vimquit; _quit; };;
       esac;;
-    \?) ((_rl_hints)) && { printf '\n%s\n%s\n%s\n%s\n' "${D}hl${N} move  ${D}kj${N}/↑↓ history  ${D}wb${N} word  ${D}fFtT${N}+char find  ${D};,${N} repeat find  ${D}0\$^/gg/G${N} line" "${D}x/X${N} del char  ${D}dw/db/de/dd${N} del  ${D}cw/cb/ce/cc${N} change  ${D}r${N} replace  ${D}~${N} case" "${D}y${N}+motion yank  ${D}p/P${N} paste  ${D}s/S${N} subst  ${D}i/a/I/A${N} insert  ${D}u${N} undo(stack)" "${D}Tab${N} man  ${D}Ctrl+d${N} quit  ${D}Ctrl+w${N} del word  ${D}Ctrl+u${N} del line  ${D}[num]cmd${N} repeat"; read -rsn1; _REDRAW_HDR; draw; };;
+    \?) ((_rl_hints)) && { printf '\n%s\n%s\n%s\n%s\n\n%s\n%s\n%s\n%s\n%s\n%s\n' \
+      "${D}hl${N} move  ${D}kj${N}/↑↓ history  ${D}wb${N} word  ${D}fFtT${N}+char find  ${D};,${N} repeat find  ${D}0\$^/gg/G${N} line" \
+      "${D}x/X${N} del char  ${D}dw/db/de/dd${N} del  ${D}cw/cb/ce/cc${N} change  ${D}r${N} replace  ${D}~${N} case" \
+      "${D}y${N}+motion yank  ${D}p/P${N} paste  ${D}s/S${N} subst  ${D}i/a/I/A${N} insert  ${D}u${N} undo(stack)" \
+      "${D}Tab${N} man  ${D}Ctrl+d${N} quit  ${D}Ctrl+w${N} del word  ${D}Ctrl+u${N} del line  ${D}[num]cmd${N} repeat" \
+      "${W}${B}vi mode for your shell${N} ${D}(~/.inputrc):${N}" \
+      "${D}  set editing-mode vi${N}" \
+      "${D}  set show-mode-in-prompt on${N}" \
+      "${D}  set keyseq-timeout 1${N}" \
+      "${D}  set vi-ins-mode-string \\1\\e[38;5;231m\\2\$\\1\\e[0m\\2 ${N}" \
+      "${D}  set vi-cmd-mode-string \\1\\e[38;5;196m\\2\$\\1\\e[0m\\2 ${N}"; read -rsn1; _REDRAW_HDR; draw; };;
     '') ((_man_open)) && printf '\e7\n\e[J\e8'; _man_open=0; echo; return 0;;
   esac
   return 1
@@ -3421,42 +3411,37 @@ _pick_q() {
   _qparse "${_LEVEL_ITEMS[$1:$_idx]}"
 }
 
-gauntlet() {
+challenge() {
   _post_root_check
   _session_init
-  printf '\e[2J\e[H%s\n%s\n' "${W}${B}═══ GAUNTLET ═══${N}" "${D}3 lives. Questions escalate. How far can you go?${N}"
-  ((BEST_GAUNTLET > 0)) && printf '%s\n' "${D}Personal best: ${Y}${BEST_GAUNTLET}${N}"
-  printf '\n'; read -rsn1 -p "${D}Press Enter to continue...${N}"; echo
+  printf '\e[2J\e[H%s\n%s\n' "${W}${B}═══ CHALLENGE ═══${N}" "${D}All levels. 20s. No manpages. One miss and you're done.${N}"
+  ((BEST_GAUNTLET > 0)) && printf '%s\n' "${D}Best: ${Y}${BEST_GAUNTLET}${N}"
+  printf '\n'; read -rsn1 -p "${D}Press Enter to start...${N}"; echo
 
-  local lives=3 score=0 difficulty=1
+  local score=0
   _mode_init g
 
-  while ((lives > 0)); do
-    # Pick level based on difficulty (escalates every 5 correct)
-    local pick_lv=$((difficulty > MAX_LEVEL ? MAX_LEVEL : difficulty))
-    _pick_q "$pick_lv" || break; local prompt=$_qprompt ans=$_qans
+  while true; do
+    local pick_lv=$((RANDOM % MAX_LEVEL + 1))
+    _pick_q "$pick_lv" || continue; local prompt=$_qprompt ans=$_qans
 
     _REDRAW_HDR() {
-      local hearts=""; for ((h=0;h<lives;h++)); do hearts+="${R}♥${N} "; done
-      printf '\e[2J\e[H%s  %s  %s\n%s\n\n%s\n\n' "${W}${B}GAUNTLET${N}" "${B}Score: ${score}${N}" "$hearts" "${D}Level ${pick_lv}: ${LEVEL_NAMES[$pick_lv]:-}${N}" "${C}${prompt}${N}"
+      local _t=20
+      if ((${_rl_deadline:-0})); then local _n; printf -v _n '%(%s)T' -1; _t=$((_rl_deadline - _n)); ((_t < 0)) && _t=0; fi
+      printf '\e[2J\e[H%s  %s  %s\n\n%s\n\n' "${W}${B}CHALLENGE${N}" "${B}Score: ${score}${N}" "${W}${_t}s${N}" "${C}${prompt}${N}"
     }
     _REDRAW_HDR
 
     _preq_reset
-    while true; do
-      _read_line 0 1
-      [[ -z "$input" ]] && { draw; continue; }
-      break
-    done
-    if check "$input" "$_qanswers"; then
-      _sc; ((++score))
-      ((score % 5 == 0 && difficulty < MAX_LEVEL)) && ((++difficulty))
-      printf '\n%s\n' "${G}${B}+${N} +1"
-    else
-      _sw; explain "$ans"; _egg_check wrong "$input"
-      ((lives--))
+    local _ok=0
+    if _read_line 0 0 20; then
+      if check "$input" "$_qanswers"; then
+        _sc; ((++score)); _ok=1
+        printf '%s\n' "${G}${B}+${N}"
+        _pause; continue
+      fi
     fi
-    _pause
+    ((_ok)) || { _sw; printf '\n%s  %s %s\n' "${R}${B}✗${N}" "${D}expected:${N}" "${Y}${ans}${N}"; _pause; break; }
   done
 
   _sflush_if_dirty
@@ -3464,89 +3449,10 @@ gauntlet() {
   printf '%s\n\n' "${R}${B}═══ GAME OVER ═══${N}"
   printf 'Score: %s\n' "${B}${score}${N}"
   if ((score > BEST_GAUNTLET)); then
-    printf '%s\n' "${Y}${B}NEW PERSONAL BEST!${N} (was ${BEST_GAUNTLET})"
+    printf '%s\n' "${Y}${B}NEW BEST!${N} (was ${BEST_GAUNTLET})"
     BEST_GAUNTLET=$score; _save_profile
   else
     printf '%s\n' "${D}Best: ${BEST_GAUNTLET}${N}"
-  fi
-  echo
-}
-
-_timed_score() { # get: _timed_score DUR  set: _timed_score DUR VAL
-  IFS=: read -r _bt60 _bt120 _bt300 <<< "$BEST_TIMED"
-  _bt60=${_bt60:-0}; _bt120=${_bt120:-0}; _bt300=${_bt300:-0}
-  if [[ -n "${2:-}" ]]; then
-    case "$1" in 60) _bt60=$2;; 120) _bt120=$2;; 300) _bt300=$2;; esac
-    BEST_TIMED="${_bt60}:${_bt120}:${_bt300}"
-  else
-    case "$1" in 60) REPLY=$_bt60;; 120) REPLY=$_bt120;; 300) REPLY=$_bt300;; esac
-  fi
-}
-
-timed() {
-  _post_root_check
-  _session_init
-  local duration=${1:-120}
-  case "$duration" in 60|120|300) ;; *) printf '%s\n' "${R}Invalid time. Use 60, 120, or 300.${N}"; return 1;; esac
-  _timed_score "$duration"; local best=$REPLY
-  printf '\e[2J\e[H%s\n%s\n' "${W}${B}═══ TIMED MODE ═══${N}" "${D}${duration}s on the clock. Answer fast.${N}"
-  ((best > 0)) && printf '%s\n' "${D}Personal best (${duration}s): ${Y}${best}${N}"
-  printf '\n'; read -rsn1 -p "${D}Press Enter to continue...${N}"; echo
-
-  local score=0
-  _mode_init t
-
-  local start_t; printf -v start_t '%(%s)T' -1
-  local end_t=$((start_t + duration))
-
-  while true; do
-    local now_t; printf -v now_t '%(%s)T' -1
-    ((now_t >= end_t)) && break
-    local remain=$((end_t - now_t))
-
-    # Pick random level from all unlocked
-    local pick_lv=$((RANDOM % MAX_LEVEL + 1))
-    _pick_q "$pick_lv" || continue; local prompt=$_qprompt ans=$_qans
-
-    _REDRAW_HDR() {
-      local _now; printf -v _now '%(%s)T' -1; local _rem=$((end_t - _now))
-      ((_rem < 0)) && _rem=0
-      local _col; ((_rem <= 10)) && _col=$R || { ((_rem <= 30)) && _col=$Y || _col=$G; }
-      printf '\e[2J\e[H%s  %s  %s\n%s\n\n%s\n\n' "${W}${B}TIMED${N}" "${B}Score: ${score}${N}" "${_col}${_rem}s${N}" "${D}Level ${pick_lv}: ${LEVEL_NAMES[$pick_lv]:-}${N}" "${C}${prompt}${N}"
-    }
-    _REDRAW_HDR
-
-    _preq_reset
-
-    # Use read with per-question timeout so clock doesn't run silently
-    while true; do
-      printf -v now_t '%(%s)T' -1; remain=$((end_t - now_t)); ((remain <= 0)) && break 2
-      _read_line 0 1 "$remain"
-      printf -v now_t '%(%s)T' -1
-      ((now_t >= end_t)) && break 2
-      [[ -z "$input" ]] && { draw; continue; }
-      break
-    done
-
-    if check "$input" "$_qanswers"; then
-      _sc; ((++score))
-      printf '\n%s\n' "${G}${B}+${N} +1"
-    else
-      _sw; explain "$ans"; _egg_check wrong "$input"
-    fi
-    read -t 1.5 -rsn 1000 || true
-  done
-
-  _sflush_if_dirty
-  printf '\e[2J\e[H'
-  printf '%s\n\n' "${W}${B}═══ TIME'S UP! ═══${N}"
-  printf 'Score: %s in %ds\n' "${B}${score}${N}" "$duration"
-  _timed_score "$duration"; local prev_best=$REPLY
-  if ((score > prev_best)); then
-    printf '%s\n' "${Y}${B}NEW PERSONAL BEST!${N} (was ${prev_best})"
-    _timed_score "$duration" "$score"; _save_profile
-  else
-    printf '%s\n' "${D}Best (${duration}s): ${prev_best}${N}"
   fi
   echo
 }
@@ -3605,10 +3511,6 @@ _sc_sel() {
   scenario "$((REPLY+1))"
 }
 
-_timed_sel() {
-  _sel "${W}${B}═══ TIMED ═══${N}" "60 seconds" "120 seconds" "300 seconds" || return
-  local -a _ts=(60 120 300); timed "${_ts[$REPLY]}"
-}
 
 _main_menu() {
   while true; do
@@ -3624,11 +3526,9 @@ _main_menu() {
     if ((_any)); then it+=("Scenarios"); act+=(sc)
     else it+=($'\x01'"Scenarios"); act+=(x); fi
     if ((BOSS_BEATEN>=MAX_LEVEL)); then
-      it+=("Gauntlet"); act+=(gaunt)
-      it+=("Timed"); act+=(timed)
+      it+=("Challenge"); act+=(challenge)
     else
-      it+=($'\x01'"Gauntlet"); act+=(x)
-      it+=($'\x01'"Timed"); act+=(x)
+      it+=($'\x01'"Challenge"); act+=(x)
     fi
     if [[ -n "$PLAYER_NAME" ]]; then it+=("Stats"); act+=(stats)
     else it+=($'\x01'"Stats"); act+=(x); fi
@@ -3649,8 +3549,7 @@ _main_menu() {
       new) _first_run; LVL=1; QI=0; save; _run_loop; return;;
       lvl) _level_menu && return;;
       sc) _sc_sel;;
-      gaunt) gauntlet; return;;
-      timed) _timed_sel;;
+      challenge) challenge; return;;
       stats) printf '\e[2J\e[H'; stats; local _sk; while read -rsn1 _sk; do [[ "$_sk" == h || "$_sk" == q ]] && break; done;;
       reset) printf '\n'; read -rp "  ${R}Reset all progress? [y/N]${N} " yn
         [[ "$yn" =~ ^[Yy] ]] && { rm -f "$DATA"/*.json "$DATA/scores" "$DATA/scores.lock" "$DATA/profile"; rm -rf "$DATA/sandbox" "$DATA/sandbox.pristine" 2>/dev/null; PLAYER_NAME="" BOSS_BEATEN=0; _load_profile; load; };;
@@ -3998,24 +3897,23 @@ _selftest() {
   printf '%s\n' "${B}=== profile ===${N}"
   _test_data=$(mktemp -d)
   _save_data="$DATA"; DATA="$_test_data"
-  PLAYER_NAME="testplayer" BOSS_BEATEN=15 BEST_GAUNTLET=42 BEST_TIMED="10:20:30" EGGS_FOUND="vimquit,konami" SC_DONE="1,2,3" LAST_DECAY=12345
+  PLAYER_NAME="testplayer" BOSS_BEATEN=15 BEST_GAUNTLET=42 EGGS_FOUND="vimquit,konami" SC_DONE="1,2,3" LAST_DECAY=12345
   _save_profile() {
-    printf 'PLAYER_NAME=%s\nBOSS_BEATEN=%d\nBEST_GAUNTLET=%d\nBEST_TIMED=%s\nEGGS_FOUND=%s\nSC_DONE=%s\nLAST_DECAY=%d\nPROFILE_VER=%d\n' \
-      "$PLAYER_NAME" "$BOSS_BEATEN" "$BEST_GAUNTLET" "$BEST_TIMED" "$EGGS_FOUND" "$SC_DONE" "$LAST_DECAY" "$_PROFILE_VER" > "$DATA/profile"
+    printf 'PLAYER_NAME=%s\nBOSS_BEATEN=%d\nBEST_GAUNTLET=%d\nEGGS_FOUND=%s\nSC_DONE=%s\nLAST_DECAY=%d\nPROFILE_VER=%d\n' \
+      "$PLAYER_NAME" "$BOSS_BEATEN" "$BEST_GAUNTLET" "$EGGS_FOUND" "$SC_DONE" "$LAST_DECAY" "$_PROFILE_VER" > "$DATA/profile"
   }
   _save_profile
-  PLAYER_NAME="" BOSS_BEATEN=0 BEST_GAUNTLET=0 BEST_TIMED="0:0:0" EGGS_FOUND="" SC_DONE="" LAST_DECAY=0
+  PLAYER_NAME="" BOSS_BEATEN=0 BEST_GAUNTLET=0 EGGS_FOUND="" SC_DONE="" LAST_DECAY=0
   while IFS='=' read -r key val; do
     case "$key" in
       PLAYER_NAME) PLAYER_NAME="$val";; BOSS_BEATEN) BOSS_BEATEN="$val";;
-      BEST_GAUNTLET) BEST_GAUNTLET="$val";; BEST_TIMED) BEST_TIMED="$val";;
+      BEST_GAUNTLET) BEST_GAUNTLET="$val";;
       EGGS_FOUND) EGGS_FOUND="$val";; SC_DONE) SC_DONE="$val";; LAST_DECAY) LAST_DECAY="$val";;
     esac
   done < "$DATA/profile"
   _assert "profile name"       "$PLAYER_NAME"  "testplayer"
   _assert "profile boss"       "$BOSS_BEATEN"  "15"
   _assert "profile gauntlet"   "$BEST_GAUNTLET" "42"
-  _assert "profile timed"      "$BEST_TIMED"   "10:20:30"
   _assert "profile eggs"       "$EGGS_FOUND"   "vimquit,konami"
   _assert "profile sc_done"    "$SC_DONE"      "1,2,3"
   _assert "profile last_decay" "$LAST_DECAY"   "12345"
