@@ -3080,7 +3080,8 @@ _vi_normal() {
     g) _vi_read; [[ "$c2" == "g" ]] && { cursor=0; draw; };;
     G) cursor=$((${#input}>0?${#input}-1:0)); draw;;
     $'\x1b') local _e1 _e2; read -rsn1 -t 0.01 _e1 || _e1=""
-      if [[ "$_e1" == "[" ]]; then read -rsn1 -t 0.01 _e2 || _e2=""; fi;;
+      if [[ "$_e1" == "[" ]]; then read -rsn1 -t 0.01 _e2 || _e2=""
+        case "$_e2" in A) _vi_hist -1 && draw;; B) _vi_hist 1 && draw;; esac; fi;;
     $'\x04') _quit;;
     q) _quit;;
     :) local _vcmd=""; IFS= read -rsn1 -t 1 _vcmd || _vcmd=""
@@ -3149,7 +3150,8 @@ _read_line() {
         $'\x1b')
           local _e1 _e2; read -rsn1 -t 0.01 _e1 || _e1=""
           if [[ "$_e1" == "[" ]]; then
-            read -rsn1 -t 0.01 _e2 || _e2=""  # eat arrow sequence silently
+            read -rsn1 -t 0.01 _e2 || _e2=""
+            case "$_e2" in A) _vi_hist -1 && draw;; B) _vi_hist 1 && draw;; esac
           elif [[ -z "$_e1" ]] && ((VI_MODE)); then
             UNDO_STACK+=("$cursor:$input"); mode="normal"; ((cursor>0)) && ((cursor--)); draw
           fi;;
