@@ -32,8 +32,7 @@ command -v awk &>/dev/null || { echo "Error: awk not found" >&2; exit 1; }
 
 DATA="${XDG_DATA_HOME:-$HOME/.local/share}/cmdchamp"; mkdir -p "$DATA"; touch "$DATA/scores"
 
-R=$'\e[31m' G=$'\e[32m' Y=$'\e[33m' U=$'\e[94m' M=$'\e[35m' C=$'\e[36m' W=$'\e[97m' B=$'\e[1m' N=$'\e[0m'
-[[ $TERM == linux ]] && D=$'\e[90m' || D=$'\e[2m'
+R=$'\e[31m' G=$'\e[32m' Y=$'\e[33m' U=$'\e[1;34m' M=$'\e[35m' C=$'\e[36m' W=$'\e[37m' B=$'\e[1m' N=$'\e[0m' D=$'\e[2m'
 
 _strip_ansi() {
   local s="$1" out="" i=0 ch
@@ -154,10 +153,10 @@ EOF
 _tutorial() {
   printf '\e[2J\e[H\n'
   cat <<EOF
-    ${U}${B}Controls${N}
+    ${U}Controls${N}
     ${C}Tab${N}   Manpage   ${C}Enter${N}  Submit   ${C}Ctrl+d${N}  Quit
 
-    ${U}${B}Vi Mode${N} ${D}(toggle in Options)${N}
+    ${U}Vi Mode${N} ${D}(toggle in Options)${N}
     ${C}Esc${N}   Normal mode        ${C}i a${N}   Insert mode
     ${C}h l${N}   Move cursor        ${C}w b${N}   Word jump
     ${C}d${N}w ${C}c${N}w  Delete/change word  ${C}?${N}     Full vi help
@@ -600,7 +599,7 @@ _cleanup() {
   if ((_S_ANSWERED > 0)); then
     local _ts; printf -v _ts '%(%s)T' -1; local el=$((_ts - _S_START))
     printf '\n%s  %s/%s (%d%%)  streak %s  %dm%ds\n' \
-      "${U}${B}Session${N}" "${G}${_S_CORRECT}${N}" "${_S_ANSWERED}" \
+      "${U}Session${N}" "${G}${_S_CORRECT}${N}" "${_S_ANSWERED}" \
       $((_S_CORRECT*100/_S_ANSWERED)) "${W}${_S_BEST_STREAK}${N}" \
       $((el/60)) $((el%60))
   else echo; fi
@@ -879,7 +878,6 @@ declare -A MANPAGE=(
 )
 _mp_show() {
   local cmd=$1; local data="${MANPAGE[$cmd]}"
-  [[ $TERM == linux ]] && data="${data//$'\e[2m'/$D}"
   printf "%s %s\n" "${W}${B}${cmd}${N}" "${D}- ${data%%$'\n'*}${N}"
   printf '%s\n' "${data#*$'\n'}"
 }
@@ -2999,7 +2997,7 @@ stats() {
   [[ -n "$DISKS_FOUND" ]] && { IFS=',' read -ra _ea <<< "$DISKS_FOUND"; disk_count=${#_ea[@]}; }
   printf '  %s %s/%d\n' "${U}Floppy Disks:${N}" "${Y}${disk_count}${N}" "$_DISK_TOTAL"
   if ((BOSS_BEATEN >= MAX_LEVEL)); then
-    printf '\n  %s\n' "${U}${B}Records${N}"
+    printf '\n  %s\n' "${U}Records${N}"
     if ((BEST_CHALLENGE > 0)); then
       printf '  %s %s\n' "${U}Challenge:${N}" "${Y}${BEST_CHALLENGE}${N}"
     else
@@ -3017,7 +3015,7 @@ _quit() {
   if ((_S_ANSWERED > 0)); then
     local _ts; printf -v _ts '%(%s)T' -1; local elapsed=$((_ts - _S_START))
     local m=$((elapsed / 60)) s=$((elapsed % 60))
-    printf '%s\n%s\n  %s    %s\n' "${U}${B}Session Summary${N}" "${D}----------------------------------------${N}" "${U}Answered:${N}" "${B}${_S_ANSWERED}${N}"
+    printf '%s\n%s\n  %s    %s\n' "${U}Session Summary${N}" "${D}----------------------------------------${N}" "${U}Answered:${N}" "${B}${_S_ANSWERED}${N}"
     printf '  %s     %s' "${U}Correct:${N}" "${G}${_S_CORRECT}${N}"
     ((_S_ANSWERED > 0)) && printf ' (%d%%)' $((_S_CORRECT * 100 / _S_ANSWERED))
     printf '\n  %s %s\n' "${U}Best streak:${N}" "${W}${B}${_S_BEST_STREAK}${N}"
@@ -3032,7 +3030,7 @@ input="" cursor=0 mode="insert" _rep=""
 declare -a UNDO_STACK=()  # Multi-level undo
 hdr() {
   local fire=""; ((streak>=FIRE_STREAK)) && fire="  ${Y}${B}*${N}"
-  printf '\e[2J\e[H%s\n%s\n%s\n\n' "${W}${B}${PLAYER_NAME:-anon}${N}${fire}" "${U}${B}Level $1${N}: ${LEVEL_NAMES[$1]:-}" "${U}[$2/$3]${N}  ${D}Tab=man${N}"
+  printf '\e[2J\e[H%s\n%s\n%s\n\n' "${W}${B}${PLAYER_NAME:-anon}${N}${fire}" "${U}Level $1${N}: ${LEVEL_NAMES[$1]:-}" "${U}[$2/$3]${N}  ${D}Tab=man${N}"
 }
 qdisp() { bar; printf "\n${C}%s${N}\n\n" "$1"; }
 _wrong_feedback() { ((OPT_SOUND)) && printf '\a'; printf '\e[7m'; read -t 0.05 -rsn1 _ ||:; printf '\e[0m'; }
@@ -3159,7 +3157,7 @@ _vi_normal() {
       "${C}x/X${N} del char  ${C}dw/db/de/dd${N} del  ${C}cw/cb/ce/cc${N} change  ${C}r${N} replace  ${C}~${N} case" \
       "${C}y${N}+motion yank  ${C}p/P${N} paste  ${C}s/S${N} subst  ${C}i/a/I/A${N} insert  ${C}u${N} undo(stack)" \
       "${C}Tab${N} man  ${C}Ctrl+d${N} menu  ${C}Ctrl+w${N} del word  ${C}Ctrl+u${N} del line  ${C}[num]cmd${N} repeat" \
-      "${U}${B}vi mode for your shell${N} ${D}(~/.inputrc):${N}" \
+      "${U}vi mode for your shell${N} ${D}(~/.inputrc):${N}" \
       "${D}  set editing-mode vi${N}" \
       "${D}  set show-mode-in-prompt on${N}" \
       "${D}  set keyseq-timeout 1${N}" \
@@ -3548,7 +3546,7 @@ _sel() {
   while true; do
     printf '\e[2J\e[H%s\n\n' "$title"
     local i; for ((i=0;i<n;i++)); do
-      if [[ "${it[$i]:0:1}" == $'\x01' ]]; then printf '    %s%s%s\n' "$U" "${it[$i]:1}" "$N"
+      if [[ "${it[$i]:0:1}" == $'\x01' ]]; then printf '    %s%s%s\n' "$D" "${it[$i]:1}" "$N"
       elif ((i==c)); then printf '  %s  %s  ▸%s\n' "${R}${B}" "${it[$i]}" "$N"
       else printf '    %s%s%s\n' "$W" "${it[$i]}" "$N"; fi
     done
@@ -3586,7 +3584,7 @@ _options_menu() {
     _opt_tag OPT_VI;    it+=("Vi Mode          $REPLY")
     _opt_tag OPT_SOUND;  it+=("Sound            $REPLY")
     _opt_tag OPT_ALTS;   it+=("Show Alternates  $REPLY")
-    _SEL_BACK=1; _SEL_CUR=$_c; _sel "${U}${B}═══ OPTIONS ═══${N}" "${it[@]}" || break
+    _SEL_BACK=1; _SEL_CUR=$_c; _sel "${U}═══ OPTIONS ═══${N}" "${it[@]}" || break
     _c=$REPLY
     case "$REPLY" in
       0) ((OPT_VI=!OPT_VI)); _apply_opts;;
@@ -4050,7 +4048,7 @@ place() {
       _REDRAW_HDR() {
         local _t=30
         if ((${_rl_deadline:-0})); then _rl_rem; _t=$REPLY; fi
-        printf '\e[2J\e[H%s  %s  %s\n\n%s\n\n' "${U}${B}Level ${lv}${N}" "${U}Q${qi}/2${N}" "${W}${_t}s${N}" "${C}${prompt}${N}"
+        printf '\e[2J\e[H%s  %s  %s\n\n%s\n\n' "${U}Level ${lv}${N}" "${U}Q${qi}/2${N}" "${W}${_t}s${N}" "${C}${prompt}${N}"
       }
       _REDRAW_HDR
       if _read_line 0 0 30; then
@@ -4103,7 +4101,7 @@ case "${1:-}" in
 
     printf '\n%s\n' "${B}═══ LEVELS & BOSSES ═══${N}"
     for ((lv=1; lv<=MAX_LEVEL; lv++)); do
-      printf '\n  %s %2d: %-22s  %sBoss: %-16s%s  %s\n' "${U}${B}Level${N}" "$lv" "${LEVEL_NAMES[$lv]:-}" "${M}" "${BOSS_NAMES[$lv]:-}" "${N}" "${D}\"${BOSS_FLAVOR[$lv]:-}\"${N}"
+      printf '\n  %s %2d: %-22s  %sBoss: %-16s%s  %s\n' "${U}Level${N}" "$lv" "${LEVEL_NAMES[$lv]:-}" "${M}" "${BOSS_NAMES[$lv]:-}" "${N}" "${D}\"${BOSS_FLAVOR[$lv]:-}\"${N}"
       local _pq=(); gen_level$lv _pq
       for ((_si=0; _si<3 && _si<${#_pq[@]}; _si++)); do
         _qparse "${_pq[$_si]}"
