@@ -3003,12 +3003,24 @@ _vi_hist() {
   fi
   cursor=${#input}; _clamp
 }
-_del() { # $1=motion
+_del() { # $1=motion  (also used by c via _vi_normal)
   local e=$cursor
   case "$1" in
     d|c) input="" cursor=0;;
+    h) ((e>0)) && { input="${input:0:e-1}${input:e}"; cursor=$((e-1)); };;
+    l) ((e<${#input})) && input="${input:0:e}${input:e+1}";;
     w) while ((e<${#input})) && [[ "${input:e:1}" != " " ]]; do ((++e)); done; while ((e<${#input})) && [[ "${input:e:1}" == " " ]]; do ((++e)); done; input="${input:0:cursor}${input:e}";;
+    e) ((e<${#input}-1)) && ((++e)); while ((e<${#input}-1)) && [[ "${input:e:1}" == " " ]]; do ((++e)); done; while ((e<${#input}-1)) && [[ "${input:e+1:1}" != " " ]]; do ((++e)); done; input="${input:0:cursor}${input:e+1}";;
     b) ((e>0)) && ((e--)); while ((e>0)) && [[ "${input:e:1}" == " " ]]; do ((e--)); done; while ((e>0)) && [[ "${input:e-1:1}" != " " ]]; do ((e--)); done; input="${input:0:e}${input:cursor}"; cursor=$e;;
+    f|F|t|T) _vi_read; local p
+      if [[ "$1" == [fF] ]]; then
+        if [[ "$1" == "f" ]]; then for ((p=e+1;p<${#input};p++)); do [[ "${input:p:1}" == "$c2" ]] && { e=$((p+1)); break; }; done
+        else for ((p=e-1;p>=0;p--)); do [[ "${input:p:1}" == "$c2" ]] && { e=$p; break; }; done; fi
+      else
+        if [[ "$1" == "t" ]]; then for ((p=e+1;p<${#input};p++)); do [[ "${input:p:1}" == "$c2" ]] && { e=$p; break; }; done
+        else for ((p=e-1;p>=0;p--)); do [[ "${input:p:1}" == "$c2" ]] && { e=$((p+1)); break; }; done; fi
+      fi
+      if ((e>cursor)); then input="${input:0:cursor}${input:e}"; elif ((e<cursor)); then input="${input:0:e}${input:cursor}"; cursor=$e; fi;;
     \$) input="${input:0:cursor}";;
     0) input="${input:cursor}"; cursor=0;;
   esac; _clamp
