@@ -640,6 +640,7 @@ _disk_check() {
       [[ "$ctx" == "sudo rm -rf /"* ]] && _disk_found sudorm
       [[ "$ctx" == *":()"*":|:"* ]] && _disk_found forkbomb
       [[ "$ctx" == "man" ]] && _disk_found rtfm
+      [[ "$ctx" == ":q"* || "$ctx" == ":wq"* ]] && _disk_found vimquit
       ;;
     streak) ((_S_STREAK >= 10)) && _disk_found streak10;;
     nightowl) local h; printf -v h '%(%H)T' -1; ((h < 4)) && _disk_found nightowl;;
@@ -3083,13 +3084,7 @@ _vi_normal() {
         case "$_e2" in A) _vi_hist -1 && draw;; B) _vi_hist 1 && draw;; C) ((cursor<${#input}-1)) && ((++cursor)) && draw;; D) ((cursor>0)) && ((cursor--)) && draw;; esac; fi;;
     $'\x04') _quit;;
     q) _quit;;
-    :) local _vcmd=""; IFS= read -rsn1 -t 1 _vcmd || _vcmd=""
-      case "$_vcmd" in
-        q) local _vbang=""; IFS= read -rsn1 -t 0.2 _vbang || _vbang=""
-          [[ "$_vbang" == "!" ]] && _disk_found vimquit; _quit;;
-        w) local _vq=""; IFS= read -rsn1 -t 0.2 _vq || _vq=""
-          [[ "$_vq" == "q" ]] && { _disk_found vimquit; _quit; };;
-      esac;;
+    :) ;;
     \?) ((_rl_hints)) && { printf '\n%s\n%s\n%s\n%s\n\n%s\n%s\n%s\n%s\n%s\n%s\n' \
       "${D}hl${N} move  ${D}kj${N} history  ${D}wb${N} word  ${D}fFtT${N}+char find  ${D};,${N} repeat find  ${D}0\$^/gg/G${N} line" \
       "${D}x/X${N} del char  ${D}dw/db/de/dd${N} del  ${D}cw/cb/ce/cc${N} change  ${D}r${N} replace  ${D}~${N} case" \
