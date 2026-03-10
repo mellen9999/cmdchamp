@@ -101,7 +101,8 @@ _load_profile() {
 
 _save_profile() {
   printf 'PLAYER_NAME=%s\nBOSS_BEATEN=%d\nBEST_CHALLENGE=%d\nDISKS_FOUND=%s\nSC_DONE=%s\nLAST_DECAY=%d\nPROFILE_VER=%d\n' \
-    "$PLAYER_NAME" "$BOSS_BEATEN" "$BEST_CHALLENGE" "$DISKS_FOUND" "$SC_DONE" "$LAST_DECAY" "$_PROFILE_VER" > "$DATA/profile"
+    "$PLAYER_NAME" "$BOSS_BEATEN" "$BEST_CHALLENGE" "$DISKS_FOUND" "$SC_DONE" "$LAST_DECAY" "$_PROFILE_VER" > "$DATA/profile.tmp"
+  mv "$DATA/profile.tmp" "$DATA/profile"
 }
 
 _first_run() {
@@ -477,7 +478,7 @@ _sandbox_exec() {
     --die-with-parent
     --new-session
     --dev /dev
-    --tmpfs /tmp
+    --tmpfs /tmp:size=64M
   )
   [[ -e /lib ]] && bwrap_args+=(--ro-bind /lib /lib)
   [[ -e /lib64 ]] && bwrap_args+=(--ro-bind /lib64 /lib64)
@@ -497,6 +498,8 @@ _is_destructive() {
   [[ "$cmd" =~ :[[:space:]]*\> ]] && return 0
   [[ "$cmd" =~ find[[:space:]].*-delete ]] && return 0
   [[ "$cmd" =~ rsync[[:space:]].*--delete|xargs[[:space:]].*(rm|mv)|find[[:space:]].*-exec[[:space:]].*(rm|mv) ]] && return 0
+  [[ "$cmd" =~ (^|[[:space:];&|])(eval|exec|source)[[:space:]] ]] && return 0
+  [[ "$cmd" =~ \&\> ]] && return 0
   return 1
 }
 
@@ -580,7 +583,7 @@ _sandbox_check_state() {
         local path="$SANDBOX_DIR/$file"
         [[ ! -e "$path" ]] && { ((_neg)) && continue || return 1; }
         local _p; for ((_p=0; _p<${#perms}; _p++)); do
-          test -"${perms:$_p:1}" "$path"; ((_neg ? !$? : $?)) && return 1; done
+          test -"${perms:$_p:1}" "$path"; local _prc=$?; ((_neg ? !_prc : _prc)) && return 1; done
         ;;
     esac
   done
@@ -590,11 +593,11 @@ _sandbox_check_state() {
 _stty_saved="" _interactive=0 _CLEANING=0
 _cleanup() {
   ((_CLEANING)) && return; _CLEANING=1
-  ((_interactive)) || return 0
   _sflush_if_dirty 2>/dev/null
+  [[ -n "$_stty_saved" ]] && stty "$_stty_saved" 2>/dev/null
+  ((_interactive)) || return 0
   rm -rf "$DATA/sandbox.snap" "$DATA/sandbox.snap.perms" 2>/dev/null
   printf '\e[?25h'
-  [[ -n "$_stty_saved" ]] && stty "$_stty_saved" 2>/dev/null
   if ((_S_ANSWERED > 0)); then
     local _ts; printf -v _ts '%(%s)T' -1; local el=$((_ts - _S_START))
     printf '\n%s  %s/%s (%d%%)  streak %s  %dm%ds\n' \
@@ -2843,6 +2846,7 @@ load() {
   }
   LVL=${LVL:-1}; QI=${QI:-0}
   ((LVL < 1)) && LVL=1  # migrate old 0-indexed sessions
+  ((LVL > MAX_LEVEL)) && LVL=$MAX_LEVEL
 }
 save() {
   local fd; exec {fd}>"$DATA/session.lock"; flock -x "$fd"
@@ -3174,7 +3178,7 @@ _read_line() {
           input="${input:0:_wp}${input:cursor}"; cursor=$_wp; draw; fi;;
         $'\x15') ((cursor>0)) && { input="${input:cursor}"; cursor=0; draw; };;  # Ctrl-u: delete to start
         '') ((_man_open)) && printf '\e7\n\e[J\e8'; _man_open=0; echo; return 0;;
-        *) input="${input:0:cursor}${c}${input:cursor}"; ((++cursor)); draw;;
+        *) ((${#input} < 512)) && { input="${input:0:cursor}${c}${input:cursor}"; ((++cursor)); draw; };;
       esac
     elif ((VI_MODE)); then
       _vi_normal && return || continue
@@ -3279,8 +3283,8 @@ run() {
           _pause
           ((++qi)); QI=$qi; save; break
         else
-          local _new_tier=$((tier<2?tier+1:2))
-          ((tier < 2 && _new_tier >= 2)) && ((_S_MASTERED++))
+          local _new_tier=$((_real_tier<2?_real_tier+1:2))
+          ((_real_tier < 2 && _new_tier >= 2)) && ((_S_MASTERED++))
           printf '\n%s\n' "${G}${B}+${N}"; ((++streak))
           _sset "$prompt" "$_new_tier"
         fi
@@ -3881,7 +3885,8 @@ _selftest() {
   PLAYER_NAME="testplayer" BOSS_BEATEN=15 BEST_CHALLENGE=42 DISKS_FOUND="vimquit,konami" SC_DONE="1,2,3" LAST_DECAY=12345
   _save_profile() {
     printf 'PLAYER_NAME=%s\nBOSS_BEATEN=%d\nBEST_CHALLENGE=%d\nDISKS_FOUND=%s\nSC_DONE=%s\nLAST_DECAY=%d\nPROFILE_VER=%d\n' \
-      "$PLAYER_NAME" "$BOSS_BEATEN" "$BEST_CHALLENGE" "$DISKS_FOUND" "$SC_DONE" "$LAST_DECAY" "$_PROFILE_VER" > "$DATA/profile"
+      "$PLAYER_NAME" "$BOSS_BEATEN" "$BEST_CHALLENGE" "$DISKS_FOUND" "$SC_DONE" "$LAST_DECAY" "$_PROFILE_VER" > "$DATA/profile.tmp"
+    mv "$DATA/profile.tmp" "$DATA/profile"
   }
   _save_profile
   PLAYER_NAME="" BOSS_BEATEN=0 BEST_CHALLENGE=0 DISKS_FOUND="" SC_DONE="" LAST_DECAY=0
