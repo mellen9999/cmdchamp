@@ -99,9 +99,9 @@ Multi-step sandbox challenges — state persists between steps.
 
 First run includes an automatic placement test after the tutorial — 2 questions per level, 20s each, no manpages. Miss one and that's your starting level.
 
-## Easter eggs
+## Floppy disks
 
-8 hidden achievements. `cmdchamp stats` shows how many you've found.
+8 hidden floppy disks to collect. `cmdchamp stats` shows how many you've found.
 
 ## Controls
 
