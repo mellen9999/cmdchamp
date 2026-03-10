@@ -3548,9 +3548,9 @@ _sel() {
   while true; do
     printf '\e[2J\e[H%s\n\n' "$title"
     local i; for ((i=0;i<n;i++)); do
-      if [[ "${it[$i]:0:1}" == $'\x01' ]]; then printf '    \e[38;5;244m%s\e[0m\n' "${it[$i]:1}"
-      elif ((i==c)); then printf '  \e[1;38;5;196m  %s\e[1;38;5;196m  ▸\e[0m\n' "${it[$i]}"
-      else printf '    \e[38;5;231m%s\e[0m\n' "${it[$i]}"; fi
+      if [[ "${it[$i]:0:1}" == $'\x01' ]]; then printf '    %s%s%s\n' "$U" "${it[$i]:1}" "$N"
+      elif ((i==c)); then printf '  %s  %s  ▸%s\n' "${R}${B}" "${it[$i]}" "$N"
+      else printf '    %s%s%s\n' "$W" "${it[$i]}" "$N"; fi
     done
     read -rsn1 k
     [[ "$k" == $'\e' ]] && { read -rsn2 -t 0.1 k; k="${k:1}"; }
