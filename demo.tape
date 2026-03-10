@@ -1,8 +1,6 @@
 # cmdchamp demo - seamless loop, starts mid-gameplay
 Output demo.gif
 
-Require bash
-
 Set Shell "bash"
 Set FontSize 16
 Set Width 1200
@@ -22,7 +20,7 @@ Sleep 300ms
 Type `cp cmdchamp /tmp/demo-cmd && chmod +x /tmp/demo-cmd && sed -i 's/^_run_loop() {/_run_loop() { RANDOM=42/' /tmp/demo-cmd && clear`
 Enter
 Sleep 300ms
-Type "bash /tmp/demo-cmd"
+Type "/tmp/demo-cmd"
 Enter
 Sleep 2.5s
 # Continue (first menu item)
