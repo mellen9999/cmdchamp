@@ -129,6 +129,7 @@ EOF
   _save_profile
   _intro
   _tutorial
+  place; exit 0
 }
 
 _intro() {
@@ -4104,7 +4105,6 @@ case "${1:-}" in
     done
     ;;
   r|reset) rm -f "$DATA"/*.json "$DATA/scores" "$DATA/scores.lock" "$DATA/profile"; rm -rf "$DATA/sandbox" "$DATA/sandbox.pristine" 2>/dev/null; echo "Reset.";;
-  c|cleanup) [[ -f "$DATA/scores" ]] && { _fd=0; exec {_fd}>"$DATA/scores.lock"; flock -x "$_fd"; awk -F'|' '/^#/{next} {data[$1]=$0} END{print "#v1"; for(k in data)print data[k]}' "$DATA/scores" > "$DATA/scores.tmp" && mv "$DATA/scores.tmp" "$DATA/scores"; exec {_fd}>&-; _cnt=$(wc -l < "$DATA/scores"); echo "Deduplicated scores."; ((_cnt > 5000)) && echo "Warning: scores file has $_cnt entries — consider resetting."; } || echo "No scores file.";;
   test|selftest) _selftest;;
   preview)
     # Dev-only: dump all visual content for review
@@ -4180,13 +4180,12 @@ VICEOF
     printf '    %s                                                              %s\n' "$br" "$br"
     printf '    %s\n\n' "$edge"
     }; _preview;;
-  t|tutorial) _tutorial;;
   s|stats) _load_profile; stats;;
   review) _tty; _load_profile; review;;
   gauntlet) _tty; _load_profile; gauntlet;;
   timed) _tty; _load_profile; timed "${2:-120}";;
   scenario|sc) _tty; _load_profile; scenario "${2:-0}";;
-  place) _tty; _load_profile; place;;
+
   v|version|-v|--version) echo "cmdchamp $VERSION";;
   h|help|-h|--help)
     cat <<EOF
@@ -4203,14 +4202,12 @@ Commands:
   p|progress    Show level progress
   n|new         Start fresh from level 1
   s|stats       Show mastery statistics
-  t|tutorial    Show controls and vi keybindings
   review        Practice weak levels (mastery < 80%)
   gauntlet      3 lives, escalating difficulty (post-ROOT)
   timed [60|120|300]  Race the clock (post-ROOT, default 120s)
   scenario [N]  Sandbox investigations (unlock per-level, 1-8)
-  place         Placement test (skip levels you know)
   r|reset       Reset all progress
-  c|cleanup     Deduplicate score file
+  v|version     Print version
   test          Run self-tests
   h|help        Show this help
 
@@ -4225,5 +4222,5 @@ EOF
     ;;
   n|new) _tty; _load_profile; LVL=1; QI=0; save; _run_loop;;
   "") _tty; _load_profile; load; ((LVL>1||QI>0)) && { read -rp "Continue Level $LVL Q$((QI+1))? [Y/n] " yn; [[ "$yn" =~ ^[Nn] ]] && { LVL=1; QI=0; save; _intro; _tutorial; }; }; _run_loop;;
-  *) echo "Usage: cmdchamp [1-30|new|progress|stats|tutorial|review|gauntlet|timed|scenario|place|reset|help]"; exit 1;;
+  *) echo "Usage: cmdchamp [1-30|new|progress|stats|review|gauntlet|timed|scenario|reset|help]"; exit 1;;
 esac

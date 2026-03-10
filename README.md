@@ -38,22 +38,17 @@ cd cmdchamp && make install
 ## Usage
 
 ```bash
-cmdchamp                # Resume from last position (prompts to continue)
+cmdchamp                # Resume from last position
 cmdchamp n              # Start fresh from level 1
 cmdchamp 14             # Jump to level (must be unlocked)
 cmdchamp progress       # Show level progress
 cmdchamp stats          # Show mastery statistics
 cmdchamp review         # Practice weak levels (< 80% mastery)
 cmdchamp gauntlet       # 3 lives, escalating difficulty (post-ROOT)
-cmdchamp timed          # Race the clock, default 120s (post-ROOT)
-cmdchamp timed 60       # Timed mode: 60, 120, or 300 seconds
-cmdchamp place          # Placement test — skip levels you know
-cmdchamp scenario       # List scenarios (or: cmdchamp scenario 3)
-cmdchamp tutorial       # Re-show the controls tutorial
+cmdchamp timed          # Race the clock (post-ROOT, 60/120/300s)
+cmdchamp scenario       # Sandbox investigations (or: cmdchamp scenario 3)
 cmdchamp reset          # Clear all progress
-cmdchamp cleanup        # Deduplicate score file
 cmdchamp help           # Show help + level list
-cmdchamp version        # Print version
 cmdchamp --no-sandbox   # Disable sandbox (text-match only)
 ```
 
@@ -111,7 +106,7 @@ Multi-step sandbox challenges — state persists between steps.
 
 ## Placement test
 
-`cmdchamp place` — skip levels you already know. Asks 2 questions per level, 20s each, no manpages. Miss one and that's your starting level.
+First run includes an automatic placement test after the tutorial — 2 questions per level, 20s each, no manpages. Miss one and that's your starting level.
 
 ## Easter eggs
 
