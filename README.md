@@ -1,6 +1,6 @@
 # cmdchamp
 
-Single-file bash CLI trainer — 30 levels from `ls` to privilege escalation.
+Bash CLI trainer — 30 levels from `ls` to privilege escalation.
 
 ![demo](demo.gif)
 
