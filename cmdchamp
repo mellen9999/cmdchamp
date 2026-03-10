@@ -250,7 +250,7 @@ EOF
   printf '    %s      30 bosses defeated. The shell is yours.                 %s\n' "$br" "$br"
   printf '    %s      %s%s%s\n' "$br" "$stat_text" "$stat_pad" "$br"
   printf '    %s                                                              %s\n' "$br" "$br"
-  printf '    %s                      %sYou are ROOT.%s                          %s\n' "$br" "${B}" "${N}" "$br"
+  printf '    %s                      %sYou are ROOT.%s                           %s\n' "$br" "${B}" "${N}" "$br"
   printf '    %s                                                              %s\n' "$br" "$br"
   printf '    %s\n' "$edge"
   echo
@@ -4171,7 +4171,7 @@ VICEOF
     printf '    %s                                                              %s\n' "$br" "$br"
     printf '    %s      30 bosses defeated. The shell is yours.                 %s\n' "$br" "$br"
     printf '    %s                                                              %s\n' "$br" "$br"
-    printf '    %s                      %sYou are ROOT.%s                          %s\n' "$br" "${B}" "${N}" "$br"
+    printf '    %s                      %sYou are ROOT.%s                           %s\n' "$br" "${B}" "${N}" "$br"
     printf '    %s                                                              %s\n' "$br" "$br"
     printf '    %s\n\n' "$edge"
     }; _preview;;
