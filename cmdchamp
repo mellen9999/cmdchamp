@@ -32,7 +32,8 @@ command -v awk &>/dev/null || { echo "Error: awk not found" >&2; exit 1; }
 
 DATA="${XDG_DATA_HOME:-$HOME/.local/share}/cmdchamp"; mkdir -p "$DATA"; touch "$DATA/scores"
 
-R=$'\e[31m' G=$'\e[32m' Y=$'\e[33m' C=$'\e[36m' W=$'\e[97m' D=$'\e[2m' B=$'\e[1m' N=$'\e[0m'
+R=$'\e[31m' G=$'\e[32m' Y=$'\e[33m' U=$'\e[34m' M=$'\e[35m' C=$'\e[36m' W=$'\e[97m' B=$'\e[1m' N=$'\e[0m'
+[[ $TERM == linux ]] && D=$'\e[90m' || D=$'\e[2m'
 
 _strip_ansi() {
   local s="$1" out="" i=0 ch
@@ -153,10 +154,10 @@ EOF
 _tutorial() {
   printf '\e[2J\e[H\n'
   cat <<EOF
-    ${B}Controls${N}
+    ${U}${B}Controls${N}
     ${C}Tab${N}   Manpage   ${C}Enter${N}  Submit   ${C}Ctrl+d${N}  Quit
 
-    ${B}Vi Mode${N} ${D}(toggle in Options)${N}
+    ${U}${B}Vi Mode${N} ${D}(toggle in Options)${N}
     ${C}Esc${N}   Normal mode        ${C}i a${N}   Insert mode
     ${C}h l${N}   Move cursor        ${C}w b${N}   Word jump
     ${C}d${N}w ${C}c${N}w  Delete/change word  ${C}?${N}     Full vi help
@@ -253,9 +254,9 @@ _boss_splash() {
   printf '\e[2J\e[H\n\n'
   local s info
   printf -v s '%*s' $(( (80 - 12) / 2 )) ''
-  printf '%s%s\n\n' "$s" "${W}${B}═══ BOSS ═══${N}"
+  printf '%s%s\n\n' "$s" "${M}${B}═══ BOSS ═══${N}"
   printf -v s '%*s' $(( (80 - ${#boss}) / 2 )) ''
-  printf '%s%s\n\n' "$s" "${W}${B}${boss}${N}"
+  printf '%s%s\n\n' "$s" "${M}${B}${boss}${N}"
   printf -v s '%*s' $(( (80 - ${#flavor} - 2) / 2 )) ''
   printf '%s%s\n\n' "$s" "${D}\"${flavor}\"${N}"
   printf -v info 'No manpages. %d/%d to pass.' "$BOSS_THRESHOLD" "$BOSS_TOTAL"
@@ -599,7 +600,7 @@ _cleanup() {
   if ((_S_ANSWERED > 0)); then
     local _ts; printf -v _ts '%(%s)T' -1; local el=$((_ts - _S_START))
     printf '\n%s  %s/%s (%d%%)  streak %s  %dm%ds\n' \
-      "${B}Session${N}" "${G}${_S_CORRECT}${N}" "${_S_ANSWERED}" \
+      "${U}${B}Session${N}" "${G}${_S_CORRECT}${N}" "${_S_ANSWERED}" \
       $((_S_CORRECT*100/_S_ANSWERED)) "${W}${_S_BEST_STREAK}${N}" \
       $((el/60)) $((el%60))
   else echo; fi
@@ -878,6 +879,7 @@ declare -A MANPAGE=(
 )
 _mp_show() {
   local cmd=$1; local data="${MANPAGE[$cmd]}"
+  [[ $TERM == linux ]] && data="${data//$'\e[2m'/$D}"
   printf "%s %s\n" "${W}${B}${cmd}${N}" "${D}- ${data%%$'\n'*}${N}"
   printf '%s\n' "${data#*$'\n'}"
 }
@@ -2985,21 +2987,21 @@ stats() {
       local pct=$((lm * 100 / lt)) filled=$((lm * BAR_W / lt)); local empty=$((BAR_W - filled))
       local bar_f bar_e; printf -v bar_f '%*s' "$filled" ''; printf -v bar_e '%*s' "$empty" ''
       local col; ((pct >= 80)) && col=$G || { ((pct >= 40)) && col=$Y || col=$R; }
-      printf "  %s ${W}%2d${N} %-22s ${col}%s${D}%s${N} %3d%% (%d/%d)\n" "$boss_mark" "$lv" "${LEVEL_NAMES[$lv]:-}" "${bar_f// /█}" "${bar_e// /░}" "$pct" "$lm" "$lt"
+      printf "  %s ${U}%2d${N} %-22s ${col}%s${D}%s${N} %3d%% (%d/%d)\n" "$boss_mark" "$lv" "${LEVEL_NAMES[$lv]:-}" "${bar_f// /█}" "${bar_e// /░}" "$pct" "$lm" "$lt"
     else
-      printf "  %s ${W}%2d${N} %-22s ${D}%*s${N}\n" "$boss_mark" "$lv" "${LEVEL_NAMES[$lv]:-}" "$BAR_W" "no data"
+      printf "  %s ${U}%2d${N} %-22s ${D}%*s${N}\n" "$boss_mark" "$lv" "${LEVEL_NAMES[$lv]:-}" "$BAR_W" "no data"
     fi
   done
   local sc_count=0
   [[ -n "$SC_DONE" ]] && { IFS=',' read -ra _sca <<< "$SC_DONE"; sc_count=${#_sca[@]}; }
-  ((SC_TOTAL > 0)) && printf '\n  %s %s/%d\n' "${D}Scenarios:${N}" "${W}${B}${sc_count}${N}" "$SC_TOTAL"
+  ((SC_TOTAL > 0)) && printf '\n  %s %s/%d\n' "${U}Scenarios:${N}" "${M}${sc_count}${N}" "$SC_TOTAL"
   local disk_count=0
   [[ -n "$DISKS_FOUND" ]] && { IFS=',' read -ra _ea <<< "$DISKS_FOUND"; disk_count=${#_ea[@]}; }
-  printf '  %s %s/%d\n' "${D}Floppy Disks:${N}" "${Y}${disk_count}${N}" "$_DISK_TOTAL"
+  printf '  %s %s/%d\n' "${U}Floppy Disks:${N}" "${Y}${disk_count}${N}" "$_DISK_TOTAL"
   if ((BOSS_BEATEN >= MAX_LEVEL)); then
-    printf '\n  %s\n' "${W}${B}Records${N}"
+    printf '\n  %s\n' "${U}${B}Records${N}"
     if ((BEST_CHALLENGE > 0)); then
-      printf '  %s %s\n' "${D}Challenge:${N}" "${Y}${BEST_CHALLENGE}${N}"
+      printf '  %s %s\n' "${U}Challenge:${N}" "${Y}${BEST_CHALLENGE}${N}"
     else
       printf '  %s\n' "${D}No records yet — try challenge!${N}"
     fi
@@ -3015,12 +3017,12 @@ _quit() {
   if ((_S_ANSWERED > 0)); then
     local _ts; printf -v _ts '%(%s)T' -1; local elapsed=$((_ts - _S_START))
     local m=$((elapsed / 60)) s=$((elapsed % 60))
-    printf '%s\n%s\n  Answered:    %s\n' "${B}Session Summary${N}" "${D}----------------------------------------${N}" "${B}${_S_ANSWERED}${N}"
-    printf '  Correct:     %s' "${G}${_S_CORRECT}${N}"
+    printf '%s\n%s\n  %s    %s\n' "${U}${B}Session Summary${N}" "${D}----------------------------------------${N}" "${U}Answered:${N}" "${B}${_S_ANSWERED}${N}"
+    printf '  %s     %s' "${U}Correct:${N}" "${G}${_S_CORRECT}${N}"
     ((_S_ANSWERED > 0)) && printf ' (%d%%)' $((_S_CORRECT * 100 / _S_ANSWERED))
-    printf '\n  Best streak: %s\n' "${W}${B}${_S_BEST_STREAK}${N}"
-    ((_S_MASTERED > 0)) && printf '  Mastered:    %s\n' "${G}${_S_MASTERED}${N}"
-    printf '  Time:        %dm %ds\n%s\n' "$m" "$s" "${D}----------------------------------------${N}"
+    printf '\n  %s %s\n' "${U}Best streak:${N}" "${W}${B}${_S_BEST_STREAK}${N}"
+    ((_S_MASTERED > 0)) && printf '  %s    %s\n' "${U}Mastered:${N}" "${G}${_S_MASTERED}${N}"
+    printf '  %s        %dm %ds\n%s\n' "${U}Time:${N}" "$m" "$s" "${D}----------------------------------------${N}"
     read -rsn1 -p "${D}Press any key...${N}"; echo
   fi
   _QUIT=1
@@ -3030,7 +3032,7 @@ input="" cursor=0 mode="insert" _rep=""
 declare -a UNDO_STACK=()  # Multi-level undo
 hdr() {
   local fire=""; ((streak>=FIRE_STREAK)) && fire="  ${Y}${B}*${N}"
-  printf '\e[2J\e[H%s\n%s\n%s\n\n' "${W}${B}${PLAYER_NAME:-anon}${N}${fire}" "${B}Level $1: ${LEVEL_NAMES[$1]:-}${N}" "${D}[$2/$3]  Tab=man${N}"
+  printf '\e[2J\e[H%s\n%s\n%s\n\n' "${W}${B}${PLAYER_NAME:-anon}${N}${fire}" "${U}${B}Level $1${N}: ${LEVEL_NAMES[$1]:-}" "${U}[$2/$3]${N}  ${D}Tab=man${N}"
 }
 qdisp() { bar; printf "\n${C}%s${N}\n\n" "$1"; }
 _wrong_feedback() { ((OPT_SOUND)) && printf '\a'; printf '\e[7m'; read -t 0.05 -rsn1 _ ||:; printf '\e[0m'; }
@@ -3153,11 +3155,11 @@ _vi_normal() {
     q) _quit;;
     :) ;;
     \?) ((_rl_hints)) && { printf '\n%s\n%s\n%s\n%s\n\n%s\n%s\n%s\n%s\n%s\n%s\n' \
-      "${D}hl${N} move  ${D}kj${N} history  ${D}wb${N} word  ${D}fFtT${N}+char find  ${D};,${N} repeat find  ${D}0\$^/gg/G${N} line" \
-      "${D}x/X${N} del char  ${D}dw/db/de/dd${N} del  ${D}cw/cb/ce/cc${N} change  ${D}r${N} replace  ${D}~${N} case" \
-      "${D}y${N}+motion yank  ${D}p/P${N} paste  ${D}s/S${N} subst  ${D}i/a/I/A${N} insert  ${D}u${N} undo(stack)" \
-      "${D}Tab${N} man  ${D}Ctrl+d${N} menu  ${D}Ctrl+w${N} del word  ${D}Ctrl+u${N} del line  ${D}[num]cmd${N} repeat" \
-      "${W}${B}vi mode for your shell${N} ${D}(~/.inputrc):${N}" \
+      "${C}hl${N} move  ${C}kj${N} history  ${C}wb${N} word  ${C}fFtT${N}+char find  ${C};,${N} repeat find  ${C}0\$^/gg/G${N} line" \
+      "${C}x/X${N} del char  ${C}dw/db/de/dd${N} del  ${C}cw/cb/ce/cc${N} change  ${C}r${N} replace  ${C}~${N} case" \
+      "${C}y${N}+motion yank  ${C}p/P${N} paste  ${C}s/S${N} subst  ${C}i/a/I/A${N} insert  ${C}u${N} undo(stack)" \
+      "${C}Tab${N} man  ${C}Ctrl+d${N} menu  ${C}Ctrl+w${N} del word  ${C}Ctrl+u${N} del line  ${C}[num]cmd${N} repeat" \
+      "${U}${B}vi mode for your shell${N} ${D}(~/.inputrc):${N}" \
       "${D}  set editing-mode vi${N}" \
       "${D}  set show-mode-in-prompt on${N}" \
       "${D}  set keyseq-timeout 1${N}" \
@@ -3395,7 +3397,7 @@ run() {
     _REDRAW_HDR() {
       local _t=$_bt
       if ((${_rl_deadline:-0})); then _rl_rem; _t=$REPLY; fi
-      printf '\e[2J\e[H%s  %s\n\n%s\n\n' "${W}${B}═══ BOSS $((bi+1))/${boss_total} ═══${N}" "${W}${_t}s${N}" "${C}${prompt}${N}"
+      printf '\e[2J\e[H%s  %s\n\n%s\n\n' "${M}${B}═══ BOSS ${U}$((bi+1))/${boss_total}${M} ═══${N}" "${W}${_t}s${N}" "${C}${prompt}${N}"
     }
     _REDRAW_HDR
     if _read_line 0 0 "$_bt"; then
@@ -3424,15 +3426,15 @@ run() {
   local boss="${BOSS_NAMES[$lv]}"
   if ((boss_total > 0 && boss_correct >= _boss_thresh)); then
     ((boss_correct == boss_total)) && _disk_check flawless
-    printf '%s\n' "${G}${B}══ ${boss} DEFEATED ══${N}"
+    printf '%s\n' "${G}${B}══ ${M}${B}${boss}${G} DEFEATED ══${N}"
     printf '%s\n' "${G}${boss_correct}/${boss_total}${N} correct!"
-    printf '%s\n\n' "${W}You acquired: ${LEVEL_NAMES[$lv]}${N}"
+    printf '%s\n\n' "${W}You acquired: ${G}${LEVEL_NAMES[$lv]}${N}"
     if ((BOSS_BEATEN < lv)); then
       BOSS_BEATEN=$lv; _save_profile
       # Notify about newly unlocked scenarios
       local _si
       for ((_si=1; _si<=SC_TOTAL; _si++)); do
-        ((SC_UNLOCK[_si] == lv)) && printf '%s\n' "${Y}★ Scenario unlocked: ${SC_NAMES[$_si]}${N}"
+        ((SC_UNLOCK[_si] == lv)) && printf '%s\n' "${G}★ Scenario unlocked: ${SC_NAMES[$_si]}${N}"
       done
     fi
     if ((lv<MAX_LEVEL)); then
@@ -3443,7 +3445,7 @@ run() {
       _sflush_if_dirty; return 1
     fi
   else
-    printf '%s\n' "${R}${B}══ ${boss} PREVAILS ══${N}"
+    printf '%s\n' "${R}${B}══ ${M}${B}${boss}${R} PREVAILS ══${N}"
     printf '%s\n\n' "${R}${boss_correct}/${boss_total}${N} - need $_boss_thresh to pass"
     printf '%s\n' "${D}r = retry boss, p = practice level${N}"
     read -rsn1 choice
@@ -3487,7 +3489,7 @@ _pick_q() {
 challenge() {
   _post_root_check
   _session_init
-  printf '\e[2J\e[H%s\n%s\n' "${W}${B}═══ CHALLENGE ═══${N}" "${D}All levels. 20s. No manpages. One miss and you're done.${N}"
+  printf '\e[2J\e[H%s\n%s\n' "${M}${B}═══ CHALLENGE ═══${N}" "${D}All levels. 20s. No manpages. One miss and you're done.${N}"
   ((BEST_CHALLENGE > 0)) && printf '%s\n' "${D}Best: ${Y}${BEST_CHALLENGE}${N}"
   printf '\n'; read -rsn1 -p "${D}Press Enter to start...${N}"; echo
 
@@ -3501,7 +3503,7 @@ challenge() {
     _REDRAW_HDR() {
       local _t=20
       if ((${_rl_deadline:-0})); then _rl_rem; _t=$REPLY; fi
-      printf '\e[2J\e[H%s  %s  %s\n\n%s\n\n' "${W}${B}CHALLENGE${N}" "${B}Score: ${score}${N}" "${W}${_t}s${N}" "${C}${prompt}${N}"
+      printf '\e[2J\e[H%s  %s  %s\n\n%s\n\n' "${M}${B}CHALLENGE${N}" "${U}Score: ${score}${N}" "${W}${_t}s${N}" "${C}${prompt}${N}"
     }
     _REDRAW_HDR
 
@@ -3526,7 +3528,7 @@ challenge() {
   printf '%s\n\n' "${R}${B}═══ GAME OVER ═══${N}"
   printf 'Score: %s\n' "${B}${score}${N}"
   if ((score > BEST_CHALLENGE)); then
-    printf '%s\n' "${Y}${B}NEW BEST!${N} (was ${BEST_CHALLENGE})"
+    printf '%s\n' "${G}${B}NEW BEST!${N} (was ${BEST_CHALLENGE})"
     BEST_CHALLENGE=$score; _save_profile
   else
     printf '%s\n' "${D}Best: ${BEST_CHALLENGE}${N}"
@@ -3571,7 +3573,7 @@ _sc_sel() {
     elif _sc_is_done "$i"; then it+=("${G}✓${N} ${SC_NAMES[$i]}")
     else it+=("${SC_NAMES[$i]}"); fi
   done
-  _SEL_BACK=1; _sel "${W}${B}═══ SCENARIOS ═══${N}" "${it[@]}" || return
+  _SEL_BACK=1; _sel "${M}${B}═══ SCENARIOS ═══${N}" "${it[@]}" || return
   scenario "$((REPLY+1))"
 }
 
@@ -3584,7 +3586,7 @@ _options_menu() {
     _opt_tag OPT_VI;    it+=("Vi Mode          $REPLY")
     _opt_tag OPT_SOUND;  it+=("Sound            $REPLY")
     _opt_tag OPT_ALTS;   it+=("Show Alternates  $REPLY")
-    _SEL_BACK=1; _SEL_CUR=$_c; _sel "${W}${B}═══ OPTIONS ═══${N}" "${it[@]}" || break
+    _SEL_BACK=1; _SEL_CUR=$_c; _sel "${U}${B}═══ OPTIONS ═══${N}" "${it[@]}" || break
     _c=$REPLY
     case "$REPLY" in
       0) ((OPT_VI=!OPT_VI)); _apply_opts;;
@@ -3669,7 +3671,7 @@ scenario() {
   ((sc_id < 1 || sc_id > SC_TOTAL)) && { printf '%s\n' "${R}Scenario ${sc_id} does not exist.${N}"; return 1; }
   local _sc_req=${SC_UNLOCK[$sc_id]:-$MAX_LEVEL}
   if ((BOSS_BEATEN < _sc_req)); then
-    printf '%s\n' "${R}Locked${N} — beat the Level ${_sc_req} boss (${LEVEL_NAMES[$_sc_req]}) first."
+    printf '%s\n' "${R}Locked${N} — beat the ${U}Level ${_sc_req}${N} boss (${M}${LEVEL_NAMES[$_sc_req]}${N}) first."
     return 1
   fi
   if ! ((SANDBOX_MODE)); then
@@ -3689,9 +3691,9 @@ scenario() {
 
   # Splash screen
   printf '\e[2J\e[H'
-  printf '%s\n' "${W}${B}═══ ${SC_NAMES[$sc_id]} ═══${N}"
+  printf '%s\n' "${M}${B}═══ ${SC_NAMES[$sc_id]} ═══${N}"
   printf '%s\n' "${D}${SC_FLAVOR[$sc_id]}${N}"
-  printf '%s\n\n' "${D}${total} steps — sandbox state persists between steps${N}"
+  printf '%s\n\n' "${U}${total} steps${N} ${D}— sandbox state persists between steps${N}"
   read -rsn1 -p "${D}Press Enter to start...${N}"; echo
 
   local si _sc_snap="$DATA/sandbox.snap"
@@ -3703,7 +3705,7 @@ scenario() {
     _sc_snap_save
 
     _REDRAW_HDR() {
-      printf '\e[2J\e[H%s  %s\n\n%s\n\n' "${W}${B}${SC_NAMES[$sc_id]}${N}" "${D}[Step $((si+1))/${total}]${N}" "${C}${prompt}${N}"
+      printf '\e[2J\e[H%s  %s\n\n%s\n\n' "${M}${B}${SC_NAMES[$sc_id]}${N}" "${U}[Step $((si+1))/${total}]${N}" "${C}${prompt}${N}"
     }
     _REDRAW_HDR
     HIST=()
@@ -3733,7 +3735,7 @@ scenario() {
   # Completion
   printf '\e[2J\e[H'
   printf '%s\n' "${G}${B}═══ SCENARIO COMPLETE ═══${N}"
-  printf '%s\n' "${C}${SC_NAMES[$sc_id]}${N}"
+  printf '%s\n' "${M}${SC_NAMES[$sc_id]}${N}"
   printf '%s\n' "${G}${correct}/${total}${N} steps"
   _sc_mark_done "$sc_id"
   _disk_check completionist
@@ -4035,7 +4037,7 @@ _selftest() {
 
 # ═══ PLACEMENT ═══
 place() {
-  printf '\e[2J\e[H%s\n%s\n%s\n\n' "${W}${B}═══ PLACEMENT TEST ═══${N}" "${D}2 questions per level, 30s each, no manpages${N}" "${D}Miss one → that's your starting level${N}"
+  printf '\e[2J\e[H%s\n%s\n%s\n\n' "${M}${B}═══ PLACEMENT TEST ═══${N}" "${D}2 questions per level, 30s each, no manpages${N}" "${D}Miss one → that's your starting level${N}"
   read -rsn1 -p "${D}Press Enter to start...${N}"; echo
   _session_init
   _mode_init place
@@ -4048,7 +4050,7 @@ place() {
       _REDRAW_HDR() {
         local _t=30
         if ((${_rl_deadline:-0})); then _rl_rem; _t=$REPLY; fi
-        printf '\e[2J\e[H%s  %s  %s\n\n%s\n\n' "${W}${B}Level ${lv}${N}" "${D}Q${qi}/2${N}" "${W}${_t}s${N}" "${C}${prompt}${N}"
+        printf '\e[2J\e[H%s  %s  %s\n\n%s\n\n' "${U}${B}Level ${lv}${N}" "${U}Q${qi}/2${N}" "${W}${_t}s${N}" "${C}${prompt}${N}"
       }
       _REDRAW_HDR
       if _read_line 0 0 30; then
@@ -4071,11 +4073,11 @@ place() {
   LVL=$((placed >= MAX_LEVEL ? MAX_LEVEL : placed + 1)); QI=0; save
   printf '\e[2J\e[H%s\n' "${G}${B}═══ PLACEMENT COMPLETE ═══${N}"
   if ((placed == 0)); then
-    printf '%s\n' "Starting from ${W}Level 1${N}"
+    printf '%s\n' "Starting from ${U}Level 1${N}"
   elif ((placed >= MAX_LEVEL)); then
-    printf '%s\n' "${Y}${B}Perfect!${N} All levels cleared — post-ROOT modes unlocked"
+    printf '%s\n' "${G}${B}Perfect!${N} All levels cleared — post-ROOT modes unlocked"
   else
-    printf '%s\n' "Placed at ${W}Level $((placed + 1))${N}"
+    printf '%s\n' "Placed at ${U}Level $((placed + 1))${N}"
   fi
   _sflush_if_dirty
   echo
@@ -4101,7 +4103,7 @@ case "${1:-}" in
 
     printf '\n%s\n' "${B}═══ LEVELS & BOSSES ═══${N}"
     for ((lv=1; lv<=MAX_LEVEL; lv++)); do
-      printf '\n  %s %2d: %-22s  %sBoss: %-16s%s  %s\n' "${W}${B}Level${N}" "$lv" "${LEVEL_NAMES[$lv]:-}" "${C}" "${BOSS_NAMES[$lv]:-}" "${N}" "${D}\"${BOSS_FLAVOR[$lv]:-}\"${N}"
+      printf '\n  %s %2d: %-22s  %sBoss: %-16s%s  %s\n' "${U}${B}Level${N}" "$lv" "${LEVEL_NAMES[$lv]:-}" "${M}" "${BOSS_NAMES[$lv]:-}" "${N}" "${D}\"${BOSS_FLAVOR[$lv]:-}\"${N}"
       local _pq=(); gen_level$lv _pq
       for ((_si=0; _si<3 && _si<${#_pq[@]}; _si++)); do
         _qparse "${_pq[$_si]}"
@@ -4112,15 +4114,15 @@ case "${1:-}" in
     printf '\n\n%s\n' "${B}═══ BOSS SPLASH (sample: Level 15) ═══${N}"
     local _sboss="${BOSS_NAMES[15]}" _sflavor="${BOSS_FLAVOR[15]}"
     local s; printf -v s '%*s' $(( (80 - 12) / 2 )) ''
-    printf '\n%s%s\n\n' "$s" "${W}${B}═══ BOSS ═══${N}"
+    printf '\n%s%s\n\n' "$s" "${M}${B}═══ BOSS ═══${N}"
     printf -v s '%*s' $(( (80 - ${#_sboss}) / 2 )) ''
-    printf '%s%s\n\n' "$s" "${W}${B}${_sboss}${N}"
+    printf '%s%s\n\n' "$s" "${M}${B}${_sboss}${N}"
     printf -v s '%*s' $(( (80 - ${#_sflavor} - 2) / 2 )) ''
     printf '%s%s\n' "$s" "${D}\"${_sflavor}\"${N}"
 
     printf '\n\n%s\n' "${B}═══ SCENARIOS ═══${N}"
     for ((si=1; si<=SC_TOTAL; si++)); do
-      printf '\n  %s %d: %-22s  %s(unlocks at boss %d)%s\n' "${W}${B}Scenario${N}" "$si" "${SC_NAMES[$si]:-}" "${D}" "${SC_UNLOCK[$si]:-0}" "${N}"
+      printf '\n  %s %d: %-22s  %s(unlocks at boss %d)%s\n' "${M}${B}Scenario${N}" "$si" "${SC_NAMES[$si]:-}" "${D}" "${SC_UNLOCK[$si]:-0}" "${N}"
       printf '    %s\n' "${D}${SC_FLAVOR[$si]:-}${N}"
     done
 
