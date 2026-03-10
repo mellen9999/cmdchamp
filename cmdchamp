@@ -927,7 +927,7 @@ declare -A EXP=(
   ['!!']="repeat last command" ['!$']="last arg of prev cmd" ['!^']="first arg of prev cmd" ['!*']="all args of prev cmd"
   ['>']="write stdout to file (overwrite — output disappears from terminal)" ['>>']="append stdout to file (output disappears from terminal — use tee to see it too)"
   ['2>']="redirect stderr to file" ['&>']="redirect stdout+stderr to file"
-  ['/dev/null']="black hole: discards anything written to it" ['2>&1']="merge stderr into stdout"
+  ['/dev/null']="black hole: discards anything written to it" ['2>&1']="merge stderr into stdout" ['>&2']="send stdout to stderr" ['1>&2']="send stdout to stderr"
   ['<']="input redirect: feed FILE contents into command"
   ['<<<']="here-string: feed a STRING into command"
   ['.']="current directory" ['..']="parent directory" ['~']="home directory" ['/']="root directory (or path separator)"
@@ -1061,7 +1061,7 @@ explain() {
   done
   if ((_mc)); then
     for tok in $1; do
-      case "$tok" in '>'|'>>'|'<'|'<<<'|'2>'|'&>'|'2>&1'|'|'|'|&'|'&&'|'||'|';'|'&') ;; *) continue ;; esac
+      case "$tok" in '>'|'>>'|'<'|'<<<'|'2>'|'&>'|'2>&1'|'>&2'|'1>&2'|'|'|'|&'|'&&'|'||'|';'|'&') ;; *) continue ;; esac
       exp="${EXP[$tok]:-}"; [[ -z "$exp" ]] && continue
       printf "%s %s\n" "${Y}${B}${tok}${N}" "${D}- ${exp}${N}"
       ((_ml++))
@@ -1077,7 +1077,7 @@ explain() {
     if [[ -n "$exp" ]]; then
       if ((!_cp)); then
         case "$tok" in
-          -*|'>'|'>>'|'<'|'<<<'|'2>'|'&>'|'2>&1'|'|'|'|&'|'&&'|'||'|';'|'&') ;;
+          -*|'>'|'>>'|'<'|'<<<'|'2>'|'&>'|'2>&1'|'>&2'|'1>&2'|'|'|'|&'|'&&'|'||'|';'|'&') ;;
           *) continue ;;
         esac
       fi
