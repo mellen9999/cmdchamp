@@ -3476,7 +3476,8 @@ _sel() {
       j|B) local _p=$((c+1)); while ((_p<n)) && [[ "${it[$_p]:0:1}" == $'\x01' ]]; do ((_p++)); done; ((_p<n)) && c=$_p;;
       k|A) local _p=$((c-1)); while ((_p>=0)) && [[ "${it[$_p]:0:1}" == $'\x01' ]]; do ((_p--)); done; ((_p>=0)) && c=$_p;;
       ''|l|C) REPLY=$c; return 0;;
-      q|h|D|$'\x04') return 1;;
+      q|$'\x04') return 1;;
+      h|D) ((_SEL_BACK)) && return 1;;
     esac
   done
 }
@@ -3490,7 +3491,7 @@ _sc_sel() {
     elif _sc_is_done "$i"; then it+=("${G}✓${N} ${SC_NAMES[$i]}")
     else it+=("${SC_NAMES[$i]}"); fi
   done
-  _sel "${W}${B}═══ SCENARIOS ═══${N}" "${it[@]}" || return
+  _SEL_BACK=1; _sel "${W}${B}═══ SCENARIOS ═══${N}" "${it[@]}" || return
   scenario "$((REPLY+1))"
 }
 
@@ -3523,7 +3524,7 @@ _main_menu() {
       "  ${W}${B}╚██████╗██║ ╚═╝ ██║██████╔╝╚██████╗██║  ██║██║  ██║██║ ╚═╝ ██║██║${N}" \
       "   ${W}${B}╚═════╝╚═╝     ╚═╝╚═════╝  ╚═════╝╚═╝  ╚═╝╚═╝  ╚═╝╚═╝     ╚═╝╚═╝${N}" \
       "                     ${D}░▒▓█ MASTER THE COMMAND LINE █▓▒░${N}"
-    _sel "$_banner" "${it[@]}" || { _CLEANING=1; exit 0; }
+    _SEL_BACK=0; _sel "$_banner" "${it[@]}" || { _CLEANING=1; exit 0; }
     _SEL_CUR=$REPLY
     _QUIT=0
     case "${act[$REPLY]}" in
@@ -3531,7 +3532,10 @@ _main_menu() {
       new) _first_run; _run_loop;;
       sc) _sc_sel;;
       challenge) challenge;;
-      stats) printf '\e[2J\e[H'; stats; local _sk; while read -rsn1 _sk; do [[ "$_sk" == h || "$_sk" == q ]] && break; done;;
+      stats) printf '\e[2J\e[H'; stats; local _sk; while read -rsn1 _sk; do
+        [[ "$_sk" == h || "$_sk" == q ]] && break
+        [[ "$_sk" == $'\e' ]] && { read -rsn2 -t 0.1 _sk; [[ "${_sk:1}" == D ]] && break; [[ -z "$_sk" ]] && break; }
+        done;;
       reset) printf '\n'; read -rp "  ${R}Reset all progress? [y/N]${N} " yn
         [[ "$yn" =~ ^[Yy] ]] && { rm -f "$DATA"/*.json "$DATA/scores" "$DATA/scores.lock" "$DATA/profile"; rm -rf "$DATA/sandbox" "$DATA/sandbox.pristine" 2>/dev/null; PLAYER_NAME="" BOSS_BEATEN=0; _load_profile; load; };;
     esac
