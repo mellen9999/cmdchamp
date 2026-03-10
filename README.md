@@ -63,9 +63,9 @@ cmdchamp reset          # Clear all progress
 | 8 | Logic Gates | &&, \|\| |
 | 9 | Variables | `$VAR`, assignment, expansion, which, alias |
 | 10 | Special Variables | `$$`, `$?`, `$!`, `$#`, `$@`, `$0`, whoami, id |
-| 11 | Job Control | bg, fg, jobs, &, ps, kill, pkill |
+| 11 | Job Control | bg, fg, jobs, &, ps, kill, pkill, nohup |
 | 12 | Test Conditions | -f, -d, -z, -n, -eq, -lt |
-| 13 | Core File Tools | cp, mv, ln, chmod, chown, du, tar, diff, file |
+| 13 | Core File Tools | cp, mv, ln, chmod, chown, du, tar, diff, file, stat, umask |
 | 14 | System Admin | ping, df, free, ss, systemctl, ip, watch |
 | 15 | Multiplexers | tmux: sessions, windows, panes |
 | 16 | Text Search | grep, ripgrep, regex |
