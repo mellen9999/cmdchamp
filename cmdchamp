@@ -149,22 +149,8 @@ EOF
 _tutorial() {
   printf '\e[2J\e[H\n'
   cat <<EOF
-    ${B}Controls${N}
-
-    ${C}Tab${N}       Show manpage for the command
-    ${C}Enter${N}     Submit answer
-    ${C}Ctrl+d${N}    Quit (shows session summary)
-    ${C}Up/Down${N}   Browse answer history
-
-    ${B}Vi Mode${N} ${D}(on by default, CMD_VI=0 to disable)${N}
-
-    ${C}Esc${N}       Normal mode
-    ${C}h l${N}       Move cursor          ${C}w b e${N}     Word navigation
-    ${C}f t ; ,${N}   Find char/repeat     ${C}i a I A${N}   Insert mode
-    ${C}d{motion}${N} Delete               ${C}c{motion}${N} Change
-    ${C}y{motion}${N} Yank                 ${C}p P${N}       Paste
-    ${C}u${N}         Undo (multi-level)   ${C}~${N}         Toggle case
-    ${C}?${N}         Full vi help
+    ${C}Tab${N}     Manpage    ${C}Enter${N}   Submit    ${C}q${N}  Quit
+    ${C}?${N}       Vi help    ${D}Vi mode on by default (CMD_VI=0 to disable)${N}
 
 EOF
   read -rsn1 -p "                            Press Enter to continue..."
@@ -2833,9 +2819,9 @@ _show_alts() {
     ((${#shown[@]} >= max)) && break
   done
   ((${#shown[@]})) || return 0
-  printf '    %s\n' "${D}Also:${N}"
+  printf '  %s\n' "${D}Also:${N}"
   local a; for a in "${shown[@]}"; do
-    printf '  %s\n' "${D}$a${N}"
+    printf '    %s\n' "${D}$a${N}"
   done
 }
 
