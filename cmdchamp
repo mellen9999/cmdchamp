@@ -2645,23 +2645,27 @@ generate_level() {
   gen_level${level}  # writes directly via nameref
   local IFS=$'\n'; _LEVEL_CACHE[$level]="${CURRENT_QUESTIONS[*]}"
 
-  if ((level > 1)); then
-    local review=() prev_arr=() _cache_tmp=()
+  # Mix in weak questions from previous levels (unmastered first)
+  if ((level > 1)) && declare -p _sc &>/dev/null 2>&1; then
+    local _weak=() _rest=() _cache_tmp=() _line _qp
     for ((prev=1; prev<level; prev++)); do
       if [[ -z "${_LEVEL_CACHE[$prev]:-}" ]]; then
         _cache_tmp=(); gen_level${prev} _cache_tmp
         IFS=$'\n'; _LEVEL_CACHE[$prev]="${_cache_tmp[*]}"
       fi
-      prev_arr=()
-      while IFS= read -r line; do
-        [[ -n "$line" ]] && prev_arr+=("$line")
+      while IFS= read -r _line; do
+        [[ -z "$_line" ]] && continue
+        _qparse "$_line"; _sget "$_qprompt"
+        ((REPLY < 2)) && _weak+=("$_line") || _rest+=("$_line")
       done <<< "${_LEVEL_CACHE[$prev]}"
-      if ((${#prev_arr[@]} > 0)); then
-        _fshuffle_n prev_arr $REVIEW_PER_LEVEL
-        review+=("${prev_arr[@]}")
-      fi
     done
-    CURRENT_QUESTIONS+=("${review[@]}")
+    _fshuffle _weak; _fshuffle _rest
+    # Take up to REVIEW_PER_LEVEL * (level-1) questions, weak first
+    local _want=$(( REVIEW_PER_LEVEL * (level - 1) )) _got=0
+    for _line in "${_weak[@]}" "${_rest[@]}"; do
+      ((_got >= _want)) && break
+      CURRENT_QUESTIONS+=("$_line"); ((_got++))
+    done
   fi
 }
 
@@ -3547,104 +3551,29 @@ timed() {
   echo
 }
 
-review() {
-  _session_init
-  _mode_init rev
-  # Find weak levels: mastery < 80%
-  local -A lv_total lv_mastered; _calc_mastery _sc
-  local weak=()
-  if ((_cm_tagged)); then
-    local _max=$((BOSS_BEATEN < 1 ? 1 : BOSS_BEATEN))
-    for ((lv=1; lv<=_max; lv++)); do
-      local lt=${lv_total[$lv]:-0} lm=${lv_mastered[$lv]:-0}
-      ((lt > 0)) && { local pct=$((lm * 100 / lt)); ((pct < 80)) && weak+=("$lv"); }
-    done
-  fi
-  # If no tagged scores or no weak levels, review all unlocked
-  local _review_all=0
-  if ((${#weak[@]} == 0)); then
-    _review_all=1
-    local _max=$((BOSS_BEATEN < 1 ? 1 : BOSS_BEATEN)); for ((lv=1; lv<=_max; lv++)); do weak+=("$lv"); done
-  fi
-  if ((_review_all)); then
-    printf '%s\n' "${B}Review Mode${N} — ${D}reviewing all ${#weak[@]} unlocked level(s)${N}"
-  else
-    printf '%s\n' "${B}Review Mode${N} — ${D}practicing ${#weak[@]} weak level(s)${N}"
-  fi
-  sleep 1
-
-  # Gather questions from weak levels (tab-prefix with source level)
-  local all_q=()
-  for lv in "${weak[@]}"; do
-    local prev_arr=()
-    if [[ -z "${_LEVEL_CACHE[$lv]:-}" ]]; then
-      local _cache_tmp=(); gen_level${lv} _cache_tmp
-      local IFS=$'\n'; _LEVEL_CACHE[$lv]="${_cache_tmp[*]}"
-    fi
-    while IFS= read -r line; do [[ -n "$line" ]] && prev_arr+=("${lv}"$'\t'"${line}"); done <<< "${_LEVEL_CACHE[$lv]}"
-    all_q+=("${prev_arr[@]}")
-  done
-  _fshuffle all_q
-  ((${#all_q[@]} == 0)) && { printf '%s\n' "${D}No questions found.${N}"; return; }
-
-  local qi=0 TOT=${#all_q[@]}
-
-  while ((qi < ${#all_q[@]})); do
-    _preq_reset
-    local _entry="${all_q[$qi]}"
-    _MODE_TAG="${_entry%%$'\t'*}"
-    _qparse "${_entry#*$'\t'}"; local prompt=$_qprompt ans=$_qans
-    _sget "$prompt"; local tier=$REPLY
-    HIST=()
-    _REDRAW_HDR() {
-      printf '\e[2J\e[H%s\n%s\n%s\n\n' "${W}${B}${PLAYER_NAME:-anon}${N}" "${B}Review${N}" "${D}[$((qi+1))/$TOT]  Tab=man${N}"
-      qdisp "$prompt"
-    }
-    _REDRAW_HDR
-    while true; do
-      _read_line 1 1
-      [[ -z "$input" ]] && { draw; continue; }
-      if check "$input" "$_qanswers"; then
-        _sc; _show_alts "$input" "$_qanswers" "$_qdelim"; _egg_check streak
-        local _new_tier=$((tier<2?tier+1:2))
-        ((tier < 2 && _new_tier >= 2)) && ((_S_MASTERED++))
-        _sset "$prompt" "$_new_tier"
-        printf '\n%s\n' "${G}${B}+${N}"
-        _pause; ((++qi)); break
-      else
-        ((_S_ANSWERED++)); _S_STREAK=0; _wrong_show; _egg_check wrong "$input"; explain "$ans"
-        _sset "$prompt" "$((tier>0?tier-1:0))"; _pause
-      fi
-      _sget "$prompt"; tier=$REPLY; _REDRAW_HDR
-    done
-  done
-  _sflush_if_dirty
-  printf '\e[2J\e[H'
-  printf '%s\n' "${G}${B}Review complete!${N}"
-}
 
 # ═══ MENU ═══
 # Generic j/k selector. Args: title item1 item2 ...
 # Items prefixed with $'\x01' are disabled (dimmed, skipped).
 # Sets REPLY to selected index (0-based). Returns 1 on quit.
 _sel() {
-  local title=$1; shift; local -a it=("$@") n=$# c=0 k
-  while ((c<n)) && [[ "${it[$c]:0:1}" == $'\x01' ]]; do ((c++)); done
+  local title=$1; shift; local -a it=("$@") n=$# c=${_SEL_CUR:-0} k; _SEL_CUR=0
+  if ((c>=n)) || [[ "${it[$c]:0:1}" == $'\x01' ]]; then c=0; while ((c<n)) && [[ "${it[$c]:0:1}" == $'\x01' ]]; do ((c++)); done; fi
   ((c>=n)) && return 1
   while true; do
     printf '\e[2J\e[H%s\n\n' "$title"
     local i; for ((i=0;i<n;i++)); do
-      if [[ "${it[$i]:0:1}" == $'\x01' ]]; then printf '    %s\n' "${D}${it[$i]:1}${N}"
-      elif ((i==c)); then printf '  %s\n' "${W}${B}▸ ${it[$i]}${N}"
-      else printf '    %s\n' "${it[$i]}"; fi
+      if [[ "${it[$i]:0:1}" == $'\x01' ]]; then printf '    \e[38;5;244m%s\e[0m\n' "${it[$i]:1}"
+      elif ((i==c)); then printf '  \e[1;38;5;196m  %s  ▸\e[0m\n' "${it[$i]}"
+      else printf '    \e[38;5;231m%s\e[0m\n' "${it[$i]}"; fi
     done
     read -rsn1 k
     [[ "$k" == $'\e' ]] && { read -rsn2 -t 0.1 k; k="${k:1}"; }
     case "$k" in
       j|B) local _p=$((c+1)); while ((_p<n)) && [[ "${it[$_p]:0:1}" == $'\x01' ]]; do ((_p++)); done; ((_p<n)) && c=$_p;;
       k|A) local _p=$((c-1)); while ((_p>=0)) && [[ "${it[$_p]:0:1}" == $'\x01' ]]; do ((_p--)); done; ((_p>=0)) && c=$_p;;
-      '') REPLY=$c; return 0;;
-      q) return 1;;
+      ''|l|C) REPLY=$c; return 0;;
+      q|h|D) return 1;;
     esac
   done
 }
@@ -3694,8 +3623,6 @@ _main_menu() {
     local _any=0; for ((i=1;i<=SC_TOTAL;i++)); do ((BOSS_BEATEN>=${SC_UNLOCK[$i]:-$MAX_LEVEL})) && _any=1; done
     if ((_any)); then it+=("Scenarios"); act+=(sc)
     else it+=($'\x01'"Scenarios"); act+=(x); fi
-    if ((BOSS_BEATEN>=1)); then it+=("Review"); act+=(rev)
-    else it+=($'\x01'"Review"); act+=(x); fi
     if ((BOSS_BEATEN>=MAX_LEVEL)); then
       it+=("Gauntlet"); act+=(gaunt)
       it+=("Timed"); act+=(timed)
@@ -3716,15 +3643,15 @@ _main_menu() {
       "   ${W}${B}╚═════╝╚═╝     ╚═╝╚═════╝  ╚═════╝╚═╝  ╚═╝╚═╝  ╚═╝╚═╝     ╚═╝╚═╝${N}" \
       "                     ${D}░▒▓█ MASTER THE COMMAND LINE █▓▒░${N}"
     _sel "$_banner" "${it[@]}" || return
+    _SEL_CUR=$REPLY
     case "${act[$REPLY]}" in
       cont) _run_loop; return;;
       new) _first_run; LVL=1; QI=0; save; _run_loop; return;;
       lvl) _level_menu && return;;
       sc) _sc_sel;;
-      rev) review; return;;
       gaunt) gauntlet; return;;
       timed) _timed_sel;;
-      stats) printf '\e[2J\e[H'; stats; printf '\n'; read -rsn1 -p "${D}Press any key...${N}";;
+      stats) printf '\e[2J\e[H'; stats; local _sk; while read -rsn1 _sk; do [[ "$_sk" == h || "$_sk" == q ]] && break; done;;
       reset) printf '\n'; read -rp "  ${R}Reset all progress? [y/N]${N} " yn
         [[ "$yn" =~ ^[Yy] ]] && { rm -f "$DATA"/*.json "$DATA/scores" "$DATA/scores.lock" "$DATA/profile"; rm -rf "$DATA/sandbox" "$DATA/sandbox.pristine" 2>/dev/null; PLAYER_NAME="" BOSS_BEATEN=0; _load_profile; load; };;
     esac
