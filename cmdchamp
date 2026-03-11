@@ -33,6 +33,7 @@ command -v awk &>/dev/null || { echo "Error: awk not found" >&2; exit 1; }
 DATA="${XDG_DATA_HOME:-$HOME/.local/share}/cmdchamp"; mkdir -p "$DATA"; touch "$DATA/scores"
 
 R=$'\e[31m' G=$'\e[32m' Y=$'\e[33m' U=$'\e[1;34m' M=$'\e[35m' C=$'\e[36m' W=$'\e[37m' B=$'\e[1m' N=$'\e[0m' D=$'\e[2m'
+_SY=$'\e[?2026h' _SN=$'\e[?2026l'
 
 _strip_ansi() {
   local s="$1" out="" i=0 ch
@@ -111,7 +112,7 @@ _save_profile() {
 }
 
 _first_run() {
-  printf '\e[2J\e[H'
+  printf '%s\e[2J\e[H%s' "$_SY" "$_SN"
   echo
   read -rp "  Enter your handle: " PLAYER_NAME
   _strip_ansi "$PLAYER_NAME"; PLAYER_NAME="$REPLY"
@@ -127,7 +128,7 @@ _first_run() {
 }
 
 _intro() {
-  printf '\e[2J\e[H'
+  printf '%s\e[2J\e[H%s' "$_SY" "$_SN"
   local pad=$((25 - ${#PLAYER_NAME})); ((pad < 0)) && pad=0
   local spaces; printf -v spaces '%*s' "$pad" ''
   cat <<EOF
@@ -152,7 +153,7 @@ EOF
 }
 
 _tutorial() {
-  printf '\e[2J\e[H\n'
+  printf '%s\e[2J\e[H\n%s' "$_SY" "$_SN"
   cat <<EOF
     ${U}Controls${N}
     ${C}Tab${N}   Manpage   ${C}Enter${N}  Submit   ${C}Ctrl+d${N}  Quit
@@ -203,7 +204,7 @@ SC_FLAVOR=(""
   "The config file is a mess. Perform surgery.")
 
 _victory() {
-  printf '\e[2J\e[H'
+  printf '%s\e[2J\e[H%s' "$_SY" "$_SN"
   local -A sc; [[ -f "$DATA/scores" ]] && while IFS='|' read -r k v; do [[ "$k" == "#"* ]] && continue; sc[$k]=$v; done < "$DATA/scores"
   local total=0 mastered=0
   for k in "${!sc[@]}"; do
@@ -251,7 +252,7 @@ _boss_splash() {
   local lv=$1
   local boss="${BOSS_NAMES[$lv]}"
   local flavor="${BOSS_FLAVOR[$lv]}"
-  printf '\e[2J\e[H\n\n'
+  printf '%s\e[2J\e[H\n\n%s' "$_SY" "$_SN"
   local s info
   printf -v s '%*s' $(( (80 - 12) / 2 )) ''
   printf '%s%s\n\n' "$s" "${M}${B}═══ BOSS ═══${N}"
@@ -3049,7 +3050,7 @@ input="" cursor=0 mode="insert" _rep=""
 declare -a UNDO_STACK=()  # Multi-level undo
 hdr() {
   local fire=""; ((streak>=FIRE_STREAK)) && fire="  ${Y}${B}*${N}"
-  printf '\e[2J\e[H%s\n%s\n%s\n\n' "${W}${B}${PLAYER_NAME:-anon}${N}${fire}" "${U}Level $1${N}: ${LEVEL_NAMES[$1]:-}" "${U}[$2/$3]${N}  ${D}Tab=man${N}"
+  printf '%s\e[2J\e[H%s\n%s\n%s\n\n%s' "$_SY" "${W}${B}${PLAYER_NAME:-anon}${N}${fire}" "${U}Level $1${N}: ${LEVEL_NAMES[$1]:-}" "${U}[$2/$3]${N}  ${D}Tab=man${N}" "$_SN"
 }
 qdisp() { bar; printf "\n${C}%s${N}\n\n" "$1"; }
 _wrong_feedback() { ((OPT_SOUND)) && printf '\a'; printf '\e[7m'; read -t 0.05 -rsn1 _ ||:; printf '\e[0m'; }
@@ -3420,7 +3421,7 @@ run() {
     _REDRAW_HDR() {
       local _t=$_bt
       if ((${_rl_deadline:-0})); then _rl_rem; _t=$REPLY; fi
-      printf '\e[2J\e[H%s  %s\n\n%s\n\n' "${M}${B}═══ BOSS ${U}$((bi+1))/${boss_total}${M} ═══${N}" "${W}${_t}s${N}" "${C}${prompt}${N}"
+      printf '%s\e[2J\e[H%s  %s\n\n%s\n\n%s' "$_SY" "${M}${B}═══ BOSS ${U}$((bi+1))/${boss_total}${M} ═══${N}" "${W}${_t}s${N}" "${C}${prompt}${N}" "$_SN"
     }
     _REDRAW_HDR
     if _read_line 0 0 "$_bt"; then
@@ -3449,7 +3450,7 @@ run() {
   ((_QUIT)) && { _sflush_if_dirty; return 1; }
 
   # Results
-  printf '\e[2J\e[H'
+  printf '%s\e[2J\e[H%s' "$_SY" "$_SN"
   local boss="${BOSS_NAMES[$lv]}"
   if ((boss_total > 0 && boss_correct >= _boss_thresh)); then
     ((boss_correct == boss_total)) && _disk_check flawless
@@ -3516,7 +3517,7 @@ _pick_q() {
 challenge() {
   _post_root_check
   _session_init
-  printf '\e[2J\e[H%s\n%s\n' "${M}${B}═══ CHALLENGE ═══${N}" "${D}All levels. 20s. No manpages. One miss and you're done.${N}"
+  printf '%s\e[2J\e[H%s\n%s\n%s' "$_SY" "${M}${B}═══ CHALLENGE ═══${N}" "${D}All levels. 20s. No manpages. One miss and you're done.${N}" "$_SN"
   ((BEST_CHALLENGE > 0)) && printf '%s\n' "${D}Best: ${Y}${BEST_CHALLENGE}${N}"
   printf '\n'; read -rsn1 -p "${D}Press Enter to start...${N}"; echo
 
@@ -3530,7 +3531,7 @@ challenge() {
     _REDRAW_HDR() {
       local _t=20
       if ((${_rl_deadline:-0})); then _rl_rem; _t=$REPLY; fi
-      printf '\e[2J\e[H%s  %s  %s\n\n%s\n\n' "${M}${B}CHALLENGE${N}" "${U}Score: ${score}${N}" "${W}${_t}s${N}" "${C}${prompt}${N}"
+      printf '%s\e[2J\e[H%s  %s  %s\n\n%s\n\n%s' "$_SY" "${M}${B}CHALLENGE${N}" "${U}Score: ${score}${N}" "${W}${_t}s${N}" "${C}${prompt}${N}" "$_SN"
     }
     _REDRAW_HDR
 
@@ -3553,7 +3554,7 @@ challenge() {
 
   _sflush_if_dirty
   if ((_QUIT)); then return; fi
-  printf '\e[2J\e[H'
+  printf '%s\e[2J\e[H%s' "$_SY" "$_SN"
   printf '%s\n\n' "${R}${B}═══ GAME OVER ═══${N}"
   printf 'Score: %s\n' "${B}${score}${N}"
   if ((score > BEST_CHALLENGE)); then
@@ -3577,13 +3578,13 @@ _sel() {
   local _draw=1
   while true; do
     if ((_draw)); then
-      local _buf; printf -v _buf '\e[H%s\n\n' "$title"
+      local _buf; printf -v _buf '%s\e[H%s\n\n' "$_SY" "$title"
       local i; for ((i=0;i<n;i++)); do
         if [[ "${it[$i]:0:1}" == $'\x01' ]]; then printf -v _buf '%s    %s%s%s\e[K\n' "$_buf" "$D" "${it[$i]:1}" "$N"
         elif ((i==c)); then printf -v _buf '%s  %s  %s  ▸%s\e[K\n' "$_buf" "$R" "${it[$i]}" "$N"
         else printf -v _buf '%s    %s%s%s\e[K\n' "$_buf" "$W" "${it[$i]}" "$N"; fi
       done
-      printf '%s\e[J' "$_buf"
+      printf '%s\e[J%s' "$_buf" "$_SN"
       _draw=0
     fi
     read -rsn1 k
@@ -3683,7 +3684,7 @@ _main_menu() {
       sc) _sc_sel;;
       challenge) challenge;;
       opts) _options_menu;;
-      stats) printf '\e[2J\e[H'; stats; local _sk; while read -rsn1 _sk; do
+      stats) printf '%s\e[2J\e[H%s' "$_SY" "$_SN"; stats; local _sk; while read -rsn1 _sk; do
         [[ "$_sk" == h || "$_sk" == q || -z "$_sk" ]] && break
         [[ "$_sk" == $'\e' ]] && { read -rsn2 -t 0.1 _sk; [[ "${_sk:1}" == D ]] && break; [[ -z "$_sk" ]] && break; }
         done;;
@@ -3735,7 +3736,7 @@ scenario() {
   local total=${#steps[@]} correct=0
 
   # Splash screen
-  printf '\e[2J\e[H'
+  printf '%s\e[2J\e[H%s' "$_SY" "$_SN"
   printf '%s\n' "${M}${B}═══ ${SC_NAMES[$sc_id]} ═══${N}"
   printf '%s\n' "${D}${SC_FLAVOR[$sc_id]}${N}"
   printf '%s\n\n' "${U}${total} steps${N} ${D}— sandbox state persists between steps${N}"
@@ -3750,7 +3751,7 @@ scenario() {
     _sc_snap_save
 
     _REDRAW_HDR() {
-      printf '\e[2J\e[H%s  %s\n\n%s\n\n' "${M}${B}${SC_NAMES[$sc_id]}${N}" "${U}[Step $((si+1))/${total}]${N}" "${C}${prompt}${N}"
+      printf '%s\e[2J\e[H%s  %s\n\n%s\n\n%s' "$_SY" "${M}${B}${SC_NAMES[$sc_id]}${N}" "${U}[Step $((si+1))/${total}]${N}" "${C}${prompt}${N}" "$_SN"
     }
     _REDRAW_HDR
     HIST=()
@@ -3782,7 +3783,7 @@ scenario() {
 
   if ((_QUIT)); then rm -rf "$_sc_snap" "$_sc_snap.perms" 2>/dev/null; _sflush_if_dirty; return; fi
   # Completion
-  printf '\e[2J\e[H'
+  printf '%s\e[2J\e[H%s' "$_SY" "$_SN"
   printf '%s\n' "${G}${B}═══ SCENARIO COMPLETE ═══${N}"
   printf '%s\n' "${M}${B}${SC_NAMES[$sc_id]}${N}"
   printf '%s\n' "${G}${correct}/${total}${N} steps"
@@ -4092,7 +4093,7 @@ _selftest() {
 
 # ═══ PLACEMENT ═══
 place() {
-  printf '\e[2J\e[H%s\n%s\n%s\n\n' "${M}${B}═══ PLACEMENT TEST ═══${N}" "${D}2 questions per level, 30s each, no manpages${N}" "${D}Miss one → that's your starting level${N}"
+  printf '%s\e[2J\e[H%s\n%s\n%s\n\n%s' "$_SY" "${M}${B}═══ PLACEMENT TEST ═══${N}" "${D}2 questions per level, 30s each, no manpages${N}" "${D}Miss one → that's your starting level${N}" "$_SN"
   read -rsn1 -p "${D}Press Enter to start...${N}"; echo
   _session_init
   _mode_init place
@@ -4105,7 +4106,7 @@ place() {
       _REDRAW_HDR() {
         local _t=30
         if ((${_rl_deadline:-0})); then _rl_rem; _t=$REPLY; fi
-        printf '\e[2J\e[H%s  %s  %s\n\n%s\n\n' "${U}Level ${lv}${N}" "${U}Q${qi}/2${N}" "${W}${_t}s${N}" "${C}${prompt}${N}"
+        printf '%s\e[2J\e[H%s  %s  %s\n\n%s\n\n%s' "$_SY" "${U}Level ${lv}${N}" "${U}Q${qi}/2${N}" "${W}${_t}s${N}" "${C}${prompt}${N}" "$_SN"
       }
       _REDRAW_HDR
       if _read_line 0 0 30; then
@@ -4130,7 +4131,7 @@ place() {
   ((placed > 0)) && PLACED_THROUGH=$placed
   _save_profile
   LVL=$((placed >= MAX_LEVEL ? MAX_LEVEL : placed + 1)); QI=0; save
-  printf '\e[2J\e[H%s\n' "${G}${B}═══ PLACEMENT COMPLETE ═══${N}"
+  printf '%s\e[2J\e[H%s\n%s' "$_SY" "${G}${B}═══ PLACEMENT COMPLETE ═══${N}" "$_SN"
   if ((placed == 0)); then
     printf '%s\n' "Starting from ${U}Level 1${N}"
   elif ((placed >= MAX_LEVEL)); then
