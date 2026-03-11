@@ -451,7 +451,8 @@ _sandbox_reset() {
   ((SANDBOX_MODE)) || return 0
   [[ -d "$SANDBOX_PRISTINE" ]] || return 1
   chmod -R u+rwX "$SANDBOX_DIR" 2>/dev/null  # unlock any restricted dirs (e.g. scenario 4)
-  local _sb_tmp="${SANDBOX_DIR}.tmp.$$"
+  local _sb_tmp; _sb_tmp=$(mktemp -d "${SANDBOX_DIR}.XXXXXX") || { SANDBOX_MODE=0; return 1; }
+  rm -rf "$_sb_tmp"
   if ! cp -a "$SANDBOX_PRISTINE" "$_sb_tmp"; then
     rm -rf "$_sb_tmp"
     printf '%s\n' "${Y}Warning: sandbox reset failed, disabling${N}" >&2
@@ -2716,7 +2717,7 @@ generate_level() {
 
   # Mix in weak questions from previous levels (unmastered first)
   if ((level > 1)) && declare -p _sc &>/dev/null 2>&1; then
-    local _weak=() _rest=() _cache_tmp=() _line _qp
+    local _weak=() _rest=() _cache_tmp=() _line _qp prev
     for ((prev=1; prev<level; prev++)); do
       if [[ -z "${_LEVEL_CACHE[$prev]:-}" ]]; then
         _cache_tmp=(); gen_level${prev} _cache_tmp
@@ -3206,11 +3207,11 @@ _read_line() {
   while true; do
     if ((_rl_deadline)); then
       local _now; printf -v _now '%(%s)T' -1; local _rem=$((_rl_deadline - _now))
-      ((_rem <= 0)) && { input=""; return 1; }
+      ((_rem <= 0)) && { printf '\e[?25h'; input=""; return 1; }
       if ((_now != _rl_last_sec)); then _rl_last_sec=$_now; _REDRAW_HDR; draw; fi
       IFS= read -rsn1 -t 1 c || {
         printf -v _now '%(%s)T' -1; _rem=$((_rl_deadline - _now))
-        ((_rem <= 0)) && { input=""; return 1; }
+        ((_rem <= 0)) && { printf '\e[?25h'; input=""; return 1; }
         _rl_last_sec=$_now; _REDRAW_HDR; draw; continue
       }
     else
@@ -3428,7 +3429,7 @@ run() {
       if check "$input" "$_qanswers"; then
         ((++boss_correct)); ((_S_CORRECT++)); ((_S_STREAK++))
         ((_S_STREAK > _S_BEST_STREAK)) && _S_BEST_STREAK=$_S_STREAK
-        _sset "$prompt" "$((_boss_tier<4?_boss_tier+1:4))"
+        _sset "$prompt" "$((_boss_tier<2?_boss_tier+1:2))"
         printf '%s\n' "${G}${B}+${N}"
       else
         _S_STREAK=0; _sset "$prompt" "$((_boss_tier>0?_boss_tier-1:0))"; _wrong_show
@@ -3441,6 +3442,10 @@ run() {
     fi
     _pause
   done
+  # Save boss defeat even if quitting, then exit early
+  if ((_QUIT)) && ((boss_total > 0 && boss_correct >= _boss_thresh)) && ((BOSS_BEATEN < lv)); then
+    BOSS_BEATEN=$lv; _save_profile
+  fi
   ((_QUIT)) && { _sflush_if_dirty; return 1; }
 
   # Results
@@ -3580,8 +3585,10 @@ _sel() {
     if [[ "$k" == $'\e' ]]; then
       read -rsn2 -t 0.1 k
       if [[ -z "$k" ]]; then ((_SEL_BACK)) && return 1; continue; fi
+      ((${#k} < 2)) && continue
       k="${k:1}"
     fi
+    local _oc=$c
     case "$k" in
       j|B) local _p=$((c+1)); while ((_p<n)) && [[ "${it[$_p]:0:1}" == $'\x01' ]]; do ((_p++)); done; ((_p<n)) && c=$_p;;
       k|A) local _p=$((c-1)); while ((_p>=0)) && [[ "${it[$_p]:0:1}" == $'\x01' ]]; do ((_p--)); done; ((_p>=0)) && c=$_p;;
@@ -3589,6 +3596,7 @@ _sel() {
       q|$'\x04') return 1;;
       h|D) ((_SEL_BACK)) && return 1;;
     esac
+    ((c == _oc)) && continue
   done
 }
 
@@ -3683,13 +3691,15 @@ _perms_restore() { while IFS=' ' read -r _pmode _ppath; do [[ -n "$_ppath" ]] &&
 _sc_snap_save() {
   find "$SANDBOX_DIR" -printf '%m %p\n' > "$_perms_file" 2>/dev/null
   chmod -R u+rwX "$SANDBOX_DIR" 2>/dev/null
-  local _t="${_sc_snap}.tmp.$$"
+  local _t; _t=$(mktemp -d "${_sc_snap}.XXXXXX") || return
+  rm -rf "$_t"
   cp -a "$SANDBOX_DIR" "$_t" && { rm -rf "$_sc_snap"; mv "$_t" "$_sc_snap"; } || rm -rf "$_t"
   _perms_restore "$SANDBOX_DIR" "$_perms_file"
 }
 _sc_snap_restore() {
   chmod -R u+rwX "$SANDBOX_DIR" 2>/dev/null
-  local _t="${SANDBOX_DIR}.tmp.$$"
+  local _t; _t=$(mktemp -d "${SANDBOX_DIR}.XXXXXX") || return
+  rm -rf "$_t"
   cp -a "$_sc_snap" "$_t" && { rm -rf "$SANDBOX_DIR"; mv "$_t" "$SANDBOX_DIR"; } || rm -rf "$_t"
   _perms_restore "$SANDBOX_DIR" "$_perms_file"
 }
@@ -4092,10 +4102,13 @@ place() {
       }
       _REDRAW_HDR
       if _read_line 0 0 30; then
+        ((_QUIT)) && break 2
         if check "$input" "$_qanswers"; then
           printf '%s\n' "${G}${B}+${N}"; ((qi_ok++)); _pause
           continue
         fi
+      else
+        ((_QUIT)) && break 2
       fi
       # Wrong or timed out
       printf '\n%s  %s %s\n' "${R}${B}✗${N}" "${D}expected:${N}" "${Y}${ans}${N}"
