@@ -3574,13 +3574,18 @@ _sel() {
   local title=$1; shift; local -a it=("$@") n=$# c=${_SEL_CUR:-0} k; _SEL_CUR=0
   if ((c>=n)) || [[ "${it[$c]:0:1}" == $'\x01' ]]; then c=0; while ((c<n)) && [[ "${it[$c]:0:1}" == $'\x01' ]]; do ((c++)); done; fi
   ((c>=n)) && return 1
+  local _draw=1
   while true; do
-    printf '\e[2J\e[H%s\n\n' "$title"
-    local i; for ((i=0;i<n;i++)); do
-      if [[ "${it[$i]:0:1}" == $'\x01' ]]; then printf '    %s%s%s\n' "$D" "${it[$i]:1}" "$N"
-      elif ((i==c)); then printf '  %s  %s  ▸%s\n' "$R" "${it[$i]}" "$N"
-      else printf '    %s%s%s\n' "$W" "${it[$i]}" "$N"; fi
-    done
+    if ((_draw)); then
+      local _buf; printf -v _buf '\e[H%s\n\n' "$title"
+      local i; for ((i=0;i<n;i++)); do
+        if [[ "${it[$i]:0:1}" == $'\x01' ]]; then printf -v _buf '%s    %s%s%s\e[K\n' "$_buf" "$D" "${it[$i]:1}" "$N"
+        elif ((i==c)); then printf -v _buf '%s  %s  %s  ▸%s\e[K\n' "$_buf" "$R" "${it[$i]}" "$N"
+        else printf -v _buf '%s    %s%s%s\e[K\n' "$_buf" "$W" "${it[$i]}" "$N"; fi
+      done
+      printf '%s\e[J' "$_buf"
+      _draw=0
+    fi
     read -rsn1 k
     if [[ "$k" == $'\e' ]]; then
       read -rsn2 -t 0.1 k
@@ -3595,8 +3600,10 @@ _sel() {
       ''|l|C) REPLY=$c; return 0;;
       q|$'\x04') return 1;;
       h|D) ((_SEL_BACK)) && return 1;;
+      *) continue;;
     esac
     ((c == _oc)) && continue
+    _draw=1
   done
 }
 
