@@ -20,18 +20,19 @@ Search levels (16-17) accept both modern (`rg`, `fd`) and classic (`grep`, `find
 
 ## Install
 
+**Arch Linux (AUR):**
+
+```bash
+paru -S cmdchamp
+```
+
+**Manual:**
+
 ```bash
 mkdir -p ~/.local/bin && curl -sL https://raw.githubusercontent.com/mellen9999/cmdchamp/main/cmdchamp -o ~/.local/bin/cmdchamp && chmod +x ~/.local/bin/cmdchamp
 ```
 
 Add `~/.local/bin` to PATH if needed: `echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc`
-
-**Or clone:**
-
-```bash
-git clone https://github.com/mellen9999/cmdchamp.git
-cd cmdchamp && make install
-```
 
 **Requires:** bash 4.3+, coreutils, awk
 
