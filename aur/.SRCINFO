@@ -1,16 +1,13 @@
-pkgbase = cmdchamp-git
+pkgbase = cmdchamp
 	pkgdesc = CLI command trainer with spaced repetition, boss fights, and sandbox execution
-	pkgver = r93.b4d8442
+	pkgver = 0.1
 	pkgrel = 1
 	url = https://github.com/mellen9999/cmdchamp
 	arch = any
 	license = MIT
-	makedepends = git
 	depends = bash
 	depends = bubblewrap
-	provides = cmdchamp
-	conflicts = cmdchamp
-	source = cmdchamp-git::git+https://github.com/mellen9999/cmdchamp.git
-	sha256sums = SKIP
+	source = cmdchamp-0.1.tar.gz::https://github.com/mellen9999/cmdchamp/archive/refs/tags/v0.1.tar.gz
+	sha256sums = add61f167ab1a377508223a7ba35f0ff007e56f7b859469454f94ea396d41e0b
 
-pkgname = cmdchamp-git
+pkgname = cmdchamp
