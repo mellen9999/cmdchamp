@@ -23,63 +23,63 @@ Sleep 300ms
 Type "/tmp/demo-cmd"
 Enter
 Sleep 2.5s
-# Continue (first menu item)
+# Continue (first menu item) — qi:3 skips Q1-Q3, starts at Q4
 Enter
 Sleep 2s
-# Q1: answer hidden so GIF starts clean on Q2
+# Q4: "Create directory assets" — hidden, answer correctly to advance
 Set TypingSpeed 1ms
-Type "cd .."
+Type "mkdir assets"
 Enter
 Sleep 1.5s
 Enter
-# Wait for Q2 screen to fully render (past the flash)
+# Wait for Q5 screen to fully render
 Sleep 1.5s
 Show
 
-# ── Q2: "Create nested directories src/assets" → wrong then correct ──
+# ── Q5: "Print your username using $USER" → wrong then correct ──
 Set TypingSpeed 70ms
 Sleep 800ms
-Type "mkdir src/assets"
+Type "echo USER"
 Sleep 300ms
 Enter
 Sleep 1.8s
 Enter
 Sleep 1s
-Type "mkdir -p src/assets"
+Type "echo $USER"
 Sleep 300ms
 Enter
 Sleep 1s
 Enter
 Sleep 1s
 
-# ── Q3: "Print hello world" → Tab manpage, then correct ──
+# ── Q6: "Print current shell using $SHELL" → Tab manpage, then correct ──
 Sleep 600ms
 Tab
 Sleep 2.5s
 Set TypingSpeed 60ms
-Type "echo hello world"
+Type "echo $SHELL"
 Sleep 300ms
 Enter
 Sleep 1s
 Enter
 Sleep 1s
 
-# ── Q4: "Change to src directory" → correct ──
+# ── Q7: "Print current directory" → correct ──
 Set TypingSpeed 70ms
 Sleep 600ms
-Type "cd src"
+Type "pwd"
 Sleep 300ms
 Enter
 Sleep 1s
 Enter
 Sleep 1s
 
-# ── Q5: "Go to filesystem root (/)" → correct ──
+# ── Q8: "Go to home directory" → correct ──
 Sleep 600ms
-Type "cd /"
+Type "cd"
 Sleep 300ms
 Enter
 Sleep 1s
 # Don't press Enter — freeze on the correct feedback
-# When it loops, jumps back to Q2 prompt (both are static game screens)
+# When it loops, jumps back to Q5 prompt (both are static game screens)
 Sleep 2s
