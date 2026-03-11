@@ -3351,7 +3351,6 @@ run() {
     # Fire mode: force tier 2 (pure recall)
     local _real_tier=$REPLY
     ((streak>=FIRE_STREAK)) && tier=2
-    HIST=()
     _REDRAW_HDR() { hdr "$lv" "$((qi+1))" "$TOT"; qdisp "$prompt"; }
     _REDRAW_HDR
     while true; do
@@ -3378,6 +3377,7 @@ run() {
         printf '\n%s\n' "${Y}right command — use the exact string from the question${N}"
         sleep 1; _REDRAW_HDR; continue
       else
+        [[ -n "$input" ]] && { HIST+=("$input"); HIST_IDX=${#HIST[@]}; HIST_SAVE=""; }
         ((_S_ANSWERED++)); _S_STREAK=0; _wrong_show; _disk_check wrong "$input"
         explain "$ans"
         streak=0; _sset "$prompt" "$((_real_tier>0?_real_tier-1:0))"; _pause
@@ -3748,6 +3748,7 @@ scenario() {
         printf '\n%s\n' "${Y}right command — use the exact string from the question${N}"
         sleep 1; _REDRAW_HDR; continue
       else
+        [[ -n "$input" ]] && { HIST+=("$input"); HIST_IDX=${#HIST[@]}; HIST_SAVE=""; }
         ((_S_ANSWERED++)); _S_STREAK=0; _wrong_show; _disk_check wrong "$input"
         explain "$ans"
         _sc_snap_restore
