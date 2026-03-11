@@ -3574,7 +3574,11 @@ _sel() {
       else printf '    %s%s%s\n' "$W" "${it[$i]}" "$N"; fi
     done
     read -rsn1 k
-    [[ "$k" == $'\e' ]] && { read -rsn2 -t 0.1 k; k="${k:1}"; }
+    if [[ "$k" == $'\e' ]]; then
+      read -rsn2 -t 0.1 k
+      if [[ -z "$k" ]]; then ((_SEL_BACK)) && return 1; continue; fi
+      k="${k:1}"
+    fi
     case "$k" in
       j|B) local _p=$((c+1)); while ((_p<n)) && [[ "${it[$_p]:0:1}" == $'\x01' ]]; do ((_p++)); done; ((_p<n)) && c=$_p;;
       k|A) local _p=$((c-1)); while ((_p>=0)) && [[ "${it[$_p]:0:1}" == $'\x01' ]]; do ((_p--)); done; ((_p>=0)) && c=$_p;;
