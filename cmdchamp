@@ -3307,7 +3307,7 @@ _preq_reset() { ((SANDBOX_MODE && _SANDBOX_DESTRUCTIVE)) && { _sandbox_reset; _S
 
 # ═══ RUN ENGINE ═══
 run() {
-  local lv=$1 boss_only=${2:-0} shuf=() qi=0 streak=0
+  local lv=$1 boss_only=${2:-0} shuf=() qi=$QI streak=0
   local -a SEEN_PROMPTS=()
   _mode_init "$lv"
 
