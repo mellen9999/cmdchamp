@@ -66,6 +66,7 @@ PLAYER_NAME="" BOSS_BEATEN=0 BEST_CHALLENGE=0 DISKS_FOUND="" SC_DONE=""
 OPT_VI=1 OPT_SOUND=1 OPT_ALTS=1
 _PROFILE_VER=4  # bump this when profile format changes; old profiles get reset
 LAST_DECAY=0  # epoch of last decay check (persisted in profile)
+PLACED_THROUGH=0  # highest level passed via placement test
 
 _load_profile() {
   if [[ -f "$DATA/profile" ]]; then
@@ -82,6 +83,7 @@ _load_profile() {
         OPT_VI) OPT_VI="$val";;
         OPT_SOUND) OPT_SOUND="$val";;
         OPT_ALTS) OPT_ALTS="$val";;
+        PLACED_THROUGH) PLACED_THROUGH="$val";;
         PROFILE_VER) _file_ver="$val";;
       esac
     done < "$DATA/profile"
@@ -103,8 +105,8 @@ _load_profile() {
 }
 
 _save_profile() {
-  printf 'PLAYER_NAME=%s\nBOSS_BEATEN=%d\nBEST_CHALLENGE=%d\nDISKS_FOUND=%s\nSC_DONE=%s\nLAST_DECAY=%d\nOPT_VI=%d\nOPT_SOUND=%d\nOPT_ALTS=%d\nPROFILE_VER=%d\n' \
-    "$PLAYER_NAME" "$BOSS_BEATEN" "$BEST_CHALLENGE" "$DISKS_FOUND" "$SC_DONE" "$LAST_DECAY" "$OPT_VI" "$OPT_SOUND" "$OPT_ALTS" "$_PROFILE_VER" > "$DATA/profile.tmp"
+  printf 'PLAYER_NAME=%s\nBOSS_BEATEN=%d\nBEST_CHALLENGE=%d\nDISKS_FOUND=%s\nSC_DONE=%s\nLAST_DECAY=%d\nOPT_VI=%d\nOPT_SOUND=%d\nOPT_ALTS=%d\nPLACED_THROUGH=%d\nPROFILE_VER=%d\n' \
+    "$PLAYER_NAME" "$BOSS_BEATEN" "$BEST_CHALLENGE" "$DISKS_FOUND" "$SC_DONE" "$LAST_DECAY" "$OPT_VI" "$OPT_SOUND" "$OPT_ALTS" "$PLACED_THROUGH" "$_PROFILE_VER" > "$DATA/profile.tmp"
   mv "$DATA/profile.tmp" "$DATA/profile"
 }
 
@@ -2994,7 +2996,9 @@ stats() {
   for lv in {1..30}; do
     local lt=${lv_total[$lv]:-0} lm=${lv_mastered[$lv]:-0}
     local boss_mark=""
-    ((lv <= BOSS_BEATEN)) && boss_mark="${G}+${N}" || boss_mark="${D}·${N}"
+    if ((lv <= BOSS_BEATEN)); then
+      ((lv <= PLACED_THROUGH)) && boss_mark="${C}p${N}" || boss_mark="${G}+${N}"
+    else boss_mark="${D}·${N}"; fi
     if ((lt > 0)); then
       local pct=$((lm * 100 / lt)) filled=$((lm * BAR_W / lt)); local empty=$((BAR_W - filled))
       local bar_f bar_e; printf -v bar_f '%*s' "$filled" ''; printf -v bar_e '%*s' "$empty" ''
@@ -4027,19 +4031,20 @@ _selftest() {
   printf '%s\n' "${B}=== profile ===${N}"
   _test_data=$(mktemp -d)
   _save_data="$DATA"; DATA="$_test_data"
-  PLAYER_NAME="testplayer" BOSS_BEATEN=15 BEST_CHALLENGE=42 DISKS_FOUND="vimquit,konami" SC_DONE="1,2,3" LAST_DECAY=12345
+  PLAYER_NAME="testplayer" BOSS_BEATEN=15 BEST_CHALLENGE=42 DISKS_FOUND="vimquit,konami" SC_DONE="1,2,3" LAST_DECAY=12345 PLACED_THROUGH=5
   _save_profile() {
-    printf 'PLAYER_NAME=%s\nBOSS_BEATEN=%d\nBEST_CHALLENGE=%d\nDISKS_FOUND=%s\nSC_DONE=%s\nLAST_DECAY=%d\nPROFILE_VER=%d\n' \
-      "$PLAYER_NAME" "$BOSS_BEATEN" "$BEST_CHALLENGE" "$DISKS_FOUND" "$SC_DONE" "$LAST_DECAY" "$_PROFILE_VER" > "$DATA/profile.tmp"
+    printf 'PLAYER_NAME=%s\nBOSS_BEATEN=%d\nBEST_CHALLENGE=%d\nDISKS_FOUND=%s\nSC_DONE=%s\nLAST_DECAY=%d\nPLACED_THROUGH=%d\nPROFILE_VER=%d\n' \
+      "$PLAYER_NAME" "$BOSS_BEATEN" "$BEST_CHALLENGE" "$DISKS_FOUND" "$SC_DONE" "$LAST_DECAY" "$PLACED_THROUGH" "$_PROFILE_VER" > "$DATA/profile.tmp"
     mv "$DATA/profile.tmp" "$DATA/profile"
   }
   _save_profile
-  PLAYER_NAME="" BOSS_BEATEN=0 BEST_CHALLENGE=0 DISKS_FOUND="" SC_DONE="" LAST_DECAY=0
+  PLAYER_NAME="" BOSS_BEATEN=0 BEST_CHALLENGE=0 DISKS_FOUND="" SC_DONE="" LAST_DECAY=0 PLACED_THROUGH=0
   while IFS='=' read -r key val; do
     case "$key" in
       PLAYER_NAME) PLAYER_NAME="$val";; BOSS_BEATEN) BOSS_BEATEN="$val";;
       BEST_CHALLENGE) BEST_CHALLENGE="$val";;
       DISKS_FOUND) DISKS_FOUND="$val";; SC_DONE) SC_DONE="$val";; LAST_DECAY) LAST_DECAY="$val";;
+      PLACED_THROUGH) PLACED_THROUGH="$val";;
     esac
   done < "$DATA/profile"
   _assert "profile name"       "$PLAYER_NAME"  "testplayer"
@@ -4048,6 +4053,7 @@ _selftest() {
   _assert "profile disks"      "$DISKS_FOUND"  "vimquit,konami"
   _assert "profile sc_done"    "$SC_DONE"      "1,2,3"
   _assert "profile last_decay" "$LAST_DECAY"   "12345"
+  _assert "profile placed"     "$PLACED_THROUGH" "5"
   DATA="$_save_data"
   rm -rf "$_test_data"
 
@@ -4101,6 +4107,7 @@ place() {
   local placed=$((lv - 1))
   ((qi_ok >= 2 && lv > MAX_LEVEL)) && placed=$MAX_LEVEL
   ((placed > BOSS_BEATEN)) && BOSS_BEATEN=$placed
+  ((placed > 0)) && PLACED_THROUGH=$placed
   _save_profile
   LVL=$((placed >= MAX_LEVEL ? MAX_LEVEL : placed + 1)); QI=0; save
   printf '\e[2J\e[H%s\n' "${G}${B}═══ PLACEMENT COMPLETE ═══${N}"
