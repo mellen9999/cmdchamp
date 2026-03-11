@@ -2,7 +2,7 @@
 # cmdchamp — CLI trainer (single file, no deps beyond bash 4.3+ / bwrap)
 #
 # FILE MAP (search for ═══ SECTION ═══ markers):
-#   INIT .............. version check, XDG, colors, constants
+#   INIT .............. bash check, XDG, colors, constants
 #   PROFILE ........... load/save, first run, intro, tutorial
 #   BOSSES & LEVELS ... name arrays, scenario metadata
 #   SANDBOX ........... file generators, bwrap exec, state checks
@@ -50,7 +50,6 @@ _strip_ansi() {
   REPLY="$out"
 }
 
-VERSION="1.0"
 SANDBOX_TIMEOUT=5      # Seconds before sandbox command times out
 BOSS_THRESHOLD=4       # Correct answers needed to beat boss (out of BOSS_TOTAL)
 BOSS_TOTAL=5           # Number of questions in boss round
@@ -4162,7 +4161,6 @@ case "${1:-}" in
     printf '\n\n%s\n' "${B}═══ VICTORY SCREEN ═══${N}"
     _victory nopause
     }; _preview;;
-  v|version|-v|--version) echo "cmdchamp $VERSION";;
   h|help|-h|--help)
     cat <<EOF
 ${B}cmdchamp${N} - CLI trainer
@@ -4177,11 +4175,10 @@ Options:
 
 Commands:
   r|reset       Reset all progress
-  v|version     Print version
   test          Run self-tests
   h|help        Show this help
 EOF
     ;;
   "") _tty; _load_profile; _apply_opts; _main_menu;;
-  *) echo "Usage: cmdchamp [--no-sandbox] [reset|version|test|help]"; echo "Run with no arguments for the game menu."; exit 1;;
+  *) echo "Usage: cmdchamp [--no-sandbox] [reset|test|help]"; echo "Run with no arguments for the game menu."; exit 1;;
 esac
