@@ -1121,13 +1121,14 @@ explain() {
 #   #output:@N       stdout must be exactly N lines
 #   #state:CHECKS    comma-separated: exists:F, !exists:F, contains:F:S,
 #                    !contains:F:S, lines:F:N, perm:F:M, !perm:F:M
+#   #require:STRING  input must contain STRING (prevents shortcut cheats)
 #   #text:           command is interactive (less/vi) — skip sandbox exec
 #
 # Level generators use nameref: local -n questions=${1:-CURRENT_QUESTIONS}; questions=(); eval "local $_QV"; _ctx
 #   $_QV declares ~40 local vars, _ctx() populates them via _fpick from pools
 _qparse() {
   local q=$1
-  _qoutput="" _qstate="" _qtext=0 _qdelim='|'
+  _qoutput="" _qstate="" _qtext=0 _qrequire="" _qdelim='|'
 
   if [[ $q == *"#text:"* ]]; then
     _qtext=1
@@ -1142,6 +1143,11 @@ _qparse() {
     _qoutput="${q##*#output:}"
     _qoutput="${_qoutput%%#*}"  # Remove any trailing markers
     q="${q%%#output:*}"
+  fi
+  if [[ $q == *"#require:"* ]]; then
+    _qrequire="${q##*#require:}"
+    _qrequire="${_qrequire%%#*}"
+    q="${q%%#require:*}"
   fi
 
   if [[ $q == *§* ]]; then
@@ -1313,13 +1319,13 @@ gen_level6() {
   for ((_i=${#word2}-1;_i>=0;_i--)); do _rw2+="${word2:_i:1}"; done
   questions+=("Reverse the string ${Y}'${word}'${C}§rev <<< '${word}'§rev <<< ${word}§echo '${word}' | rev§echo ${word} | rev§#output:~${_rw}")
   questions+=("Reverse the string ${Y}'${word2}'${C}§rev <<< '${word2}'§rev <<< ${word2}§echo '${word2}' | rev§echo ${word2} | rev§#output:~${_rw2}")
-  command -v bc &>/dev/null && questions+=("Calculate ${Y}${num1}+${num2}${C} with bc§bc <<< '${num1}+${num2}'§bc <<< ${num1}+${num2}§echo '${num1}+${num2}' | bc§echo ${num1}+${num2} | bc§#output:~^$((num1+num2))$")
-  questions+=("Extract home dir from ${Y}'root:x:0:0:root:/root:/bin/bash'${C}§cut -d: -f6 <<< 'root:x:0:0:root:/root:/bin/bash'§cut --delimiter=: --fields=6 <<< 'root:x:0:0:root:/root:/bin/bash'§echo 'root:x:0:0:root:/root:/bin/bash' | cut -d: -f6§echo 'root:x:0:0:root:/root:/bin/bash' | cut --delimiter=: --fields=6§awk -F: '{print \$6}' <<< 'root:x:0:0:root:/root:/bin/bash'§echo 'root:x:0:0:root:/root:/bin/bash' | awk -F: '{print \$6}'§#output:~^/root$")
-  questions+=("Get the login name (field 1) from ${Y}'john:x:1000:1000:John:/home/john:/bin/bash'${C}§cut -d: -f1 <<< 'john:x:1000:1000:John:/home/john:/bin/bash'§cut --delimiter=: --fields=1 <<< 'john:x:1000:1000:John:/home/john:/bin/bash'§echo 'john:x:1000:1000:John:/home/john:/bin/bash' | cut -d: -f1§echo 'john:x:1000:1000:John:/home/john:/bin/bash' | cut --delimiter=: --fields=1§awk -F: '{print \$1}' <<< 'john:x:1000:1000:John:/home/john:/bin/bash'§echo 'john:x:1000:1000:John:/home/john:/bin/bash' | awk -F: '{print \$1}'§#output:~^john$")
-  questions+=("Count words in ${Y}'${word} ${word2} test'${C}§wc -w <<< '${word} ${word2} test'§wc --words <<< '${word} ${word2} test'§echo '${word} ${word2} test' | wc -w§echo '${word} ${word2} test' | wc --words§#output:~^\\s*3$")
-  questions+=("Count bytes in the string ${Y}'${word}'${C}§wc -c <<< '${word}'§wc -c <<< ${word}§wc --bytes <<< '${word}'§wc --bytes <<< ${word}§echo '${word}' | wc -c§echo ${word} | wc -c§echo '${word}' | wc --bytes§echo ${word} | wc --bytes§#output:~^\\s*$((${#word}+1))$")
-  questions+=("Replace spaces with underscores in ${Y}'hello world test'${C}§tr ' ' '_' <<< 'hello world test'§echo 'hello world test' | tr ' ' '_'§sed 's/ /_/g' <<< 'hello world test'§echo 'hello world test' | sed 's/ /_/g'§#output:~hello_world_test")
-  questions+=("Delete digits from ${Y}'abc123def456'${C}§tr -d '0-9' <<< 'abc123def456'§tr --delete '0-9' <<< 'abc123def456'§tr -d '[:digit:]' <<< 'abc123def456'§tr --delete '[:digit:]' <<< 'abc123def456'§echo 'abc123def456' | tr -d '0-9'§echo 'abc123def456' | tr --delete '0-9'§echo 'abc123def456' | tr -d '[:digit:]'§echo 'abc123def456' | tr --delete '[:digit:]'§sed 's/[0-9]//g' <<< 'abc123def456'§echo 'abc123def456' | sed 's/[0-9]//g'§#output:~abcdef")
+  command -v bc &>/dev/null && questions+=("Calculate ${Y}${num1}+${num2}${C} with bc§bc <<< '${num1}+${num2}'§bc <<< ${num1}+${num2}§echo '${num1}+${num2}' | bc§echo ${num1}+${num2} | bc§#require:${num1}+${num2}#output:~^$((num1+num2))$")
+  questions+=("Extract home dir from ${Y}'root:x:0:0:root:/root:/bin/bash'${C}§cut -d: -f6 <<< 'root:x:0:0:root:/root:/bin/bash'§cut --delimiter=: --fields=6 <<< 'root:x:0:0:root:/root:/bin/bash'§echo 'root:x:0:0:root:/root:/bin/bash' | cut -d: -f6§echo 'root:x:0:0:root:/root:/bin/bash' | cut --delimiter=: --fields=6§awk -F: '{print \$6}' <<< 'root:x:0:0:root:/root:/bin/bash'§echo 'root:x:0:0:root:/root:/bin/bash' | awk -F: '{print \$6}'§#require:root:x:0:0:root:/root:/bin/bash#output:~^/root$")
+  questions+=("Get the login name (field 1) from ${Y}'john:x:1000:1000:John:/home/john:/bin/bash'${C}§cut -d: -f1 <<< 'john:x:1000:1000:John:/home/john:/bin/bash'§cut --delimiter=: --fields=1 <<< 'john:x:1000:1000:John:/home/john:/bin/bash'§echo 'john:x:1000:1000:John:/home/john:/bin/bash' | cut -d: -f1§echo 'john:x:1000:1000:John:/home/john:/bin/bash' | cut --delimiter=: --fields=1§awk -F: '{print \$1}' <<< 'john:x:1000:1000:John:/home/john:/bin/bash'§echo 'john:x:1000:1000:John:/home/john:/bin/bash' | awk -F: '{print \$1}'§#require:john:x:1000:1000:John:/home/john:/bin/bash#output:~^john$")
+  questions+=("Count words in ${Y}'${word} ${word2} test'${C}§wc -w <<< '${word} ${word2} test'§wc --words <<< '${word} ${word2} test'§echo '${word} ${word2} test' | wc -w§echo '${word} ${word2} test' | wc --words§#require:${word} ${word2} test#output:~^\\s*3$")
+  questions+=("Count bytes in the string ${Y}'${word}'${C}§wc -c <<< '${word}'§wc -c <<< ${word}§wc --bytes <<< '${word}'§wc --bytes <<< ${word}§echo '${word}' | wc -c§echo ${word} | wc -c§echo '${word}' | wc --bytes§echo ${word} | wc --bytes§#require:${word}#output:~^\\s*$((${#word}+1))$")
+  questions+=("Replace spaces with underscores in ${Y}'hello world test'${C}§tr ' ' '_' <<< 'hello world test'§echo 'hello world test' | tr ' ' '_'§sed 's/ /_/g' <<< 'hello world test'§echo 'hello world test' | sed 's/ /_/g'§#require:hello world test#output:~hello_world_test")
+  questions+=("Delete digits from ${Y}'abc123def456'${C}§tr -d '0-9' <<< 'abc123def456'§tr --delete '0-9' <<< 'abc123def456'§tr -d '[:digit:]' <<< 'abc123def456'§tr --delete '[:digit:]' <<< 'abc123def456'§echo 'abc123def456' | tr -d '0-9'§echo 'abc123def456' | tr --delete '0-9'§echo 'abc123def456' | tr -d '[:digit:]'§echo 'abc123def456' | tr --delete '[:digit:]'§sed 's/[0-9]//g' <<< 'abc123def456'§echo 'abc123def456' | sed 's/[0-9]//g'§#require:abc123def456#output:~abcdef")
 }
 
 # Level 7: Error Redirection (2>, &>, 2>&1)
@@ -2842,9 +2848,11 @@ _fnorm() {
   ((_saw_dashdash)) && { REPLY+=" --"; for p in "${postdd[@]}"; do REPLY+=" $p"; done; }
 }
 
-_SANDBOX_OUTPUT=""
+_SANDBOX_OUTPUT="" _SANDBOX_REQUIRE_FAIL=0
 _sandbox_validate() {
   local inp=$1 output _sb_err _sb_rc
+  if [[ -n "$_qrequire" && "$inp" != *"$_qrequire"* ]]; then _SANDBOX_REQUIRE_FAIL=1; return 1; fi
+  _SANDBOX_REQUIRE_FAIL=0
   { output=$(_sandbox_exec "$inp" 5 2>"$SANDBOX_DIR/.stderr"); } 2>/dev/null; _sb_rc=$?
   _sb_err=$(<"$SANDBOX_DIR/.stderr") 2>/dev/null || _sb_err=""
   _SANDBOX_OUTPUT="${output}${_sb_err:+$'\n'$_sb_err}"
@@ -2878,7 +2886,7 @@ _text_match() {
 
 check() {
   local inp="${1#"${1%%[![:space:]]*}"}"; inp="${inp%"${inp##*[![:space:]]}"}"; _fnorm "$inp"; local ninp=$REPLY
-  _SANDBOX_OUTPUT=""
+  _SANDBOX_OUTPUT="" _SANDBOX_REQUIRE_FAIL=0
   ((SANDBOX_MODE && !_qtext)) && _sandbox_validate "$inp" && return 0
   _text_match "$inp" "$ninp" "$2" "$_qdelim"
 }
@@ -3034,7 +3042,7 @@ hdr() {
 }
 qdisp() { bar; printf "\n${C}%s${N}\n\n" "$1"; }
 _wrong_feedback() { ((OPT_SOUND)) && printf '\a'; printf '\e[7m'; read -t 0.05 -rsn1 _ ||:; printf '\e[0m'; }
-_wrong_show() { _wrong_feedback; [[ -n "$_SANDBOX_OUTPUT" ]] && printf '\n%s %s\n' "${D}output:${N}" "$_SANDBOX_OUTPUT"; printf '%s  %s %s\n\n' "${R}x${N}" "${D}expected:${N}" "${Y}${ans}${N}"; }
+_wrong_show() { _wrong_feedback; ((_SANDBOX_REQUIRE_FAIL)) && printf '\n%s\n' "${R}use the exact string from the question${N}"; [[ -n "$_SANDBOX_OUTPUT" ]] && printf '\n%s %s\n' "${D}output:${N}" "$_SANDBOX_OUTPUT"; printf '%s  %s %s\n\n' "${R}x${N}" "${D}expected:${N}" "${Y}${ans}${N}"; }
 _sc() { [[ -n "$input" ]] && { HIST+=("$input"); HIST_IDX=${#HIST[@]}; HIST_SAVE=""; }; ((_S_ANSWERED++)); ((_S_CORRECT++)); ((_S_STREAK++)); ((_S_STREAK > _S_BEST_STREAK)) && _S_BEST_STREAK=$_S_STREAK; [[ -n "$_SANDBOX_OUTPUT" ]] && printf '\n%s\n' "${W}${_SANDBOX_OUTPUT}${N}"; }
 _sw() { ((_S_ANSWERED++)); _S_STREAK=0; _wrong_show; }
 bar() { local f e p=$((qi<TOT?qi:TOT)); printf -v f '%*s' "$p" ''; printf -v e '%*s' "$((TOT-p))" ''; printf "${B}[${G}%s${D}%s${B}]${N}" "${f// /█}" "${e// /░}"; }
@@ -3840,6 +3848,10 @@ _selftest() {
   _qparse "View file|less file|#text:"
   _assert "qparse text flag" "$_qtext" "1"
   _assert "qparse text no output" "$_qoutput" ""
+  _qparse "Cut field§cut -d: -f1 <<< 'a:b'§#require:a:b:c#output:~^a$"
+  _assert "qparse require" "$_qrequire" "a:b:c"
+  _assert "qparse require output" "$_qoutput" "~^a$"
+  _assert "qparse require prompt" "$_qprompt" "Cut field"
 
   printf '%s\n' "${B}=== vi handler ===${N}"
   # Test harness: set up shared vars, call _vi_normal with c=KEY, check result
