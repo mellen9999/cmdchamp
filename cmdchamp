@@ -3160,9 +3160,9 @@ _vi_normal() {
       "${U}vi mode for your shell${N} ${D}(~/.inputrc):${N}" \
       "${D}  set editing-mode vi${N}" \
       "${D}  set show-mode-in-prompt on${N}" \
-      "${D}  set keyseq-timeout 1${N}" \
-      "${D}  set vi-ins-mode-string \\1\\e[38;5;231m\\2\$\\1\\e[0m\\2 ${N}" \
-      "${D}  set vi-cmd-mode-string \\1\\e[38;5;196m\\2\$\\1\\e[0m\\2 ${N}"; read -rsn1; _REDRAW_HDR; draw; };;
+      "${D}  set keyseq-timeout 50${N}" \
+      "${D}  set vi-ins-mode-string \\1\\e[97m\\2\$\\1\\e[0m\\2 ${N}" \
+      "${D}  set vi-cmd-mode-string \\1\\e[91m\\2\$\\1\\e[0m\\2 ${N}"; read -rsn1; _REDRAW_HDR; draw; };;
     '') ((_man_open)) && printf '\e7\n\e[J\e8'; _man_open=0; echo; return 0;;
   esac
   return 1
