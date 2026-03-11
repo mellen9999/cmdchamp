@@ -2850,23 +2850,30 @@ _fnorm() {
 
 _SANDBOX_OUTPUT="" _SANDBOX_REQUIRE_FAIL=0
 _sandbox_validate() {
-  local inp=$1 output _sb_err _sb_rc
-  if [[ -n "$_qrequire" && "$inp" != *"$_qrequire"* ]]; then _SANDBOX_REQUIRE_FAIL=1; return 1; fi
+  local inp=$1 output _sb_err _sb_rc _req_fail=0
+  [[ -n "$_qrequire" && "$inp" != *"$_qrequire"* ]] && _req_fail=1
   _SANDBOX_REQUIRE_FAIL=0
   { output=$(_sandbox_exec "$inp" 5 2>"$SANDBOX_DIR/.stderr"); } 2>/dev/null; _sb_rc=$?
   _sb_err=$(<"$SANDBOX_DIR/.stderr") 2>/dev/null || _sb_err=""
   _SANDBOX_OUTPUT="${output}${_sb_err:+$'\n'$_sb_err}"
   _is_destructive "$inp" && _SANDBOX_DESTRUCTIVE=1
   # Reject command-not-found (127) and cannot-execute (126)
-  ((_sb_rc == 127 || _sb_rc == 126)) && return 1
+  ((_sb_rc == 127 || _sb_rc == 126)) && { ((_req_fail)) && _SANDBOX_REQUIRE_FAIL=1; return 1; }
   local _out_ok=0 _st_ok=0
   [[ -n "$_qoutput" ]] && _sandbox_check_output "$output" "$_qoutput" && _out_ok=1
   [[ -n "$_qstate" ]] && _sandbox_check_state "$_qstate" && _st_ok=1
+  local _would_pass=0
   if [[ -n "$_qoutput" && -n "$_qstate" ]]; then
-    ((_out_ok && _st_ok)) && return 0
+    ((_out_ok && _st_ok)) && _would_pass=1
   elif ((_out_ok || _st_ok)); then
-    return 0
+    _would_pass=1
   fi
+  if ((_req_fail)); then
+    # 2 = right command, wrong string; 1 = just wrong
+    _SANDBOX_REQUIRE_FAIL=$((_would_pass ? 2 : 1))
+    return 1
+  fi
+  ((_would_pass)) && return 0
   return 1
 }
 
@@ -3042,7 +3049,10 @@ hdr() {
 }
 qdisp() { bar; printf "\n${C}%s${N}\n\n" "$1"; }
 _wrong_feedback() { ((OPT_SOUND)) && printf '\a'; printf '\e[7m'; read -t 0.05 -rsn1 _ ||:; printf '\e[0m'; }
-_wrong_show() { _wrong_feedback; ((_SANDBOX_REQUIRE_FAIL)) && printf '\n%s\n' "${R}use the exact string from the question${N}"; [[ -n "$_SANDBOX_OUTPUT" ]] && printf '\n%s %s\n' "${D}output:${N}" "$_SANDBOX_OUTPUT"; printf '%s  %s %s\n\n' "${R}x${N}" "${D}expected:${N}" "${Y}${ans}${N}"; }
+_wrong_show() { _wrong_feedback
+  ((_SANDBOX_REQUIRE_FAIL)) && printf '\n%s\n' "${R}use the exact string from the question${N}"
+  [[ -n "$_SANDBOX_OUTPUT" ]] && printf '\n%s %s\n' "${D}output:${N}" "$_SANDBOX_OUTPUT"
+  printf '%s  %s %s\n\n' "${R}x${N}" "${D}expected:${N}" "${Y}${ans}${N}"; }
 _sc() { [[ -n "$input" ]] && { HIST+=("$input"); HIST_IDX=${#HIST[@]}; HIST_SAVE=""; }; ((_S_ANSWERED++)); ((_S_CORRECT++)); ((_S_STREAK++)); ((_S_STREAK > _S_BEST_STREAK)) && _S_BEST_STREAK=$_S_STREAK; [[ -n "$_SANDBOX_OUTPUT" ]] && printf '\n%s\n' "${W}${_SANDBOX_OUTPUT}${N}"; }
 _sw() { ((_S_ANSWERED++)); _S_STREAK=0; _wrong_show; }
 bar() { local f e p=$((qi<TOT?qi:TOT)); printf -v f '%*s' "$p" ''; printf -v e '%*s' "$((TOT-p))" ''; printf "${B}[${G}%s${D}%s${B}]${N}" "${f// /█}" "${e// /░}"; }
@@ -3364,6 +3374,9 @@ run() {
         fi
         _pause
         ((++qi)); QI=$qi; save; break
+      elif ((_SANDBOX_REQUIRE_FAIL == 2)); then
+        printf '\n%s\n' "${Y}right command — use the exact string from the question${N}"
+        sleep 1; _REDRAW_HDR; continue
       else
         ((_S_ANSWERED++)); _S_STREAK=0; _wrong_show; _disk_check wrong "$input"
         explain "$ans"
@@ -3525,7 +3538,9 @@ challenge() {
     else
       ((_QUIT)) && break
     fi
-    ((_ok)) || { _sw; printf '\n%s  %s %s\n' "${R}${B}✗${N}" "${D}expected:${N}" "${Y}${ans}${N}"; _pause; break; }
+    if ! ((_ok)); then
+      _sw; printf '\n%s  %s %s\n' "${R}${B}✗${N}" "${D}expected:${N}" "${Y}${ans}${N}"; _pause; break
+    fi
   done
 
   _sflush_if_dirty
@@ -3725,6 +3740,9 @@ scenario() {
         printf '\n%s\n' "${G}${B}+${N}"
         _pause
         break
+      elif ((_SANDBOX_REQUIRE_FAIL == 2)); then
+        printf '\n%s\n' "${Y}right command — use the exact string from the question${N}"
+        sleep 1; _REDRAW_HDR; continue
       else
         ((_S_ANSWERED++)); _S_STREAK=0; _wrong_show; _disk_check wrong "$input"
         explain "$ans"
