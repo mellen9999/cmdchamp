@@ -3067,7 +3067,7 @@ _draw_buf() {
   _DB=$'\e[?25l\r\e[K'
   ((VI_MODE)) && [[ $mode != insert ]] && _DB+="${R}${PROMPT_CHAR}${N}" || _DB+="${W}${PROMPT_CHAR}${N}"
   _DB+="$input"
-  local _pre="${input:0:cursor}" disp_len=${#input} disp_cur=${#_pre}
+  local _pre="${input:0:cursor}" disp_len=${#input} disp_cur; disp_cur=${#_pre}
   ((disp_cur < disp_len)) && printf -v _DB '%s\e[%dD' "$_DB" "$((disp_len - disp_cur))"
   _DB+=$'\e[?25h'
 }
