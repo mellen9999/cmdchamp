@@ -3063,15 +3063,15 @@ _wrong_show() { _wrong_feedback
 _sc() { [[ -n "$input" ]] && { HIST+=("$input"); HIST_IDX=${#HIST[@]}; HIST_SAVE=""; }; ((_S_ANSWERED++)); ((_S_CORRECT++)); ((_S_STREAK++)); ((_S_STREAK > _S_BEST_STREAK)) && _S_BEST_STREAK=$_S_STREAK; [[ -n "$_SANDBOX_OUTPUT" ]] && printf '\n%s\n' "${W}${_SANDBOX_OUTPUT}${N}"; }
 _sw() { ((_S_ANSWERED++)); _S_STREAK=0; _wrong_show; }
 bar() { local f e p=$((qi<TOT?qi:TOT)); printf -v f '%*s' "$p" ''; printf -v e '%*s' "$((TOT-p))" ''; printf "${B}[${G}%s${D}%s${B}]${N}" "${f// /█}" "${e// /░}"; }
-draw() {
-  local _db=$'\e[?25l\r\e[K'
-  ((VI_MODE)) && [[ $mode != insert ]] && _db+="${R}${PROMPT_CHAR}${N}" || _db+="${W}${PROMPT_CHAR}${N}"
-  _db+="$input"
-  local _pre="${input:0:cursor}" disp_len=${#input} disp_cur; disp_cur=${#_pre}
-  ((disp_cur < disp_len)) && printf -v _db '%s\e[%dD' "$_db" "$((disp_len - disp_cur))"
-  _db+=$'\e[?25h'
-  printf '%s' "$_db"
+_draw_buf() {
+  _DB=$'\e[?25l\r\e[K'
+  ((VI_MODE)) && [[ $mode != insert ]] && _DB+="${R}${PROMPT_CHAR}${N}" || _DB+="${W}${PROMPT_CHAR}${N}"
+  _DB+="$input"
+  local _pre="${input:0:cursor}" disp_len=${#input} disp_cur=${#_pre}
+  ((disp_cur < disp_len)) && printf -v _DB '%s\e[%dD' "$_DB" "$((disp_len - disp_cur))"
+  _DB+=$'\e[?25h'
 }
+draw() { _draw_buf; printf '%s' "$_DB"; }
 
 _wfwd() { while ((cursor<${#input})) && [[ "${input:cursor:1}" != " " ]]; do ((++cursor)); done; while ((cursor<${#input})) && [[ "${input:cursor:1}" == " " ]]; do ((++cursor)); done; ((cursor>=${#input}&&${#input}>0)) && cursor=$((${#input}-1)); }
 _wbck() { ((cursor>0)) && ((cursor--)); while ((cursor>0)) && [[ "${input:cursor:1}" == " " ]]; do ((cursor--)); done; while ((cursor>0)) && [[ "${input:cursor-1:1}" != " " ]]; do ((cursor--)); done; }
@@ -3189,7 +3189,7 @@ _vi_normal() {
       "${D}  set keyseq-timeout 50${N}" \
       "${D}  set vi-ins-mode-string \\1\\e[97m\\2\$\\1\\e[0m\\2 ${N}" \
       "${D}  set vi-cmd-mode-string \\1\\e[91m\\2\$\\1\\e[0m\\2 ${N}"; read -rsn1; _REDRAW_HDR; draw; };;
-    '') ((_man_open)) && printf '\e7\n\e[J\e8'; _man_open=0; echo; return 0;;
+    '') ((_man_open)) && printf '%s\e7\n\e[J\e8%s' "$_SY" "$_SN"; _man_open=0; echo; return 0;;
   esac
   return 1
 }
@@ -3224,11 +3224,15 @@ _read_line() {
     if [[ "$c" == $'\t' ]]; then
       if ((_rl_hints)); then
         ((_man_open)) && _man_open=0 || _man_open=1
-        printf '%s\e[?25l\n\e[J' "$_SY"
-        if ((_man_open)); then explain "$ans"; printf "\e[$((_EXP_LINES + 1))A\r"
-        else printf '\e[A\r'; fi
-        draw; printf '%s' "$_SN"
-      else printf '%s\e[?25l\n%s%s' "$_SY" "${R}Not available in this mode!${N}" "$_SN"; sleep 0.5; printf '%s\e[A\r\e[J' "$_SY"; draw; printf '%s' "$_SN"; fi
+        _draw_buf
+        if ((_man_open)); then
+          local _exp_buf; _exp_buf=$(explain "$ans"; printf '|%d' "$_EXP_LINES")
+          _EXP_LINES=${_exp_buf##*|}; _exp_buf=${_exp_buf%|*}
+          printf '%s\e[?25l\n\e[J%s\e[%dA\r%s%s' "$_SY" "$_exp_buf" "$((_EXP_LINES + 1))" "$_DB" "$_SN"
+        else
+          printf '%s\e[?25l\n\e[J\e[A\r%s%s' "$_SY" "$_DB" "$_SN"
+        fi
+      else printf '%s\e[?25l\n%s%s' "$_SY" "${R}Not available in this mode!${N}" "$_SN"; sleep 0.5; _draw_buf; printf '%s\e[A\r\e[J%s%s' "$_SY" "$_DB" "$_SN"; fi
       continue
     fi
     if [[ "$mode" == "insert" ]]; then
@@ -3267,7 +3271,7 @@ _read_line() {
         $'\x14') if ((cursor>0 && ${#input}>=2)); then  # Ctrl-t: transpose chars
           local _tc; if ((cursor>=${#input})); then _tc=$((cursor-2)); else _tc=$((cursor-1)); fi
           ((_tc>=0)) && { input="${input:0:_tc}${input:_tc+1:1}${input:_tc:1}${input:_tc+2}"; ((cursor<${#input})) && ((++cursor)); draw; }; fi;;
-        '') ((_man_open)) && printf '\e7\n\e[J\e8'; _man_open=0; echo; return 0;;
+        '') ((_man_open)) && printf '%s\e7\n\e[J\e8%s' "$_SY" "$_SN"; _man_open=0; echo; return 0;;
         *) ((${#input} < 512)) && { input="${input:0:cursor}${c}${input:cursor}"; ((++cursor)); draw; };;
       esac
     elif ((VI_MODE)); then
