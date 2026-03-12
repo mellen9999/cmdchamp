@@ -204,7 +204,7 @@ SC_FLAVOR=(""
   "The config file is a mess. Perform surgery.")
 
 _victory() {
-  printf '%s\e[2J\e[H%s' "$_SY" "$_SN"
+  printf '%s\e[2J\e[H' "$_SY"
   local -A sc; [[ -f "$DATA/scores" ]] && while IFS='|' read -r k v; do [[ "$k" == "#"* ]] && continue; sc[$k]=$v; done < "$DATA/scores"
   local total=0 mastered=0
   for k in "${!sc[@]}"; do
@@ -243,6 +243,7 @@ EOF
   printf '    %s                                                              %s\n' "$br" "$br"
   printf '    %s\n' "$edge"
   echo
+  printf '%s' "$_SN"
   [[ "${1:-}" == nopause ]] && return
   read -rsn1 -p "                          Press any key to exit..."
   echo
@@ -252,7 +253,7 @@ _boss_splash() {
   local lv=$1
   local boss="${BOSS_NAMES[$lv]}"
   local flavor="${BOSS_FLAVOR[$lv]}"
-  printf '%s\e[2J\e[H\n\n%s' "$_SY" "$_SN"
+  printf '%s\e[2J\e[H\n\n' "$_SY"
   local s info
   printf -v s '%*s' $(( (80 - 12) / 2 )) ''
   printf '%s%s\n\n' "$s" "${M}${B}═══ BOSS ═══${N}"
@@ -264,6 +265,7 @@ _boss_splash() {
   printf -v s '%*s' $(( (80 - ${#info}) / 2 )) ''
   printf '%s%s\n' "$s" "${D}${info}${N}"
   echo
+  printf '%s' "$_SN"
   printf -v s '%*s' $(( (80 - 26) / 2 )) ''
   read -rsn1 -p "${s}Press Enter to continue..."
   echo
@@ -3050,7 +3052,7 @@ input="" cursor=0 mode="insert" _rep=""
 declare -a UNDO_STACK=()  # Multi-level undo
 hdr() {
   local fire=""; ((streak>=FIRE_STREAK)) && fire="  ${Y}${B}*${N}"
-  printf '%s\e[2J\e[H%s\n%s\n%s\n\n%s' "$_SY" "${W}${B}${PLAYER_NAME:-anon}${N}${fire}" "${U}Level $1${N}: ${LEVEL_NAMES[$1]:-}" "${U}[$2/$3]${N}  ${D}Tab=man${N}" "$_SN"
+  printf '\e[2J\e[H%s\n%s\n%s\n' "${W}${B}${PLAYER_NAME:-anon}${N}${fire}" "${U}Level $1${N}: ${LEVEL_NAMES[$1]:-}" "${U}[$2/$3]${N}  ${D}Tab=man${N}"
 }
 qdisp() { bar; printf "\n${C}%s${N}\n\n" "$1"; }
 _wrong_feedback() { ((OPT_SOUND)) && printf '\a'; printf '\e[7m'; read -t 0.05 -rsn1 _ ||:; printf '\e[0m'; }
@@ -3062,12 +3064,13 @@ _sc() { [[ -n "$input" ]] && { HIST+=("$input"); HIST_IDX=${#HIST[@]}; HIST_SAVE
 _sw() { ((_S_ANSWERED++)); _S_STREAK=0; _wrong_show; }
 bar() { local f e p=$((qi<TOT?qi:TOT)); printf -v f '%*s' "$p" ''; printf -v e '%*s' "$((TOT-p))" ''; printf "${B}[${G}%s${D}%s${B}]${N}" "${f// /█}" "${e// /░}"; }
 draw() {
-  printf '\e[?25l\r\e[K'
-  ((VI_MODE)) && [[ $mode != insert ]] && printf '%s' "${R}${PROMPT_CHAR}${N}" || printf '%s' "${W}${PROMPT_CHAR}${N}"
-  printf '%s' "$input"
+  local _db=$'\e[?25l\r\e[K'
+  ((VI_MODE)) && [[ $mode != insert ]] && _db+="${R}${PROMPT_CHAR}${N}" || _db+="${W}${PROMPT_CHAR}${N}"
+  _db+="$input"
   local _pre="${input:0:cursor}" disp_len=${#input} disp_cur; disp_cur=${#_pre}
-  ((disp_cur < disp_len)) && printf '\e[%dD' "$((disp_len - disp_cur))"
-  printf '\e[?25h'
+  ((disp_cur < disp_len)) && printf -v _db '%s\e[%dD' "$_db" "$((disp_len - disp_cur))"
+  _db+=$'\e[?25h'
+  printf '%s' "$_db"
 }
 
 _wfwd() { while ((cursor<${#input})) && [[ "${input:cursor:1}" != " " ]]; do ((++cursor)); done; while ((cursor<${#input})) && [[ "${input:cursor:1}" == " " ]]; do ((++cursor)); done; ((cursor>=${#input}&&${#input}>0)) && cursor=$((${#input}-1)); }
@@ -3221,11 +3224,11 @@ _read_line() {
     if [[ "$c" == $'\t' ]]; then
       if ((_rl_hints)); then
         ((_man_open)) && _man_open=0 || _man_open=1
-        printf '\e[?25l\n\e[J'
+        printf '%s\e[?25l\n\e[J' "$_SY"
         if ((_man_open)); then explain "$ans"; printf "\e[$((_EXP_LINES + 1))A\r"
         else printf '\e[A\r'; fi
-        draw
-      else printf '\e[?25l\n%s' "${R}Not available in this mode!${N}"; sleep 0.5; printf '\e[A\r\e[J'; draw; fi
+        draw; printf '%s' "$_SN"
+      else printf '%s\e[?25l\n%s%s' "$_SY" "${R}Not available in this mode!${N}" "$_SN"; sleep 0.5; printf '%s\e[A\r\e[J' "$_SY"; draw; printf '%s' "$_SN"; fi
       continue
     fi
     if [[ "$mode" == "insert" ]]; then
@@ -3356,7 +3359,7 @@ run() {
     # Fire mode: force tier 2 (pure recall)
     local _real_tier=$REPLY
     ((streak>=FIRE_STREAK)) && tier=2
-    _REDRAW_HDR() { hdr "$lv" "$((qi+1))" "$TOT"; qdisp "$prompt"; }
+    _REDRAW_HDR() { printf '%s' "$_SY"; hdr "$lv" "$((qi+1))" "$TOT"; qdisp "$prompt"; printf '%s' "$_SN"; }
     _REDRAW_HDR
     while true; do
       _read_line 1 1
@@ -3450,7 +3453,7 @@ run() {
   ((_QUIT)) && { _sflush_if_dirty; return 1; }
 
   # Results
-  printf '%s\e[2J\e[H%s' "$_SY" "$_SN"
+  printf '%s\e[2J\e[H' "$_SY"
   local boss="${BOSS_NAMES[$lv]}"
   if ((boss_total > 0 && boss_correct >= _boss_thresh)); then
     ((boss_correct == boss_total)) && _disk_check flawless
@@ -3465,6 +3468,7 @@ run() {
         ((SC_UNLOCK[_si] == lv)) && printf '%s\n' "${G}★ Scenario unlocked: ${SC_NAMES[$_si]}${N}"
       done
     fi
+    printf '%s' "$_SN"
     if ((lv<MAX_LEVEL)); then
       printf "${D}Press Enter for Level %d...${N}\n" "$((lv+1))"; read -r
       LVL=$((lv+1)); QI=0; save; _sflush_if_dirty; _NEXT_LV=$LVL _NEXT_BOSS=0; return 0
@@ -3476,6 +3480,7 @@ run() {
     printf '%s\n' "${R}${B}══ ${M}${B}${boss}${R} PREVAILS ══${N}"
     printf '%s\n\n' "${R}${boss_correct}/${boss_total}${N} - need $_boss_thresh to pass"
     printf '%s\n' "${D}r = retry boss, p = practice level${N}"
+    printf '%s' "$_SN"
     read -rsn1 choice
     case "$choice" in
       p|P) QI=0; save; _sflush_if_dirty; _NEXT_LV=$lv _NEXT_BOSS=0; return 0 ;;
@@ -3517,9 +3522,9 @@ _pick_q() {
 challenge() {
   _post_root_check
   _session_init
-  printf '%s\e[2J\e[H%s\n%s\n%s' "$_SY" "${M}${B}═══ CHALLENGE ═══${N}" "${D}All levels. 20s. No manpages. One miss and you're done.${N}" "$_SN"
+  printf '%s\e[2J\e[H%s\n%s\n' "$_SY" "${M}${B}═══ CHALLENGE ═══${N}" "${D}All levels. 20s. No manpages. One miss and you're done.${N}"
   ((BEST_CHALLENGE > 0)) && printf '%s\n' "${D}Best: ${Y}${BEST_CHALLENGE}${N}"
-  printf '\n'; read -rsn1 -p "${D}Press Enter to start...${N}"; echo
+  printf '%s\n' "$_SN"; read -rsn1 -p "${D}Press Enter to start...${N}"; echo
 
   local score=0
   _mode_init g
@@ -3554,7 +3559,7 @@ challenge() {
 
   _sflush_if_dirty
   if ((_QUIT)); then return; fi
-  printf '%s\e[2J\e[H%s' "$_SY" "$_SN"
+  printf '%s\e[2J\e[H' "$_SY"
   printf '%s\n\n' "${R}${B}═══ GAME OVER ═══${N}"
   printf 'Score: %s\n' "${B}${score}${N}"
   if ((score > BEST_CHALLENGE)); then
@@ -3563,6 +3568,7 @@ challenge() {
   else
     printf '%s\n' "${D}Best: ${BEST_CHALLENGE}${N}"
   fi
+  printf '%s' "$_SN"
   echo
 }
 
@@ -3578,7 +3584,7 @@ _sel() {
   local _draw=1
   while true; do
     if ((_draw)); then
-      local _buf; printf -v _buf '%s\e[H%s\n\n' "$_SY" "$title"
+      local _buf; printf -v _buf '%s\e[2J\e[H%s\n\n' "$_SY" "$title"
       local i; for ((i=0;i<n;i++)); do
         if [[ "${it[$i]:0:1}" == $'\x01' ]]; then printf -v _buf '%s    %s%s%s\e[K\n' "$_buf" "$D" "${it[$i]:1}" "$N"
         elif ((i==c)); then printf -v _buf '%s  %s  %s  ▸%s\e[K\n' "$_buf" "$R" "${it[$i]}" "$N"
@@ -3684,7 +3690,7 @@ _main_menu() {
       sc) _sc_sel;;
       challenge) challenge;;
       opts) _options_menu;;
-      stats) printf '%s\e[2J\e[H%s' "$_SY" "$_SN"; stats; local _sk; while read -rsn1 _sk; do
+      stats) printf '%s\e[2J\e[H' "$_SY"; stats; printf '%s' "$_SN"; local _sk; while read -rsn1 _sk; do
         [[ "$_sk" == h || "$_sk" == q || -z "$_sk" ]] && break
         [[ "$_sk" == $'\e' ]] && { read -rsn2 -t 0.1 _sk; [[ "${_sk:1}" == D ]] && break; [[ -z "$_sk" ]] && break; }
         done;;
@@ -3736,10 +3742,11 @@ scenario() {
   local total=${#steps[@]} correct=0
 
   # Splash screen
-  printf '%s\e[2J\e[H%s' "$_SY" "$_SN"
+  printf '%s\e[2J\e[H' "$_SY"
   printf '%s\n' "${M}${B}═══ ${SC_NAMES[$sc_id]} ═══${N}"
   printf '%s\n' "${D}${SC_FLAVOR[$sc_id]}${N}"
   printf '%s\n\n' "${U}${total} steps${N} ${D}— sandbox state persists between steps${N}"
+  printf '%s' "$_SN"
   read -rsn1 -p "${D}Press Enter to start...${N}"; echo
 
   local si _sc_snap="$DATA/sandbox.snap"
@@ -3783,10 +3790,11 @@ scenario() {
 
   if ((_QUIT)); then rm -rf "$_sc_snap" "$_sc_snap.perms" 2>/dev/null; _sflush_if_dirty; return; fi
   # Completion
-  printf '%s\e[2J\e[H%s' "$_SY" "$_SN"
+  printf '%s\e[2J\e[H' "$_SY"
   printf '%s\n' "${G}${B}═══ SCENARIO COMPLETE ═══${N}"
   printf '%s\n' "${M}${B}${SC_NAMES[$sc_id]}${N}"
   printf '%s\n' "${G}${correct}/${total}${N} steps"
+  printf '%s' "$_SN"
   _sc_mark_done "$sc_id"
   _disk_check completionist
   _sflush_if_dirty
@@ -4095,6 +4103,7 @@ _selftest() {
 place() {
   printf '%s\e[2J\e[H%s\n%s\n%s\n\n%s' "$_SY" "${M}${B}═══ PLACEMENT TEST ═══${N}" "${D}2 questions per level, 30s each, no manpages${N}" "${D}Miss one → that's your starting level${N}" "$_SN"
   read -rsn1 -p "${D}Press Enter to start...${N}"; echo
+
   _session_init
   _mode_init place
   local lv qi_ok
@@ -4131,7 +4140,7 @@ place() {
   ((placed > 0)) && PLACED_THROUGH=$placed
   _save_profile
   LVL=$((placed >= MAX_LEVEL ? MAX_LEVEL : placed + 1)); QI=0; save
-  printf '%s\e[2J\e[H%s\n%s' "$_SY" "${G}${B}═══ PLACEMENT COMPLETE ═══${N}" "$_SN"
+  printf '%s\e[2J\e[H%s\n' "$_SY" "${G}${B}═══ PLACEMENT COMPLETE ═══${N}"
   if ((placed == 0)); then
     printf '%s\n' "Starting from ${U}Level 1${N}"
   elif ((placed >= MAX_LEVEL)); then
@@ -4139,6 +4148,7 @@ place() {
   else
     printf '%s\n' "Placed at ${U}Level $((placed + 1))${N}"
   fi
+  printf '%s' "$_SN"
   _sflush_if_dirty
   echo
   _pause
