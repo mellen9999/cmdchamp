@@ -3606,12 +3606,17 @@ _sel() {
       ((${#k} < 2)) && continue
       k="${k:1}"
     fi
+    # hotkey: match (k) prefix in items
+    local _hi; for ((_hi=0;_hi<n;_hi++)); do
+      [[ "${it[$_hi]:0:1}" == $'\x01' ]] && continue
+      [[ "${it[$_hi]}" == "(${k})"* ]] && { REPLY=$_hi; return 0; }
+    done
     local _oc=$c
     case "$k" in
       j|B) local _p=$((c+1)); while ((_p<n)) && [[ "${it[$_p]:0:1}" == $'\x01' ]]; do ((_p++)); done; ((_p<n)) && c=$_p;;
       k|A) local _p=$((c-1)); while ((_p>=0)) && [[ "${it[$_p]:0:1}" == $'\x01' ]]; do ((_p--)); done; ((_p>=0)) && c=$_p;;
       ''|l|C) REPLY=$c; return 0;;
-      q|$'\x04') return 1;;
+      $'\x04') return 1;;
       h|D) ((_SEL_BACK)) && return 1;;
       *) continue;;
     esac
@@ -3666,21 +3671,21 @@ _main_menu() {
     printf -v _tl_pad '%*s' $(( (71 - _tl_w) / 2 )) ''
     _tagline="${_tl_pad}${_tl_text}"
     if [[ -n "$PLAYER_NAME" ]] && ((LVL>1||QI>0)); then
-      it+=("Continue  ${D}Level $LVL Q$((QI+1))${N}"); act+=(cont)
+      it+=("(c) Continue  ${D}Level $LVL Q$((QI+1))${N}"); act+=(cont)
     fi
-    it+=("New Game"); act+=(new)
+    it+=("(n) New Game"); act+=(new)
     local _any=0; for ((i=1;i<=SC_TOTAL;i++)); do ((BOSS_BEATEN>=${SC_UNLOCK[$i]:-$MAX_LEVEL})) && _any=1; done
-    if ((_any)); then it+=("Scenarios"); act+=(sc)
-    else it+=($'\x01'"Scenarios"); act+=(x); fi
+    if ((_any)); then it+=("(s) Scenarios"); act+=(sc)
+    else it+=($'\x01'"(s) Scenarios"); act+=(x); fi
     if ((BOSS_BEATEN>=MAX_LEVEL)); then
-      it+=("Challenge"); act+=(challenge)
+      it+=("(g) Challenge"); act+=(challenge)
     else
-      it+=($'\x01'"Challenge"); act+=(x)
+      it+=($'\x01'"(g) Challenge"); act+=(x)
     fi
-    if [[ -n "$PLAYER_NAME" ]]; then it+=("Stats"); act+=(stats)
-    else it+=($'\x01'"Stats"); act+=(x); fi
-    it+=("Options"); act+=(opts)
-    it+=("Quit"); act+=(quit)
+    if [[ -n "$PLAYER_NAME" ]]; then it+=("(t) Stats"); act+=(stats)
+    else it+=($'\x01'"(t) Stats"); act+=(x); fi
+    it+=("(o) Options"); act+=(opts)
+    it+=("(q) Quit"); act+=(quit)
     local _banner
     printf -v _banner '%s\n%s\n%s\n%s\n%s\n%s\n\n%s' \
       "   ${W}${B}██████╗███╗   ███╗██████╗  ██████╗██╗  ██╗ █████╗ ███╗   ███╗██████╗${N}" \
