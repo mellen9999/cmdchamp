@@ -54,7 +54,7 @@ _strip_ansi() {
   REPLY="$out"
 }
 
-VERSION="1.0.7"
+VERSION="1.0.8"
 SANDBOX_TIMEOUT=5      # Seconds before sandbox command times out
 BOSS_THRESHOLD=4       # Correct answers needed to beat boss (out of BOSS_TOTAL)
 BOSS_TOTAL=5           # Number of questions in boss round
@@ -3680,7 +3680,7 @@ _main_menu() {
     if [[ -n "$PLAYER_NAME" ]]; then it+=("Stats"); act+=(stats)
     else it+=($'\x01'"Stats"); act+=(x); fi
     it+=("Options"); act+=(opts)
-    it+=("${D}Quit${N}"); act+=(quit)
+    it+=("Quit"); act+=(quit)
     local _banner
     printf -v _banner '%s\n%s\n%s\n%s\n%s\n%s\n\n%s' \
       "   ${W}${B}██████╗███╗   ███╗██████╗  ██████╗██╗  ██╗ █████╗ ███╗   ███╗██████╗${N}" \
