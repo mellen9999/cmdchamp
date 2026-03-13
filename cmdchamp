@@ -35,22 +35,11 @@ DATA="${XDG_DATA_HOME:-$HOME/.local/share}/cmdchamp"; mkdir -p "$DATA"; touch "$
 R=$'\e[31m' G=$'\e[32m' Y=$'\e[33m' C=$'\e[36m' W=$'\e[97m' D=$'\e[2m' B=$'\e[1m' N=$'\e[0m'
 
 _strip_ansi() {
-  local s="$1" out="" i=0 ch
-  while ((i < ${#s})); do
-    ch="${s:i:1}"
-    if [[ "$ch" == $'\e' ]]; then
-      ((i++))
-      if ((i < ${#s})) && [[ "${s:i:1}" == "[" ]]; then
-        ((i++))
-        while ((i < ${#s})) && [[ ! "${s:i:1}" =~ [a-zA-Z] ]]; do ((i++)); done
-        ((i < ${#s})) && ((i++))
-      fi
-    else out+="$ch"; ((i++)); fi
-  done
-  REPLY="$out"
+  REPLY="$1"; local _p=$'\e'"\\[[0-9;]*[a-zA-Z]"
+  while [[ "$REPLY" =~ $_p ]]; do REPLY="${REPLY//"$BASH_REMATCH"/}"; done
 }
 
-VERSION="1.0"
+VERSION="1.0.5"
 SANDBOX_TIMEOUT=5      # Seconds before sandbox command times out
 BOSS_THRESHOLD=4       # Correct answers needed to beat boss (out of BOSS_TOTAL)
 BOSS_TOTAL=5           # Number of questions in boss round
@@ -260,24 +249,14 @@ EOF
 }
 
 _boss_splash() {
-  local lv=$1
-  local boss="${BOSS_NAMES[$lv]}"
-  local flavor="${BOSS_FLAVOR[$lv]}"
+  local lv=$1 boss="${BOSS_NAMES[$lv]}" flavor="${BOSS_FLAVOR[$lv]}" s info
   printf '\e[2J\e[H\n\n'
-  local s info
-  printf -v s '%*s' $(( (80 - 12) / 2 )) ''
-  printf '%s%s\n\n' "$s" "${W}${B}═══ BOSS ═══${N}"
-  printf -v s '%*s' $(( (80 - ${#boss}) / 2 )) ''
-  printf '%s%s\n\n' "$s" "${W}${B}${boss}${N}"
-  printf -v s '%*s' $(( (80 - ${#flavor} - 2) / 2 )) ''
-  printf '%s%s\n\n' "$s" "${D}\"${flavor}\"${N}"
+  local _c; for _c in "12:${W}${B}═══ BOSS ═══${N}" "${#boss}:${W}${B}${boss}${N}" "$((${#flavor}+2)):${D}\"${flavor}\"${N}"; do
+    printf -v s '%*s' $(( (80 - ${_c%%:*}) / 2 )) ''; printf '%s%s\n\n' "$s" "${_c#*:}"
+  done
   printf -v info 'No manpages. %d/%d to pass.' "$BOSS_THRESHOLD" "$BOSS_TOTAL"
-  printf -v s '%*s' $(( (80 - ${#info}) / 2 )) ''
-  printf '%s%s\n' "$s" "${D}${info}${N}"
-  echo
-  printf -v s '%*s' $(( (80 - 26) / 2 )) ''
-  read -rsn1 -p "${s}Press Enter to continue..."
-  echo
+  printf -v s '%*s' $(( (80 - ${#info}) / 2 )) ''; printf '%s%s\n\n' "$s" "${D}${info}${N}"
+  printf -v s '%*s' $(( (80 - 26) / 2 )) ''; read -rsn1 -p "${s}Press Enter to continue..."; echo
 }
 
 # ═══ SANDBOX ═══
@@ -528,12 +507,8 @@ _sandbox_check_output() {
       [[ "$actual" =~ $pattern ]] && return 0
       ;;
     @*)   # Line count match
-      local count="${expected:1}"
-      local lines=0
-      if [[ -n "$actual" ]]; then
-        actual="${actual%$'\n'}"
-        local _lc="${actual//[!$'\n']/}"; lines=$(( ${#_lc} + 1 ))
-      fi
+      local count="${expected:1}" lines=0
+      [[ -n "$actual" ]] && { actual="${actual%$'\n'}"; local _lc="${actual//[!$'\n']/}"; lines=$(( ${#_lc} + 1 )); }
       ((lines == count)) && return 0
       ;;
     \*)   # Any output
@@ -563,14 +538,13 @@ _sandbox_check_state() {
     checks_arr+=("$_seg")
   done
   for check in "${checks_arr[@]}"; do
+    local _neg=0; [[ "$check" == !* ]] && { _neg=1; check="${check:1}"; }
     case "$check" in
-      exists:*|!exists:*)
-        local _neg=0; [[ "$check" == !* ]] && { _neg=1; check="${check:1}"; }
+      exists:*)
         local file="${check#exists:}"
         ((_neg)) && { [[ ! -e "$SANDBOX_DIR/$file" ]] || return 1; } || { [[ -e "$SANDBOX_DIR/$file" ]] || return 1; }
         ;;
-      contains:*:*|!contains:*:*)
-        local _neg=0; [[ "$check" == !* ]] && { _neg=1; check="${check:1}"; }
+      contains:*:*)
         local rest="${check#contains:}"; local file="${rest%%:*}" pattern="${rest#*:}"
         if ((_neg)); then grep -qF "$pattern" -- "$SANDBOX_DIR/$file" 2>/dev/null && return 1
         else grep -qF "$pattern" -- "$SANDBOX_DIR/$file" 2>/dev/null || return 1; fi
@@ -586,8 +560,7 @@ _sandbox_check_state() {
         local first; read -r first < "$SANDBOX_DIR/$file" 2>/dev/null || return 1
         [[ "$first" == *"$text"* ]] || return 1
         ;;
-      perm:*:*|!perm:*:*)
-        local _neg=0; [[ "$check" == !* ]] && { _neg=1; check="${check:1}"; }
+      perm:*:*)
         local rest="${check#perm:}"; local file="${rest%%:*}" perms="${rest#*:}"
         local path="$SANDBOX_DIR/$file"
         [[ ! -e "$path" ]] && { ((_neg)) && continue || return 1; }
@@ -1118,30 +1091,12 @@ explain() {
 # Level generators use nameref: local -n questions=${1:-CURRENT_QUESTIONS}; questions=(); eval "local $_QV"; _ctx
 #   $_QV declares ~40 local vars, _ctx() populates them via _fpick from pools
 _qparse() {
-  local q=$1
-  _qoutput="" _qstate="" _qtext=0 _qdelim='|'
-
-  if [[ $q == *"#text:"* ]]; then
-    _qtext=1
-    q="${q%%#text:*}"
-  fi
-  if [[ $q == *"#state:"* ]]; then
-    _qstate="${q##*#state:}"
-    q="${q%%#state:*}"
-  fi
-  if [[ $q == *"#output:"* ]]; then
-    _qoutput="${q##*#output:}"
-    _qoutput="${_qoutput%%#*}"  # Remove any trailing markers
-    q="${q%%#output:*}"
-  fi
-
-  if [[ $q == *§* ]]; then
-    _qdelim='§'
-    _qprompt="${q%%§*}"; _qanswers="${q#*§}"; _qans="${_qanswers%%§*}"
-  else
-    _qdelim='|'
-    _qprompt="${q%%|*}"; _qanswers="${q#*|}"; _qans="${_qanswers%%|*}"
-  fi
+  local q=$1; _qoutput="" _qstate="" _qtext=0 _qdelim='|'
+  [[ $q == *"#text:"* ]] && { _qtext=1; q="${q%%#text:*}"; }
+  [[ $q == *"#state:"* ]] && { _qstate="${q##*#state:}"; q="${q%%#state:*}"; }
+  [[ $q == *"#output:"* ]] && { _qoutput="${q##*#output:}"; _qoutput="${_qoutput%%#*}"; q="${q%%#output:*}"; }
+  [[ $q == *§* ]] && _qdelim='§'
+  _qprompt="${q%%"$_qdelim"*}"; _qanswers="${q#*"$_qdelim"}"; _qans="${_qanswers%%"$_qdelim"*}"
 }
 
 VI_MODE=${CMD_VI:-1}  # always on (override with CMD_VI=0)
@@ -2785,14 +2740,11 @@ _sandbox_validate() {
   _is_destructive "$inp" && _SANDBOX_DESTRUCTIVE=1
   # Reject command-not-found (127) and cannot-execute (126)
   ((_sb_rc == 127 || _sb_rc == 126)) && return 1
-  local _out_ok=0 _st_ok=0
-  [[ -n "$_qoutput" ]] && _sandbox_check_output "$output" "$_qoutput" && _out_ok=1
-  [[ -n "$_qstate" ]] && _sandbox_check_state "$_qstate" && _st_ok=1
-  if [[ -n "$_qoutput" && -n "$_qstate" ]]; then
-    ((_out_ok && _st_ok)) && return 0
-  elif ((_out_ok || _st_ok)); then
-    return 0
-  fi
+  local _out_ok=0 _st_ok=0 _has_out=0 _has_st=0
+  [[ -n "$_qoutput" ]] && { _has_out=1; _sandbox_check_output "$output" "$_qoutput" && _out_ok=1; }
+  [[ -n "$_qstate" ]] && { _has_st=1; _sandbox_check_state "$_qstate" && _st_ok=1; }
+  ((_has_out && _has_st)) && { ((_out_ok && _st_ok)) && return 0 || return 1; }
+  ((_out_ok || _st_ok)) && return 0
   return 1
 }
 
@@ -3211,20 +3163,16 @@ run() {
       [[ -z "$input" ]] && { draw; continue; }
       if check "$input" "$_qanswers"; then
         _sc; _show_alts "$input" "$_qanswers" "$_qdelim"; _egg_check streak
+        local _st=$((streak>=FIRE_STREAK?_real_tier:tier))
+        local _new_tier=$((_st<2?_st+1:2))
+        ((_st < 2 && _new_tier >= 2)) && ((_S_MASTERED++))
         if ((streak>=FIRE_STREAK)); then
-          local _new_tier=$((_real_tier<2?_real_tier+1:2))
-          ((_real_tier < 2 && _new_tier >= 2)) && ((_S_MASTERED++))
-          printf '\n%s\n' "${Y}${B}* ON FIRE! +2${N}"; ((++streak)); _sset "$prompt" "$_new_tier"
-          _pause
-          ((++qi)); QI=$qi; save; break
+          printf '\n%s\n' "${Y}${B}* ON FIRE! +2${N}"
         else
-          local _new_tier=$((tier<2?tier+1:2))
-          ((tier < 2 && _new_tier >= 2)) && ((_S_MASTERED++))
-          printf '\n%s\n' "${G}${B}+${N}"; ((++streak))
-          _sset "$prompt" "$_new_tier"
+          printf '\n%s\n' "${G}${B}+${N}"
         fi
-        _pause
-        ((++qi)); QI=$qi; save; break
+        ((++streak)); _sset "$prompt" "$_new_tier"
+        _pause; ((++qi)); QI=$qi; save; break
       else
         ((_S_ANSWERED++)); _S_STREAK=0; _wrong_show; _egg_check wrong "$input"
         explain "$ans"
