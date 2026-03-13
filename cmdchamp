@@ -148,7 +148,7 @@ _intro() {
 
 EOF
   [[ "${1:-}" == nopause ]] && return
-  read -rsn1 -p "                            Press Enter to continue..."
+  read -rsp "                            Press Enter to continue..."
   echo
 }
 
@@ -164,7 +164,7 @@ _tutorial() {
     ${C}d${N}w ${C}c${N}w  Delete/change word  ${C}?${N}     Full vi help
 
 EOF
-  read -rsn1 -p "    Press Enter to continue..."
+  read -rsp "    Press Enter to continue..."
   echo
 }
 
@@ -245,7 +245,7 @@ EOF
   echo
   printf '%s' "$_SN"
   [[ "${1:-}" == nopause ]] && return
-  read -rsn1 -p "                          Press any key to exit..."
+  read -rsp "                          Press Enter to exit..."
   echo
 }
 
@@ -267,7 +267,7 @@ _boss_splash() {
   echo
   printf '%s' "$_SN"
   printf -v s '%*s' $(( (80 - 26) / 2 )) ''
-  read -rsn1 -p "${s}Press Enter to continue..."
+  read -rsp "${s}Press Enter to continue..."
   echo
 }
 
@@ -3043,7 +3043,7 @@ _quit() {
     printf '\n  %s %s\n' "${U}Best streak:${N}" "${W}${B}${_S_BEST_STREAK}${N}"
     ((_S_MASTERED > 0)) && printf '  %s    %s\n' "${U}Mastered:${N}" "${G}${_S_MASTERED}${N}"
     printf '  %s        %dm %ds\n%s\n' "${U}Time:${N}" "$m" "$s" "${D}----------------------------------------${N}"
-    read -rsn1 -p "${D}Press any key...${N}"; echo
+    read -rsp "${D}Press Enter to continue...${N}"; echo
   fi
   _QUIT=1
 }
@@ -3052,7 +3052,7 @@ input="" cursor=0 mode="insert" _rep=""
 declare -a UNDO_STACK=()  # Multi-level undo
 hdr() {
   local fire=""; ((streak>=FIRE_STREAK)) && fire="  ${Y}${B}*${N}"
-  printf '\e[2J\e[H%s\n%s\n%s\n' "${W}${B}${PLAYER_NAME:-anon}${N}${fire}" "${U}Level $1${N}: ${LEVEL_NAMES[$1]:-}" "${U}[$2/$3]${N}  ${D}Tab=man${N}"
+  printf '\e[H%s\e[K\n%s\e[K\n%s\e[K\n' "${W}${B}${PLAYER_NAME:-anon}${N}${fire}" "${U}Level $1${N}: ${LEVEL_NAMES[$1]:-}" "${U}[$2/$3]${N}  ${D}Tab=man${N}"
 }
 qdisp() { bar; printf "\n${C}%s${N}\n\n" "$1"; }
 _wrong_feedback() { ((OPT_SOUND)) && printf '\a'; printf '\e[7m'; read -t 0.05 -rsn1 _ ||:; printf '\e[0m'; }
@@ -3188,7 +3188,7 @@ _vi_normal() {
       "${D}  set show-mode-in-prompt on${N}" \
       "${D}  set keyseq-timeout 50${N}" \
       "${D}  set vi-ins-mode-string \\1\\e[97m\\2\$\\1\\e[0m\\2 ${N}" \
-      "${D}  set vi-cmd-mode-string \\1\\e[91m\\2\$\\1\\e[0m\\2 ${N}"; read -rsn1; _REDRAW_HDR; draw; };;
+      "${D}  set vi-cmd-mode-string \\1\\e[91m\\2\$\\1\\e[0m\\2 ${N}"; read -rsp "${D}Press Enter...${N}"; printf '\e[2J'; _REDRAW_HDR; draw; };;
     '') ((_man_open)) && printf '%s\e7\n\e[J\e8%s' "$_SY" "$_SN"; _man_open=0; echo; return 0;;
   esac
   return 1
@@ -3363,8 +3363,8 @@ run() {
     # Fire mode: force tier 2 (pure recall)
     local _real_tier=$REPLY
     ((streak>=FIRE_STREAK)) && tier=2
-    _REDRAW_HDR() { printf '%s' "$_SY"; hdr "$lv" "$((qi+1))" "$TOT"; qdisp "$prompt"; printf '%s' "$_SN"; }
-    _REDRAW_HDR
+    _REDRAW_HDR() { printf '%s' "$_SY"; hdr "$lv" "$((qi+1))" "$TOT"; qdisp "$prompt"; printf '\e[J%s' "$_SN"; }
+    printf '\e[2J'; _REDRAW_HDR
     while true; do
       _read_line 1 1
       ((_QUIT)) && break
@@ -3387,14 +3387,14 @@ run() {
         ((++qi)); QI=$qi; save; break
       elif ((_SANDBOX_REQUIRE_FAIL == 2)); then
         printf '\n%s\n' "${Y}right command — use the exact string from the question${N}"
-        sleep 1; _REDRAW_HDR; continue
+        sleep 1; printf '\e[2J'; _REDRAW_HDR; continue
       else
         [[ -n "$input" ]] && { HIST+=("$input"); HIST_IDX=${#HIST[@]}; HIST_SAVE=""; }
         ((_S_ANSWERED++)); _S_STREAK=0; _wrong_show; _disk_check wrong "$input"
         explain "$ans"
         streak=0; _sset "$prompt" "$((_real_tier>0?_real_tier-1:0))"; _pause
       fi
-      _sget "$prompt"; tier=$REPLY; _REDRAW_HDR
+      _sget "$prompt"; tier=$REPLY; printf '\e[2J'; _REDRAW_HDR
     done
     ((_QUIT)) && break
   done
@@ -3428,9 +3428,9 @@ run() {
     _REDRAW_HDR() {
       local _t=$_bt
       if ((${_rl_deadline:-0})); then _rl_rem; _t=$REPLY; fi
-      printf '%s\e[2J\e[H%s  %s\n\n%s\n\n%s' "$_SY" "${M}${B}═══ BOSS ${U}$((bi+1))/${boss_total}${M} ═══${N}" "${W}${_t}s${N}" "${C}${prompt}${N}" "$_SN"
+      printf '%s\e[H%s  %s\e[K\n\e[K\n%s\e[K\n\e[K\n\e[J%s' "$_SY" "${M}${B}═══ BOSS ${U}$((bi+1))/${boss_total}${M} ═══${N}" "${W}${_t}s${N}" "${C}${prompt}${N}" "$_SN"
     }
-    _REDRAW_HDR
+    printf '\e[2J'; _REDRAW_HDR
     if _read_line 0 0 "$_bt"; then
       ((_QUIT)) && break
       ((_S_ANSWERED++))
@@ -3528,7 +3528,7 @@ challenge() {
   _session_init
   printf '%s\e[2J\e[H%s\n%s\n' "$_SY" "${M}${B}═══ CHALLENGE ═══${N}" "${D}All levels. 20s. No manpages. One miss and you're done.${N}"
   ((BEST_CHALLENGE > 0)) && printf '%s\n' "${D}Best: ${Y}${BEST_CHALLENGE}${N}"
-  printf '%s\n' "$_SN"; read -rsn1 -p "${D}Press Enter to start...${N}"; echo
+  printf '%s\n' "$_SN"; read -rsp "${D}Press Enter to start...${N}"; echo
 
   local score=0
   _mode_init g
@@ -3540,9 +3540,9 @@ challenge() {
     _REDRAW_HDR() {
       local _t=20
       if ((${_rl_deadline:-0})); then _rl_rem; _t=$REPLY; fi
-      printf '%s\e[2J\e[H%s  %s  %s\n\n%s\n\n%s' "$_SY" "${M}${B}CHALLENGE${N}" "${U}Score: ${score}${N}" "${W}${_t}s${N}" "${C}${prompt}${N}" "$_SN"
+      printf '%s\e[H%s  %s  %s\e[K\n\e[K\n%s\e[K\n\e[K\n\e[J%s' "$_SY" "${M}${B}CHALLENGE${N}" "${U}Score: ${score}${N}" "${W}${_t}s${N}" "${C}${prompt}${N}" "$_SN"
     }
-    _REDRAW_HDR
+    printf '\e[2J'; _REDRAW_HDR
 
     _preq_reset
     local _ok=0
@@ -3585,10 +3585,11 @@ _sel() {
   local title=$1; shift; local -a it=("$@") n=$# c=${_SEL_CUR:-0} k; _SEL_CUR=0
   if ((c>=n)) || [[ "${it[$c]:0:1}" == $'\x01' ]]; then c=0; while ((c<n)) && [[ "${it[$c]:0:1}" == $'\x01' ]]; do ((c++)); done; fi
   ((c>=n)) && return 1
-  local _draw=1
+  local _draw=1 _first=1
   while true; do
     if ((_draw)); then
-      local _buf; printf -v _buf '%s\e[2J\e[H%s\n\n' "$_SY" "$title"
+      local _clr=""; ((_first)) && { _clr=$'\e[2J'; _first=0; }
+      local _buf; printf -v _buf '%s%s\e[H%s\e[K\n\e[K\n' "$_SY" "$_clr" "$title"
       local i; for ((i=0;i<n;i++)); do
         if [[ "${it[$i]:0:1}" == $'\x01' ]]; then printf -v _buf '%s    %s%s%s\e[K\n' "$_buf" "$D" "${it[$i]:1}" "$N"
         elif ((i==c)); then printf -v _buf '%s  %s  %s  ▸%s\e[K\n' "$_buf" "$R" "${it[$i]}" "$N"
@@ -3751,7 +3752,7 @@ scenario() {
   printf '%s\n' "${D}${SC_FLAVOR[$sc_id]}${N}"
   printf '%s\n\n' "${U}${total} steps${N} ${D}— sandbox state persists between steps${N}"
   printf '%s' "$_SN"
-  read -rsn1 -p "${D}Press Enter to start...${N}"; echo
+  read -rsp "${D}Press Enter to start...${N}"; echo
 
   local si _sc_snap="$DATA/sandbox.snap"
   for ((si=0; si<total; si++)); do
@@ -3762,9 +3763,9 @@ scenario() {
     _sc_snap_save
 
     _REDRAW_HDR() {
-      printf '%s\e[2J\e[H%s  %s\n\n%s\n\n%s' "$_SY" "${M}${B}${SC_NAMES[$sc_id]}${N}" "${U}[Step $((si+1))/${total}]${N}" "${C}${prompt}${N}" "$_SN"
+      printf '%s\e[H%s  %s\e[K\n\e[K\n%s\e[K\n\e[K\n\e[J%s' "$_SY" "${M}${B}${SC_NAMES[$sc_id]}${N}" "${U}[Step $((si+1))/${total}]${N}" "${C}${prompt}${N}" "$_SN"
     }
-    _REDRAW_HDR
+    printf '\e[2J'; _REDRAW_HDR
     HIST=()
 
     while true; do
@@ -3778,14 +3779,14 @@ scenario() {
         break
       elif ((_SANDBOX_REQUIRE_FAIL == 2)); then
         printf '\n%s\n' "${Y}right command — use the exact string from the question${N}"
-        sleep 1; _REDRAW_HDR; continue
+        sleep 1; printf '\e[2J'; _REDRAW_HDR; continue
       else
         [[ -n "$input" ]] && { HIST+=("$input"); HIST_IDX=${#HIST[@]}; HIST_SAVE=""; }
         ((_S_ANSWERED++)); _S_STREAK=0; _wrong_show; _disk_check wrong "$input"
         explain "$ans"
         _sc_snap_restore
         _pause retry
-        _REDRAW_HDR
+        printf '\e[2J'; _REDRAW_HDR
       fi
     done
     ((_QUIT)) && break
@@ -4106,7 +4107,7 @@ _selftest() {
 # ═══ PLACEMENT ═══
 place() {
   printf '%s\e[2J\e[H%s\n%s\n%s\n\n%s' "$_SY" "${M}${B}═══ PLACEMENT TEST ═══${N}" "${D}2 questions per level, 30s each, no manpages${N}" "${D}Miss one → that's your starting level${N}" "$_SN"
-  read -rsn1 -p "${D}Press Enter to start...${N}"; echo
+  read -rsp "${D}Press Enter to start...${N}"; echo
 
   _session_init
   _mode_init place
@@ -4119,9 +4120,9 @@ place() {
       _REDRAW_HDR() {
         local _t=30
         if ((${_rl_deadline:-0})); then _rl_rem; _t=$REPLY; fi
-        printf '%s\e[2J\e[H%s  %s  %s\n\n%s\n\n%s' "$_SY" "${U}Level ${lv}${N}" "${U}Q${qi}/2${N}" "${W}${_t}s${N}" "${C}${prompt}${N}" "$_SN"
+        printf '%s\e[H%s  %s  %s\e[K\n\e[K\n%s\e[K\n\e[K\n\e[J%s' "$_SY" "${U}Level ${lv}${N}" "${U}Q${qi}/2${N}" "${W}${_t}s${N}" "${C}${prompt}${N}" "$_SN"
       }
-      _REDRAW_HDR
+      printf '\e[2J'; _REDRAW_HDR
       if _read_line 0 0 30; then
         ((_QUIT)) && break 2
         if check "$input" "$_qanswers"; then
