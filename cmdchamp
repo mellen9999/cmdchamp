@@ -54,7 +54,7 @@ _strip_ansi() {
   REPLY="$out"
 }
 
-VERSION="1.0.8"
+VERSION="1.1.0"
 SANDBOX_TIMEOUT=5      # Seconds before sandbox command times out
 BOSS_THRESHOLD=4       # Correct answers needed to beat boss (out of BOSS_TOTAL)
 BOSS_TOTAL=5           # Number of questions in boss round
@@ -69,7 +69,7 @@ _DECAY_INTERVAL=86400  # only run decay once per 24h
 # ═══ PROFILE ═══
 PLAYER_NAME="" BOSS_BEATEN=0 BEST_CHALLENGE=0 DISKS_FOUND="" SC_DONE=""
 OPT_VI=1 OPT_SOUND=1 OPT_ALTS=1
-_PROFILE_VER=4  # bump this when profile format changes; old profiles get reset
+_PROFILE_VER=5  # bump this when profile format changes; old profiles get reset
 LAST_DECAY=0  # epoch of last decay check (persisted in profile)
 PLACED_THROUGH=0  # highest level passed via placement test
 
@@ -173,21 +173,21 @@ EOF
 }
 
 # ═══ BOSSES & LEVELS ═══
-BOSS_NAMES=("" "n00b" "CopyPasta" "CatMan" "PipeWrench" "Redirect" "Murmur" "DevNull" "AndOr" "\$VARIABLE" "\$\$"
-  "BackgroundNoise" "TestCase" "SubShell" "Globber" "QuoteMaster" "ArrayLord" "TheFork" "Regex" "Cron" "Daemon"
-  "RootKit" "KernelPanic" "Segfault" "ZeroDay" "TheFirewall" "Entropy" "Singularity" "Void" "Omega" "ROOT")
-BOSS_FLAVOR=("" "There is no shortcut. Only the first step." "Your keystrokes echo in empty halls." "I read the bones of dead files."
-  "Data is blood. I am the vein." "I send your output to the grave." "I feed the silence into your commands."
+BOSS_NAMES=("" "n00b" "CopyPasta" "Clobber" "CatMan" "PipeWrench" "Murmur" "DevNull" "AndOr" "\$VARIABLE" "\$\$"
+  "BackgroundNoise" "TestCase" "Gatekeeper" "Daemon" "Mux" "Needle" "Globber" "Sieve" "ArrayLord" "TheFork"
+  "Swarm" "Regex" "Rebase" "Netcat" "TheFirewall" "Spectrum" "Collision" "Void" "SUID" "ROOT")
+BOSS_FLAVOR=("" "There is no shortcut. Only the first step." "Every copy is a ghost of the original." "What you saved, I devour."
+  "I read the bones of dead files." "Data is blood. I am the vein." "I feed the silence into your commands."
   "Your stderr falls into the void." "True or false. Live or die." "I hold what you've forgotten."
   "Every process has a death." "I wait in the dark between processes." "Pass my test or be terminated."
-  "Trapped in shells within shells." "I match everything. I consume all." "Escape is just another cage."
-  "Count from zero. End at null." "I birth processes that outlive you." "I see patterns in your ashes."
-  "I wake the dead at midnight." "I run while you sleep forever." "I take what isn't given."
-  "The kernel screams. No one hears." "Your memory is already corrupted." "No patch saves you from me."
-  "Nothing enters. Nothing leaves." "Chaos is the only certainty." "All threads end here."
-  "I am where data goes to die." "Everything ends. I am the proof." "I am ROOT. Bow or break.")
-LEVEL_NAMES=("" "First Steps" "Save Your Work" "Reading Files" "Basic Pipes" "Input Redirection"
-  "Here-Strings" "Error Handling" "Logic Gates" "Variables" "Special Variables" "Job Control"
+  "Every door has a lock. I hold the modes." "I run while you sleep forever." "One terminal. Infinite cages."
+  "I see every line. Nothing hides from me." "I match everything. I consume all." "What passes through me is all that remains."
+  "Count from zero. End at null." "Every path diverges. None return." "A thousand commands. One directive."
+  "I see patterns in your ashes." "Your history is mine to rewrite." "I listen where you cannot see."
+  "Nothing enters. Nothing leaves." "Every frequency bleeds secrets." "Your hashes are already broken."
+  "I am where data goes to die." "I wear the mask of root." "I am ROOT. Bow or break.")
+LEVEL_NAMES=("" "First Steps" "File Basics" "Save Your Work" "Reading Files" "Basic Pipes"
+  "Input & Here-Strings" "Error Handling" "Logic Gates" "Variables" "Special Variables" "Job Control"
   "Test Conditions" "Core File Tools" "System Admin" "Multiplexers" "Text Search"
   "File Finding" "Data Processing" "String & Arrays" "Control Flow" "Batch Ops"
   "Advanced Regex" "Git" "Network Tools" "Network Scanning" "WiFi & RF"
@@ -1215,8 +1215,25 @@ gen_level1() {
   questions+=("Remove empty directory ${W}${newdir}${C}|rmdir ${newdir}|rmdir ${newdir}/|rm -d ${newdir}|rm -d ${newdir}/")
 }
 
-# Level 2: Save Output (>, >>)
+# Level 2: File Basics (cp, mv)
 gen_level2() {
+  local -n questions=${1:-CURRENT_QUESTIONS}; questions=(); eval "local $_QV"; _ctx
+  [[ "$cfg2" == "$cfg" ]] && { _fpick CONFIGS; cfg2=$REPLY; }
+  [[ "$txt2" == "$txt" ]] && { _fpick TXTS; txt2=$REPLY; }
+  questions+=("Copy ${W}${cfg}${C} to ${W}${cfg2}${C}|cp ${cfg} ${cfg2}|cp -- ${cfg} ${cfg2}")
+  questions+=("Copy ${W}${txt}${C} to ${W}${dir}${C}/|cp ${txt} ${dir}/|cp ${txt} ${dir}|cp -- ${txt} ${dir}/|cp -- ${txt} ${dir}")
+  questions+=("Copy ${W}${dir}${C}/ recursively to ${W}${dir2}${C}/|cp -r ${dir}/ ${dir2}/|cp -r ${dir} ${dir2}|cp -R ${dir}/ ${dir2}/|cp -R ${dir} ${dir2}|cp --recursive ${dir}/ ${dir2}/|cp --recursive ${dir} ${dir2}|cp -a ${dir}/ ${dir2}/|cp -a ${dir} ${dir2}|cp --archive ${dir}/ ${dir2}/|cp --archive ${dir} ${dir2}")
+  questions+=("Copy ${W}${cfg}${C} to ${W}${cfg}.bak${C}|cp ${cfg} ${cfg}.bak|cp -- ${cfg} ${cfg}.bak")
+  questions+=("Copy ${W}${cfg}${C}, confirm before overwriting|cp -i ${cfg} ${cfg2}|cp --interactive ${cfg} ${cfg2}")
+  questions+=("Move ${W}${txt}${C} to ${W}${dir}${C}/|mv ${txt} ${dir}/|mv ${txt} ${dir}|mv -- ${txt} ${dir}/|mv -- ${txt} ${dir}")
+  questions+=("Rename ${W}${cfg}${C} to ${W}${cfg2}${C}|mv ${cfg} ${cfg2}|mv -- ${cfg} ${cfg2}")
+  questions+=("Move ${W}${txt}${C} without overwriting|mv -n ${txt} ${dir}/|mv --no-clobber ${txt} ${dir}/|mv -n ${txt} ${dir}|mv --no-clobber ${txt} ${dir}")
+  questions+=("Move ${W}${txt}${C}, confirm before overwriting|mv -i ${txt} ${dir}/|mv --interactive ${txt} ${dir}/|mv -i ${txt} ${dir}|mv --interactive ${txt} ${dir}")
+  questions+=("Copy ${W}${cfg}${C} without overwriting|cp -n ${cfg} ${cfg2}|cp --no-clobber ${cfg} ${cfg2}")
+}
+
+# Level 3: Save Output (>, >>)
+gen_level3() {
   local -n questions=${1:-CURRENT_QUESTIONS}; questions=(); eval "local $_QV"; _ctx; local word word2 outfile outfile2 num
   _fpick SANDBOX_LOGS; log=$REPLY; _fpick SANDBOX_TXTS; txt=$REPLY; _fpick SANDBOX_CFGS; cfg=$REPLY
   _fphrase hello "done" ready complete finished saved started stopped; word=$REPLY
@@ -1236,8 +1253,8 @@ gen_level2() {
   questions+=("Run ls, show output AND save to ${W}${outfile}${C}§ls | tee ${outfile}§#output:~server.log#state:contains:${outfile}:server.log")
 }
 
-# Level 3: Read Files (cat, head, tail)
-gen_level3() {
+# Level 4: Read Files (cat, head, tail)
+gen_level4() {
   local -n questions=${1:-CURRENT_QUESTIONS}; questions=(); eval "local $_QV"; _ctx
   _fpick SANDBOX_LOGS; log=$REPLY
   _fpick SANDBOX_TXTS; txt=$REPLY; _fpick SANDBOX_TXTS; txt2=$REPLY
@@ -1256,8 +1273,8 @@ gen_level3() {
   questions+=("View ${W}${txt}${C} with line numbers in a pager|less -N ${txt}|less --LINE-NUMBERS ${txt}|#text:")
 }
 
-# Level 4: Basic Pipes (|)
-gen_level4() {
+# Level 5: Basic Pipes (|)
+gen_level5() {
   local -n questions=${1:-CURRENT_QUESTIONS}; questions=(); eval "local $_QV"; _ctx; local term1
   n=$((RANDOM % 5 + 3)); n2=$((RANDOM % 4 + 2)); n3=$((RANDOM % 6 + 5))
   _fpick SANDBOX_LOGS; log=$REPLY
@@ -1300,17 +1317,18 @@ gen_level4() {
   questions+=("Find ${Y}${term1}${C} lines, then count them in ${W}${log}${C}§grep ${term1} ${log} | wc -l§grep ${term1} ${log} | wc --lines§grep -c ${term1} ${log}§grep --count ${term1} ${log}§cat ${log} | grep ${term1} | wc -l§cat ${log} | grep -c ${term1}§cat ${log} | grep --count ${term1}")
 }
 
-# Level 5: Input Redirection (<)
-gen_level5() {
+# Level 6: Input & Here-Strings (<, <<<)
+gen_level6() {
   local -n questions=${1:-CURRENT_QUESTIONS}; questions=(); eval "local $_QV"; _ctx
   _fpick SANDBOX_TXTS; txt=$REPLY
   _fpick SANDBOX_CSVS; csv=$REPLY; _fpick SANDBOX_LOGS; log=$REPLY
+  local n=$((RANDOM % 6 + 3))
+  # Input redirection (<)
   questions+=("Count lines in ${W}${csv}${C} — just the number, no filename|wc -l < ${csv}|wc --lines < ${csv}")
   questions+=("Count words in ${W}${txt}${C} — just the number, no filename|wc -w < ${txt}|wc --words < ${txt}")
   questions+=("Uppercase contents of ${W}${txt}${C} using tr|tr a-z A-Z < ${txt}|tr '[:lower:]' '[:upper:]' < ${txt}")
   questions+=("Collapse repeated newlines in ${W}${log}${C} using tr|tr -s '\\n' < ${log}|tr --squeeze-repeats '\\n' < ${log}")
   questions+=("Sort ${W}${csv}${C} using input redirection|sort < ${csv}")
-  local n=$((RANDOM % 6 + 3))
   questions+=("Reverse each line (flip characters) of ${W}${txt}${C} using input redirection|rev < ${txt}")
   questions+=("Shuffle lines of ${W}${csv}${C} randomly using redirection|shuf < ${csv}")
   questions+=("Show first ${n} lines of ${W}${log}${C} using redirection|head -${n} < ${log}|head -n ${n} < ${log}|head --lines ${n} < ${log}|head --lines=${n} < ${log}")
@@ -1318,11 +1336,8 @@ gen_level5() {
   questions+=("Sort ${W}${csv}${C} and save output to ${W}sorted.csv${C}|sort < ${csv} > sorted.csv|sort ${csv} > sorted.csv|sort > sorted.csv < ${csv}|#state:exists:sorted.csv")
   questions+=("Show last ${n} lines of ${W}${log}${C} using redirection|tail -${n} < ${log}|tail -n ${n} < ${log}|tail --lines ${n} < ${log}|tail --lines=${n} < ${log}")
   questions+=("Count bytes in ${W}${txt}${C} — just the number|wc -c < ${txt}|wc --bytes < ${txt}")
-}
-
-# Level 6: Here-Strings (<<<)
-gen_level6() {
-  local -n questions=${1:-CURRENT_QUESTIONS}; questions=(); local word word2
+  # Here-strings (<<<)
+  local word word2
   _fphrase hello world example config backup server admin debug; word=$REPLY
   _fphrase test data input query search token ready active; word2=$REPLY
   local num1=$((RANDOM % 50 + 10)) num2=$((RANDOM % 20 + 5))
@@ -1587,10 +1602,6 @@ gen_level13() {
   questions+=("Count lines in ${csv}|wc -l ${csv}|wc -l < ${csv}|wc --lines ${csv}|wc --lines < ${csv}")
   questions+=("Count words in ${txt}|wc -w ${txt}|wc --words ${txt}|wc -w < ${txt}|wc --words < ${txt}")
   questions+=("Count bytes in ${txt}|wc -c ${txt}|wc --bytes ${txt}|wc -c < ${txt}|wc --bytes < ${txt}")
-  questions+=("Copy ${cfg} to ${cfg2}|cp ${cfg} ${cfg2}|cp -- ${cfg} ${cfg2}|cp -i ${cfg} ${cfg2}|cp --interactive ${cfg} ${cfg2}")
-  questions+=("Copy ${dir}/ recursively to ${dir2}/|cp -r ${dir}/ ${dir2}/|cp -r ${dir} ${dir2}|cp -R ${dir}/ ${dir2}/|cp -R ${dir} ${dir2}|cp --recursive ${dir}/ ${dir2}/|cp --recursive ${dir} ${dir2}|cp -a ${dir}/ ${dir2}/|cp -a ${dir} ${dir2}|cp --archive ${dir}/ ${dir2}/|cp --archive ${dir} ${dir2}")
-  questions+=("Move ${txt} to ${dir}/|mv ${txt} ${dir}/|mv ${txt} ${dir}|mv -- ${txt} ${dir}/|mv -- ${txt} ${dir}")
-  questions+=("Rename ${cfg} to ${cfg2}|mv ${cfg} ${cfg2}|mv -- ${cfg} ${cfg2}")
   questions+=("Disk usage of current dir, human readable|du -sh .|du -hs .|du -s -h .|du -h -s .|du --summarize --human-readable .|du --human-readable --summarize .|dust|du -sh|du --summarize --human-readable|du --human-readable --summarize")
   questions+=("Disk usage of each subdir|du -sh */|du -hs */|du -h --max-depth=1|du -hd 1|du -h -d 1|du --human-readable --max-depth=1|du -h --max-depth 1|du --human-readable --max-depth 1|dust -d 1")
   # shellcheck disable=SC2034  # used via _fpick nameref
