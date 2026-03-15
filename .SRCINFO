@@ -1,5 +1,5 @@
 pkgbase = cmdchamp
-	pkgdesc = Pure bash CLI trainer — 30 levels from ls to privilege escalation
+	pkgdesc = CLI trainer — 30 levels from ls to privilege escalation
 	pkgver = 1.1.1
 	pkgrel = 1
 	url = https://github.com/mellen9999/cmdchamp
