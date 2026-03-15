@@ -3620,7 +3620,7 @@ _sel() {
     # hotkey: match (k) prefix in items
     local _hi; for ((_hi=0;_hi<n;_hi++)); do
       [[ "${it[$_hi]:0:1}" == $'\x01' ]] && continue
-      [[ "${it[$_hi]}" == "(${k})"* ]] && { REPLY=$_hi; return 0; }
+      [[ "${it[$_hi]}" == "(${k})"* || "${it[$_hi]}" == "${k} "* ]] && { REPLY=$_hi; return 0; }
     done
     local _oc=$c
     case "$k" in
@@ -3681,22 +3681,23 @@ _main_menu() {
     else _tl_text="${D}░▒▓█ MASTER THE COMMAND LINE █▓▒░${N}" _tl_w=33; fi
     printf -v _tl_pad '%*s' $(( (71 - _tl_w) / 2 )) ''
     _tagline="${_tl_pad}${_tl_text}"
+    local _n=1
     if [[ -n "$PLAYER_NAME" ]] && ((LVL>1||QI>0)); then
-      it+=("(c) Continue  ${D}Level $LVL Q$((QI+1))${N}"); act+=(cont)
+      it+=("$((_n++)) Continue  ${D}Level $LVL Q$((QI+1))${N}"); act+=(cont)
     fi
-    it+=("(n) New Game"); act+=(new)
+    it+=("$((_n++)) New Game"); act+=(new)
     local _any=0; for ((i=1;i<=SC_TOTAL;i++)); do ((BOSS_BEATEN>=${SC_UNLOCK[$i]:-$MAX_LEVEL})) && _any=1; done
-    if ((_any)); then it+=("(s) Scenarios"); act+=(sc)
-    else it+=($'\x01'"(s) Scenarios"); act+=(x); fi
+    if ((_any)); then it+=("$((_n++)) Scenarios"); act+=(sc)
+    else it+=($'\x01'"$((_n++)) Scenarios"); act+=(x); fi
     if ((BOSS_BEATEN>=MAX_LEVEL)); then
-      it+=("(g) Challenge"); act+=(challenge)
+      it+=("$((_n++)) Challenge"); act+=(challenge)
     else
-      it+=($'\x01'"(g) Challenge"); act+=(x)
+      it+=($'\x01'"$((_n++)) Challenge"); act+=(x)
     fi
-    if [[ -n "$PLAYER_NAME" ]]; then it+=("(t) Stats"); act+=(stats)
-    else it+=($'\x01'"(t) Stats"); act+=(x); fi
-    it+=("(o) Options"); act+=(opts)
-    it+=("(q) Quit"); act+=(quit)
+    if [[ -n "$PLAYER_NAME" ]]; then it+=("$((_n++)) Stats"); act+=(stats)
+    else it+=($'\x01'"$((_n++)) Stats"); act+=(x); fi
+    it+=("$((_n++)) Options"); act+=(opts)
+    it+=("$((_n++)) Quit"); act+=(quit)
     local _banner
     printf -v _banner '%s\n%s\n%s\n%s\n%s\n%s\n\n%s' \
       "   ${W}${B}██████╗███╗   ███╗██████╗  ██████╗██╗  ██╗ █████╗ ███╗   ███╗██████╗${N}" \
