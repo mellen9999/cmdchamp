@@ -61,7 +61,7 @@ BOSS_TOTAL=5           # Number of questions in boss round
 FIRE_STREAK=5          # Streak needed for fire mode (+2 points)
 MIX_PER_LEVEL=2        # Questions to auto-mix from each previous level
 MAX_LEVEL=30           # Highest level number
-BOSS_TIMER=15          # Seconds per boss question
+BOSS_TIMER=30          # Seconds per boss question
 _DECAY_T2=2592000     # 30 days: mastered → learning
 _DECAY_T1=1209600     # 14 days: learning → unseen
 _DECAY_INTERVAL=86400  # only run decay once per 24h
@@ -671,6 +671,7 @@ SANDBOX_TXTS=(notes.txt todo.txt)
 SANDBOX_CSVS=(data.csv users.csv)
 SANDBOX_CFGS=(config.ini settings.yaml)
 SANDBOX_SCRIPTS=(backup.sh deploy.sh)
+SANDBOX_DIRS=(src logs data backup temp config test)
 LOGS=(server.log app.log system.log auth.log access.log error.log debug.log nginx.log apache.log syslog
   messages kern.log daemon.log mail.log secure dpkg.log pacman.log audit.log boot.log faillog lastlog
   wtmp btmp cron.log yum.log dmesg)
@@ -755,9 +756,14 @@ _pause() { read -rsp "${D}Press Enter to ${1:-continue}...${N}"; }
 _QV='log cfg cfg2 txt txt2 csv dir dir2 ext ext2 script archive bin img pcap hash photo wordlist ip subnet port port2 mac url user host term term2 term3 field key old new size iface proc svc branch n n1 n2 n3 col'
 # shellcheck disable=SC2034  # vars consumed by caller's eval scope
 _ctx() {
-  _fpick LOGS; log=$REPLY; _fpick CONFIGS; cfg=$REPLY; _fpick CONFIGS; cfg2=$REPLY
-  _fpick TXTS; txt=$REPLY; _fpick TXTS; txt2=$REPLY; _fpick CSVS; csv=$REPLY
-  _fpick DIRS; dir=$REPLY; _fpick DIRS; dir2=$REPLY; _fpick EXTS; ext=$REPLY; _fpick EXTS; ext2=$REPLY
+  _fpick SANDBOX_LOGS; log=$REPLY
+  if ((RANDOM & 1)); then cfg=${SANDBOX_CFGS[0]}; cfg2=${SANDBOX_CFGS[1]}; else cfg=${SANDBOX_CFGS[1]}; cfg2=${SANDBOX_CFGS[0]}; fi
+  if ((RANDOM & 1)); then txt=${SANDBOX_TXTS[0]}; txt2=${SANDBOX_TXTS[1]}; else txt=${SANDBOX_TXTS[1]}; txt2=${SANDBOX_TXTS[0]}; fi
+  _fpick SANDBOX_CSVS; csv=$REPLY
+  _fpick SANDBOX_DIRS; dir=$REPLY; _fpick SANDBOX_DIRS; dir2=$REPLY
+  [[ "$dir2" == "$dir" ]] && dir2=${SANDBOX_DIRS[0]}
+  [[ "$dir2" == "$dir" ]] && dir2=${SANDBOX_DIRS[1]}
+  _fpick EXTS; ext=$REPLY; _fpick EXTS; ext2=$REPLY
   _fpick SCRIPTS; script=$REPLY; _fpick ARCHIVES; archive=$REPLY; _fpick BINS; bin=$REPLY
   _fpick IMGS; img=$REPLY; _fpick PCAPS; pcap=$REPLY; _fpick HASHES; hash=$REPLY; _fpick PHOTOS; photo=$REPLY
   _fpick WORDLISTS; wordlist=$REPLY; _fpick IPS; ip=$REPLY; _fpick SUBNETS; subnet=$REPLY
@@ -1218,8 +1224,6 @@ gen_level1() {
 # Level 2: File Basics (cp, mv)
 gen_level2() {
   local -n questions=${1:-CURRENT_QUESTIONS}; questions=(); eval "local $_QV"; _ctx
-  [[ "$cfg2" == "$cfg" ]] && { _fpick CONFIGS; cfg2=$REPLY; }
-  [[ "$txt2" == "$txt" ]] && { _fpick TXTS; txt2=$REPLY; }
   questions+=("Copy ${W}${cfg}${C} to ${W}${cfg2}${C}|cp ${cfg} ${cfg2}|cp -- ${cfg} ${cfg2}")
   questions+=("Copy ${W}${txt}${C} to ${W}${dir}${C}/|cp ${txt} ${dir}/|cp ${txt} ${dir}|cp -- ${txt} ${dir}/|cp -- ${txt} ${dir}")
   questions+=("Copy ${W}${dir}${C}/ recursively to ${W}${dir2}${C}/|cp -r ${dir}/ ${dir2}/|cp -r ${dir} ${dir2}|cp -R ${dir}/ ${dir2}/|cp -R ${dir} ${dir2}|cp --recursive ${dir}/ ${dir2}/|cp --recursive ${dir} ${dir2}|cp -a ${dir}/ ${dir2}/|cp -a ${dir} ${dir2}|cp --archive ${dir}/ ${dir2}/|cp --archive ${dir} ${dir2}")
@@ -1227,9 +1231,9 @@ gen_level2() {
   questions+=("Copy ${W}${cfg}${C}, confirm before overwriting|cp -i ${cfg} ${cfg2}|cp --interactive ${cfg} ${cfg2}")
   questions+=("Move ${W}${txt}${C} to ${W}${dir}${C}/|mv ${txt} ${dir}/|mv ${txt} ${dir}|mv -- ${txt} ${dir}/|mv -- ${txt} ${dir}")
   questions+=("Rename ${W}${cfg}${C} to ${W}${cfg2}${C}|mv ${cfg} ${cfg2}|mv -- ${cfg} ${cfg2}")
-  questions+=("Move ${W}${txt}${C} without overwriting|mv -n ${txt} ${dir}/|mv --no-clobber ${txt} ${dir}/|mv -n ${txt} ${dir}|mv --no-clobber ${txt} ${dir}")
-  questions+=("Move ${W}${txt}${C}, confirm before overwriting|mv -i ${txt} ${dir}/|mv --interactive ${txt} ${dir}/|mv -i ${txt} ${dir}|mv --interactive ${txt} ${dir}")
-  questions+=("Copy ${W}${cfg}${C} without overwriting|cp -n ${cfg} ${cfg2}|cp --no-clobber ${cfg} ${cfg2}")
+  questions+=("Move ${W}${txt}${C} to ${W}${dir}${C}/ without overwriting|mv -n ${txt} ${dir}/|mv --no-clobber ${txt} ${dir}/|mv -n ${txt} ${dir}|mv --no-clobber ${txt} ${dir}")
+  questions+=("Move ${W}${txt}${C} to ${W}${dir}${C}/, confirm before overwriting|mv -i ${txt} ${dir}/|mv --interactive ${txt} ${dir}/|mv -i ${txt} ${dir}|mv --interactive ${txt} ${dir}")
+  questions+=("Copy ${W}${cfg}${C} to ${W}${cfg2}${C} without overwriting|cp -n ${cfg} ${cfg2}|cp --no-clobber ${cfg} ${cfg2}")
 }
 
 # Level 3: Save Output (>, >>)
@@ -2264,9 +2268,9 @@ gen_level24() {
   questions+=("Mirror website for offline|wget -mk ${url}|wget --mirror -k ${url}|wget -m --convert-links ${url}|wget --mirror --convert-links ${url}")
   questions+=("Check SSL cert of website|openssl s_client -connect ${host}:443|openssl s_client -connect ${host}:443 < /dev/null|echo | openssl s_client -connect ${host}:443")
   questions+=("Generate random 32-byte hex string|openssl rand -hex 32")
-  questions+=("Encrypt file with AES-256|openssl enc -aes-256-cbc -pbkdf2 -salt -in file.txt -out file.enc")
-  questions+=("Decrypt AES-256 file|openssl enc -d -aes-256-cbc -pbkdf2 -in file.enc -out file.txt")
-  questions+=("Generate RSA key pair|openssl genrsa -out key.pem 4096")
+  questions+=("Encrypt ${W}file.txt${C} with AES-256-CBC (pbkdf2, salted) to ${W}file.enc${C}|openssl enc -aes-256-cbc -pbkdf2 -salt -in file.txt -out file.enc")
+  questions+=("Decrypt AES-256-CBC ${W}file.enc${C} (pbkdf2) to ${W}file.txt${C}|openssl enc -d -aes-256-cbc -pbkdf2 -in file.enc -out file.txt")
+  questions+=("Generate 4096-bit RSA key pair to ${W}key.pem${C}|openssl genrsa -out key.pem 4096")
   questions+=("List SMB shares anonymously on ${ip}|smbclient -L //${ip} -N|smbclient -N -L //${ip}|smbclient -L //${ip} --no-pass|smbclient --no-pass -L //${ip}|smbclient -L ${ip} -N|smbclient -N -L ${ip}")
   questions+=("Connect to SMB share|smbclient //${ip}/share -U ${user}")
   questions+=("Enumerate SMB with enum4linux|enum4linux -a ${ip}")
@@ -2354,9 +2358,9 @@ gen_level27() {
   questions+=("Crack ${hash} with john using ${wordlist}|john --wordlist=${wordlist} ${hash}|john --wordlist ${wordlist} ${hash}|john -w=${wordlist} ${hash}|john -w ${wordlist} ${hash}")
   questions+=("Show cracked passwords from john|john --show ${hash}")
   questions+=("List supported john formats|john --list=formats|john --list formats")
-  questions+=("Extract hash from encrypted ZIP file|zip2john archive.zip > hash.txt|~^zip2john archive\.zip > .+$")
-  questions+=("Extract hash from encrypted PDF|pdf2john document.pdf > hash.txt|~^pdf2john document\.pdf > .+$")
-  questions+=("Extract hash from encrypted RAR|rar2john archive.rar > hash.txt|~^rar2john archive\.rar > .+$")
+  questions+=("Extract hash from ${W}archive.zip${C} to ${W}hash.txt${C}|zip2john archive.zip > hash.txt|~^zip2john archive\.zip > .+$")
+  questions+=("Extract hash from ${W}document.pdf${C} to ${W}hash.txt${C}|pdf2john document.pdf > hash.txt|~^pdf2john document\.pdf > .+$")
+  questions+=("Extract hash from ${W}archive.rar${C} to ${W}hash.txt${C}|rar2john archive.rar > hash.txt|~^rar2john archive\.rar > .+$")
   questions+=("Extract hash from ${W}/etc/shadow${C} format|unshadow /etc/passwd /etc/shadow > hash.txt|sudo unshadow /etc/passwd /etc/shadow > hash.txt|~^(sudo )?unshadow /etc/passwd /etc/shadow > .+$")
   questions+=("Brute force SSH login for ${user} on ${ip} using ${W}${wordlist}${C}|hydra -l ${user} -P ${wordlist} ${ip} ssh|hydra -l ${user} -P ${wordlist} ssh://${ip}|hydra -P ${wordlist} -l ${user} ${ip} ssh|hydra -P ${wordlist} -l ${user} ssh://${ip}")
   questions+=("Brute force FTP login for ${user} on ${ip} using ${W}${wordlist}${C}|hydra -l ${user} -P ${wordlist} ${ip} ftp|hydra -l ${user} -P ${wordlist} ftp://${ip}|hydra -P ${wordlist} -l ${user} ${ip} ftp|hydra -P ${wordlist} -l ${user} ftp://${ip}")
@@ -2407,12 +2411,12 @@ gen_level28() {
   questions+=("Verify checksums file|sha256sum -c ${hash}|sha256sum --check ${hash}|md5sum -c ${hash}|md5sum --check ${hash}|shasum -c ${hash}|shasum --check ${hash}")
   questions+=("Recover deleted files from ${img}|foremost -i ${img}|scalpel ${img}|photorec ${img}")
   questions+=("Recover JPG and PDF files from ${W}${img}${C}|foremost -t jpg,pdf -i ${img}|foremost -i ${img} -t jpg,pdf|foremost -t pdf,jpg -i ${img}|foremost -i ${img} -t pdf,jpg")
-  questions+=("Foremost with custom output dir on ${W}${img}${C}|foremost -i ${img} -o ${dir}/|foremost -i ${img} -o ${dir}|foremost -o ${dir}/ -i ${img}|foremost -o ${dir} -i ${img}")
+  questions+=("Foremost on ${W}${img}${C} with output dir ${W}${dir}${C}/|foremost -i ${img} -o ${dir}/|foremost -i ${img} -o ${dir}|foremost -o ${dir}/ -i ${img}|foremost -o ${dir} -i ${img}")
   questions+=("List files in ${W}${img}${C} (TSK)|fls ${img}|fls -l ${img}|fls -p ${img}")
   questions+=("List files recursively in ${W}${img}${C}|fls -r ${img}")
   questions+=("List deleted files in ${W}${img}${C}|fls -d ${img}")
   questions+=("Create filesystem timeline|mactime -b ${dir}/bodyfile|~^mactime -b .+$")
-  questions+=("Create bodyfile from ${W}${img}${C}|fls -r -m / ${img} > ${dir}/bodyfile|fls -m / -r ${img} > ${dir}/bodyfile")
+  questions+=("Create bodyfile from ${W}${img}${C}, save to ${W}${dir}/bodyfile${C}|fls -r -m / ${img} > ${dir}/bodyfile|fls -m / -r ${img} > ${dir}/bodyfile")
 }
 
 # Level 29: Privilege Escalation
@@ -3432,7 +3436,7 @@ run() {
     boss_q=("${_cur_q[@]}"); _fshuffle_n boss_q "$boss_total"
   fi
 
-  local _bt=$((BOSS_TIMER + lv / 3))  # scale: 15s@L1 → 25s@L30
+  local _bt=$((BOSS_TIMER + lv / 3))  # scale: 30s@L1 → 40s@L30
   for ((bi=0; bi<${#boss_q[@]}; bi++)); do
     _qparse "${boss_q[$bi]}"; local prompt=$_qprompt ans=$_qans
     [[ -z "$prompt" ]] && { ((boss_total--)); ((boss_total > 0 && _boss_thresh > boss_total)) && _boss_thresh=$boss_total; continue; }
