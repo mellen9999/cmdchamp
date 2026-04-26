@@ -177,17 +177,17 @@ EOF
 
 # ═══ BOSSES & LEVELS ═══
 BOSS_NAMES=("" "n00b" "CopyPasta" "Clobber" "CatMan" "PipeWrench" "Murmur" "DevNull" "AndOr" "\$VARIABLE" "\$\$"
-  "BackgroundNoise" "TestCase" "Gatekeeper" "Daemon" "Mux" "Needle" "Globber" "Sieve" "ArrayLord" "TheFork"
-  "Swarm" "Regex" "Rebase" "Netcat" "TheFirewall" "Spectrum" "Collision" "Void" "Phantom" "ROOT")
+  "BackgroundNoise" "TestCase" "Gatekeeper" "Daemon" "Mux" "Needle" "Globber" "Sieve" "Indexer" "TheFork"
+  "Swarm" "Lookaround" "Rebase" "Netcat" "Portbreaker" "Spectrum" "Collision" "Void" "Phantom" "ROOT")
 BOSS_FLAVOR=("" "There is no shortcut. Only the first step." "Every copy is a ghost of the original." "What you saved, I devour."
   "I read the bones of dead files." "Data is blood. I am the vein." "I feed the silence into your commands."
   "Your stderr falls into the void." "True or false. Live or die." "I hold what you've forgotten."
   "Every process has a death." "I wait in the dark between processes." "Pass my test or be terminated."
   "Every door has a lock. I hold the modes." "I run while you sleep forever." "One terminal. Infinite cages."
   "I see every line. Nothing hides from me." "I match everything. I consume all." "What passes through me is all that remains."
-  "Count from zero. End at null." "Every path diverges. None return." "A thousand commands. One directive."
-  "I see patterns in your ashes." "Your history is mine to rewrite." "I listen where you cannot see."
-  "Nothing enters. Nothing leaves." "Every frequency bleeds secrets." "Your hashes are already broken."
+  "Zero-indexed. Off-by-one. You miscount, you die." "Every path diverges. None return." "A thousand commands. One directive."
+  "I remember what you wrote. I match it again." "Your history is mine to rewrite." "I listen where you cannot see."
+  "I count the doors before you knock." "Every frequency bleeds secrets." "Your hashes are already broken."
   "I am where data goes to die." "Every privilege is a door I already opened." "I am ROOT. Bow or break.")
 LEVEL_NAMES=("" "First Steps" "File Basics" "Save Your Work" "Reading Files" "Basic Pipes"
   "Input & Here-Strings" "Error Handling" "Logic Gates" "Variables" "Special Variables" "Job Control"
