@@ -11,75 +11,70 @@ Set Framerate 24
 Set TypingSpeed 1ms
 Set Padding 20
 
-# Setup: exec into clean bash (rcfile does cleanup + clear)
-Type "exec bash --rcfile /tmp/demo-bashrc"
+# Setup: seeded profile + session, deterministic question order (hidden)
+Hide
+Type `rm -rf /tmp/demo-xdg && mkdir -p /tmp/demo-xdg/cmdchamp && printf 'PLAYER_NAME=hacker\nBOSS_BEATEN=0\nBEST_CHALLENGE=0\nDISKS_FOUND=\nSC_DONE=\nLAST_DECAY=99999999999\nOPT_VI=1\nOPT_SOUND=0\nOPT_ALTS=1\nPLACED_THROUGH=0\nPROFILE_VER=5\n' > /tmp/demo-xdg/cmdchamp/profile && printf '{"level":1,"qi":3}' > /tmp/demo-xdg/cmdchamp/session.json && export XDG_DATA_HOME=/tmp/demo-xdg`
 Enter
-Sleep 500ms
+Type `cp cmdchamp /tmp/demo-cmd && chmod +x /tmp/demo-cmd && sed -i 's/^_run_loop() {/_run_loop() { RANDOM=42/' /tmp/demo-cmd && clear`
+Enter
 
-# Launch
+# Launch — main menu shows "Continue Level 1 Q4" preselected
 Set TypingSpeed 60ms
-Type "cmdchamp n"
-Enter
-Sleep 2s
-
-# ASCII banner - enter handle
-Set TypingSpeed 100ms
-Type "hacker"
-Sleep 400ms
+Type "/tmp/demo-cmd"
 Enter
 Sleep 2.5s
+Show
 
-# Intro story - press to continue
+# Main menu — Continue is the first item, Enter selects it
+Sleep 1.2s
 Enter
 Sleep 1.5s
 
-# Tutorial - press to continue
-Enter
-Sleep 1s
-
-# ── Q1: pwd question → correct ──
-Set TypingSpeed 70ms
+# ── Q4: "Print: hello hello hello" → correct ──
+Set TypingSpeed 50ms
 Sleep 400ms
-Type "pwd"
+Type "echo hello hello hello"
 Sleep 200ms
 Enter
 Sleep 1.2s
 Enter
 Sleep 600ms
 
-# ── Q2: pwd question → wrong (type ls), then correct ──
+# ── Q5: "Delete todo.txt" → wrong, then correct ──
 Sleep 300ms
-Type "ls"
+Type "rm"
 Sleep 200ms
 Enter
-Sleep 2s
+Sleep 1.8s
 Enter
 Sleep 600ms
-Type "pwd"
+Type "rm todo.txt"
 Sleep 200ms
 Enter
 Sleep 1.2s
 Enter
 Sleep 600ms
 
-# ── Q3: ls question → Tab for manpage, then correct ──
+# ── Q6: "Create directory tools" → Tab manpage, then correct ──
 Sleep 300ms
 Tab
 Sleep 2s
-Type "ls"
+Type "mkdir tools"
 Sleep 200ms
 Enter
 Sleep 1.2s
 Enter
 Sleep 600ms
 
-# ── Q4: ls -a question → correct ──
+# ── Q7: "Delete temp and everything in it" → correct ──
 Sleep 300ms
-Type "ls -a"
+Type "rm -r temp"
 Sleep 200ms
 Enter
 Sleep 1.5s
 
-# Session summary
+# Quit to menu, then exit — second Ctrl+D fires session summary
+Ctrl+D
+Sleep 1.5s
 Ctrl+D
 Sleep 3s

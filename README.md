@@ -6,7 +6,7 @@ Bash CLI trainer — 30 levels from `ls` to privilege escalation.
 
 Every question asks you to type a real command — get instant feedback, move on. Many questions run against real files in the sandbox, all accept multiple valid syntaxes (both `sort -u` and `sort | uniq`), and Tab pulls up the manpage when you need a reference. Randomized each run so you can't memorize the order. A mastery system tracks what you know and what you don't: get a question right twice to master it, get it wrong and it demotes so you see it again sooner. Hit a 5-answer streak and you enter fire mode for bonus points.
 
-Each level ends with a boss round — no manpages, 4/5 to pass. Fail and you can retry the boss immediately or go back to practice. Beat all 30 and endgame modes unlock: gauntlet (3 lives) and timed runs. Review mode targets your weakest commands across levels you've beaten. First run includes a short tutorial.
+Each level ends with a boss round — no manpages, 4/5 to pass. Fail and you can retry the boss immediately or go back to practice. Beat all 30 and challenge mode unlocks: every level, 20s timer, no manpages, one miss and you're done. First run includes a short tutorial and a placement test that lets you skip levels you already know.
 
 With [bubblewrap](https://github.com/containers/bubblewrap), commands run in a real sandboxed filesystem. Without it, answers are text-matched. Search levels (16-17) accept both modern (`rg`, `fd`) and classic (`grep`, `find`) syntax. Vi line editing built in.
 
@@ -38,24 +38,14 @@ cd cmdchamp && make install
 ## Usage
 
 ```bash
-cmdchamp                # Resume from last position (prompts to continue)
-cmdchamp n              # Start fresh from level 1
-cmdchamp 14             # Jump to level (must be unlocked)
-cmdchamp progress       # Show level progress
-cmdchamp stats          # Show mastery statistics
-cmdchamp review         # Practice weak levels (< 80% mastery)
-cmdchamp gauntlet       # 3 lives, escalating difficulty (post-ROOT)
-cmdchamp timed          # Race the clock, default 120s (post-ROOT)
-cmdchamp timed 60       # Timed mode: 60, 120, or 300 seconds
-cmdchamp place          # Placement test — skip levels you know
-cmdchamp scenario       # List scenarios (or: cmdchamp scenario 3)
-cmdchamp tutorial       # Re-show the controls tutorial
-cmdchamp reset          # Clear all progress
-cmdchamp cleanup        # Deduplicate score file
-cmdchamp help           # Show help + level list
-cmdchamp version        # Print version
+cmdchamp                # Launch the game menu
 cmdchamp --no-sandbox   # Disable sandbox (text-match only)
+cmdchamp reset          # Clear all progress
+cmdchamp test           # Run self-tests
+cmdchamp help           # Show help
 ```
+
+Everything else lives in the menu: continue, new game, scenarios, challenge mode, stats, options. Hotkeys 1–7 jump straight to a menu item; `j`/`k` or arrow keys move; Enter selects.
 
 ## Levels
 
@@ -63,11 +53,11 @@ cmdchamp --no-sandbox   # Disable sandbox (text-match only)
 |---|------|-------|
 | | **Fundamentals** | |
 | 1 | First Steps | pwd, ls, echo, cd, mkdir |
-| 2 | Save Your Work | >, >>, tee |
-| 3 | Reading Files | cat, head, tail, less |
-| 4 | Basic Pipes | pipes, grep, wc, sort, uniq |
-| 5 | Input Redirection | <, file→stdin |
-| 6 | Here-Strings | <<<, tr, cut, rev, bc |
+| 2 | File Basics | cp, mv |
+| 3 | Save Your Work | >, >>, tee |
+| 4 | Reading Files | cat, head, tail, less |
+| 5 | Basic Pipes | pipes, grep, wc, sort, uniq |
+| 6 | Input & Here-Strings | <, <<<, tr, cut, rev, bc |
 | 7 | Error Handling | 2>, 2>&1, &>, /dev/null |
 | 8 | Logic Gates | &&, \|\| |
 | 9 | Variables | `$VAR`, assignment, expansion |
@@ -96,26 +86,26 @@ cmdchamp --no-sandbox   # Disable sandbox (text-match only)
 
 ## Scenarios
 
-Multi-step sandbox challenges — state persists between steps.
+Multi-step sandbox challenges — state persists between steps. Pick from the **Scenarios** menu item once you've cleared the unlock boss.
 
 | # | Name | Unlocks at | Steps |
 |---|------|-----------|-------|
-| 1 | The Broken Deploy | L21 boss | 7 |
-| 2 | Log Emergency | L21 boss | 5 |
-| 3 | Messy CSV | L18 boss | 4 |
-| 4 | Permission Lockout | L13 boss | 6 |
-| 5 | Find the Needle | L16 boss | 7 |
-| 6 | Archive & Extract | L13 boss | 6 |
-| 7 | The Incident | L18 boss | 5 |
+| 1 | Permission Lockout | L13 boss | 6 |
+| 2 | Archive & Extract | L13 boss | 6 |
+| 3 | Find the Needle | L16 boss | 7 |
+| 4 | Messy CSV | L18 boss | 4 |
+| 5 | The Incident | L18 boss | 5 |
+| 6 | The Broken Deploy | L21 boss | 7 |
+| 7 | Log Emergency | L21 boss | 5 |
 | 8 | Config Surgery | L21 boss | 5 |
 
 ## Placement test
 
-`cmdchamp place` — skip levels you already know. Asks 2 questions per level, 20s each, no manpages. Miss one and that's your starting level.
+The first time you start a new game, placement runs automatically — 2 questions per level, 30s each, no manpages. Miss one and that's your starting level.
 
 ## Easter eggs
 
-8 hidden achievements. `cmdchamp stats` shows how many you've found.
+8 hidden achievements. The Stats screen shows how many you've found.
 
 ## Controls
 
