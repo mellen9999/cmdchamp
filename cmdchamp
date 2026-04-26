@@ -1811,6 +1811,10 @@ gen_level16() {
   questions+=("If ${Y}${term}${C} found, count matches; else echo 'none' in ${W}${log}${C}§grep -q ${term} ${log} && grep -c ${term} ${log} || echo 'none'§grep --quiet ${term} ${log} && grep -c ${term} ${log} || echo 'none'§grep --silent ${term} ${log} && grep -c ${term} ${log} || echo 'none'§rg -q ${term} ${log} && rg -c ${term} ${log} || echo 'none'")
   questions+=("Search ${Y}${term}${C} in all .${ext} files, save to ${W}results.txt${C}§grep -r ${term} --include='*.${ext}' > results.txt§grep -R ${term} --include='*.${ext}' > results.txt§rg ${term} -g '*.${ext}' > results.txt§rg -g '*.${ext}' ${term} > results.txt")
   questions+=("Find ${Y}${term}${C} lines, extract IPs, count unique in ${W}${log}${C}§grep ${term} ${log} | grep -oE '[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+' | sort -u | wc -l§rg ${term} ${log} | rg -o '[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+' | sort -u | wc -l§grep ${term} ${log} | grep -oP '\\d+\\.\\d+\\.\\d+\\.\\d+' | sort -u | wc -l")
+  questions+=("Search '${term}' only in ${W}.py${C} files (rg --type filter)|rg -t py ${term}|rg --type py ${term}|grep -r --include='*.py' ${term}|grep -R --include='*.py' ${term}")
+  questions+=("List files NOT containing '${term}'|grep -rL ${term}|grep -RL ${term}|grep -r --files-without-match ${term}|rg --files-without-match ${term}")
+  questions+=("Search '${term}' including hidden + gitignored files (rg)|rg --no-ignore --hidden ${term}|rg -uu ${term}|rg -. --no-ignore ${term}")
+  questions+=("Search '${term}' in ${W}${log}${C} producing JSON output (rg)|rg --json ${term} ${log}|rg --json ${term}")
 }
 
 # Level 17: File Finding (find, fd)
@@ -1843,6 +1847,11 @@ gen_level17() {
   questions+=("Find large files (>${size}), show sizes sorted§find . -size +${size} -exec du -h {} \\; | sort -rh§find . -size +${size} -exec du -h {} + | sort -rh§fd -S +${size} -x du -h {} | sort -rh")
   questions+=("Find .${ext} files modified today, grep for '${term}'§find . -name '*.${ext}' -mtime 0 -exec grep -l ${term} {} \\;§find . -name '*.${ext}' -mtime 0 -exec grep -l ${term} {} +§fd -e ${ext} --changed-within 1d -x grep -l ${term}")
   questions+=("Find empty files and delete them§find . -type f -empty -print -delete§find . -type f -empty -delete§find . -empty -type f -delete§find . -type f -empty -exec rm {} +§find . -type f -empty -exec rm {} \\;§fd -t f -S 0b -x rm {}§fd --type f --size 0b -x rm {}")
+  questions+=("Find world-writable files (any-of semantic, -perm /MODE)|find . -type f -perm /o+w|find . -type f -perm /002|find . -perm /o+w -type f|find . -perm /002 -type f")
+  questions+=("Find files modified after 2025-01-01 (-newermt)|find . -newermt '2025-01-01' -type f|find . -type f -newermt '2025-01-01'|find . -newermt 2025-01-01 -type f")
+  questions+=("Show file size in bytes for ${W}${txt}${C}|stat -c '%s' ${txt}|stat --printf='%s\\n' ${txt}|stat --format='%s' ${txt}|wc -c < ${txt}")
+  questions+=("Resolve canonical absolute path of ${W}${txt}${C}|realpath ${txt}|readlink -f ${txt}|readlink --canonicalize ${txt}|realpath -e ${txt}")
+  questions+=("Locate ${W}${proc}${C} command (POSIX-portable; sees builtins+aliases)|command -v ${proc}|type ${proc}|type -p ${proc}|which ${proc}|whereis ${proc}")
 }
 
 # Level 18: Data Processing
@@ -1904,6 +1913,9 @@ gen_level18() {
   questions+=("Most common words in ${txt}§tr -s ' ' '\\n' < ${txt} | sort | uniq -c | sort -rn | head§tr -s ' ' '\\n' < ${txt} | sort | uniq -c | sort -nr | head")
   questions+=("Lines appearing in both ${txt} and ${txt2}|comm -12 <(sort ${txt}) <(sort ${txt2})|comm -1 -2 <(sort ${txt}) <(sort ${txt2})|grep -Fxf ${txt} ${txt2}|grep -Fxf ${txt2} ${txt}")
   questions+=("Lines only in ${txt}, not ${txt2}|comm -23 <(sort ${txt}) <(sort ${txt2})|comm -2 -3 <(sort ${txt}) <(sort ${txt2})|grep -Fxvf ${txt2} ${txt}")
+  questions+=("Replace 'old' with 'new' in field 2 of ${W}${csv}${C} (awk gsub)|awk -F, '{gsub(/old/, \"new\", \$2); print}' ${csv}|awk -F, '{gsub(/old/,\"new\",\$2);print}' ${csv}|awk 'BEGIN{FS=OFS=\",\"} {gsub(/old/, \"new\", \$2); print}' ${csv}")
+  questions+=("Format ${W}${txt}${C} as aligned table (auto-detect delimiter)|column -t ${txt}|column -t -s\$'\\t' ${txt}|column --table ${txt}")
+  questions+=("Extract '.${field}' from JSON ${W}${txt}${C} as raw strings (jq -r)|jq -r '.${field}' ${txt}|jq --raw-output '.${field}' ${txt}|jq -r .${field} ${txt}")
 }
 
 # Level 19: String & Arrays
@@ -1963,6 +1975,10 @@ gen_level19() {
   questions+=("Read command output into array|mapfile -t arr < <(ls)|readarray -t arr < <(ls)")
   questions+=("Copy array|arr2=(\"\${arr[@]}\")")
   questions+=("Merge two arrays|merged=(\"\${arr1[@]}\" \"\${arr2[@]}\")")
+  questions+=("Indirect expansion: print value of variable whose NAME is stored in \$ref|echo \"\${!ref}\"|printf '%s\\n' \"\${!ref}\"")
+  questions+=("Shell-quote \$var safely for eval re-use (\${var@Q})|echo \"\${var@Q}\"|printf '%q\\n' \"\$var\"")
+  questions+=("Assign printf output to \$var WITHOUT subshell (perf-critical)|printf -v var '%s' \"value\"|printf -v var '%s\\n' \"value\"")
+  questions+=("Get current epoch seconds via printf builtin (no subshell, perf)|printf '%(%s)T\\n' -1|printf -v now '%(%s)T' -1")
 }
 
 # Level 20: Control Flow & Functions
@@ -2021,6 +2037,10 @@ gen_level20() {
   questions+=("Parse -v flag and -f arg with getopts§while getopts \"vf:\" opt; do case \$opt in v) verbose=1;; f) file=\$OPTARG;; esac; done§while getopts ':vf:' opt; do case \$opt in v) verbose=1;; f) file=\$OPTARG;; esac; done")
   questions+=("Branch on arithmetic test|(( ${n} > 0 )) && echo positive|(( ${n} > 0 )) && echo positive || echo nonpositive")
   questions+=("Default value if var unset|echo \"\${var:-default}\"|: \"\${var:=default}\" && echo \"\$var\"")
+  questions+=("Loop over script positional args (for x; do — implicit \$@)|for arg; do echo \"\$arg\"; done|for arg in \"\$@\"; do echo \"\$arg\"; done")
+  questions+=("Loop ${W}1..${n}${C} via brace expansion (no seq subshell)|for i in {1..${n}}; do echo \$i; done|for i in {1..${n}}; do echo \"\$i\"; done")
+  questions+=("Break out of TWO nested loops at once (depth arg)|for f in *.${ext}; do for g in *.${ext2}; do [[ \"\$g\" == \"\$f\" ]] && break 2; done; done")
+  questions+=("Regex match in [[ ]], capture into \${BASH_REMATCH[@]}|[[ \"\$var\" =~ ^([0-9]+)\$ ]] && echo \"\${BASH_REMATCH[1]}\"|[[ \$var =~ ^([0-9]+)\$ ]] && echo \"\${BASH_REMATCH[1]}\"")
 }
 
 # Level 21: Batch Ops
@@ -2097,6 +2117,9 @@ gen_level21() {
   questions+=("Rename .txt to .md (GNU rename)|rename 's/\\.txt$/.md/' *.txt|rename .txt .md *.txt")
   questions+=("Run ${script} every 6 hours|0 */6 * * * /usr/local/bin/${script}")
   questions+=("Run ${script} weekdays only at 9am|0 9 * * 1-5 /usr/local/bin/${script}|0 9 * * mon-fri /usr/local/bin/${script}|0 9 * * MON-FRI /usr/local/bin/${script}")
+  questions+=("Skip xargs run if input is empty (-r / --no-run-if-empty)|xargs -r rm < filelist.txt|xargs --no-run-if-empty rm < filelist.txt")
+  questions+=("Run ${proc} with 10-second timeout, kill -9 5s after if hung|timeout --kill-after=5 10s ${proc}|timeout -k 5 10s ${proc}|timeout -k 5s 10s ${proc}|timeout --kill-after=5s 10s ${proc}")
+  questions+=("Wait for ANY background job to finish (bash 4.3+ wait -n)|cmd1 & cmd2 & wait -n|{ cmd1 & cmd2 & wait -n; }|cmd1 & cmd2 & wait -n; echo done")
 }
 
 # Level 22: Advanced Regex
@@ -2163,6 +2186,8 @@ gen_level22() {
   questions+=("Named capture group with PCRE (extract IP from ${W}${log}${C})§grep -oP '(?<ip>\\d+\\.\\d+\\.\\d+\\.\\d+)' ${log}§rg -oP '(?<ip>\\d+\\.\\d+\\.\\d+\\.\\d+)' ${log}§grep -oP '(?P<ip>\\d+\\.\\d+\\.\\d+\\.\\d+)' ${log}")
   questions+=("Multi-line mode: match across lines in ${W}${txt}${C}|pcregrep -M '${term}\\n.*${term2}' ${txt}|grep -Pzo '(?s)${term}.*?${term2}' ${txt}")
   questions+=("Atomic group / possessive quantifier (PCRE) in ${W}${log}${C}|grep -oP '\\d++' ${log}|grep -oP '(?>\\d+)' ${log}")
+  questions+=("PCRE non-capturing group (?:...) — match 'foo' or 'bar' without saving in \\\\1|grep -oP '(?:foo|bar)' ${log}|rg -oP '(?:foo|bar)' ${log}")
+  questions+=("Bash =~ regex match capturing into \${BASH_REMATCH[@]} (extract first integer)|[[ \"\$line\" =~ ([0-9]+) ]] && echo \"\${BASH_REMATCH[1]}\"|[[ \$line =~ ([0-9]+) ]] && echo \"\${BASH_REMATCH[1]}\"")
 }
 
 # Level 23: Git
