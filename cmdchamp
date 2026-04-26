@@ -2361,7 +2361,7 @@ gen_level26() {
   _fpick WIFI_INTERFACES; local wiface=$REPLY
   questions+=("Enable monitor mode on ${wiface}|airmon-ng start ${wiface}|sudo airmon-ng start ${wiface}")
   questions+=("Scan for WiFi networks|airodump-ng ${wiface}mon|sudo airodump-ng ${wiface}mon")
-  questions+=("Capture handshake from AP ${W}${mac}${C} on channel 6, write to ${W}capture${C}|airodump-ng -c 6 --bssid ${mac} -w capture ${wiface}mon|sudo airodump-ng -c 6 --bssid ${mac} -w capture ${wiface}mon|airodump-ng --bssid ${mac} --channel 6 --write capture ${wiface}mon|airodump-ng --bssid ${mac} --channel 6 -w capture ${wiface}mon|airodump-ng --bssid ${mac} -c 6 --write capture ${wiface}mon|airodump-ng -c 6 --bssid ${mac} --write capture ${wiface}mon|sudo airodump-ng --bssid ${mac} --channel 6 --write capture ${wiface}mon|sudo airodump-ng --bssid ${mac} --channel 6 -w capture ${wiface}mon|sudo airodump-ng --bssid ${mac} -c 6 --write capture ${wiface}mon|sudo airodump-ng -c 6 --bssid ${mac} --write capture ${wiface}mon")
+  questions+=("Capture handshake from AP ${W}${mac}${C} on channel 6, write to ${W}capture${C}|airodump-ng -c 6 --bssid ${mac} -w capture ${wiface}mon|sudo airodump-ng -c 6 --bssid ${mac} -w capture ${wiface}mon|airodump-ng --bssid ${mac} --channel 6 --write capture ${wiface}mon|airodump-ng --bssid ${mac} --channel 6 -w capture ${wiface}mon|airodump-ng --bssid ${mac} -c 6 --write capture ${wiface}mon|airodump-ng -c 6 --bssid ${mac} --write capture ${wiface}mon|sudo airodump-ng --bssid ${mac} --channel 6 --write capture ${wiface}mon|sudo airodump-ng --bssid ${mac} --channel 6 -w capture ${wiface}mon|sudo airodump-ng --bssid ${mac} -c 6 --write capture ${wiface}mon|sudo airodump-ng -c 6 --bssid ${mac} --write capture ${wiface}mon|airodump-ng -c 6 -b ${mac} -w capture ${wiface}mon|sudo airodump-ng -c 6 -b ${mac} -w capture ${wiface}mon|airodump-ng -b ${mac} -c 6 -w capture ${wiface}mon|sudo airodump-ng -b ${mac} -c 6 -w capture ${wiface}mon")
   questions+=("Send ${W}5${C} deauth packets to force handshake|aireplay-ng -0 5 -a ${mac} ${wiface}mon|aireplay-ng --deauth 5 -a ${mac} ${wiface}mon|sudo aireplay-ng -0 5 -a ${mac} ${wiface}mon|sudo aireplay-ng --deauth 5 -a ${mac} ${wiface}mon|aireplay-ng -a ${mac} -0 5 ${wiface}mon|sudo aireplay-ng -a ${mac} -0 5 ${wiface}mon|aireplay-ng -a ${mac} --deauth 5 ${wiface}mon|sudo aireplay-ng -a ${mac} --deauth 5 ${wiface}mon")
   questions+=("Crack WPA handshake in ${W}capture-01.cap${C} using ${W}${wordlist}${C}|aircrack-ng -w ${wordlist} capture-01.cap|sudo aircrack-ng -w ${wordlist} capture-01.cap|aircrack-ng capture-01.cap -w ${wordlist}|sudo aircrack-ng capture-01.cap -w ${wordlist}")
   questions+=("WPS pixie-dust attack on AP ${W}${mac}${C}|reaver -i ${wiface}mon -b ${mac} -K 1|sudo reaver -i ${wiface}mon -b ${mac} -K 1|reaver -i ${wiface}mon -b ${mac} --pixie-dust|sudo reaver -i ${wiface}mon -b ${mac} --pixie-dust|bully -b ${mac} -d ${wiface}mon|sudo bully -b ${mac} -d ${wiface}mon")
@@ -2462,8 +2462,8 @@ gen_level28() {
   questions+=("Extract ASCII strings from ${bin}|strings ${bin}|strings -a ${bin}|strings --all ${bin}")
   questions+=("Extract strings minimum 10 chars in ${W}${bin}${C}|strings -n 10 ${bin}|strings --bytes=10 ${bin}|strings --bytes 10 ${bin}")
   questions+=("Extract Unicode strings (Windows binaries) in ${W}${bin}${C}|strings -e l ${bin}|strings --encoding=l ${bin}|strings --encoding l ${bin}")
-  questions+=("Find URLs in ${W}${bin}${C}§strings ${bin} | grep -E 'https?://'§strings ${bin} | egrep 'https?://'§strings ${bin} | grep -oE 'https?://[^ ]+'")
-  questions+=("Find email addresses in ${W}${bin}${C}§strings ${bin} | grep -E '[A-Za-z0-9._%+-]+@'§strings ${bin} | egrep '[A-Za-z0-9._%+-]+@'§strings ${bin} | grep -oE '[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+'")
+  questions+=("Find URLs in ${W}${bin}${C}§strings ${bin} | grep -E 'https?://'§strings ${bin} | egrep 'https?://'§strings ${bin} | grep --extended-regexp 'https?://'§strings ${bin} | grep -oE 'https?://[^ ]+'§strings ${bin} | grep -oP 'https?://\\S+'")
+  questions+=("Find email addresses in ${W}${bin}${C}§strings ${bin} | grep -E '[A-Za-z0-9._%+-]+@'§strings ${bin} | egrep '[A-Za-z0-9._%+-]+@'§strings ${bin} | grep --extended-regexp '[A-Za-z0-9._%+-]+@'§strings ${bin} | grep -oE '[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+'")
   questions+=("Show ELF file header in ${W}${bin}${C}|readelf -h ${bin}|readelf --file-header ${bin}|objdump -f ${bin}")
   questions+=("Show ELF symbols in ${W}${bin}${C}|readelf -s ${bin}|readelf --syms ${bin}|readelf --symbols ${bin}|nm ${bin}|objdump -t ${bin}|objdump --syms ${bin}")
   questions+=("Show all ELF info in ${W}${bin}${C}|readelf -a ${bin}|readelf --all ${bin}")
@@ -4395,6 +4395,22 @@ _selftest() {
     ((_fail++)); printf '  FAIL: boss filter found only %d boss-skip prompts in L26-30 (expected >= 20)\n' "$_bf_boss_tagged"
   fi
   _assert "boss filter sees post-tag pool" "$((_bf_total > 100))" "1"
+  # Per-level pool floor: each L26-30 must retain enough prompts after tagging
+  # to fill a 5-question boss round (BOSS_TOTAL) — 10x headroom = 50 minimum.
+  local _poolfail=0 _ph_lv _ph_total _ph_skip
+  for _ph_lv in 26 27 28 29 30; do
+    local _ph_q=() _ph_q_str="${_LEVEL_CACHE[$_ph_lv]}"
+    local _OLD_IFS=$IFS; IFS=$'\n'; _ph_q=($_ph_q_str); IFS=$_OLD_IFS
+    _ph_total=0; _ph_skip=0
+    for q in "${_ph_q[@]}"; do
+      [[ -n "$q" ]] || continue
+      ((_ph_total++)); _qparse "$q"; ((_qboss_skip)) && ((_ph_skip++))
+    done
+    if (( _ph_total - _ph_skip < BOSS_TOTAL * 2 )); then
+      _poolfail=1; printf '  FAIL: L%d boss-eligible pool too thin (%d/%d)\n' "$_ph_lv" "$((_ph_total - _ph_skip))" "$_ph_total"
+    fi
+  done
+  if ((_poolfail)); then ((_fail++)); else ((_pass++)); fi
 
   printf '\n%s%s%d passed%s, ' "$B" "$G" "$_pass" "$N"
   ((_fail)) && printf '%s%s%d failed%s\n' "$B" "$R" "$_fail" "$N" || printf '%s0 failed%s\n' "$D" "$N"
