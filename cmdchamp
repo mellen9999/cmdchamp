@@ -1480,7 +1480,7 @@ gen_level9() {
   questions+=("Remove variable ${var} from the environment|unset ${var}|unset -v ${var}")
   questions+=("Show all exported variables|export|export -p|env|printenv|declare -x")
   _fphrase grep awk sed curl; local findcmd=$REPLY
-  questions+=("Find where ${Y}${findcmd}${C} is installed|which ${findcmd}|type ${findcmd}|command -v ${findcmd}|type -p ${findcmd}|type -P ${findcmd}")
+  questions+=("Find where ${Y}${findcmd}${C} is installed|command -v ${findcmd}|type -p ${findcmd}|type -P ${findcmd}|type ${findcmd}|which ${findcmd}")
   questions+=("Check if ${Y}${findcmd}${C} is available|command -v ${findcmd}|which ${findcmd}|type ${findcmd}|type -p ${findcmd}|hash ${findcmd}")
   _fphrase ll gs glog dps; local aname=$REPLY
   _fphrase "ls -la" "git status" "git log --oneline" "docker ps"; local acmd=$REPLY
