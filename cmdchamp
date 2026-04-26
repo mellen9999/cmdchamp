@@ -106,6 +106,9 @@ _load_profile() {
     [[ "$BOSS_BEATEN" =~ ^[0-9]+$ ]] || BOSS_BEATEN=0
     ((BOSS_BEATEN > MAX_LEVEL)) && BOSS_BEATEN=$MAX_LEVEL
     [[ "$BEST_CHALLENGE" =~ ^[0-9]+$ ]] || BEST_CHALLENGE=0
+    [[ "$LAST_DECAY" =~ ^[0-9]+$ ]] || LAST_DECAY=0
+    local _now_l; printf -v _now_l '%(%s)T' -1
+    ((LAST_DECAY > _now_l)) && LAST_DECAY=0  # clock-skew guard: future timestamps would block decay forever
   fi
 }
 
@@ -465,8 +468,14 @@ _sandbox_reset() {
     printf '%s\n' "${Y}Warning: sandbox reset failed, disabling${N}" >&2
     SANDBOX_MODE=0; return 1
   fi
-  rm -rf "$SANDBOX_DIR"
+  # Atomic-ish swap: rename old aside, move new in, then clean up old.
+  # This avoids a window where SANDBOX_DIR doesn't exist (signal-safety).
+  local _sb_old="${SANDBOX_DIR}.old.$$"
+  if [[ -d "$SANDBOX_DIR" ]]; then
+    mv "$SANDBOX_DIR" "$_sb_old" 2>/dev/null || rm -rf "$SANDBOX_DIR"
+  fi
   mv "$_sb_tmp" "$SANDBOX_DIR"
+  [[ -d "$_sb_old" ]] && rm -rf "$_sb_old"
 }
 
 _sandbox_exec() {
@@ -783,7 +792,7 @@ declare -A MANPAGE=(
   [cd]=$'change directory\n  \e[32m.\e[0m         current directory      \e[32m..\e[0m        parent directory\n  \e[32m~\e[0m         home directory         \e[32m-\e[0m         previous directory\n  \e[32m../..\e[0m     up two levels'
   [echo]=$'print text to stdout\n  \e[36m-n\e[0m        no trailing newline    \e[36m-e\e[0m        enable escapes (\\n \\t)\n  \e[33m"$VAR"\e[0m    expands variables      \e[33m\x27text\x27\e[0m   literal (no expansion)\n  \e[2mecho hello    echo "$HOME"    echo -n "no newline"    echo -e "line1\\nline2"\e[0m'
   [pwd]=$'print working directory\n  shows absolute path of current directory\n  \e[2mpwd    # /home/user/projects\e[0m'
-  [touch]=$'create empty file or update timestamp\n  \e[36m-t\e[0m \e[33mSTAMP\e[0m  set specific time\n  \e[2mtouch newfile    touch -t 202301010000 file\e[0m'
+  [touch]=$'create empty file or update timestamp\n  \e[36m-t\e[0m \e[33mSTAMP\e[0m  set specific time          \e[36m-c\e[0m        no-create (only update existing)\n  \e[36m-a\e[0m        access time only           \e[36m-m\e[0m        modify time only\n  \e[2mtouch newfile    touch -t 202301010000 file    touch -c existing\e[0m'
   [mv]=$'move or rename files\n  \e[36m-i\e[0m        confirm before overwrite\n  \e[36m-n\e[0m        never overwrite\n  \e[2mmv old.txt new.txt    mv file.txt dir/    mv *.log archive/\e[0m'
   [rm]=$'delete files permanently\n  \e[36m-r\e[0m        recursive (dirs)       \e[36m-f\e[0m        force (no prompt)\n  \e[36m-i\e[0m        confirm each file\n  \e[2mrm file.txt    rm -r dir/    rm -rf dir/    rm -i *.log\e[0m'
   [ln]=$'create links\n  \e[36m-s\e[0m        symbolic (soft) link   \e[2m(without -s: hard link)\e[0m\n  \e[35mhard\e[0m      same inode, same disk  \e[35msoft\e[0m      path pointer, cross-disk\n  \e[2mln file hardlink    ln -s target symlink    ln -sf target link\e[0m'
@@ -1741,7 +1750,7 @@ gen_level15() {
   questions+=("Swap with next pane|tmux swap-pane -D|tmux swapp -D")
   questions+=("Send 'ls -la' + Enter to session 'work'§tmux send-keys -t work 'ls -la' Enter§tmux send-keys -t work 'ls -la' C-m§~^tmux send-keys -t work ['\"]ls -la['\"] (Enter|C-m)$")
   questions+=("Capture pane output to stdout|tmux capture-pane -p|tmux capturep -p")
-  questions+=("Save pane output to file§tmux capture-pane -p > output.txt§tmux capturep -p > output.txt")
+  questions+=("Save current tmux pane output to ${W}output.txt${C}§tmux capture-pane -p > output.txt§tmux capturep -p > output.txt")
   questions+=("Run command in new window§tmux new-window 'htop'§tmux neww 'htop'§tmux new-window htop§tmux neww htop§tmux new-window \"htop\"§tmux neww \"htop\"")
   questions+=("Create session with command§tmux new -s monitor 'htop'§tmux new-session -s monitor 'htop'§tmux new -s monitor htop§tmux new-session -s monitor htop§tmux new -s monitor \"htop\"§tmux new-session -s monitor \"htop\"")
   questions+=("Pipe pane output from session 'work' to ${W}session.log${C}|tmux pipe-pane -t work 'cat >> session.log'|tmux pipep -t work 'cat >> session.log'")
@@ -1836,10 +1845,7 @@ gen_level18() {
   _frnum 1 5; local col2=$REPLY; local col3=$((col % 5 + 1)); _frnum 10 80; local chars=$REPLY; _frnum 1 25; local thresh=$REPLY
   ((col3 < col)) && { local _t=$col; col=$col3; col3=$_t; }  # ensure col <= col3 for ranges
   ((n > n2)) && { local _t2=$n; n=$n2; n2=$_t2; }
-  questions+=("Sort ${txt} alphabetically|sort ${txt}|sort < ${txt}|cat ${txt} | sort")
-  questions+=("Sort ${txt} in reverse|sort -r ${txt}|sort --reverse ${txt}")
-  questions+=("Sort ${txt} numerically|sort -n ${txt}|sort --numeric-sort ${txt}")
-  questions+=("Sort ${txt} numerically descending|sort -rn ${txt}|sort -nr ${txt}|sort --numeric-sort --reverse ${txt}|sort --reverse --numeric-sort ${txt}|sort -n -r ${txt}|sort -r -n ${txt}")
+  questions+=("Sort ${W}${txt}${C} numerically descending|sort -rn ${txt}|sort -nr ${txt}|sort --numeric-sort --reverse ${txt}|sort --reverse --numeric-sort ${txt}|sort -n -r ${txt}|sort -r -n ${txt}")
   questions+=("Sort and remove duplicates in ${W}${txt}${C}§sort -u ${txt}§sort --unique ${txt}§sort ${txt} | uniq")
   questions+=("Sort ${csv} by column ${col}|sort -t, -k${col} ${csv}|sort --field-separator=, -k${col} ${csv}|sort -t, --key=${col} ${csv}|sort --field-separator=, --key=${col} ${csv}")
   questions+=("Sort ${csv} by column ${col} numerically§sort -t, -k${col}n ${csv}§sort -t, -nk${col} ${csv}§sort --field-separator=, -k${col}n ${csv}§sort -t, -k${col} -n ${csv}")
@@ -2486,7 +2492,7 @@ gen_level30() {
   questions+=("Create SSH tunnel and background|ssh -fNT -L ${port}:localhost:${port} ${user}@${host}|ssh -fN -L ${port}:localhost:${port} ${user}@${host}|ssh -fNTL ${port}:localhost:${port} ${user}@${host}|ssh -fNL ${port}:localhost:${port} ${user}@${host}|ssh -L ${port}:localhost:${port} -fNT ${user}@${host}|ssh -L ${port}:localhost:${port} -fN ${user}@${host}")
   questions+=("Test if ${W}${ip}${C} is up via port 22 (no ping)|timeout 1 bash -c \"echo >/dev/tcp/${ip}/22\" && echo up|nc -zw1 ${ip} 22|nc -z -w 1 ${ip} 22|nc -zw 1 ${ip} 22")
   questions+=("Bind shell with ncat|ncat -lvnp ${port} -e /bin/bash|ncat -nlvp ${port} -e /bin/bash|ncat -lvnp ${port} -e /bin/sh|ncat -nlvp ${port} -e /bin/sh|ncat -lvnp ${port} -e bash|ncat -nlvp ${port} -e bash|ncat -lvnp ${port} -e sh|ncat -nlvp ${port} -e sh|nc -lvnp ${port} -e /bin/bash|nc -nlvp ${port} -e /bin/bash|nc -lvnp ${port} -e /bin/sh|nc -nlvp ${port} -e /bin/sh")
-  questions+=("Encrypted listener (openssl) on port ${W}${port}${C}|openssl s_server -quiet -key key.pem -cert cert.pem -port ${port}|openssl s_server -quiet -cert cert.pem -key key.pem -port ${port}|openssl s_server -key key.pem -cert cert.pem -quiet -port ${port}|openssl s_server -cert cert.pem -key key.pem -quiet -port ${port}|openssl s_server -key key.pem -cert cert.pem -port ${port} -quiet|openssl s_server -cert cert.pem -key key.pem -port ${port} -quiet|openssl s_server -quiet -key key.pem -cert cert.pem -accept ${port}|openssl s_server -quiet -cert cert.pem -key key.pem -accept ${port}")
+  questions+=("Encrypted listener (openssl s_server, quiet) on port ${W}${port}${C} using ${W}key.pem${C} + ${W}cert.pem${C}|openssl s_server -quiet -key key.pem -cert cert.pem -port ${port}|openssl s_server -quiet -cert cert.pem -key key.pem -port ${port}|openssl s_server -key key.pem -cert cert.pem -quiet -port ${port}|openssl s_server -cert cert.pem -key key.pem -quiet -port ${port}|openssl s_server -key key.pem -cert cert.pem -port ${port} -quiet|openssl s_server -cert cert.pem -key key.pem -port ${port} -quiet|openssl s_server -quiet -key key.pem -cert cert.pem -accept ${port}|openssl s_server -quiet -cert cert.pem -key key.pem -accept ${port}")
   questions+=("Pivot through host (proxychains setup)§ssh -D 9050 ${user}@${host} -fN && proxychains nmap ${ip}§ssh -D 9050 ${user}@${host} -fN; proxychains nmap ${ip}§ssh -D 9050 ${user}@${host} -fN && proxychains4 nmap ${ip}§ssh -D 9050 ${user}@${host} -fN; proxychains4 nmap ${ip}")
   questions+=("List all cron jobs system-wide|crontab -l; cat /etc/crontab; ls /etc/cron.d/|crontab -l && cat /etc/crontab && ls /etc/cron.d/|crontab -l; cat /etc/crontab; ls /etc/cron.d|crontab -l && cat /etc/crontab && ls /etc/cron.d")
   questions+=("Find files owned by nobody/nogroup|find / -nouser -o -nogroup 2>/dev/null|find / -nouser -or -nogroup 2>/dev/null")
@@ -2522,7 +2528,7 @@ gen_level30() {
   questions+=("Random string generator§tr -dc 'a-zA-Z0-9' < /dev/urandom | head -c 32§cat /dev/urandom | tr -dc 'a-zA-Z0-9' | head -c 32§openssl rand -hex 16§openssl rand -base64 24")
   questions+=("Timestamp in epoch|date +%s|date '+%s'|printf '%(%s)T\\n'|printf '%(%s)T\\n' -1")
   questions+=("Convert epoch ${W}1234567890${C} to date|date -d @1234567890|date -d@1234567890|date --date=@1234567890|date --date @1234567890|printf '%(%Y-%m-%d)T\\n' 1234567890")
-  questions+=("Parallel execution with xargs§cat urls.txt | xargs -P 10 -I{} curl -s {}§cat urls.txt | xargs -P 10 -I {} curl -s {}§xargs -P 10 -I{} curl -s {} < urls.txt§xargs -P 10 -I {} curl -s {} < urls.txt")
+  questions+=("Parallel curl on URLs from ${W}urls.txt${C} (10 jobs)§cat urls.txt | xargs -P 10 -I{} curl -s {}§cat urls.txt | xargs -P 10 -I {} curl -s {}§xargs -P 10 -I{} curl -s {} < urls.txt§xargs -P 10 -I {} curl -s {} < urls.txt")
   questions+=("Timeout a command|timeout 5 long_running_cmd|timeout 5s long_running_cmd")
   questions+=("Retry command until success|until cmd; do sleep 1; done|while ! cmd; do sleep 1; done")
   questions+=("Use flock on fd 200 (/tmp/lock) to prevent concurrent script runs§exec 200>/tmp/lock; flock -n 200 || exit 1§exec 200>/tmp/lock && flock -n 200 || exit 1")
@@ -2877,10 +2883,40 @@ _fnorm() {
 }
 
 _SANDBOX_OUTPUT="" _SANDBOX_REQUIRE_FAIL=0
+# Commands that can't meaningfully run in the bwrap sandbox (no network, no root,
+# binary may be missing, or interactive). For these, skip exec — text_match still
+# decides correctness, but we don't pollute output with misleading errors.
+_can_sandbox() {
+  local _cmd=$1
+  # Strip leading `sudo ` (with optional flags) so we judge by the real command
+  while [[ $_cmd == sudo\ * ]]; do
+    _cmd=${_cmd#sudo }
+    while [[ $_cmd == -* ]]; do _cmd=${_cmd#* }; done
+  done
+  local _c=${_cmd%% *}; _c=${_c##*/}
+  # `sudo` alone (no following command) — can't run anyway
+  [[ -z "$_c" || "$_c" == "sudo" ]] && return 1
+  case "$_c" in
+    ssh|scp|sftp|rsync|curl|wget|nc|ncat|ping|ping6|traceroute|tracepath|tracert|mtr|dig|nslookup|host|drill|whois|ftp|telnet|smbclient|nmap|masscan|enum4linux) return 1 ;;
+    sudo|systemctl|service|useradd|userdel|usermod|passwd|groupadd|groupdel|groupmod|chown|chgrp|mount|umount|iptables|ip6tables|nft|ufw|fail2ban-client|crontab|systemd-run|at|atq|atrm|batch) return 1 ;;
+    hashcat|john|hydra|medusa|nikto|gobuster|wpscan|sqlmap|aircrack-ng|airodump-ng|aireplay-ng|reaver|wifite|wash|kismet|airmon-ng|airbase-ng) return 1 ;;
+    foremost|scalpel|photorec|volatility|vol|vol3|vol.py|vol3.py|fls|mactime|tsk_recover|exiftool|tshark|tcpdump|tcpreplay|wireshark|binwalk|bulk_extractor|stegseek|stegoveritas|steghide) return 1 ;;
+    zip2john|pdf2john|rar2john|ssh2john|office2john|unshadow|keepass2john) return 1 ;;
+    docker|podman|kubectl|virsh|lxc|qemu*|vagrant) return 1 ;;
+    vi|vim|nvim|nano|emacs|joe|less|more|view|man|info|top|htop|btop|atop|iotop|watch|bashtop) return 1 ;;
+    tmux|screen|byobu) return 1 ;;
+    dd) [[ "$1" == *"if=/dev/sd"* || "$1" == *"of=/dev/sd"* ]] && return 1 ;;
+  esac
+  return 0
+}
 _sandbox_validate() {
   local inp=$1 output _sb_err _sb_rc _req_fail=0
   [[ -n "$_qrequire" && "$inp" != *"$_qrequire"* ]] && _req_fail=1
   _SANDBOX_REQUIRE_FAIL=0
+  if ! _can_sandbox "$inp"; then
+    ((_req_fail)) && _SANDBOX_REQUIRE_FAIL=1
+    return 1
+  fi
   { output=$(_sandbox_exec "$inp" 5 2>"$SANDBOX_DIR/.stderr"); } 2>/dev/null; _sb_rc=$?
   _sb_err=$(<"$SANDBOX_DIR/.stderr") 2>/dev/null || _sb_err=""
   _SANDBOX_OUTPUT="${output}${_sb_err:+$'\n'$_sb_err}"
@@ -4037,6 +4073,22 @@ _selftest() {
   _assert "exact match trimmed"  "$(_sandbox_check_output '  foo  ' 'foo' && echo y || echo n)" "y"
   _assert "exact match miss"     "$(_sandbox_check_output 'bar' 'foo' && echo y || echo n)" "n"
   _assert "no expected fails"    "$(_sandbox_check_output 'x' '' && echo y || echo n)" "n"
+
+  printf '%s\n' "${B}=== _can_sandbox ===${N}"
+  _assert "ssh skip"     "$(_can_sandbox 'ssh user@host' && echo y || echo n)" "n"
+  _assert "curl skip"    "$(_can_sandbox 'curl https://x.com' && echo y || echo n)" "n"
+  _assert "sudo skip"    "$(_can_sandbox 'sudo systemctl start x' && echo y || echo n)" "n"
+  _assert "vim skip"     "$(_can_sandbox 'vim file.txt' && echo y || echo n)" "n"
+  _assert "tmux skip"    "$(_can_sandbox 'tmux new -s s' && echo y || echo n)" "n"
+  _assert "nmap skip"    "$(_can_sandbox 'nmap -sV 1.2.3.4' && echo y || echo n)" "n"
+  _assert "hashcat skip" "$(_can_sandbox 'hashcat -m 0 hash wordlist' && echo y || echo n)" "n"
+  _assert "/usr/bin/ssh skip" "$(_can_sandbox '/usr/bin/ssh host' && echo y || echo n)" "n"
+  _assert "ls runs"      "$(_can_sandbox 'ls -la' && echo y || echo n)" "y"
+  _assert "grep runs"    "$(_can_sandbox 'grep foo file.txt' && echo y || echo n)" "y"
+  _assert "sed runs"     "$(_can_sandbox 'sed -i s/a/b/g f' && echo y || echo n)" "y"
+  _assert "git runs"     "$(_can_sandbox 'git status' && echo y || echo n)" "y"
+  _assert "dd safe runs" "$(_can_sandbox 'dd if=foo of=bar' && echo y || echo n)" "y"
+  _assert "dd /dev/sda skip" "$(_can_sandbox 'dd if=/dev/sda of=img' && echo y || echo n)" "n"
 
   printf '%s\n' "${B}=== scoring ===${N}"
   local _test_data; _test_data=$(mktemp -d)
