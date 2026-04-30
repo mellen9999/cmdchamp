@@ -293,13 +293,45 @@ SANDBOX_MODE=1  # ON by default
 SANDBOX_PRISTINE="$DATA/sandbox.pristine"
 SANDBOX_DIR="$DATA/sandbox"
 
+_BWRAP_FLAG="$DATA/.bwrap_blocked"
+_bwrap_notice() {
+  local _kind=$1 _raw=${2:-}
+  printf '\n%s\n\n' "${Y}${B}Sandbox unavailable — running in text-match mode${N}" >&2
+  case $_kind in
+    missing)
+      printf '%s\n' "${C}bubblewrap${N} (bwrap) isn't installed. cmdchamp will still match" >&2
+      printf '%s\n\n' "answers as text, just without isolated execution." >&2
+      printf '%s\n' "${C}Install:${N}" >&2
+      printf '  %s    %s\n'   "${G}paru -S bubblewrap${N}"        "${D}# Arch / CachyOS${N}" >&2
+      printf '  %s    %s\n\n' "${G}sudo apt install bubblewrap${N}" "${D}# Debian / Ubuntu${N}" >&2
+      ;;
+    blocked)
+      printf '%s\n' "Your kernel disallows unprivileged user namespaces, which the sandbox" >&2
+      printf '%s\n\n' "needs. cmdchamp will still match answers as text." >&2
+      printf '%s\n' "${C}Enable the sandbox:${N}" >&2
+      printf '  %s\n'   "${G}sudo sysctl -w kernel.unprivileged_userns_clone=1${N}" >&2
+      printf '  %s\n\n' "${G}echo kernel.unprivileged_userns_clone=1 | sudo tee /etc/sysctl.d/99-cmdchamp.conf${N}" >&2
+      [[ -n "$_raw" ]] && printf '%s %s\n\n' "${D}bwrap:${N}" "${D}${_raw%%$'\n'*}${N}" >&2
+      ;;
+  esac
+  printf '%s\n\n' "${D}(shown once; pass --no-sandbox to silence)${N}" >&2
+  [[ -t 0 && -t 2 ]] && _pause >&2 2>/dev/null ||:
+}
+
 _check_bwrap() {
-  command -v bwrap &>/dev/null || {
-    printf '%s\n' "${R}Error: bubblewrap (bwrap) not installed${N}" >&2
-    echo "Install: paru -S bubblewrap" >&2
+  if ! command -v bwrap &>/dev/null; then
     SANDBOX_MODE=0
+    [[ -f "$_BWRAP_FLAG" ]] || { _bwrap_notice missing; : > "$_BWRAP_FLAG"; }
     return 1
-  }
+  fi
+  local _err
+  if ! _err=$(bwrap --dev-bind / / --unshare-all true 2>&1); then
+    SANDBOX_MODE=0
+    [[ -f "$_BWRAP_FLAG" ]] || { _bwrap_notice blocked "$_err"; : > "$_BWRAP_FLAG"; }
+    return 1
+  fi
+  [[ -f "$_BWRAP_FLAG" ]] && rm -f "$_BWRAP_FLAG"
+  return 0
 }
 
 # shellcheck disable=SC2034  # locals used via _fpick nameref
@@ -4571,7 +4603,7 @@ set -- "${_args[@]+"${_args[@]}"}"
 
 case "${1:-}" in
   test|selftest) _selftest;;
-  r|reset) rm -f "$DATA"/*.json "$DATA/scores" "$DATA/scores.lock" "$DATA/profile"; rm -rf "$DATA/sandbox" "$DATA/sandbox.pristine" 2>/dev/null; echo "Reset.";;
+  r|reset) rm -f "$DATA"/*.json "$DATA/scores" "$DATA/scores.lock" "$DATA/profile" "$DATA/.bwrap_blocked"; rm -rf "$DATA/sandbox" "$DATA/sandbox.pristine" 2>/dev/null; echo "Reset.";;
   preview)
     # Dev-only: dump all visual content for review
     [[ "${CMDCHAMP_DEV:-}" != "1" ]] && { echo "Unknown command. Try: cmdchamp help"; exit 1; }
@@ -4629,6 +4661,6 @@ Commands:
 EOF
     ;;
   v|version|-v|--version) printf '%s\n' "$VERSION";;
-  "") _tty; _load_profile; _apply_opts; _main_menu;;
+  "") _tty; _load_profile; _apply_opts; ((SANDBOX_MODE)) && _check_bwrap; _main_menu;;
   *) echo "Usage: cmdchamp [--no-sandbox] [reset|test|version|help]"; echo "Run with no arguments for the game menu."; exit 1;;
 esac
