@@ -32,8 +32,13 @@ command -v awk &>/dev/null || { echo "Error: awk not found" >&2; exit 1; }
 
 DATA="${XDG_DATA_HOME:-$HOME/.local/share}/cmdchamp"; mkdir -p "$DATA"; touch "$DATA/scores"
 
-R=$'\e[31m' G=$'\e[32m' Y=$'\e[33m' U=$'\e[1;34m' M=$'\e[35m' C=$'\e[36m' W=$'\e[37m' B=$'\e[1m' N=$'\e[0m' D=$'\e[2m'
-_SY=$'\e[?2026h' _SN=$'\e[?2026l'
+if [[ -n ${NO_COLOR+x} || ${TERM:-} == dumb ]]; then
+  R="" G="" Y="" U="" M="" C="" W="" B="" N="" D="" _SY="" _SN=""
+else
+  R=$'\e[31m' G=$'\e[32m' Y=$'\e[33m' U=$'\e[1;34m' M=$'\e[35m' C=$'\e[36m' W=$'\e[37m' B=$'\e[1m' N=$'\e[0m' D=$'\e[2m'
+  _SY=$'\e[?2026h' _SN=$'\e[?2026l'
+fi
+_COLS() { local c=${COLUMNS:-0}; ((c > 0)) || c=$(tput cols 2>/dev/null) || c=80; ((c > 0)) || c=80; REPLY=$c; }
 
 _trim() { REPLY="${1#"${1%%[![:space:]]*}"}"; REPLY="${REPLY%"${REPLY##*[![:space:]]}"}"; }
 _csv_count() { [[ -z "$1" ]] && { REPLY=0; return; }; IFS=',' read -ra _cca <<< "$1"; REPLY=${#_cca[@]}; }
@@ -54,7 +59,7 @@ _strip_ansi() {
   REPLY="$out"
 }
 
-VERSION="1.1.2"
+VERSION="1.1.3"
 SANDBOX_TIMEOUT=5      # Seconds before sandbox command times out
 BOSS_THRESHOLD=4       # Correct answers needed to beat boss (out of BOSS_TOTAL)
 BOSS_TOTAL=5           # Number of questions in boss round
@@ -63,7 +68,7 @@ MIX_PER_LEVEL=2        # Questions to auto-mix from each previous level
 MAX_LEVEL=30           # Highest level number
 BOSS_TIMER=30          # Seconds per boss question
 _DECAY_T2=2592000     # 30 days: mastered → learning
-_DECAY_T1=1209600     # 14 days: learning → unseen
+_DECAY_T1=2592000     # 30 days: learning → unseen (matches T2 — gentle on returnees)
 _DECAY_INTERVAL=86400  # only run decay once per 24h
 
 # ═══ PROFILE ═══
@@ -79,7 +84,7 @@ _load_profile() {
     while IFS='=' read -r key val; do
       [[ "$key" =~ ^[A-Z_]+$ ]] || continue
       case "$key" in
-        PLAYER_NAME) PLAYER_NAME="$val";;
+        PLAYER_NAME) _strip_ansi "$val"; PLAYER_NAME="${REPLY:0:32}";;
         BOSS_BEATEN) BOSS_BEATEN="$val";;
         BEST_CHALLENGE|BEST_GAUNTLET) BEST_CHALLENGE="$val";;
         DISKS_FOUND|EGGS_FOUND) DISKS_FOUND="$val";;
@@ -107,6 +112,11 @@ _load_profile() {
     ((BOSS_BEATEN > MAX_LEVEL)) && BOSS_BEATEN=$MAX_LEVEL
     [[ "$BEST_CHALLENGE" =~ ^[0-9]+$ ]] || BEST_CHALLENGE=0
     [[ "$LAST_DECAY" =~ ^[0-9]+$ ]] || LAST_DECAY=0
+    [[ "$OPT_VI" =~ ^[01]$ ]] || OPT_VI=1
+    [[ "$OPT_SOUND" =~ ^[01]$ ]] || OPT_SOUND=1
+    [[ "$OPT_ALTS" =~ ^[01]$ ]] || OPT_ALTS=1
+    [[ "$PLACED_THROUGH" =~ ^[0-9]+$ ]] || PLACED_THROUGH=0
+    ((PLACED_THROUGH > MAX_LEVEL)) && PLACED_THROUGH=$MAX_LEVEL
     local _now_l; printf -v _now_l '%(%s)T' -1
     ((LAST_DECAY > _now_l)) && LAST_DECAY=0  # clock-skew guard: future timestamps would block decay forever
   fi
@@ -261,19 +271,19 @@ _boss_splash() {
   local boss="${BOSS_NAMES[$lv]}"
   local flavor="${BOSS_FLAVOR[$lv]}"
   printf '%s\e[2J\e[H\n\n' "$_SY"
-  local s info
-  printf -v s '%*s' $(( (80 - 12) / 2 )) ''
+  local s info cols; _COLS; cols=$REPLY
+  printf -v s '%*s' $(( (cols - 12) / 2 )) ''
   printf '%s%s\n\n' "$s" "${M}${B}═══ BOSS ═══${N}"
-  printf -v s '%*s' $(( (80 - ${#boss}) / 2 )) ''
+  printf -v s '%*s' $(( (cols - ${#boss}) / 2 )) ''
   printf '%s%s\n\n' "$s" "${M}${B}${boss}${N}"
-  printf -v s '%*s' $(( (80 - ${#flavor} - 2) / 2 )) ''
+  printf -v s '%*s' $(( (cols - ${#flavor} - 2) / 2 )) ''
   printf '%s%s\n\n' "$s" "${D}\"${flavor}\"${N}"
   printf -v info 'No manpages. %d/%d to pass.' "$BOSS_THRESHOLD" "$BOSS_TOTAL"
-  printf -v s '%*s' $(( (80 - ${#info}) / 2 )) ''
+  printf -v s '%*s' $(( (cols - ${#info}) / 2 )) ''
   printf '%s%s\n' "$s" "${D}${info}${N}"
   echo
   printf '%s' "$_SN"
-  printf -v s '%*s' $(( (80 - 26) / 2 )) ''
+  printf -v s '%*s' $(( (cols - 26) / 2 )) ''
   read -rsp "${s}Press Enter to continue..."
   echo
 }
@@ -482,14 +492,18 @@ _sandbox_exec() {
   local cmd="$1" timeout_sec="${2:-$SANDBOX_TIMEOUT}"
   ((SANDBOX_MODE)) || return 1
   local -a bwrap_args=(
+    --clearenv
+    --setenv PATH /usr/bin:/bin
+    --setenv HOME /sandbox
+    --setenv USER sandbox
+    --setenv LANG "${LANG:-C.UTF-8}"
+    --setenv TERM "${TERM:-xterm-256color}"
     --ro-bind /usr /usr
     --ro-bind /bin /bin
     --ro-bind /etc/passwd /etc/passwd
     --ro-bind /etc/group /etc/group
     --bind "$SANDBOX_DIR" /sandbox
     --chdir /sandbox
-    --setenv HOME /sandbox
-    --setenv USER sandbox
     --unshare-all
     --die-with-parent
     --new-session
@@ -583,7 +597,9 @@ _sandbox_check_state() {
       lines:*:*)
         local rest="${check#lines:}"; local file="${rest%%:*}" count="${rest#*:}"
         [[ -f "$SANDBOX_DIR/$file" ]] || { ((count == 0)) && continue || return 1; }
-        local actual; actual=$(wc -l < "$SANDBOX_DIR/$file" 2>/dev/null)
+        local _lc_buf actual
+        IFS= read -rd '' _lc_buf < "$SANDBOX_DIR/$file" ||:
+        actual="${_lc_buf//[!$'\n']/}"; actual=${#actual}
         ((actual == count)) || return 1
         ;;
       line1:*:*)
@@ -1741,8 +1757,8 @@ gen_level15() {
   questions+=("Rename session 'work' to 'dev'|tmux rename-session -t work dev|tmux rename -t work dev")
   questions+=("Create new window in session|tmux new-window|tmux neww")
   questions+=("Create named window 'logs'|tmux new-window -n logs|tmux neww -n logs")
-  questions+=("Split pane left/right|tmux split-window -h|tmux splitw -h")
-  questions+=("Split pane top/bottom|tmux split-window -v|tmux splitw -v")
+  questions+=("Split pane left/right|tmux split-window -h|tmux splitw -h|tmux split -h")
+  questions+=("Split pane top/bottom|tmux split-window -v|tmux splitw -v|tmux split -v|tmux split")
   questions+=("List all windows|tmux list-windows|tmux lsw")
   questions+=("Select window 0|tmux select-window -t 0|tmux selectw -t 0|tmux select-window -t :0|tmux selectw -t :0")
   questions+=("Swap current window with window 0|tmux swap-window -t 0|tmux swapw -t 0|tmux swap-window -t :0|tmux swapw -t :0")
@@ -1773,8 +1789,8 @@ gen_level15() {
 gen_level16() {
   local -n questions=${1:-CURRENT_QUESTIONS}; questions=(); eval "local $_QV"; _ctx
   _frnum 1 10; local ctx=$REPLY; _frnum 2 5; local ctx2=$REPLY
-  questions+=("Search for '${term}' recursively|grep -r ${term}|grep -r ${term} .|grep --recursive ${term}|grep --recursive ${term} .|rg ${term}|grep -R ${term}|grep -R ${term} .")
-  questions+=("Case-insensitive search for '${term}'|grep -ri ${term}|grep -ir ${term}|grep -ri ${term} .|grep --recursive --ignore-case ${term}|grep --recursive --ignore-case ${term} .|rg -i ${term}|rg --ignore-case ${term}|grep -Ri ${term}|grep -iR ${term}|grep -Ri ${term} .|grep -iR ${term} .")
+  questions+=("Search for '${term}' recursively|grep -r ${term}|grep -r ${term} .|grep --recursive ${term}|grep --recursive ${term} .|rg ${term}|grep -R ${term}|grep -R ${term} .|egrep -r ${term}|egrep -R ${term}|egrep -r ${term} .")
+  questions+=("Case-insensitive search for '${term}'|grep -ri ${term}|grep -ir ${term}|grep -ri ${term} .|grep --recursive --ignore-case ${term}|grep --recursive --ignore-case ${term} .|rg -i ${term}|rg --ignore-case ${term}|grep -Ri ${term}|grep -iR ${term}|grep -Ri ${term} .|grep -iR ${term} .|egrep -ri ${term}|egrep -ir ${term}|egrep -Ri ${term}|egrep -iR ${term}")
   questions+=("Search '${term}' with line numbers|grep -rn ${term}|grep -nr ${term}|grep -rn ${term} .|grep --recursive --line-number ${term}|grep --recursive --line-number ${term} .|rg -n ${term}|rg --line-number ${term}|grep -Rn ${term}|grep -nR ${term}|grep -Rn ${term} .|grep -nR ${term} .")
   questions+=("Count '${term}' matching lines in ${log}§grep -c ${term} ${log}§grep --count ${term} ${log}§rg -c ${term} ${log}§rg --count ${term} ${log}§grep ${term} ${log} | wc -l")
   questions+=("Search '${term}' with ${ctx} lines context in ${log}|grep -C ${ctx} ${term} ${log}|grep -C${ctx} ${term} ${log}|grep --context ${ctx} ${term} ${log}|grep --context=${ctx} ${term} ${log}|rg -C ${ctx} ${term} ${log}|rg -C${ctx} ${term} ${log}|rg --context ${ctx} ${term} ${log}|rg --context=${ctx} ${term} ${log}")
@@ -2695,7 +2711,7 @@ gen_level30() {
   questions+=("Create a named pipe (FIFO) at ${W}/tmp/pipe${C} and use it|mkfifo /tmp/pipe; cmd1 > /tmp/pipe & cmd2 < /tmp/pipe|mkfifo /tmp/pipe && cmd1 > /tmp/pipe & cmd2 < /tmp/pipe#chal-skip")
   questions+=("Encrypt ${W}${txt}${C} for offline transport|gpg -c --cipher-algo AES256 ${txt}|gpg --symmetric --cipher-algo AES256 ${txt}|gpg -c ${txt}|gpg --symmetric ${txt}|gpg2 -c --cipher-algo AES256 ${txt}|gpg2 --symmetric --cipher-algo AES256 ${txt}|gpg2 -c ${txt}|gpg2 --symmetric ${txt}")
   questions+=("Trace every execve system-wide with bpftrace|bpftrace -e 'tracepoint:syscalls:sys_enter_execve { printf(\"%s %s\\n\", comm, str(args->filename)); }'|sudo bpftrace -e 'tracepoint:syscalls:sys_enter_execve { printf(\"%s %s\\n\", comm, str(args->filename)); }'#boss-skip#chal-skip")
-  questions+=("Stream live kernel messages|dmesg -w|dmesg --follow|dmesg -W|sudo dmesg -w|sudo dmesg --follow|sudo dmesg -W")
+  questions+=("Stream live kernel messages|dmesg -w|dmesg --follow|sudo dmesg -w|sudo dmesg --follow")
   questions+=("Load kernel module ${W}nf_conntrack${C}|modprobe nf_conntrack|sudo modprobe nf_conntrack|modprobe -v nf_conntrack|sudo modprobe -v nf_conntrack")
   questions+=("Enter network namespace of ${W}${proc}${C}|nsenter -t \$(pidof ${proc}) -n|nsenter --target \$(pidof ${proc}) --net|sudo nsenter -t \$(pidof ${proc}) -n|sudo nsenter --target \$(pidof ${proc}) --net|nsenter -t \$(pgrep -f ${proc}) -n|sudo nsenter -t \$(pgrep -f ${proc}) -n#boss-skip")
   questions+=("Create and enter new network namespace 'testns'|ip netns add testns && ip netns exec testns bash|sudo ip netns add testns && sudo ip netns exec testns bash|ip netns add testns; ip netns exec testns bash|sudo ip netns add testns; sudo ip netns exec testns bash")
@@ -2936,7 +2952,7 @@ declare -a CURRENT_QUESTIONS=()
 generate_level() {
   local level=$1
   CURRENT_QUESTIONS=()
-  gen_level${level}  # writes directly via nameref
+  "gen_level${level}"  # writes directly via nameref
   local IFS=$'\n'; _LEVEL_CACHE[$level]="${CURRENT_QUESTIONS[*]}"
 
   # Mix in weak questions from previous levels (unmastered first)
@@ -2944,7 +2960,7 @@ generate_level() {
     local _weak=() _rest=() _cache_tmp=() _line _qp prev
     for ((prev=1; prev<level; prev++)); do
       if [[ -z "${_LEVEL_CACHE[$prev]:-}" ]]; then
-        _cache_tmp=(); gen_level${prev} _cache_tmp
+        _cache_tmp=(); "gen_level${prev}" _cache_tmp
         IFS=$'\n'; _LEVEL_CACHE[$prev]="${_cache_tmp[*]}"
       fi
       while IFS= read -r _line; do
@@ -3258,8 +3274,11 @@ stats() {
     if ((lt > 0)); then
       local pct=$((lm * 100 / lt)) filled=$((lm * BAR_W / lt)); local empty=$((BAR_W - filled))
       local bar_f bar_e; printf -v bar_f '%*s' "$filled" ''; printf -v bar_e '%*s' "$empty" ''
-      local col; ((pct >= 80)) && col=$G || { ((pct >= 40)) && col=$Y || col=$R; }
-      printf "  %s ${U}%2d${N} %-22s ${col}%s${D}%s${N} %3d%% (%d/%d)\n" "$boss_mark" "$lv" "${LEVEL_NAMES[$lv]:-}" "${bar_f// /█}" "${bar_e// /░}" "$pct" "$lm" "$lt"
+      local col sym
+      if ((pct >= 80)); then col=$G; sym="✓"
+      elif ((pct >= 40)); then col=$Y; sym="~"
+      else col=$R; sym="x"; fi
+      printf "  %s ${U}%2d${N} %-22s ${col}%s${D}%s${N} ${col}%s${N} %3d%% (%d/%d)\n" "$boss_mark" "$lv" "${LEVEL_NAMES[$lv]:-}" "${bar_f// /█}" "${bar_e// /░}" "$sym" "$pct" "$lm" "$lt"
     else
       printf "  %s ${U}%2d${N} %-22s ${D}%*s${N}\n" "$boss_mark" "$lv" "${LEVEL_NAMES[$lv]:-}" "$BAR_W" "no data"
     fi
@@ -3301,8 +3320,8 @@ _quit() {
 input="" cursor=0 mode="insert" _rep=""
 declare -a UNDO_STACK=()  # Multi-level undo
 hdr() {
-  local fire=""; ((streak>=FIRE_STREAK)) && fire="  ${Y}${B}*${N}"
-  printf '\e[H%s\e[K\n%s\e[K\n%s\e[K\n' "${W}${B}${PLAYER_NAME:-anon}${N}${fire}" "${U}Level $1${N}: ${LEVEL_NAMES[$1]:-}" "${U}[$2/$3]${N}  ${D}Tab=man${N}"
+  local fire=""; ((streak>=FIRE_STREAK)) && fire="  ${Y}${B}* ON FIRE +2${N}"
+  printf '\e[H%s\e[K\n%s\e[K\n%s\e[K\n' "${W}${B}${PLAYER_NAME:-anon}${N}${fire}" "${U}Level $1${N}: ${LEVEL_NAMES[$1]:-}" "${U}[$2/$3]${N}  ${C}Tab${N}${D}=manpage${N}"
 }
 qdisp() { bar; printf "\n${C}%s${N}\n\n" "$1"; }
 _wrong_feedback() { ((OPT_SOUND)) && printf '\a'; printf '\e[7m'; read -t 0.05 -rsn1 _ ||:; printf '\e[0m'; }
@@ -3608,10 +3627,7 @@ run() {
 
     _qparse "${shuf[$qi]}"; local prompt=$_qprompt ans=$_qans
     SEEN_PROMPTS+=("$prompt")  # Track for boss exclusion
-    _sget "$prompt"; local tier=$REPLY
-    # Fire mode: force tier 2 (pure recall)
-    local _real_tier=$REPLY
-    ((streak>=FIRE_STREAK)) && tier=2
+    _sget "$prompt"; local _real_tier=$REPLY
     _REDRAW_HDR() { printf '%s' "$_SY"; hdr "$lv" "$((qi+1))" "$TOT"; qdisp "$prompt"; printf '\e[J%s' "$_SN"; }
     printf '\e[2J'; _REDRAW_HDR
     while true; do
@@ -3628,6 +3644,10 @@ run() {
           printf '\n%s\n' "${G}${B}+${N}"
         fi
         ((++streak)); _sset "$prompt" "$_new_tier"
+        ((streak == FIRE_STREAK)) && {
+          printf '\n%s%s* * *  ON FIRE — answers worth +2  * * *%s\n' "$Y" "$B" "$N"
+          read -t 0.6 -rsn1 _ ||:
+        }
         _pause; ((++qi)); QI=$qi; save; break
       elif ((_SANDBOX_REQUIRE_FAIL == 2)); then
         printf '\n%s\n' "${Y}right command — use the exact string from the question${N}"
@@ -3638,7 +3658,7 @@ run() {
         explain "$ans"
         streak=0; _sset "$prompt" "$((_real_tier>0?_real_tier-1:0))"; _pause
       fi
-      _sget "$prompt"; tier=$REPLY; printf '\e[2J'; _REDRAW_HDR
+      printf '\e[2J'; _REDRAW_HDR
     done
     ((_QUIT)) && break
   done
@@ -3692,12 +3712,12 @@ run() {
         _sset "$prompt" "$((_boss_tier<2?_boss_tier+1:2))"
         printf '%s\n' "${G}${B}+${N}"
       else
-        _S_STREAK=0; _sset "$prompt" "$((_boss_tier>0?_boss_tier-1:0))"; _wrong_show
+        _S_STREAK=0; _sset "$prompt" "$((_boss_tier>=2?1:_boss_tier))"; _wrong_show
         explain "$ans"
       fi
     else
       ((_QUIT)) && break
-      ((_S_ANSWERED++)); _S_STREAK=0; _sset "$prompt" "$((_boss_tier>0?_boss_tier-1:0))"; _wrong_feedback
+      ((_S_ANSWERED++)); _S_STREAK=0; _sset "$prompt" "$((_boss_tier>=2?1:_boss_tier))"; _wrong_feedback
       printf '\n%s  %s %s\n\n' "${R}${B}TIME'S UP${N}" "${D}expected:${N}" "${Y}${ans}${N}"; explain "$ans"
     fi
     _pause
@@ -3735,12 +3755,13 @@ run() {
   else
     printf '%s\n' "${R}${B}══ ${M}${B}${boss}${R} PREVAILS ══${N}"
     printf '%s\n\n' "${R}${boss_correct}/${boss_total}${N} - need $_boss_thresh to pass"
-    printf '%s\n' "${D}r = retry boss, p = practice level${N}"
+    printf '%s\n' "${B}r${N} ${D}retry boss${N}    ${B}p${N} ${D}practice level${N}    ${B}q${N} ${D}back to menu${N}"
     printf '%s' "$_SN"
     read -rsn1 choice
     case "$choice" in
       p|P) QI=0; save; _sflush_if_dirty; _NEXT_LV=$lv _NEXT_BOSS=0; return 0 ;;
-      *) save; _sflush_if_dirty; _NEXT_LV=$lv _NEXT_BOSS=1; return 0 ;;
+      q|Q|$'\004') save; _sflush_if_dirty; _QUIT=1; return 0 ;;
+      *)   save; _sflush_if_dirty; _NEXT_LV=$lv _NEXT_BOSS=1; return 0 ;;
     esac
   fi
 }
@@ -3761,7 +3782,7 @@ _post_root_check() {
 # ═══ POST-ROOT MODES ═══
 _pick_q() {
   if [[ -z "${_LEVEL_CACHE_N[$1]:-}" ]]; then
-    local _pqtmp=() _i; gen_level$1 _pqtmp
+    local _pqtmp=() _i; "gen_level$1" _pqtmp
     _LEVEL_CACHE_N[$1]=${#_pqtmp[@]}
     for ((_i=0; _i<${#_pqtmp[@]}; _i++)); do _LEVEL_ITEMS[$1:$_i]="${_pqtmp[$_i]}"; done
     local IFS=$'\n'; _LEVEL_CACHE[$1]="${_pqtmp[*]}"
@@ -4001,14 +4022,22 @@ _sc_snap_save() {
   chmod -R u+rwX "$SANDBOX_DIR" 2>/dev/null
   local _t; _t=$(mktemp -d "${_sc_snap}.XXXXXX") || return
   rm -rf "$_t"
-  cp -a "$SANDBOX_DIR" "$_t" && { rm -rf "$_sc_snap"; mv "$_t" "$_sc_snap"; } || rm -rf "$_t"
+  if cp -a "$SANDBOX_DIR" "$_t"; then
+    rm -rf "$_sc_snap"; mv "$_t" "$_sc_snap"
+  else
+    rm -rf "$_t"
+  fi
   _perms_restore "$SANDBOX_DIR" "$_perms_file"
 }
 _sc_snap_restore() {
   chmod -R u+rwX "$SANDBOX_DIR" 2>/dev/null
   local _t; _t=$(mktemp -d "${SANDBOX_DIR}.XXXXXX") || return
   rm -rf "$_t"
-  cp -a "$_sc_snap" "$_t" && { rm -rf "$SANDBOX_DIR"; mv "$_t" "$SANDBOX_DIR"; } || rm -rf "$_t"
+  if cp -a "$_sc_snap" "$_t"; then
+    rm -rf "$SANDBOX_DIR"; mv "$_t" "$SANDBOX_DIR"
+  else
+    rm -rf "$_t"
+  fi
   _perms_restore "$SANDBOX_DIR" "$_perms_file"
 }
 scenario() {
@@ -4149,7 +4178,7 @@ _selftest() {
   _hash "test123"; local h1=$REPLY
   _hash "test123"; _assert "deterministic" "$REPLY" "$h1"
   _assert_match "hex format" "$h1" '^[0-9a-f]{8}$'
-  _hash "test124"; [[ "$REPLY" != "$h1" ]]; _assert "different input" "$?" "0"
+  _hash "test124"; local _diff_rc=1; [[ "$REPLY" != "$h1" ]] && _diff_rc=0; _assert "different input" "$_diff_rc" "0"
   _assert "cached" "${_HASH_CACHE[test123]}" "$h1"
 
   printf '%s\n' "${B}=== norm ===${N}"
@@ -4356,7 +4385,7 @@ _selftest() {
   _hash "decay test q1"
   _sc[$REPLY]="2|1|$((_now - 3456000))"  # 40d ago, tier 2
   _hash "decay test q2"
-  _sc[$REPLY]="1|1|$((_now - 1300000))"  # ~15d ago, tier 1
+  _sc[$REPLY]="1|1|$((_now - 3024000))"  # 35d ago, tier 1 (just past 30d T1)
   _sflush
   LAST_DECAY=0
   _save_profile() { :; }  # no-op
@@ -4409,7 +4438,7 @@ _selftest() {
   printf '%s\n' "${B}=== gen_level smoke ===${N}"
   local _lv _lines _empty_ok=0
   for ((_lv=1; _lv<=30; _lv++)); do
-    local _test_q=(); gen_level${_lv} _test_q; _lines=${#_test_q[@]}
+    local _test_q=(); "gen_level${_lv}" _test_q; _lines=${#_test_q[@]}
     if ((_lines < 5)); then
       ((_fail++)); printf '  FAIL: gen_level%d only produced %d questions\n' "$_lv" "$_lines"
     else
@@ -4437,7 +4466,7 @@ _selftest() {
   local _bf_total=0 _bf_boss_tagged=0
   for _lv in 26 27 28 29 30; do
     local _bf_q=()
-    local _OLD_IFS=$IFS; IFS=$'\n'; _bf_q=(${_LEVEL_CACHE[$_lv]}); IFS=$_OLD_IFS
+    mapfile -t _bf_q <<< "${_LEVEL_CACHE[$_lv]}"
     for q in "${_bf_q[@]}"; do
       [[ -n "$q" ]] || continue
       ((_bf_total++))
@@ -4455,8 +4484,8 @@ _selftest() {
   # to fill a 5-question boss round (BOSS_TOTAL) — 10x headroom = 50 minimum.
   local _poolfail=0 _ph_lv _ph_total _ph_skip
   for _ph_lv in 26 27 28 29 30; do
-    local _ph_q=() _ph_q_str="${_LEVEL_CACHE[$_ph_lv]}"
-    local _OLD_IFS=$IFS; IFS=$'\n'; _ph_q=($_ph_q_str); IFS=$_OLD_IFS
+    local _ph_q=()
+    mapfile -t _ph_q <<< "${_LEVEL_CACHE[$_ph_lv]}"
     _ph_total=0; _ph_skip=0
     for q in "${_ph_q[@]}"; do
       [[ -n "$q" ]] || continue
@@ -4468,8 +4497,8 @@ _selftest() {
   done
   if ((_poolfail)); then ((_fail++)); else ((_pass++)); fi
 
-  printf '\n%s%s%d passed%s, ' "$B" "$G" "$_pass" "$N"
-  ((_fail)) && printf '%s%s%d failed%s\n' "$B" "$R" "$_fail" "$N" || printf '%s0 failed%s\n' "$D" "$N"
+  printf '\n%s%s✓ %d passed%s, ' "$B" "$G" "$_pass" "$N"
+  ((_fail)) && printf '%s%s✗ %d failed%s\n' "$B" "$R" "$_fail" "$N" || printf '%s✓ 0 failed%s\n' "$D" "$N"
   return $((_fail > 0))
 }
 
@@ -4548,7 +4577,7 @@ case "${1:-}" in
     printf '\n%s\n' "${B}═══ LEVELS & BOSSES ═══${N}"
     for ((lv=1; lv<=MAX_LEVEL; lv++)); do
       printf '\n  %s %2d: %-22s  %sBoss: %-16s%s  %s\n' "${U}Level${N}" "$lv" "${LEVEL_NAMES[$lv]:-}" "${M}" "${BOSS_NAMES[$lv]:-}" "${N}" "${D}\"${BOSS_FLAVOR[$lv]:-}\"${N}"
-      local _pq=(); gen_level$lv _pq
+      local _pq=(); "gen_level$lv" _pq
       for ((_si=0; _si<3 && _si<${#_pq[@]}; _si++)); do
         _qparse "${_pq[$_si]}"
         printf '    %s → %s\n' "${D}$_qprompt${N}" "${G}$_qans${N}"
@@ -4588,9 +4617,11 @@ Options:
 Commands:
   r|reset       Reset all progress
   test          Run self-tests
+  v|version     Print version
   h|help        Show this help
 EOF
     ;;
+  v|version|-v|--version) printf '%s\n' "$VERSION";;
   "") _tty; _load_profile; _apply_opts; _main_menu;;
-  *) echo "Usage: cmdchamp [--no-sandbox] [reset|test|help]"; echo "Run with no arguments for the game menu."; exit 1;;
+  *) echo "Usage: cmdchamp [--no-sandbox] [reset|test|version|help]"; echo "Run with no arguments for the game menu."; exit 1;;
 esac
