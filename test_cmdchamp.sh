@@ -21,7 +21,7 @@ CMDCHAMP="$SCRIPT_DIR/cmdchamp"
 SOURCE_FILE="$TDIR/cmdchamp_source.sh"
 {
   sed -e 's/^_tty().*/\_tty() { :; }/' \
-      -e '/^# Handle --no-sandbox/,$d' \
+      -e '/^# ═══ CLI ENTRYPOINT ═══/,$d' \
       "$CMDCHAMP"
   echo 'SANDBOX_MODE=0'
 } > "$SOURCE_FILE"
@@ -705,7 +705,7 @@ else
   SB_SOURCE="$TDIR/cmdchamp_sandbox.sh"
   {
     sed -e 's/^_tty().*/\_tty() { :; }/' \
-        -e '/^# Handle --no-sandbox/,$d' \
+        -e '/^# ═══ CLI ENTRYPOINT ═══/,$d' \
         "$CMDCHAMP"
     echo 'SANDBOX_MODE=1'
   } > "$SB_SOURCE"
