@@ -103,7 +103,7 @@ _load_profile() {
     elif ((_file_ver != _PROFILE_VER)); then
       [[ -f "$DATA/profile" ]] && cp "$DATA/profile" "$DATA/profile.bak"
       [[ -f "$DATA/scores" ]] && cp "$DATA/scores" "$DATA/scores.bak"
-      printf '%s\n' "Profile version mismatch (got $_file_ver, want $_PROFILE_VER) — reset. Backup in profile.bak/scores.bak"
+      printf '%s\n' "Profile version mismatch (got $_file_ver, want $_PROFILE_VER) — reset. Backup in profile.bak/scores.bak" >&2
       PLAYER_NAME="" BOSS_BEATEN=0 BEST_CHALLENGE=0 DISKS_FOUND="" SC_DONE=""
       : > "$DATA/scores"
       rm -f "$DATA"/*.json
@@ -523,7 +523,7 @@ _SANDBOX_DESTRUCTIVE=0
 _is_destructive() {
   local cmd="$1"
   [[ "$cmd" =~ (^|[[:space:];&|])(rm|mv|cp|dd|truncate|shred|unlink|tee|chmod|chown|mkfs|fdisk|parted|install|split|patch|ln|mkdir|touch)[[:space:]] ]] && return 0
-  [[ "$cmd" =~ [^0-9](\>\>|\>[^>])|^(\>\>|\>[^>]) ]] && return 0
+  [[ "$cmd" =~ ([^0-9\<\>]|^|[0-9])(\>\>|\>[^>]) ]] && return 0
   [[ "$cmd" =~ sed[[:space:]]+(-i|--in-place) ]] && return 0
   [[ "$cmd" =~ :[[:space:]]*\> ]] && return 0
   [[ "$cmd" =~ find[[:space:]].*-delete ]] && return 0
