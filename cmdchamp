@@ -3125,7 +3125,7 @@ _sandbox_validate() {
     ((_req_fail)) && _SANDBOX_REQUIRE_FAIL=1
     return 1
   fi
-  { output=$(_sandbox_exec "$inp" 5 2>"$SANDBOX_DIR/.stderr"); } 2>/dev/null; _sb_rc=$?
+  output=$(_sandbox_exec "$inp" 5 2>"$SANDBOX_DIR/.stderr"); _sb_rc=$?
   _sb_err=$(<"$SANDBOX_DIR/.stderr") 2>/dev/null || _sb_err=""
   _SANDBOX_OUTPUT="${output}${_sb_err:+$'\n'$_sb_err}"
   _is_destructive "$inp" && _SANDBOX_DESTRUCTIVE=1
@@ -3237,7 +3237,7 @@ norm() {
 }
 _sflush() {
   local _fd; exec {_fd}>"$DATA/scores.lock"; flock -x "$_fd"
-  { printf '#v1\n'; local _keys=("${!_sc[@]}"); norm _keys; for k in "${_keys[@]}"; do printf '%s|%s\n' "$k" "${_sc[$k]}"; done; } > "$DATA/scores.tmp"
+  { printf '#v1\n'; for k in "${!_sc[@]}"; do printf '%s|%s\n' "$k" "${_sc[$k]}"; done; } > "$DATA/scores.tmp"
   mv "$DATA/scores.tmp" "$DATA/scores"
   exec {_fd}>&-
 }
@@ -3298,7 +3298,8 @@ stats() {
 }
 
 _S_ANSWERED=0 _S_CORRECT=0 _S_STREAK=0 _S_BEST_STREAK=0 _S_MASTERED=0 _S_START=0
-_session_init() { printf -v _S_START '%(%s)T' -1; _S_ANSWERED=0 _S_CORRECT=0 _S_STREAK=0 _S_BEST_STREAK=0 _S_MASTERED=0; _disk_check nightowl; }
+declare -A _S_PROMOTED=()  # prompt-hash → 1, prevents double-promote within a session
+_session_init() { printf -v _S_START '%(%s)T' -1; _S_ANSWERED=0 _S_CORRECT=0 _S_STREAK=0 _S_BEST_STREAK=0 _S_MASTERED=0; _S_PROMOTED=(); _disk_check nightowl; }
 _QUIT=0
 _quit() {
   _sflush_if_dirty
@@ -3636,7 +3637,13 @@ run() {
       [[ -z "$input" ]] && { draw; continue; }
       if check "$input" "$_qanswers"; then
         _sc; _show_alts "$input" "$_qanswers" "$_qdelim"; _disk_check streak
-        local _new_tier=$((_real_tier<2?_real_tier+1:2))
+        _hash "$prompt"; local _ph=$REPLY _new_tier=$_real_tier
+        # Per-session promote cap: one tier step per question per session — prevents
+        # small-pool levels (L2-L4 = 10 questions) from going unseen→mastered in one sitting.
+        if ((_real_tier < 2)) && [[ -z "${_S_PROMOTED[$_ph]:-}" ]]; then
+          _new_tier=$((_real_tier + 1))
+          _S_PROMOTED[$_ph]=1
+        fi
         ((_real_tier < 2 && _new_tier >= 2)) && ((_S_MASTERED++))
         if ((streak>=FIRE_STREAK)); then
           printf '\n%s\n' "${Y}${B}* ON FIRE! +2${N}"
