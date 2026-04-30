@@ -145,10 +145,10 @@ r=$(_run "_qparse 'Do it|cmd|#output:~foo #state:exists:file'; echo \"o=\$_qoutp
 # _qoutput should have ~foo (before #state:), _qstate should have exists:file
 [[ "$r" == *"o=~foo "* && "$r" == *"s=exists:file"* ]] && ok "_qparse combined output+state" || fail "_qparse combined" "$r"
 
-# #state: before #output: - greedy extraction means state grabs everything after #state:
+# #state: before #output: - parser stops state at next #tag boundary
 # This is by-design: always put #output: before #state: in question definitions
 r=$(_run "_qparse 'Do it|cmd|#state:exists:x#output:hello'; echo \"s=\$_qstate\"")
-[[ "$r" == *"s=exists:x#output:hello"* ]] && ok "_qparse state-before-output grabs rest (by design)" || fail "_qparse reversed" "$r"
+[[ "$r" == *"s=exists:x"* ]] && ok "_qparse stops state at next #tag boundary" || fail "_qparse reversed" "$r"
 
 # ─────────────────────────────────────────────────────────────────────────────
 section "Sandbox Output Check (_sandbox_check_output)"
@@ -418,8 +418,8 @@ lc=$(wc -l < "$GEN_DIR/data.csv")
 section "Question Generation (all 30 levels)"
 
 for lv in {1..30}; do
-  output=$(_run "gen_level${lv}")
-  qcount=$(echo "$output" | grep -c '.')
+  output=$(_run "local -a Q=(); gen_level${lv} Q; printf '%s\n' \"\${Q[@]}\"")
+  qcount=$(printf '%s\n' "$output" | grep -c '.')
   if ((qcount < 3)); then
     fail "gen_level${lv}" "only $qcount questions (need >=3)"
   fi
@@ -434,7 +434,7 @@ for lv in {1..30}; do
     if [[ "$line" != *"|"* && "$line" != *"§"* ]]; then
       bad_format+=("L${lv}: ${line:0:60}")
     fi
-  done < <(_run "gen_level${lv}")
+  done < <(_run "local -a Q=(); gen_level${lv} Q; printf '%s\n' \"\${Q[@]}\"")
 done
 if ((${#bad_format[@]} == 0)); then
   ok "all questions have | or § delimiter"
@@ -451,15 +451,17 @@ total_q=0 empty_prompts=0 parse_fails=0 dupe_count=0
 for lv in {1..30}; do
   r=$(_run "
     declare -A seen
+    local -a Q=()
     dupes=0; empty=0; pfails=0; count=0
-    while IFS= read -r line; do
+    gen_level${lv} Q
+    for line in \"\${Q[@]}\"; do
       [[ -z \"\$line\" ]] && continue
       ((++count))
       _qparse \"\$line\" 2>/dev/null || { ((++pfails)); continue; }
       [[ -z \"\$_qprompt\" ]] && ((++empty))
       [[ -n \"\${seen[\$_qprompt]:-}\" ]] && ((++dupes))
       seen[\$_qprompt]=1
-    done < <(gen_level${lv})
+    done
     echo \"\$count \$empty \$pfails \$dupes\"
   ")
   read -r cnt emp pf dp <<< "$r"
@@ -473,18 +475,20 @@ ok "total questions: $total_q"
 # ─────────────────────────────────────────────────────────────────────────────
 section "Profile System"
 
-# New profile
+# New profile — stub interactive parts of _first_run (intro/tutorial/place) so it
+# only exercises the persistence path
 r=$(_run "
-  _first_run 2>/dev/null <<< 'TestPlayer'
+  _intro() { :; }; _tutorial() { :; }; place() { :; }
+  _first_run <<< 'TestPlayer'
   _load_profile
-  echo \"name=\$PLAYER_NAME ver=\$_PROFILE_VER beaten=\$BOSS_BEATEN gauntlet=\$BEST_GAUNTLET timed=\$BEST_TIMED\"
+  echo \"name=\$PLAYER_NAME ver=\$_PROFILE_VER beaten=\$BOSS_BEATEN best_chal=\$BEST_CHALLENGE\"
 ")
 echo "$r" | grep -q 'name=TestPlayer' && ok "profile stores name" || fail "profile name" "$r"
 echo "$r" | grep -q 'ver=5' && ok "profile ver=5" || fail "profile ver" "$r"
 echo "$r" | grep -q 'beaten=0' && ok "new BOSS_BEATEN=0" || fail "profile beaten" "$r"
 
-# v0->v1 migration: BOSS_BEATEN=-1 (old format) -> 0
-# Must set DATA *after* source since source overwrites it
+# Profile version mismatch resets state. v0/v1 are pre-PROFILE_VER schemas;
+# loading them resets BOSS_BEATEN to 0 (no in-place migration past v3→v4).
 r=$(bash -c "
   source '$SOURCE_FILE' 2>/dev/null
   DATA='$TDIR/data_mig1'; mkdir -p \"\$DATA\"; touch \"\$DATA/scores\"
@@ -492,33 +496,33 @@ r=$(bash -c "
   _load_profile
   echo \"\$BOSS_BEATEN\"
 " 2>/dev/null)
-[[ "$r" == "0" ]] && ok "v0->v1: -1 -> 0" || fail "v0 migrate -1" "got '$r'"
+[[ "$r" == "0" ]] && ok "v0 mismatch resets BOSS_BEATEN -> 0" || fail "v0 migrate -1" "got '$r'"
 
-# v0->v1 migration: BOSS_BEATEN=0 (0-indexed, beat level 1) -> 1
 r=$(bash -c "
   source '$SOURCE_FILE' 2>/dev/null
   DATA='$TDIR/data_mig2'; mkdir -p \"\$DATA\"; touch \"\$DATA/scores\"
-  printf 'PLAYER_NAME=migtest\nBOSS_BEATEN=0\nPROFILE_VER=0\n' > \"\$DATA/profile\"
-  _load_profile
-  echo \"\$BOSS_BEATEN\"
-" 2>/dev/null)
-[[ "$r" == "1" ]] && ok "v0->v1: 0 -> 1" || fail "v0 migrate 0" "got '$r'"
-
-# v0->v1 migration: BOSS_BEATEN=5 (0-indexed) -> 6
-r=$(bash -c "
-  source '$SOURCE_FILE' 2>/dev/null
-  DATA='$TDIR/data_mig3'; mkdir -p \"\$DATA\"; touch \"\$DATA/scores\"
   printf 'PLAYER_NAME=migtest\nBOSS_BEATEN=5\nPROFILE_VER=0\n' > \"\$DATA/profile\"
   _load_profile
   echo \"\$BOSS_BEATEN\"
 " 2>/dev/null)
-[[ "$r" == "6" ]] && ok "v0->v1: 5 -> 6" || fail "v0 migrate 5" "got '$r'"
+[[ "$r" == "0" ]] && ok "v0 mismatch resets BOSS_BEATEN=5 -> 0" || fail "v0 migrate 5" "got '$r'"
 
-# BOSS_BEATEN clamping to MAX_LEVEL
+# In-place migration: PROFILE_VER=3 → current (no reset, fields preserved)
+r=$(bash -c "
+  source '$SOURCE_FILE' 2>/dev/null
+  DATA='$TDIR/data_mig_inplace'; mkdir -p \"\$DATA\"; touch \"\$DATA/scores\"
+  printf 'PLAYER_NAME=v3test\nBOSS_BEATEN=12\nPROFILE_VER=3\n' > \"\$DATA/profile\"
+  _load_profile
+  echo \"name=\$PLAYER_NAME bb=\$BOSS_BEATEN\"
+" 2>/dev/null)
+echo "$r" | grep -q 'name=v3test' && ok "v3→current preserves PLAYER_NAME" || fail "v3 migrate name" "$r"
+echo "$r" | grep -q 'bb=12' && ok "v3→current preserves BOSS_BEATEN" || fail "v3 migrate bb" "$r"
+
+# BOSS_BEATEN clamping to MAX_LEVEL on a current-version profile
 r=$(bash -c "
   source '$SOURCE_FILE' 2>/dev/null
   DATA='$TDIR/data_mig4'; mkdir -p \"\$DATA\"; touch \"\$DATA/scores\"
-  printf 'PLAYER_NAME=clamp\nBOSS_BEATEN=999\nPROFILE_VER=1\n' > \"\$DATA/profile\"
+  printf 'PLAYER_NAME=clamp\nBOSS_BEATEN=999\nPROFILE_VER=5\n' > \"\$DATA/profile\"
   _load_profile
   echo \"\$BOSS_BEATEN\"
 " 2>/dev/null)
@@ -675,9 +679,9 @@ r=$(_run "echo \"\$MAX_LEVEL \$BOSS_TOTAL \$BOSS_THRESHOLD \$FIRE_STREAK\"")
 # ─────────────────────────────────────────────────────────────────────────────
 section "Level 5/6 Split"
 
-l5=$(_run "gen_level5")
+l5=$(_run "local -a Q=(); gen_level5 Q; printf '%s\n' \"\${Q[@]}\"")
 echo "$l5" | grep -q '<<<' && fail "L5" "contains <<<" || ok "L5 no <<<"
-l6=$(_run "gen_level6")
+l6=$(_run "local -a Q=(); gen_level6 Q; printf '%s\n' \"\${Q[@]}\"")
 echo "$l6" | grep -q '<<<' && ok "L6 has <<<" || fail "L6" "no <<<"
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1109,16 +1113,17 @@ r=$(_run '
 ')
 echo "$r" | grep -q 'lives=1' && ok "gauntlet lives decrement" || fail "gauntlet lives" "$r"
 
-# Best gauntlet tracking
+# Best gauntlet (challenge) tracking — BEST_GAUNTLET is the legacy alias for
+# BEST_CHALLENGE; _load_profile accepts both for backward compat
 r=$(bash -c "
   source '$SOURCE_FILE' 2>/dev/null
   DATA='$TDIR/data_gauntlet'; mkdir -p \"\$DATA\"; touch \"\$DATA/scores\"
   printf 'PLAYER_NAME=test\nBOSS_BEATEN=30\nBEST_GAUNTLET=10\nBEST_TIMED=0\nEGGS_FOUND=\nSC_DONE=\nPROFILE_VER=3\n' > \"\$DATA/profile\"
   _load_profile
   score=15
-  ((score > BEST_GAUNTLET)) && { BEST_GAUNTLET=\$score; _save_profile; }
+  ((score > BEST_CHALLENGE)) && { BEST_CHALLENGE=\$score; _save_profile; }
   _load_profile
-  echo \"\$BEST_GAUNTLET\"
+  echo \"\$BEST_CHALLENGE\"
 " 2>/dev/null)
 [[ "$r" == "15" ]] && ok "gauntlet best score persists" || fail "gauntlet best" "$r"
 
@@ -1137,18 +1142,9 @@ done
 r=$(_run 'case 90 in 60|120|300) echo valid;; *) echo invalid;; esac')
 [[ "$r" == "invalid" ]] && ok "timed rejects 90s" || fail "timed reject" "$r"
 
-# Best timed tracking
-r=$(bash -c "
-  source '$SOURCE_FILE' 2>/dev/null
-  DATA='$TDIR/data_timed'; mkdir -p \"\$DATA\"; touch \"\$DATA/scores\"
-  printf 'PLAYER_NAME=test\nBOSS_BEATEN=30\nBEST_GAUNTLET=0\nBEST_TIMED=0:8:0\nEGGS_FOUND=\nSC_DONE=\nPROFILE_VER=4\n' > \"\$DATA/profile\"
-  _load_profile
-  _timed_set 120 12; _save_profile
-  _load_profile
-  _timed_best 120
-  echo \"\$REPLY\"
-" 2>/dev/null)
-[[ "$r" == "12" ]] && ok "timed best score persists" || fail "timed best" "$r"
+# Timed mode was merged into challenge mode (see commit 57685d8). _timed_set /
+# _timed_best no longer exist; coverage moved to "Challenge Mechanics" section.
+skip "timed best score persists (timed mode merged into challenge)"
 
 # ─────────────────────────────────────────────────────────────────────────────
 section "Review Mode Logic"
@@ -1194,42 +1190,43 @@ r=$(_rune '
 echo "$r" | grep -q 'strong pct=80' && ok "80% mastery = strong" || fail "review strong" "$r"
 
 # ─────────────────────────────────────────────────────────────────────────────
-section "Easter Eggs"
+section "Floppy Disks (easter eggs)"
 
-# Override _egg_found to skip sleep and ANSI output
-_egg_setup='EGGS_FOUND=""; _save_profile() { :; }; _egg_found() { local name=$1; [[ ",$EGGS_FOUND," == *",$name,"* ]] && return; [[ -n "$EGGS_FOUND" ]] && EGGS_FOUND="$EGGS_FOUND,$name" || EGGS_FOUND="$name"; }'
+# Override _disk_found to skip sleep and ANSI output. DISKS_FOUND is the canonical
+# field; EGGS_FOUND is a legacy alias still accepted by _load_profile for migration.
+_disk_setup='DISKS_FOUND=""; _save_profile() { :; }; _disk_found() { local name=$1; [[ ",$DISKS_FOUND," == *",$name,"* ]] && return; [[ -n "$DISKS_FOUND" ]] && DISKS_FOUND="$DISKS_FOUND,$name" || DISKS_FOUND="$name"; }'
 
-# sudorm egg
-r=$(_rune "$_egg_setup; _egg_check wrong \"sudo rm -rf /\"; echo \"\$EGGS_FOUND\"")
-echo "$r" | grep -q 'sudorm' && ok "egg: sudorm" || fail "egg sudorm" "$r"
+# sudorm disk
+r=$(_rune "$_disk_setup; _disk_check wrong \"sudo rm -rf /\"; echo \"\$DISKS_FOUND\"")
+echo "$r" | grep -q 'sudorm' && ok "disk: sudorm" || fail "disk sudorm" "$r"
 
-# forkbomb egg
-r=$(_rune "$_egg_setup; _egg_check wrong ':(){ :|:& };:'; echo \"\$EGGS_FOUND\"")
-echo "$r" | grep -q 'forkbomb' && ok "egg: forkbomb" || fail "egg forkbomb" "$r"
+# forkbomb disk
+r=$(_rune "$_disk_setup; _disk_check wrong ':(){ :|:& };:'; echo \"\$DISKS_FOUND\"")
+echo "$r" | grep -q 'forkbomb' && ok "disk: forkbomb" || fail "disk forkbomb" "$r"
 
-# rtfm egg
-r=$(_rune "$_egg_setup; _egg_check wrong man; echo \"\$EGGS_FOUND\"")
-echo "$r" | grep -q 'rtfm' && ok "egg: rtfm" || fail "egg rtfm" "$r"
+# rtfm disk
+r=$(_rune "$_disk_setup; _disk_check wrong man; echo \"\$DISKS_FOUND\"")
+echo "$r" | grep -q 'rtfm' && ok "disk: rtfm" || fail "disk rtfm" "$r"
 
-# streak10 egg
-r=$(_rune "$_egg_setup; _S_STREAK=10; _egg_check streak; echo \"\$EGGS_FOUND\"")
-echo "$r" | grep -q 'streak10' && ok "egg: streak10" || fail "egg streak10" "$r"
+# streak10 disk
+r=$(_rune "$_disk_setup; _S_STREAK=10; _disk_check streak; echo \"\$DISKS_FOUND\"")
+echo "$r" | grep -q 'streak10' && ok "disk: streak10" || fail "disk streak10" "$r"
 
 # streak10 doesn't fire at 9
-r=$(_rune "$_egg_setup; _S_STREAK=9; _egg_check streak; echo \"eggs=\${EGGS_FOUND:-none}\"")
-echo "$r" | grep -q 'eggs=none' && ok "egg: streak9 no trigger" || fail "egg streak9" "$r"
+r=$(_rune "$_disk_setup; _S_STREAK=9; _disk_check streak; echo \"disks=\${DISKS_FOUND:-none}\"")
+echo "$r" | grep -q 'disks=none' && ok "disk: streak9 no trigger" || fail "disk streak9" "$r"
 
-# flawless egg
-r=$(_rune "$_egg_setup; _egg_check flawless; echo \"\$EGGS_FOUND\"")
-echo "$r" | grep -q 'flawless' && ok "egg: flawless" || fail "egg flawless" "$r"
+# flawless disk
+r=$(_rune "$_disk_setup; _disk_check flawless; echo \"\$DISKS_FOUND\"")
+echo "$r" | grep -q 'flawless' && ok "disk: flawless" || fail "disk flawless" "$r"
 
-# _egg_found deduplication
-r=$(_rune "$_egg_setup; _egg_found sudorm; _egg_found sudorm; echo \"\$EGGS_FOUND\"")
-[[ "$(echo "$r" | tail -1)" == "sudorm" ]] && ok "egg: no duplicates" || fail "egg dedup" "$r"
+# _disk_found deduplication
+r=$(_rune "$_disk_setup; _disk_found sudorm; _disk_found sudorm; echo \"\$DISKS_FOUND\"")
+[[ "$(echo "$r" | tail -1)" == "sudorm" ]] && ok "disk: no duplicates" || fail "disk dedup" "$r"
 
-# Multiple eggs accumulate
-r=$(_rune "$_egg_setup; _egg_found sudorm; _egg_found rtfm; echo \"\$EGGS_FOUND\"")
-echo "$r" | grep -q 'sudorm,rtfm' && ok "egg: accumulate" || fail "egg accumulate" "$r"
+# Multiple disks accumulate
+r=$(_rune "$_disk_setup; _disk_found sudorm; _disk_found rtfm; echo \"\$DISKS_FOUND\"")
+echo "$r" | grep -q 'sudorm,rtfm' && ok "disk: accumulate" || fail "disk accumulate" "$r"
 
 # ─────────────────────────────────────────────────────────────────────────────
 section "Session Persistence"
@@ -1255,19 +1252,18 @@ echo "$r" | grep -q 'tier=2' && ok "scores persist across reload" || fail "score
 r=$(bash -c "
   source '$SOURCE_FILE' 2>/dev/null
   DATA='$TDIR/data_prof_rt'; mkdir -p \"\$DATA\"; touch \"\$DATA/scores\"
-  PLAYER_NAME='testguy' BOSS_BEATEN=15 BEST_GAUNTLET=42 BEST_CHALLENGE=7 BEST_TIMED='0:99:0' EGGS_FOUND='sudorm,rtfm' SC_DONE='1,3' PLACED_THROUGH=12 _PROFILE_VER=5
+  PLAYER_NAME='testguy' BOSS_BEATEN=15 BEST_CHALLENGE=7 DISKS_FOUND='sudorm,rtfm' SC_DONE='1,3' PLACED_THROUGH=12
   _save_profile
-  # Reset
-  PLAYER_NAME='' BOSS_BEATEN=0 BEST_GAUNTLET=0 BEST_CHALLENGE=0 BEST_TIMED=0 EGGS_FOUND='' SC_DONE='' PLACED_THROUGH=0 _PROFILE_VER=0
+  # Reset shell vars to defaults (but not _PROFILE_VER — that's the source-of-truth
+  # constant; resetting it would trigger a spurious version-mismatch reset on load)
+  PLAYER_NAME='' BOSS_BEATEN=0 BEST_CHALLENGE=0 DISKS_FOUND='' SC_DONE='' PLACED_THROUGH=0
   _load_profile
-  echo \"name=\$PLAYER_NAME bb=\$BOSS_BEATEN bg=\$BEST_GAUNTLET bc=\$BEST_CHALLENGE bt=\$BEST_TIMED eggs=\$EGGS_FOUND sc=\$SC_DONE pt=\$PLACED_THROUGH ver=\$_PROFILE_VER\"
+  echo \"name=\$PLAYER_NAME bb=\$BOSS_BEATEN bc=\$BEST_CHALLENGE disks=\$DISKS_FOUND sc=\$SC_DONE pt=\$PLACED_THROUGH ver=\$_PROFILE_VER\"
 " 2>/dev/null)
 echo "$r" | grep -q 'name=testguy' && ok "profile name round-trip" || fail "prof name" "$r"
 echo "$r" | grep -q 'bb=15' && ok "profile BOSS_BEATEN round-trip" || fail "prof bb" "$r"
-echo "$r" | grep -q 'bg=42' && ok "profile BEST_GAUNTLET round-trip" || fail "prof bg" "$r"
 echo "$r" | grep -q 'bc=7' && ok "profile BEST_CHALLENGE round-trip" || fail "prof bc" "$r"
-echo "$r" | grep -q 'bt=0:99:0' && ok "profile BEST_TIMED round-trip" || fail "prof bt" "$r"
-echo "$r" | grep -q 'eggs=sudorm,rtfm' && ok "profile EGGS_FOUND round-trip" || fail "prof eggs" "$r"
+echo "$r" | grep -q 'disks=sudorm,rtfm' && ok "profile DISKS_FOUND round-trip" || fail "prof disks" "$r"
 echo "$r" | grep -q 'sc=1,3' && ok "profile SC_DONE round-trip" || fail "prof sc" "$r"
 echo "$r" | grep -q 'pt=12' && ok "profile PLACED_THROUGH round-trip" || fail "prof pt" "$r"
 echo "$r" | grep -q 'ver=5' && ok "profile ver=5 stable" || fail "prof ver" "$r"
