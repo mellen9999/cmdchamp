@@ -972,6 +972,59 @@ r=$(_run "BOSS_BEATEN=5; lv=7; if ((lv > 1 && lv > BOSS_BEATEN + 1)); then echo 
 [[ "$r" == "LOCKED" ]] && ok "L7 locked after BB=5" || fail "boss lock L7" "$r"
 
 # ─────────────────────────────────────────────────────────────────────────────
+section "Challenge Mechanics"
+
+# BEST_CHALLENGE persists in profile round-trip
+r=$(bash -c "
+  source '$SOURCE_FILE' 2>/dev/null
+  DATA='$TDIR/data_chal_rt'; mkdir -p \"\$DATA\"; touch \"\$DATA/scores\"
+  PLAYER_NAME=chal BOSS_BEATEN=30 BEST_CHALLENGE=17 _PROFILE_VER=5
+  _save_profile
+  BEST_CHALLENGE=0
+  _load_profile
+  echo \"bc=\$BEST_CHALLENGE\"
+" 2>/dev/null)
+[[ "$r" == "bc=17" ]] && ok "BEST_CHALLENGE round-trip" || fail "challenge persist" "$r"
+
+# BEST_CHALLENGE only increments on improvement
+r=$(_run "BEST_CHALLENGE=10; new=15; ((new > BEST_CHALLENGE)) && BEST_CHALLENGE=\$new; echo \$BEST_CHALLENGE")
+[[ "$r" == "15" ]] && ok "BEST_CHALLENGE up on improve" || fail "challenge up" "$r"
+r=$(_run "BEST_CHALLENGE=20; new=12; ((new > BEST_CHALLENGE)) && BEST_CHALLENGE=\$new; echo \$BEST_CHALLENGE")
+[[ "$r" == "20" ]] && ok "BEST_CHALLENGE stable on regress" || fail "challenge stable" "$r"
+
+# Challenge gate requires BOSS_BEATEN == MAX_LEVEL
+r=$(_run "BOSS_BEATEN=29; MAX_LEVEL=30; ((BOSS_BEATEN >= MAX_LEVEL)) && echo OPEN || echo LOCKED")
+[[ "$r" == "LOCKED" ]] && ok "challenge gated until L30" || fail "challenge gate" "$r"
+r=$(_run "BOSS_BEATEN=30; MAX_LEVEL=30; ((BOSS_BEATEN >= MAX_LEVEL)) && echo OPEN || echo LOCKED")
+[[ "$r" == "OPEN" ]] && ok "challenge unlocks at L30" || fail "challenge unlock" "$r"
+
+# Numeric validation rejects garbage values on load
+r=$(bash -c "
+  source '$SOURCE_FILE' 2>/dev/null
+  DATA='$TDIR/data_chal_bad'; mkdir -p \"\$DATA\"; touch \"\$DATA/scores\"
+  printf 'PLAYER_NAME=x\nBOSS_BEATEN=5\nBEST_CHALLENGE=oops\nOPT_VI=999\nOPT_SOUND=abc\nOPT_ALTS=-1\nPLACED_THROUGH=notanumber\nPROFILE_VER=5\n' > \"\$DATA/profile\"
+  _load_profile
+  echo \"bc=\$BEST_CHALLENGE vi=\$OPT_VI snd=\$OPT_SOUND alt=\$OPT_ALTS pt=\$PLACED_THROUGH\"
+" 2>/dev/null)
+echo "$r" | grep -q 'bc=0' && ok "BEST_CHALLENGE garbage→0" || fail "bc validate" "$r"
+echo "$r" | grep -q 'vi=1' && ok "OPT_VI garbage→1" || fail "vi validate" "$r"
+echo "$r" | grep -q 'snd=1' && ok "OPT_SOUND garbage→1" || fail "snd validate" "$r"
+echo "$r" | grep -q 'alt=1' && ok "OPT_ALTS garbage→1" || fail "alt validate" "$r"
+echo "$r" | grep -q 'pt=0' && ok "PLACED_THROUGH garbage→0" || fail "pt validate" "$r"
+
+# PLACED_THROUGH unlocks levels through placement
+for pt in 0 5 15 30; do
+  for lv in 1 6 16 30; do
+    r=$(_run "PLACED_THROUGH=$pt; BOSS_BEATEN=0; if (($lv > 1 && $lv > BOSS_BEATEN + 1 && $lv > PLACED_THROUGH)); then echo LOCKED; else echo OPEN; fi")
+    if ((lv > 1 && lv > pt && lv > 1)); then
+      [[ "$r" == "LOCKED" ]] && ok "L$lv locked@PT=$pt" || fail "place lock L$lv@$pt" "$r"
+    else
+      [[ "$r" == "OPEN" ]] && ok "L$lv open@PT=$pt" || fail "place unlock L$lv@$pt" "$r"
+    fi
+  done
+done
+
+# ─────────────────────────────────────────────────────────────────────────────
 section "Tier/Mastery System"
 
 # Default tier is 1 (learning)
@@ -1202,19 +1255,21 @@ echo "$r" | grep -q 'tier=2' && ok "scores persist across reload" || fail "score
 r=$(bash -c "
   source '$SOURCE_FILE' 2>/dev/null
   DATA='$TDIR/data_prof_rt'; mkdir -p \"\$DATA\"; touch \"\$DATA/scores\"
-  PLAYER_NAME='testguy' BOSS_BEATEN=15 BEST_GAUNTLET=42 BEST_TIMED='0:99:0' EGGS_FOUND='sudorm,rtfm' SC_DONE='1,3' _PROFILE_VER=4
+  PLAYER_NAME='testguy' BOSS_BEATEN=15 BEST_GAUNTLET=42 BEST_CHALLENGE=7 BEST_TIMED='0:99:0' EGGS_FOUND='sudorm,rtfm' SC_DONE='1,3' PLACED_THROUGH=12 _PROFILE_VER=5
   _save_profile
   # Reset
-  PLAYER_NAME='' BOSS_BEATEN=0 BEST_GAUNTLET=0 BEST_TIMED=0 EGGS_FOUND='' SC_DONE='' _PROFILE_VER=0
+  PLAYER_NAME='' BOSS_BEATEN=0 BEST_GAUNTLET=0 BEST_CHALLENGE=0 BEST_TIMED=0 EGGS_FOUND='' SC_DONE='' PLACED_THROUGH=0 _PROFILE_VER=0
   _load_profile
-  echo \"name=\$PLAYER_NAME bb=\$BOSS_BEATEN bg=\$BEST_GAUNTLET bt=\$BEST_TIMED eggs=\$EGGS_FOUND sc=\$SC_DONE ver=\$_PROFILE_VER\"
+  echo \"name=\$PLAYER_NAME bb=\$BOSS_BEATEN bg=\$BEST_GAUNTLET bc=\$BEST_CHALLENGE bt=\$BEST_TIMED eggs=\$EGGS_FOUND sc=\$SC_DONE pt=\$PLACED_THROUGH ver=\$_PROFILE_VER\"
 " 2>/dev/null)
 echo "$r" | grep -q 'name=testguy' && ok "profile name round-trip" || fail "prof name" "$r"
 echo "$r" | grep -q 'bb=15' && ok "profile BOSS_BEATEN round-trip" || fail "prof bb" "$r"
 echo "$r" | grep -q 'bg=42' && ok "profile BEST_GAUNTLET round-trip" || fail "prof bg" "$r"
+echo "$r" | grep -q 'bc=7' && ok "profile BEST_CHALLENGE round-trip" || fail "prof bc" "$r"
 echo "$r" | grep -q 'bt=0:99:0' && ok "profile BEST_TIMED round-trip" || fail "prof bt" "$r"
 echo "$r" | grep -q 'eggs=sudorm,rtfm' && ok "profile EGGS_FOUND round-trip" || fail "prof eggs" "$r"
 echo "$r" | grep -q 'sc=1,3' && ok "profile SC_DONE round-trip" || fail "prof sc" "$r"
+echo "$r" | grep -q 'pt=12' && ok "profile PLACED_THROUGH round-trip" || fail "prof pt" "$r"
 echo "$r" | grep -q 'ver=5' && ok "profile ver=5 stable" || fail "prof ver" "$r"
 
 # Session save/load with scores
