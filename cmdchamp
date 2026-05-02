@@ -3122,7 +3122,7 @@ _fnorm() {
   ((_saw_dashdash)) && { REPLY+=" --"; for p in "${postdd[@]}"; do REPLY+=" $p"; done; }
 }
 
-_SANDBOX_OUTPUT="" _SANDBOX_REQUIRE_FAIL=0
+_SANDBOX_REQUIRE_FAIL=0
 # Commands that can't meaningfully run in the bwrap sandbox (no network, no root,
 # binary may be missing, or interactive). For these, skip exec — text_match still
 # decides correctness, but we don't pollute output with misleading errors.
@@ -3158,8 +3158,7 @@ _sandbox_validate() {
     return 1
   fi
   output=$(_sandbox_exec "$inp" 5 2>"$SANDBOX_DIR/.stderr"); _sb_rc=$?
-  _sb_err=$(<"$SANDBOX_DIR/.stderr") 2>/dev/null || _sb_err=""
-  _SANDBOX_OUTPUT="${output}${_sb_err:+$'\n'$_sb_err}"
+  local _sb_err; _sb_err=$(<"$SANDBOX_DIR/.stderr") 2>/dev/null || _sb_err=""
   _is_destructive "$inp" && _SANDBOX_DESTRUCTIVE=1
   # Reject command-not-found (127) and cannot-execute (126)
   ((_sb_rc == 127 || _sb_rc == 126)) && { ((_req_fail)) && _SANDBOX_REQUIRE_FAIL=1; return 1; }
@@ -3197,7 +3196,7 @@ _text_match() {
 
 check() {
   _trim "$1"; local inp=$REPLY; _fnorm "$inp"; local ninp=$REPLY
-  _SANDBOX_OUTPUT="" _SANDBOX_REQUIRE_FAIL=0
+  _SANDBOX_REQUIRE_FAIL=0
   ((SANDBOX_MODE && !_qtext)) && _sandbox_validate "$inp" && return 0
   _SANDBOX_REQUIRE_FAIL=0
   _text_match "$inp" "$ninp" "$2" "$_qdelim"
@@ -3360,9 +3359,8 @@ qdisp() { bar; printf "\n${C}%s${N}\n\n" "$1"; }
 _wrong_feedback() { ((OPT_SOUND)) && printf '\a'; printf '\e[7m'; read -t 0.05 -rsn1 _ ||:; printf '\e[0m'; }
 _wrong_show() { _wrong_feedback
   ((_SANDBOX_REQUIRE_FAIL)) && printf '\n%s\n' "${R}use the exact string from the question${N}"
-  [[ -n "$_SANDBOX_OUTPUT" ]] && printf '\n%s %s\n' "${D}output:${N}" "$_SANDBOX_OUTPUT"
   printf '%s  %s %s\n\n' "${R}x${N}" "${D}expected:${N}" "${Y}${ans}${N}"; }
-_sc() { [[ -n "$input" ]] && { HIST+=("$input"); HIST_IDX=${#HIST[@]}; HIST_SAVE=""; }; ((_S_ANSWERED++)); ((_S_CORRECT++)); ((_S_STREAK++)); ((_S_STREAK > _S_BEST_STREAK)) && _S_BEST_STREAK=$_S_STREAK; [[ -n "$_SANDBOX_OUTPUT" ]] && printf '\n%s\n' "${W}${_SANDBOX_OUTPUT}${N}"; }
+_sc() { [[ -n "$input" ]] && { HIST+=("$input"); HIST_IDX=${#HIST[@]}; HIST_SAVE=""; }; ((_S_ANSWERED++)); ((_S_CORRECT++)); ((_S_STREAK++)); ((_S_STREAK > _S_BEST_STREAK)) && _S_BEST_STREAK=$_S_STREAK; }
 _sw() { ((_S_ANSWERED++)); _S_STREAK=0; _wrong_show; }
 bar() { local f e p=$((qi<TOT?qi:TOT)); printf -v f '%*s' "$p" ''; printf -v e '%*s' "$((TOT-p))" ''; printf "${B}[${G}%s${D}%s${B}]${N}" "${f// /█}" "${e// /░}"; }
 _draw_buf() {
