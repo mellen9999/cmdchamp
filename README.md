@@ -8,7 +8,7 @@ Every question asks you to type a real command — get instant feedback, move on
 
 Each level ends with a boss round — no manpages, 4/5 to pass. Fail and you can retry the boss immediately or go back to practice. Beat all 30 and challenge mode unlocks: every level, 20s timer, no manpages, one miss and you're done. First run includes a short tutorial and a placement test that lets you skip levels you already know.
 
-With [bubblewrap](https://github.com/containers/bubblewrap), commands run in a real sandboxed filesystem. Without it, answers are text-matched. Search levels (16-17) accept both modern (`rg`, `fd`) and classic (`grep`, `find`) syntax. Vi line editing built in.
+With [bubblewrap](https://github.com/containers/bubblewrap), commands run in a real sandboxed filesystem. Without it, answers are text-matched. Search levels (16-17) accept both `rg`/`fd` and `grep`/`find` syntax. Vi line editing built in.
 
 ### How scoring works
 
@@ -31,7 +31,7 @@ cd cmdchamp && make install
 
 **Requires:** bash 4.3+, coreutils, awk
 
-**macOS:** Ships with bash 3.2 — install modern bash first: `brew install bash`
+**macOS:** Ships with bash 3.2 — install bash 4.3+ first: `brew install bash`
 
 **Optional:** [bubblewrap](https://github.com/containers/bubblewrap) (`bwrap`) for sandbox mode (Linux only) — most desktop distros include it. Without it, answers are text-matched only
 
