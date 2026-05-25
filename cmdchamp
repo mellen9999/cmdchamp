@@ -4860,13 +4860,42 @@ Usage: cmdchamp [--no-sandbox] [command]
 Run with no arguments for the game menu.
 
 Options:
-  --no-sandbox  Disable sandbox (text-match only)
+  --no-sandbox  Disable sandbox (text-match only — answers checked
+                without actually executing them)
 
 Commands:
-  r|reset       Reset all progress
-  test          Run self-tests
+  r|reset       Reset all progress (also removes sandbox cache)
+  test          Run self-tests (~196 assertions, no game state touched)
   v|version     Print version
   h|help        Show this help
+
+Environment:
+  NO_COLOR      Set to disable ANSI colors
+  XDG_DATA_HOME Profile/scores location (default: ~/.local/share/cmdchamp)
+  CMD_PROMPT    Override prompt char (default: $ or # for root)
+
+Requirements:
+  - bash 4.3+
+  - awk
+  - bwrap (bubblewrap) — for sandboxed answer execution; without it,
+    answers are checked by text match only.
+
+Data files (under \$XDG_DATA_HOME/cmdchamp):
+  profile       player name, progress, options
+  scores        per-question tier & timestamps (spaced repetition)
+  sandbox/      working sandbox dir (re-created per question)
+  sandbox.pristine/   pristine template for sandbox resets
+
+Tips:
+  - Press Tab during a question to see the relevant manpage.
+  - 'M' opens the inline manpage; use ↑/↓ to scroll history.
+  - Vi mode (Options menu): Esc → normal, i/a → insert, h/l/w/b move,
+    dw/cw delete/change word.
+  - Beat the boss of each level to unlock the next. Boss runs without
+    manpages.
+  - Some levels (network, hashcrack, forensics, privesc) run their
+    answers via text-match only — the tools or contexts can't run in
+    bwrap. Type the command precisely.
 EOF
     ;;
   v|version|-v|--version) printf '%s\n' "$VERSION";;
