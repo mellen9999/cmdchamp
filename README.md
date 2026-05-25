@@ -4,7 +4,7 @@ Bash CLI trainer — 30 levels from `ls` to privilege escalation.
 
 ![demo](demo.gif)
 
-Every question asks you to type a real command — get instant feedback, move on. Many questions run against real files in the sandbox, all accept multiple valid syntaxes (both `sort -u` and `sort | uniq`), and Tab toggles the manpage when you need a reference. Randomized each run so you can't memorize the order. A mastery system tracks what you know and what you don't: get a question right twice to master it, get it wrong and it demotes so you see it again sooner. Hit a 5-answer streak and you enter fire mode for bonus points.
+Every question asks you to type a real command — get instant feedback, move on. Many questions run against real files in the sandbox, all accept multiple valid syntaxes (both `sort -u` and `sort | uniq`), and Tab toggles the manpage when you need a reference. Randomized each run so you can't memorize the order. A mastery system tracks what you know and what you don't: get a question right twice to master it, get it wrong and it demotes so you see it again sooner. Hit a 5-answer streak and you enter fire mode — a streak banner that keeps going until you miss.
 
 Each level ends with a boss round — no manpages, 4/5 to pass. Fail and you can retry the boss immediately or go back to practice. Beat all 30 and challenge mode unlocks: every level, 20s timer, no manpages, one miss and you're done. First run includes a short tutorial and a placement test that lets you skip levels you already know.
 
@@ -100,6 +100,9 @@ Multi-step sandbox challenges — state persists between steps. Pick from the **
 | 6 | The Broken Deploy | L21 boss | 7 |
 | 7 | Log Emergency | L21 boss | 5 |
 | 8 | Config Surgery | L21 boss | 5 |
+| 9 | Git Rescue | L23 boss | 6 |
+| 10 | Batch Refactor | L21 boss | 6 |
+| 11 | Forensic Sweep | L22 boss | 6 |
 
 ## Placement test
 
