@@ -59,7 +59,7 @@ _strip_ansi() {
   REPLY="$out"
 }
 
-VERSION="1.1.5"
+VERSION="1.2.0"
 SANDBOX_TIMEOUT=5      # Seconds before sandbox command times out
 BOSS_THRESHOLD=4       # Correct answers needed to beat boss (out of BOSS_TOTAL)
 BOSS_TOTAL=5           # Number of questions in boss round
