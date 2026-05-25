@@ -63,7 +63,7 @@ VERSION="1.1.5"
 SANDBOX_TIMEOUT=5      # Seconds before sandbox command times out
 BOSS_THRESHOLD=4       # Correct answers needed to beat boss (out of BOSS_TOTAL)
 BOSS_TOTAL=5           # Number of questions in boss round
-FIRE_STREAK=5          # Streak needed for fire mode (+2 points)
+FIRE_STREAK=5          # Streak needed for fire mode (flavor banner)
 MIX_PER_LEVEL=2        # Questions to auto-mix from each previous level
 MAX_LEVEL=30           # Highest level number
 BOSS_TIMER=30          # Seconds per boss question
@@ -97,14 +97,15 @@ _load_profile() {
         PROFILE_VER) _file_ver="$val";;
       esac
     done < "$DATA/profile"
-    if ((_file_ver == 2 || _file_ver == 3)); then
-      # v2→v4, v3→v4: add option fields, migrate in place
+    if ((_file_ver >= 2 && _file_ver < _PROFILE_VER)); then
+      # Graceful migration: re-save in current format. Defaults already loaded
+      # for any new fields the old profile didn't set.
       _save_profile
     elif ((_file_ver != _PROFILE_VER)); then
       [[ -f "$DATA/profile" ]] && cp "$DATA/profile" "$DATA/profile.bak"
       [[ -f "$DATA/scores" ]] && cp "$DATA/scores" "$DATA/scores.bak"
       printf '%s\n' "Profile version mismatch (got $_file_ver, want $_PROFILE_VER) — reset. Backup in profile.bak/scores.bak" >&2
-      PLAYER_NAME="" BOSS_BEATEN=0 BEST_CHALLENGE=0 DISKS_FOUND="" SC_DONE=""
+      PLAYER_NAME="" BOSS_BEATEN=0 BEST_CHALLENGE=0 DISKS_FOUND="" SC_DONE="" LAST_DECAY=0
       : > "$DATA/scores"
       rm -f "$DATA"/*.json
     fi
@@ -873,12 +874,12 @@ declare -A MANPAGE=(
   [sed]=$'stream editor\n  \e[31m\'s/old/new/\'\e[0m    replace first     \e[31m\'s/old/new/g\'\e[0m  replace all\n  \e[36m-i\e[0m            edit in place     \e[31m\'/pat/d\'\e[0m       delete lines\n  \e[36m-n\e[0m            suppress output  \e[36m-e\e[0m            multi commands\n  \e[36m-E\e[0m            extended regex\n  \e[35mvs awk\e[0m        sed is best for search-and-replace and line filtering.\n              awk is best for column-based processing and math\n  \e[2msed \'s/foo/bar/g\' file    sed -i \'/^#/d\' file    sed -n \'5,10p\' file\e[0m'
   [awk]=$'pattern scanning\n  \e[31m\'{print $1}\'\e[0m   first field       \e[31m\'{print $NF}\'\e[0m  last field\n  \e[36m-F\e[0m\e[2m\',\'\e[0m          delimiter       \e[31mNR\e[0m          line number\n  \e[2mawk \'{print $1}\' file    awk -F, \'{print $2}\' data.csv    awk \'/error/\' log\e[0m'
   [xargs]=$'build commands from stdin\n  \e[36m-I\e[0m \e[32m{}\e[0m     placeholder            \e[36m-0\e[0m        null delim\n  \e[36m-n\e[0m \e[33mN\e[0m      args per command       \e[36m-P\e[0m \e[33mN\e[0m      parallel\n  \e[36m-p\e[0m        confirm each           \e[36m-t\e[0m        trace (show cmd)\n  \e[2mfind . -print0 | xargs -0 rm    cat urls | xargs -P4 -I{} curl {}\e[0m'
-  [tar]=$'archive tool\n  \e[36m-c\e[0m create   \e[36m-x\e[0m extract   \e[36m-t\e[0m list     \e[36m-f\e[0m \e[33mFILE\e[0m\n  \e[36m-z\e[0m gzip     \e[36m-C\e[0m \e[33mDIR\e[0m       extract to\n  \e[2mtar czf archive.tar.gz dir/    tar xzf archive.tar.gz    tar tf archive.tar.gz\e[0m'
+  [tar]=$'archive tool\n  \e[36m-c\e[0m create   \e[36m-x\e[0m extract   \e[36m-t\e[0m list     \e[36m-f\e[0m \e[33mFILE\e[0m\n  \e[36m-z\e[0m gzip     \e[36m-j\e[0m bzip2     \e[36m-J\e[0m xz        \e[36m-v\e[0m verbose\n  \e[36m-C\e[0m \e[33mDIR\e[0m   change to DIR (works for create AND extract)\n  \e[2mtar czf archive.tar.gz dir/    tar xzf archive.tar.gz    tar tf archive.tar.gz\e[0m'
   [chmod]=$'change file permissions\n  \e[32m+x\e[0m        add execute            \e[32m755\e[0m       rwxr-xr-x\n  \e[32m644\e[0m       rw-r--r--              \e[32mg+w\e[0m       group write\n  \e[36m-R\e[0m        recursive              \e[36m--reference\e[0m=\e[33mFILE\e[0m copy perms\n  \e[2mchmod +x script.sh    chmod 755 script.sh    chmod -R a+r dir/\e[0m'
   [ps]=$'list processes\n  \e[32maux\e[0m       all users, detailed    \e[36m--sort\e[0m=\e[33mFIELD\e[0m sort by field\n  \e[2mps aux    ps aux --sort=-%mem | head    ps auxf\e[0m'
   [du]=$'disk usage\n  \e[36m-h\e[0m        human readable         \e[36m-s\e[0m        summary only\n  \e[2mdu -sh .    du -sh */\e[0m'
   [df]=$'disk free space\n  \e[36m-h\e[0m        human readable\n  \e[2mdf -h    df -h /home\e[0m'
-  [ssh]=$'secure shell\n  \e[36m-L\e[0m \e[2mP:H:P\e[0m  local forward          \e[36m-R\e[0m \e[2mP:H:P\e[0m  remote forward\n  \e[36m-D\e[0m \e[33mPORT\e[0m   SOCKS proxy            \e[36m-J\e[0m \e[33mHOST\e[0m   jump host\n  \e[36m-N\e[0m        no command             \e[36m-f\e[0m        background\n  \e[36m-T\e[0m        no tty\n  \e[2mssh user@host    ssh -L 8080:localhost:80 host    ssh -D 1080 host\e[0m'
+  [ssh]=$'secure shell\n  \e[36m-p\e[0m \e[33mPORT\e[0m   remote port            \e[36m-i\e[0m \e[33mKEY\e[0m    identity (private key)\n  \e[36m-L\e[0m \e[2mP:H:P\e[0m  local forward          \e[36m-R\e[0m \e[2mP:H:P\e[0m  remote forward\n  \e[36m-D\e[0m \e[33mPORT\e[0m   SOCKS proxy            \e[36m-J\e[0m \e[33mHOST\e[0m   jump host\n  \e[36m-N\e[0m        no command             \e[36m-f\e[0m        background\n  \e[36m-T\e[0m        no tty                 \e[36m-A\e[0m        agent forwarding\n  \e[2mssh -p 2222 user@host    ssh -L 8080:localhost:80 host    ssh -D 1080 host\e[0m'
   [curl]=$'HTTP client\n  \e[36m-X\e[0m \e[33mMETHOD\e[0m  GET/POST/PUT/DELETE   \e[36m-H\e[0m \e[2m\'K: V\'\e[0m  header\n  \e[36m-d\e[0m \e[33mDATA\e[0m    POST body             \e[36m-o\e[0m \e[33mFILE\e[0m   output file\n  \e[36m-L\e[0m         follow redirects      \e[36m-s\e[0m        silent\n  \e[36m-i\e[0m         show headers          \e[36m-O\e[0m        save original name\n  \e[35mvs wget\e[0m     curl is for APIs (headers, POST, methods).\n              wget is for downloading files (auto-resume, recursive mirror)\n  \e[2mcurl -s url    curl -X POST -d "data" url    curl -O url/file.tar.gz\e[0m'
   [wget]=$'file downloader\n  \e[36m-c\e[0m        continue download      \e[36m-m\e[0m        mirror site\n  \e[36m-k\e[0m        convert links\n  \e[35mvs curl\e[0m    wget is for downloading files (auto-resume, recursive).\n          curl is for API work (headers, POST, methods)\n  \e[2mwget url    wget -c url    wget -mk url\e[0m'
   [git]=$'version control\n  \e[32madd\e[0m     stage      \e[32mcommit\e[0m  save       \e[32mpush\e[0m    upload\n  \e[32mpull\e[0m    download   \e[32mstatus\e[0m  changes    \e[32mdiff\e[0m    compare\n  \e[32mlog\e[0m     history    \e[32mbranch\e[0m  branches   \e[32mmerge\e[0m   combine\n  \e[32mrebase\e[0m  replay     \e[32mstash\e[0m   shelve     \e[32mreset\e[0m   undo\n  \e[2mgit add .    git commit -m "msg"    git log --oneline    git stash\e[0m'
@@ -923,7 +924,7 @@ declare -A MANPAGE=(
   [lsof]=$'list open files\n  \e[36m-i\e[0m        network connections    \e[36m-p\e[0m \e[33mPID\e[0m    by process\n  \e[36m-u\e[0m \e[33mUSER\e[0m   by user\n  \e[2mlsof -i :80    lsof -p 1234    lsof /path/to/file\e[0m'
   [dmesg]=$'kernel ring buffer\n  \e[36m-T\e[0m        human timestamps       \e[36m-w\e[0m        follow live\n  \e[36m-l\e[0m \e[33mLEVEL\e[0m  filter by level (err, warn)\n  \e[2mdmesg -T    dmesg -Tw    dmesg -l err\e[0m'
   [cryptsetup]=$'LUKS disk encryption\n  \e[32mluksOpen\e[0m   unlock volume          \e[32mluksClose\e[0m  lock volume\n  \e[32mluksFormat\e[0m format as LUKS\n  \e[2mcryptsetup luksOpen /dev/sda2 crypt    cryptsetup luksClose crypt\e[0m'
-  [vol]=$'volatility3 memory forensics\n  \e[32mwindows.pslist\e[0m      process list\n  \e[32mwindows.netscan\e[0m     network connections\n  \e[32mwindows.cmdline\e[0m     command lines\n  \e[32mwindows.filescan\e[0m    file objects\n  \e[2mvol -f dump.raw windows.pslist    vol -f dump.raw windows.netscan\e[0m'
+  [vol]=$'volatility3 memory forensics\n  \e[32mwindows.pslist\e[0m      process list\n  \e[32mwindows.netscan\e[0m     network connections\n  \e[32mwindows.cmdline\e[0m     command lines\n  \e[32mwindows.filescan\e[0m    file objects\n  \e[32mwindows.malfind\e[0m     injected code         \e[32mwindows.cachedump\e[0m   cached creds\n  \e[2mvol -f dump.raw windows.pslist    vol -f dump.raw windows.netscan\e[0m'
   [airmon-ng]=$'wireless monitor mode\n  \e[32mstart\e[0m     enable monitor         \e[32mstop\e[0m      disable monitor\n  \e[32mcheck kill\e[0m stop interfering processes\n  \e[2mairmon-ng start wlan0    airmon-ng stop wlan0mon    airmon-ng check kill\e[0m'
   [airodump-ng]=$'wireless packet capture\n  \e[36m-c\e[0m \e[33mCH\e[0m     channel                \e[36m--bssid\e[0m \e[33mMAC\e[0m  target AP\n  \e[36m-w\e[0m \e[33mPREFIX\e[0m write capture\n  \e[2mairodump-ng wlan0mon    airodump-ng -c 6 --bssid AA:BB:CC -w cap wlan0mon\e[0m'
   [aireplay-ng]=$'wireless packet injection\n  \e[36m-0\e[0m \e[33mN\e[0m      deauth N packets       \e[36m-a\e[0m \e[33mBSSID\e[0m  target AP\n  \e[36m-c\e[0m \e[33mCLIENT\e[0m target client\n  \e[2maireplay-ng -0 5 -a AP_MAC -c CLIENT_MAC wlan0mon\e[0m'
@@ -1129,6 +1130,13 @@ _esc_legend() {
   [[ "$_a" == *'\r'* ]] && _leg+="${Y}\\r${D}=return  "
   if [[ -n "$_leg" ]]; then local _t; printf -v _t '  %s\n' "${D}${_leg%  }${N}"; _EBUF+=$_t; REPLY=1; else REPLY=0; fi
 }
+_canonical_cmd() {
+  case "$1" in
+    vol3|vol3.py|vol.py|volatility3|volatility) REPLY=vol;;
+    rizin|rz) REPLY=r2;;
+    *) REPLY=$1;;
+  esac
+}
 explain() {
   local tok n=0 exp tcol cmds=() _ap=1 _t
   _EBUF=""
@@ -1136,7 +1144,7 @@ explain() {
   local _etoks; set -f; read -ra _etoks <<< "$1"; set +f
   for tok in "${_etoks[@]}"; do
     case "$tok" in '|'|'|&'|'&&'|'||'|';'|'&') _ap=1; continue ;; esac
-    ((_ap)) && [[ "$tok" != *=* ]] && { cmds+=("$tok"); _ap=0; }
+    ((_ap)) && [[ "$tok" != *=* ]] && { _canonical_cmd "$tok"; cmds+=("$REPLY"); _ap=0; }
   done
   local _mc=0 _ml=0
   for tok in "${cmds[@]}"; do
@@ -3379,7 +3387,25 @@ norm() {
 }
 _sflush() {
   local _fd; exec {_fd}>"$DATA/scores.lock"; flock -x "$_fd"
-  { printf '#v1\n'; for k in "${!_sc[@]}"; do printf '%s|%s\n' "$k" "${_sc[$k]}"; done; } > "$DATA/scores.tmp"
+  # Merge with current disk state to survive concurrent instances: for shared
+  # keys, keep whichever has the later timestamp.
+  local -A _disk_sc=()
+  local _dk _dv _dt _mt _k
+  if [[ -f "$DATA/scores" ]]; then
+    while IFS='|' read -r _dk _dv; do
+      [[ "$_dk" == "#"* || -z "$_dk" ]] && continue
+      _disk_sc[$_dk]=$_dv
+    done < "$DATA/scores"
+  fi
+  for _k in "${!_disk_sc[@]}"; do
+    if [[ -n "${_sc[$_k]:-}" ]]; then
+      _dt="${_disk_sc[$_k]##*|}"; _mt="${_sc[$_k]##*|}"
+      [[ "$_dt" =~ ^[0-9]+$ && "$_mt" =~ ^[0-9]+$ && $_dt -gt $_mt ]] && _sc[$_k]="${_disk_sc[$_k]}"
+    else
+      _sc[$_k]="${_disk_sc[$_k]}"
+    fi
+  done
+  { printf '#v1\n'; for _k in "${!_sc[@]}"; do printf '%s|%s\n' "$_k" "${_sc[$_k]}"; done; } > "$DATA/scores.tmp"
   mv "$DATA/scores.tmp" "$DATA/scores"
   exec {_fd}>&-
 }
@@ -3463,7 +3489,7 @@ _quit() {
 input="" cursor=0 mode="insert" _rep=""
 declare -a UNDO_STACK=()  # Multi-level undo
 hdr() {
-  local fire=""; ((streak>=FIRE_STREAK)) && fire="  ${Y}${B}* ON FIRE +2${N}"
+  local fire=""; ((streak>=FIRE_STREAK)) && fire="  ${Y}${B}* ON FIRE${N}"
   printf '\e[H%s\e[K\n%s\e[K\n%s\e[K\n' "${W}${B}${PLAYER_NAME:-anon}${N}${fire}" "${U}Level $1${N}: ${LEVEL_NAMES[$1]:-}" "${U}[$2/$3]${N}  ${C}Tab${N}${D}=manpage${N}"
 }
 qdisp() { bar; printf "\n${C}%s${N}\n\n" "$1"; }
@@ -3703,7 +3729,7 @@ _mode_init() {
     [[ "$k" == "#"* ]] && continue
     _sc[$k]=$v
   done < "$DATA/scores"
-  # Decay stale mastery (once per 24h): tier≥2 + >30d → 1, tier≥1 + >14d → 0
+  # Decay stale mastery (once per 24h): tier≥2 + >30d → tier-1, tier==1 + >30d → 0
   local _now _decayed=0; printf -v _now '%(%s)T' -1
   if ((_now - LAST_DECAY >= _DECAY_INTERVAL)); then
     for _dk in "${!_sc[@]}"; do
@@ -3720,7 +3746,7 @@ _mode_init() {
     LAST_DECAY=$_now; _save_profile
     ((_decayed)) && _sflush
   fi
-  _sget() { _hash "$1"; local _v="${_sc[$REPLY]:-1}"; REPLY="${_v%%|*}"; }
+  _sget() { _hash "$1"; local _v="${_sc[$REPLY]:-0}"; REPLY="${_v%%|*}"; }
   HIST=() HIST_IDX=0 HIST_SAVE=""
   _interactive=1
   ((SANDBOX_MODE)) && _sandbox_init
@@ -3787,13 +3813,13 @@ run() {
         fi
         ((_real_tier < 2 && _new_tier >= 2)) && ((_S_MASTERED++))
         if ((streak>=FIRE_STREAK)); then
-          printf '\n%s\n' "${Y}${B}* ON FIRE! +2${N}"
+          printf '\n%s\n' "${Y}${B}* ON FIRE${N}"
         else
           printf '\n%s\n' "${G}${B}+${N}"
         fi
         ((++streak)); _sset "$prompt" "$_new_tier"
         ((streak == FIRE_STREAK)) && {
-          printf '\n%s%s* * *  ON FIRE — answers worth +2  * * *%s\n' "$Y" "$B" "$N"
+          printf '\n%s%s* * *  ON FIRE — keep the streak going  * * *%s\n' "$Y" "$B" "$N"
           read -t 0.6 -rsn1 _ ||:
         }
         _pause; ((++qi)); QI=$qi; save; break
@@ -4514,12 +4540,12 @@ _selftest() {
   declare -A _sc=()
   _MODE_TAG="1"
   _sdirty=0
-  _sget() { _hash "$1"; local _v="${_sc[$REPLY]:-1}"; REPLY="${_v%%|*}"; }
+  _sget() { _hash "$1"; local _v="${_sc[$REPLY]:-0}"; REPLY="${_v%%|*}"; }
   _sset "test question 1" 2
   _sget "test question 1"; _assert "sget after sset" "$REPLY" "2"
   _sset "test question 1" 3
   _sget "test question 1"; _assert "sget overwrite" "$REPLY" "3"
-  _sget "never seen"; _assert "sget default" "$REPLY" "1"
+  _sget "never seen"; _assert "sget default" "$REPLY" "0"
   _sflush
   _assert "scores file exists" "$([[ -f "$DATA/scores" ]] && echo y || echo n)" "y"
   local _sc_content; _sc_content=$(<"$DATA/scores")
@@ -4689,6 +4715,12 @@ place() {
     done
     ((qi_ok < 2)) && break
   done
+  # User quit mid-placement: don't save partial result, exit cleanly
+  if ((_QUIT)); then
+    _sflush_if_dirty
+    printf '%s\n' "${D}placement abandoned — try again from the menu${N}"
+    return
+  fi
   # Set placement
   local placed=$((lv - 1))
   ((qi_ok >= 2 && lv > MAX_LEVEL)) && placed=$MAX_LEVEL
