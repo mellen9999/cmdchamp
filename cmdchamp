@@ -4213,8 +4213,8 @@ _sc_snap_save() {
   find "$SANDBOX_DIR" -printf '%m %p\n' > "$_perms_file" 2>/dev/null
   chmod -R u+rwX "$SANDBOX_DIR" 2>/dev/null
   local _t; _t=$(mktemp -d "${_sc_snap}.XXXXXX") || return
-  rm -rf "$_t"
-  if cp -a "$SANDBOX_DIR" "$_t"; then
+  # Copy INTO existing temp dir (no rm-then-cp TOCTOU window).
+  if cp -a "$SANDBOX_DIR/." "$_t/"; then
     rm -rf "$_sc_snap"; mv "$_t" "$_sc_snap"
   else
     rm -rf "$_t"
@@ -4224,8 +4224,7 @@ _sc_snap_save() {
 _sc_snap_restore() {
   chmod -R u+rwX "$SANDBOX_DIR" 2>/dev/null
   local _t; _t=$(mktemp -d "${SANDBOX_DIR}.XXXXXX") || return
-  rm -rf "$_t"
-  if cp -a "$_sc_snap" "$_t"; then
+  if cp -a "$_sc_snap/." "$_t/"; then
     rm -rf "$SANDBOX_DIR"; mv "$_t" "$SANDBOX_DIR"
   else
     rm -rf "$_t"
@@ -4550,6 +4549,16 @@ _selftest() {
   _assert "git runs"     "$(_can_sandbox 'git status' && echo y || echo n)" "y"
   _assert "dd safe runs" "$(_can_sandbox 'dd if=foo of=bar' && echo y || echo n)" "y"
   _assert "dd /dev/sda skip" "$(_can_sandbox 'dd if=/dev/sda of=img' && echo y || echo n)" "n"
+  _assert "hostapd skip"  "$(_can_sandbox 'hostapd hostapd.conf' && echo y || echo n)" "n"
+  _assert "gatttool skip" "$(_can_sandbox 'gatttool -b AA -I' && echo y || echo n)" "n"
+  _assert "hcxdumptool skip" "$(_can_sandbox 'hcxdumptool -i wlan0mon -o o' && echo y || echo n)" "n"
+
+  # /tmp must exist as a real tmpfs in the sandbox (bwrap --size --tmpfs syntax check)
+  if command -v bwrap &>/dev/null; then
+    local _tmpcheck
+    _tmpcheck=$(bwrap --size 1048576 --tmpfs /tmp --ro-bind /usr /usr --ro-bind /bin /bin --ro-bind /lib /lib --ro-bind /lib64 /lib64 /bin/bash -c 'touch /tmp/t && echo OK' 2>&1)
+    _assert "sandbox /tmp is real tmpfs" "$_tmpcheck" "OK"
+  fi
 
   printf '%s\n' "${B}=== scoring ===${N}"
   local _test_data; _test_data=$(mktemp -d)
@@ -4568,8 +4577,39 @@ _selftest() {
   _assert "scores file exists" "$([[ -f "$DATA/scores" ]] && echo y || echo n)" "y"
   local _sc_content; _sc_content=$(<"$DATA/scores")
   _assert "scores has data" "$([[ -n "$_sc_content" ]] && echo y || echo n)" "y"
+
+  # Merge-on-flush: simulate a second instance writing a different key, then verify
+  # both keys survive after this instance's next flush.
+  _hash "from other instance"
+  local _other_key=$REPLY _now_t; printf -v _now_t '%(%s)T' -1
+  { printf '#v1\n'; for k in "${!_sc[@]}"; do printf '%s|%s\n' "$k" "${_sc[$k]}"; done; printf '%s|%s\n' "$_other_key" "5|1|$_now_t"; } > "$DATA/scores"
+  _sset "test question 2" 1
+  _sflush
+  local _merge_content; _merge_content=$(<"$DATA/scores")
+  _assert "merge keeps other-instance key" "$([[ "$_merge_content" == *"$_other_key"* ]] && echo y || echo n)" "y"
+  _hash "test question 2"
+  _assert "merge keeps own key" "$([[ "$_merge_content" == *"$REPLY"* ]] && echo y || echo n)" "y"
+
+  # Merge picks the later timestamp when both sides have the same key
+  _hash "conflict question"
+  local _ck=$REPLY
+  _sc[$_ck]="3|1|$((_now_t - 100))"  # in-memory: 100s old
+  { printf '#v1\n'; for k in "${!_sc[@]}"; do printf '%s|%s\n' "$k" "${_sc[$k]}"; done; } > "$DATA/scores"
+  _sc[$_ck]="1|1|$((_now_t - 200))"  # in-memory now older than disk
+  _sflush
+  local _final; _final=$(grep "^$_ck|" "$DATA/scores")
+  _assert "merge picks newer ts" "${_final#*|}" "3|1|$((_now_t - 100))"
+
   DATA="$_save_data"
   rm -rf "$_test_data"
+
+  printf '%s\n' "${B}=== canonical cmd ===${N}"
+  _canonical_cmd vol3;        _assert "vol3 → vol"          "$REPLY" "vol"
+  _canonical_cmd volatility3; _assert "volatility3 → vol"   "$REPLY" "vol"
+  _canonical_cmd vol.py;      _assert "vol.py → vol"        "$REPLY" "vol"
+  _canonical_cmd rizin;       _assert "rizin → r2"          "$REPLY" "r2"
+  _canonical_cmd rz;          _assert "rz → r2"             "$REPLY" "r2"
+  _canonical_cmd ls;          _assert "ls passthrough"      "$REPLY" "ls"
 
   printf '%s\n' "${B}=== decay ===${N}"
   _test_data=$(mktemp -d)
