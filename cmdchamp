@@ -528,6 +528,7 @@ _sandbox_exec() {
     --setenv PATH /usr/bin:/bin
     --setenv HOME /sandbox
     --setenv USER sandbox
+    --setenv SHELL /bin/bash
     --setenv LANG "${LANG:-C.UTF-8}"
     --setenv TERM "${TERM:-xterm-256color}"
     --ro-bind /usr /usr
@@ -540,7 +541,7 @@ _sandbox_exec() {
     --die-with-parent
     --new-session
     --dev /dev
-    --tmpfs /tmp:size=64M
+    --size $((64*1024*1024)) --tmpfs /tmp
   )
   [[ -e /lib ]] && bwrap_args+=(--ro-bind /lib /lib)
   [[ -e /lib64 ]] && bwrap_args+=(--ro-bind /lib64 /lib64)
@@ -786,8 +787,8 @@ REPLACE_OLD=(foo old debug localhost http TODO FIXME tmp
 REPLACE_NEW=(bar new prod 10.0.0.1 https DONE RESOLVED cache
   main production live release stable v2 current info success masked)
 SIZES=(1k 5k 10k 100k 500k 10M 50M 100M 500M 1G 2G 5G 10G)
-HASHCAT_MODES=(0 100 1400 1800 3200 1000 5600 13100 18200 22000 500 1700 2500 5500 11300)
-HASH_NAMES=(MD5 SHA1 SHA256 sha512crypt bcrypt NTLM NetNTLMv2 Kerberoast-TGS ASREPRoast WPA-PBKDF2 md5crypt SHA-512 WPA NetNTLMv1 Bitcoin)
+HASHCAT_MODES=(0 100 1400 1800 3200 1000 5600 13100 18200 22000 500 1700 5500 11300)
+HASH_NAMES=(MD5 SHA1 SHA256 sha512crypt bcrypt NTLM NetNTLMv2 Kerberoast-TGS ASREPRoast WPA-EAPOL md5crypt SHA-512 NetNTLMv1 Bitcoin)
 INTERFACES=(eth0 wlan0 ens33 enp0s3 ens192 enp0s25 wlp2s0 docker0 br0 virbr0)
 WIFI_INTERFACES=(wlan0 wlp2s0 wlp3s0 wlan1)
 REMOTE_HOSTS=(server backup-host db-server web-server jump-host bastion
@@ -1126,7 +1127,8 @@ explain() {
   local tok n=0 exp tcol cmds=() _ap=1 _t
   _EBUF=""
   printf -v _t '%s\n' "${D}----------------------------------------${N}"; _EBUF+=$_t
-  for tok in $1; do
+  local _etoks; set -f; read -ra _etoks <<< "$1"; set +f
+  for tok in "${_etoks[@]}"; do
     case "$tok" in '|'|'|&'|'&&'|'||'|';'|'&') _ap=1; continue ;; esac
     ((_ap)) && [[ "$tok" != *=* ]] && { cmds+=("$tok"); _ap=0; }
   done
@@ -1140,7 +1142,7 @@ explain() {
     fi
   done
   if ((_mc)); then
-    for tok in $1; do
+    for tok in "${_etoks[@]}"; do
       case "$tok" in '>'|'>>'|'<'|'<<<'|'2>'|'&>'|'2>&1'|'>&2'|'1>&2'|'|'|'|&'|'&&'|'||'|';'|'&') ;; *) continue ;; esac
       exp="${EXP[$tok]:-}"; [[ -z "$exp" ]] && continue
       printf -v _t "%s %s\n" "${Y}${B}${tok}${N}" "${D}- ${exp}${N}"; _EBUF+=$_t
@@ -1153,7 +1155,7 @@ explain() {
     return
   fi
   local _cp=1  # command position: 1=expecting command, 0=in arguments
-  for tok in $1; do
+  for tok in "${_etoks[@]}"; do
     case "$tok" in '|'|'|&'|'&&'|'||'|';'|'&') _cp=1 ;; esac
     exp="${EXP[$tok]:-}"
     if [[ -n "$exp" ]]; then
@@ -1609,7 +1611,7 @@ gen_level11() {
   questions+=("List PIDs of processes named '${script}'|pgrep ${script}|pgrep -f ${script}|pidof ${script}")
   questions+=("Run ${script} immune to hangups|nohup ./${script} &|nohup bash ${script} &|nohup ./${script} &>/dev/null &")
   questions+=("Detach current job from shell|disown|disown %%|disown %+")
-  questions+=("Detach job ${n} from shell|disown %${n}")
+  questions+=("Detach job ${n2} from shell|disown %${n2}")
 }
 
 # Level 12: Test Operators ([[ -f ]], [[ -d ]], etc)
@@ -1963,7 +1965,7 @@ gen_level18() {
   questions+=("Lines only in ${txt}, not ${txt2}|comm -23 <(sort ${txt}) <(sort ${txt2})|comm -2 -3 <(sort ${txt}) <(sort ${txt2})|grep -Fxvf ${txt2} ${txt}")
   questions+=("Replace 'old' with 'new' in field 2 of ${W}${csv}${C} (awk gsub)|awk -F, '{gsub(/old/, \"new\", \$2); print}' ${csv}|awk -F, '{gsub(/old/,\"new\",\$2);print}' ${csv}|awk 'BEGIN{FS=OFS=\",\"} {gsub(/old/, \"new\", \$2); print}' ${csv}")
   questions+=("Format ${W}${txt}${C} as aligned table (auto-detect delimiter)|column -t ${txt}|column -t -s\$'\\t' ${txt}|column --table ${txt}")
-  questions+=("Extract '.${field}' from JSON ${W}${txt}${C} as raw strings (jq -r)|jq -r '.${field}' ${txt}|jq --raw-output '.${field}' ${txt}|jq -r .${field} ${txt}")
+  questions+=("Extract '.data' from ${W}data/export.json${C} as raw strings (jq -r)|jq -r '.data' data/export.json|jq --raw-output '.data' data/export.json|jq -r .data data/export.json")
 }
 
 # Level 19: String & Arrays
@@ -2330,7 +2332,8 @@ gen_level23() {
   questions+=("Pull with rebase instead of merge|git pull --rebase|git pull --rebase origin ${branch}|git pull -r")
   questions+=("List all git worktrees|git worktree list|git worktree list --porcelain")
   questions+=("Remove worktree at ${W}${dir}${C}|git worktree remove ${dir}|git worktree remove --force ${dir}")
-  questions+=("Blobless partial clone of ${url}|git clone --filter=blob:none ${url}|git clone --filter=tree:0 ${url}")
+  questions+=("Blobless partial clone of ${url}|git clone --filter=blob:none ${url}")
+  questions+=("Treeless partial clone of ${url}|git clone --filter=tree:0 ${url}")
   questions+=("Create GitHub PR with gh CLI|gh pr create|gh pr create --fill|gh pr create --web")
   questions+=("Checkout GitHub PR ${n} locally with gh|gh pr checkout ${n}")
 }
@@ -2345,10 +2348,10 @@ gen_level24() {
   questions+=("Filter HTTP traffic from ${pcap}|tshark -r ${pcap} -Y http|tcpdump -r ${pcap} port 80|tcpdump -r ${pcap} 'tcp port 80'")
   questions+=("Filter traffic to/from ${ip} in ${W}${pcap}${C}|tshark -r ${pcap} -Y 'ip.addr == ${ip}'|tcpdump -r ${pcap} host ${ip}|tcpdump -r ${pcap} 'host ${ip}'|tshark -r ${pcap} -Y \"ip.addr == ${ip}\"")
   questions+=("Show DNS queries in ${W}${pcap}${C}|tshark -r ${pcap} -Y dns|tshark -r ${pcap} -Y 'dns.qry.name'|tcpdump -r ${pcap} port 53|tcpdump -r ${pcap} 'port 53'")
-  questions+=("Extract HTTP POST data in ${W}${pcap}${C}|tshark -r ${pcap} -Y 'http.request.method == POST' -T fields -e http.file_data")
+  questions+=("Extract HTTP POST data in ${W}${pcap}${C}|tshark -r ${pcap} -Y 'http.request.method == \"POST\"' -T fields -e http.file_data")
   questions+=("Extract all URLs from ${W}${pcap}${C}|tshark -r ${pcap} -Y 'http.request' -T fields -e http.host -e http.request.uri")
   questions+=("Show TCP conversations in ${W}${pcap}${C}|tshark -r ${pcap} -q -z conv,tcp")
-  questions+=("Extract credentials (FTP, HTTP basic) in ${W}${pcap}${C}§tshark -r ${pcap} -Y 'ftp.request.command == PASS || http.authorization'§tshark -r ${pcap} -Y 'ftp.request.command == \"PASS\" || http.authorization'")
+  questions+=("Extract credentials (FTP, HTTP basic) in ${W}${pcap}${C}§tshark -r ${pcap} -Y 'ftp.request.command == \"PASS\" || http.authorization'§tshark -r ${pcap} -Y 'ftp.request.command==\"PASS\" || http.authorization'")
   questions+=("Pretty print JSON file|jq '.' data/export.json|jq . data/export.json|python3 -m json.tool data/export.json|jq '.' < data/export.json|jq . < data/export.json|cat data/export.json | jq '.'|cat data/export.json | jq .")
   questions+=("Extract '${key}' array from JSON|jq '.${key}' data/export.json|jq '.${key}' < data/export.json|cat data/export.json | jq '.${key}'")
   questions+=("Extract first item from '${key}' array|jq '.${key}[0]' data/export.json|jq '.${key}[0]' < data/export.json|cat data/export.json | jq '.${key}[0]'")
@@ -2493,7 +2496,7 @@ gen_level26() {
   questions+=("List saved nmcli connection profiles|nmcli connection show|nmcli con show|nmcli c show|nmcli c")
   questions+=("Show wireless regulatory domain|iw reg get|sudo iw reg get|iw reg|sudo iw reg")
   questions+=("Multi-vector deauth flood on AP ${W}${mac}${C} via ${W}${wiface}mon${C} channel 6 (mdk4)|mdk4 ${wiface}mon d -B ${mac} -c 6|sudo mdk4 ${wiface}mon d -B ${mac} -c 6")
-  questions+=("BLE GATT enumerate services on ${W}${mac}${C}|gatttool -b ${mac} -I|gatttool -t random -b ${mac} -I|sudo gatttool -b ${mac} -I|sudo gatttool -t random -b ${mac} -I")
+  questions+=("BLE GATT enumerate services on ${W}${mac}${C} (interactive)|gatttool -b ${mac} -I|gatttool -t random -b ${mac} -I|sudo gatttool -b ${mac} -I|sudo gatttool -t random -b ${mac} -I|#boss-skip#chal-skip")
 }
 
 # Level 27: Hash Cracking
@@ -2605,7 +2608,7 @@ gen_level28() {
   questions+=("Show all timestamps for ${W}${txt}${C} (atime/mtime/ctime)|stat ${txt}|stat --format='%n %x %y %z' ${txt}|stat -c '%n %x %y %z' ${txt}")
   questions+=("Dump ALL extended attributes on ${W}${txt}${C} (security/system too)|getfattr -d -m - ${txt}|getfattr --dump -m - ${txt}|getfattr -d -m '.*' ${txt}|getfattr --dump -m '.*' ${txt}")
   questions+=("Detect immutable / append-only flag on ${W}${txt}${C}|lsattr ${txt}|lsattr -d ${txt}")
-  questions+=("Inspect first 32 bytes (magic) of ${W}${bin}${C}§xxd ${bin} | head -2§head -c 32 ${bin} | xxd§hexdump -C ${bin} | head -2§file ${bin}")
+  questions+=("Inspect first 32 bytes (magic) of ${W}${bin}${C}§xxd ${bin} | head -2§head -c 32 ${bin} | xxd§hexdump -C ${bin} | head -2§dd bs=32 count=1 if=${bin} 2>/dev/null | xxd")
   questions+=("Detect injected code in memory dump ${W}${memimg}${C} (vol3)|vol -f ${memimg} windows.malfind|vol3 -f ${memimg} windows.malfind|vol3.py -f ${memimg} windows.malfind|volatility3 -f ${memimg} windows.malfind")
   questions+=("Dump cached domain credentials from memory dump ${W}${memimg}${C} (vol3)|vol -f ${memimg} windows.cachedump|vol3 -f ${memimg} windows.cachedump|volatility3 -f ${memimg} windows.cachedump")
   questions+=("Dump LSA secrets from memory dump ${W}${memimg}${C} (vol3)|vol -f ${memimg} windows.lsadump|vol3 -f ${memimg} windows.lsadump|volatility3 -f ${memimg} windows.lsadump")
@@ -2796,7 +2799,7 @@ _sc_setup_1() {
 }
 _sc_steps_1() {
   cat <<'STEPS'
-List permissions to see what's broken§ls -l§ls -la§ls -al§ls -lh§ls -lah§ls -lA§ls --long§stat config.ini backup.sh logs#output:~----------
+List permissions to see what's broken§ls -l§ls -la§ls -al§ls -lh§ls -lah§ls -lA§ls --format=long§stat config.ini backup.sh logs#output:~----------
 Make config.ini readable§chmod 644 config.ini§chmod a+r config.ini§chmod u+r config.ini§chmod +r config.ini§chmod 444 config.ini§chmod 664 config.ini§chmod 600 config.ini§chmod 400 config.ini§chmod 440 config.ini§chmod 0644 config.ini§chmod 0600 config.ini§chmod 0444 config.ini§chmod 0400 config.ini§chmod ugo+r config.ini#state:perm:config.ini:r
 Verify config.ini is readable now§cat config.ini§less config.ini§more config.ini§head config.ini§head -n 10 config.ini§tail config.ini#output:~\[server\]
 Make backup.sh executable§chmod +x backup.sh§chmod 755 backup.sh§chmod u+x backup.sh§chmod a+x backup.sh§chmod 0755 backup.sh§chmod 775 backup.sh§chmod 0775 backup.sh§chmod ugo+x backup.sh#state:perm:backup.sh:x
@@ -2840,7 +2843,7 @@ if __name__ == "__main__":
     main()
 PY
   printf '# FIXME: broken on edge case\ndef helper(x):\n    return x * 2\n' > "$d/src/lib/helpers.py"
-  printf '# HACK: temporary workaround\necho "ok"\n' >> "$d/deploy.sh"
+  printf '# HACK: temporary workaround\n' >> "$d/deploy.sh"
   printf '# TODO: add error handling\n' >> "$d/backup.sh"
 }
 _sc_steps_3() {
@@ -3139,7 +3142,7 @@ _can_sandbox() {
   case "$_c" in
     ssh|scp|sftp|rsync|curl|wget|nc|ncat|ping|ping6|traceroute|tracepath|tracert|mtr|dig|nslookup|host|drill|whois|ftp|telnet|smbclient|nmap|masscan|enum4linux) return 1 ;;
     sudo|systemctl|service|useradd|userdel|usermod|passwd|groupadd|groupdel|groupmod|chown|chgrp|mount|umount|iptables|ip6tables|nft|ufw|fail2ban-client|crontab|systemd-run|at|atq|atrm|batch) return 1 ;;
-    hashcat|john|hydra|medusa|nikto|gobuster|wpscan|sqlmap|aircrack-ng|airodump-ng|aireplay-ng|reaver|wifite|wash|kismet|airmon-ng|airbase-ng) return 1 ;;
+    hashcat|john|hydra|medusa|nikto|gobuster|wpscan|sqlmap|aircrack-ng|airodump-ng|aireplay-ng|reaver|wifite|wash|kismet|airmon-ng|airbase-ng|hostapd|bettercap|mdk4|gatttool|hcxdumptool|hcxpcapngtool|bully) return 1 ;;
     foremost|scalpel|photorec|volatility|vol|vol3|vol.py|vol3.py|fls|mactime|tsk_recover|exiftool|tshark|tcpdump|tcpreplay|wireshark|binwalk|bulk_extractor|stegseek|stegoveritas|steghide) return 1 ;;
     zip2john|pdf2john|rar2john|ssh2john|office2john|unshadow|keepass2john) return 1 ;;
     docker|podman|kubectl|virsh|lxc|qemu*|vagrant) return 1 ;;
@@ -3198,7 +3201,6 @@ check() {
   _trim "$1"; local inp=$REPLY; _fnorm "$inp"; local ninp=$REPLY
   _SANDBOX_REQUIRE_FAIL=0
   ((SANDBOX_MODE && !_qtext)) && _sandbox_validate "$inp" && return 0
-  _SANDBOX_REQUIRE_FAIL=0
   _text_match "$inp" "$ninp" "$2" "$_qdelim"
 }
 
@@ -4550,7 +4552,7 @@ place() {
   for ((lv=1; lv<=MAX_LEVEL; lv++)); do
     qi_ok=0
     for ((qi=1; qi<=2; qi++)); do
-      _pick_q "$lv" || break 2
+      _pick_q "$lv" challenge || break 2
       local prompt=$_qprompt ans=$_qans
       _REDRAW_HDR() {
         local _t=30
