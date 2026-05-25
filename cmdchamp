@@ -3883,6 +3883,11 @@ run() {
   else
     boss_q=("${_cur_q[@]}"); _fshuffle_n boss_q "$boss_total"
   fi
+  # Safety: if pool is smaller than BOSS_TOTAL, clamp threshold so boss is winnable.
+  if ((${#boss_q[@]} < boss_total)); then
+    boss_total=${#boss_q[@]}
+    ((boss_total > 0)) && _boss_thresh=$(( (boss_total * BOSS_THRESHOLD + BOSS_TOTAL - 1) / BOSS_TOTAL ))
+  fi
 
   local _bt=$((BOSS_TIMER + lv / 3))  # scale: 30s@L1 → 40s@L30
   for ((bi=0; bi<${#boss_q[@]}; bi++)); do
