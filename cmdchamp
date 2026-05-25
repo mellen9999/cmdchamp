@@ -206,10 +206,11 @@ LEVEL_NAMES=("" "First Steps" "File Basics" "Save Your Work" "Reading Files" "Ba
   "Advanced Regex" "Git" "Network Tools" "Network Scanning" "WiFi & RF"
   "Hash Cracking" "Forensics" "Privilege Escalation" "ROOT")
 
-SC_TOTAL=8
+SC_TOTAL=11
 SC_NAMES=("" "Permission Lockout" "Archive & Extract" "Find the Needle" "Messy CSV"
-  "The Incident" "The Broken Deploy" "Log Emergency" "Config Surgery")
-SC_UNLOCK=("" 13 13 16 18 18 21 21 21)  # boss level needed to unlock each scenario
+  "The Incident" "The Broken Deploy" "Log Emergency" "Config Surgery"
+  "Git Rescue" "Batch Refactor" "Forensic Sweep")
+SC_UNLOCK=("" 13 13 16 18 18 21 21 21 23 21 22)  # boss level needed to unlock each scenario
 SC_FLAVOR=(""
   "Everything is locked down. Restore access."
   "Package it up, ship it out, bring it back."
@@ -218,7 +219,10 @@ SC_FLAVOR=(""
   "An attacker hit the server. Investigate the breach."
   "The deploy pipeline is broken. Find the problems and fix them."
   "The logs are screaming. Triage the errors before it gets worse."
-  "The config file is a mess. Perform surgery.")
+  "The config file is a mess. Perform surgery."
+  "Bad commit hit main. Rewind, branch, fix, merge."
+  "Rename, replace, archive — 30 files in one sweep."
+  "An IP keeps hitting the box. Build the case from the logs.")
 
 _victory() {
   printf '%s\e[2J\e[H' "$_SY"
@@ -337,6 +341,7 @@ _check_bwrap() {
 # shellcheck disable=SC2034  # locals used via _fpick nameref
 _gen_log() {
   local f="$1" lines="${2:-50}"
+  ((lines > 0)) || lines=1
   local ips=("192.168.1.100" "10.0.0.5" "172.16.0.50" "192.168.8.1" "10.10.10.10")
   local codes=("200" "200" "200" "200" "301" "304" "400" "403" "404" "500")
   local methods=("GET" "GET" "GET" "POST" "PUT" "DELETE")
@@ -357,6 +362,7 @@ _gen_log() {
 # shellcheck disable=SC2034  # locals used via _fpick nameref
 _gen_app_log() {
   local f="$1" lines="${2:-40}"
+  ((lines > 0)) || lines=1
   local levels=("INFO" "INFO" "INFO" "INFO" "WARN" "WARN" "ERROR" "DEBUG")
   local msgs_info=("Request processed" "User logged in" "Cache hit" "Connection established" "Task completed" "Session started")
   local msgs_warn=("Slow query detected" "Memory usage high" "Rate limit approaching" "Deprecated API used" "Retry attempt")
@@ -504,8 +510,8 @@ _sandbox_reset() {
   [[ -d "$SANDBOX_PRISTINE" ]] || return 1
   chmod -R u+rwX "$SANDBOX_DIR" 2>/dev/null  # unlock any restricted dirs (e.g. scenario 4)
   local _sb_tmp; _sb_tmp=$(mktemp -d "${SANDBOX_DIR}.XXXXXX") || { SANDBOX_MODE=0; return 1; }
-  rm -rf "$_sb_tmp"
-  if ! cp -a "$SANDBOX_PRISTINE" "$_sb_tmp"; then
+  # Copy pristine contents INTO the temp dir (avoids rm-then-cp TOCTOU window).
+  if ! cp -a "$SANDBOX_PRISTINE/." "$_sb_tmp/"; then
     rm -rf "$_sb_tmp"
     printf '%s\n' "${Y}Warning: sandbox reset failed, disabling${N}" >&2
     SANDBOX_MODE=0; return 1
@@ -1266,7 +1272,7 @@ gen_level1() {
   questions+=("Print ${Y}${word}${C}|echo ${word}|#output:${word}")
   questions+=("Print your username using ${Y}\$USER${C}|echo \$USER|echo \${USER}|echo \"\$USER\"|echo \"\${USER}\"|#output:sandbox")
   questions+=("Print your home directory using ${Y}\$HOME${C}|echo \$HOME|echo \${HOME}|echo \"\$HOME\"|echo \"\${HOME}\"|#output:~/sandbox")
-  questions+=("Print current shell using ${Y}\$SHELL${C}|echo \$SHELL|echo \${SHELL}|echo \"\$SHELL\"|echo \"\${SHELL}\"|#output:~sh")
+  questions+=("Print current shell using ${Y}\$SHELL${C}|echo \$SHELL|echo \${SHELL}|echo \"\$SHELL\"|echo \"\${SHELL}\"|#output:~/(ba)?sh$")
   questions+=("Print the number ${Y}${num}${C}|echo ${num}|#output:${num}")
   questions+=("Print: ${Y}${word} ${word} ${word}${C}|echo ${word} ${word} ${word}|#output:${word} ${word} ${word}")
   _fphrase "Change to" "Go to" "Enter"; questions+=("${REPLY} ${W}${dir}${C} directory|cd ${dir}|cd ${dir}/|cd ./${dir}|cd ./${dir}/")
@@ -1377,7 +1383,7 @@ gen_level5() {
   questions+=("Sort ${W}${cfg}${C} in reverse§sort -r ${cfg}§sort --reverse ${cfg}§cat ${cfg} | sort -r§cat ${cfg} | sort --reverse")
   questions+=("Sort ${W}${csv}${C} numerically§sort -n ${csv}§sort --numeric-sort ${csv}§cat ${csv} | sort -n§cat ${csv} | sort --numeric-sort")
   questions+=("Sort ${W}${txt2}${C} and remove duplicates§sort ${txt2} | uniq§sort -u ${txt2}§sort --unique ${txt2}§cat ${txt2} | sort | uniq§cat ${txt2} | sort -u§cat ${txt2} | sort --unique")
-  questions+=("Sort ${W}${csv}${C} by second column§sort -t, -k2 ${csv}§sort --field-separator=, -k2 ${csv}§sort -t, --key=2 ${csv}§sort --field-separator=, --key=2 ${csv}")
+  questions+=("Sort ${W}${csv}${C} by second column§sort -t, -k2,2 ${csv}§sort --field-separator=, -k2,2 ${csv}§sort -t, --key=2,2 ${csv}§sort --field-separator=, --key=2,2 ${csv}")
   questions+=("First ${n} ${Y}${term1}${C} matches in ${W}${log}${C}§grep ${term1} ${log} | head -${n}§grep ${term1} ${log} | head -n ${n}§grep ${term1} ${log} | head --lines=${n}§grep ${term1} ${log} | head --lines ${n}§grep -m ${n} ${term1} ${log}§grep --max-count ${n} ${term1} ${log}§grep --max-count=${n} ${term1} ${log}§cat ${log} | grep ${term1} | head -${n}§cat ${log} | grep ${term1} | head -n ${n}§cat ${log} | grep -m ${n} ${term1}§#output:~${term1}")
   questions+=("Last ${n2} ${Y}${term1}${C} lines in ${W}${log}${C}§grep ${term1} ${log} | tail -${n2}§grep ${term1} ${log} | tail -n ${n2}§grep ${term1} ${log} | tail --lines=${n2}§grep ${term1} ${log} | tail --lines ${n2}§cat ${log} | grep ${term1} | tail -${n2}§cat ${log} | grep ${term1} | tail -n ${n2}§#output:~${term1}")
   questions+=("Count unique lines in ${W}${txt}${C}§sort ${txt} | uniq | wc -l§sort ${txt} | uniq | wc --lines§sort -u ${txt} | wc -l§sort -u ${txt} | wc --lines§sort --unique ${txt} | wc -l§sort --unique ${txt} | wc --lines§cat ${txt} | sort | uniq | wc -l§cat ${txt} | sort -u | wc -l")
@@ -1437,7 +1443,7 @@ gen_level7() {
   _fpick SANDBOX_LOGS; log=$REPLY
   _fphrase old.log backup.txt archive.csv deleted.log; missing=$REPLY
   questions+=("Save stderr from ${W}./${script}${C} to ${W}${errfile}${C}|./${script} 2> ${errfile}|./${script} 2>${errfile}")
-  questions+=("${Y}cat${C} ${W}${missing}${C}, redirect the error to ${W}${errfile}${C}|cat ${missing} 2> ${errfile}|~^cat [^ ]+ 2> ?${errfile}$")
+  questions+=("${Y}cat${C} ${W}${missing}${C}, redirect the error to ${W}${errfile}${C}|cat ${missing} 2> ${errfile}|~^cat [^ ]+ 2> ?${errfile//./\\.}$")
   questions+=("Find ${Y}*.${ext}${C} files, suppress any errors|find . -name '*.${ext}' 2> /dev/null|find . -type f -name '*.${ext}' 2> /dev/null|find -name '*.${ext}' 2> /dev/null|find -type f -name '*.${ext}' 2> /dev/null")
   questions+=("Run ${W}./${script}${C}, discard any errors|./${script} 2> /dev/null|./${script} 2>/dev/null")
   questions+=("Capture ALL output from ${W}./${script}${C} to ${W}${outfile}${C} (stdout and stderr)|./${script} &> ${outfile}|./${script} >& ${outfile}|./${script} > ${outfile} 2>&1|./${script} 1> ${outfile} 2>&1")
@@ -1655,7 +1661,7 @@ gen_level12() {
 # Level 13: Core File Tools
 gen_level13() {
   local -n questions=${1:-CURRENT_QUESTIONS}; questions=(); eval "local $_QV"; _ctx
-  local perm1=$((RANDOM % 7 + 1))$((RANDOM % 8))$((RANDOM % 8))
+  local perm1=$((RANDOM % 8))$((RANDOM % 8))$((RANDOM % 8))
   _fphrase ERROR WARN INFO DEBUG; local searchterm=$REPLY
   [[ "$cfg2" == "$cfg" ]] && { _fpick CONFIGS; cfg2=$REPLY; }
   [[ "$txt2" == "$txt" ]] && { _fpick TXTS; txt2=$REPLY; }
@@ -1877,9 +1883,9 @@ gen_level17() {
   questions+=("Find files larger than ${size}|find . -size +${size}|find . -type f -size +${size}|fd -S +${size}|fd --size +${size}")
   questions+=("Find files smaller than ${size}|find . -size -${size}|find . -type f -size -${size}|fd -S -${size}|fd --size -${size}")
   questions+=("Find empty files|find . -type f -empty|find . -empty -type f|fd -t f -S 0b|fd --type f --size 0b")
-  questions+=("Find files modified in last ${time} minutes|find . -mmin -${time}|find . -type f -mmin -${time}|fd --changed-within ${time}m")
+  questions+=("Find files modified in last ${time} minutes|find . -mmin -${time}|find . -type f -mmin -${time}|fd --changed-within ${time}min")
   questions+=("Find files NOT modified in last 7 days|find . -not -mtime -7|find . ! -mtime -7|find . \\! -mtime -7|find . -type f -not -mtime -7|find . -type f ! -mtime -7|find . -type f \\! -mtime -7|fd --changed-before 7d|fd --changed-before 1w")
-  questions+=("Find files modified in last hour|find . -mmin -60|find . -type f -mmin -60|fd --changed-within 1h|fd --changed-within 60m")
+  questions+=("Find files modified in last hour|find . -mmin -60|find . -type f -mmin -60|fd --changed-within 1h|fd --changed-within 60min")
   questions+=("Find directories only|find . -type d|fd -t d|fd --type d|fd --type directory")
   questions+=("Find regular files only|find . -type f|fd -t f|fd --type f|fd --type file")
   questions+=("Find symlinks only|find . -type l|fd -t l|fd --type l|fd --type symlink")
@@ -1912,9 +1918,9 @@ gen_level18() {
   ((n > n2)) && { local _t2=$n; n=$n2; n2=$_t2; }
   questions+=("Sort ${W}${txt}${C} numerically descending|sort -rn ${txt}|sort -nr ${txt}|sort --numeric-sort --reverse ${txt}|sort --reverse --numeric-sort ${txt}|sort -n -r ${txt}|sort -r -n ${txt}")
   questions+=("Sort and remove duplicates in ${W}${txt}${C}§sort -u ${txt}§sort --unique ${txt}§sort ${txt} | uniq")
-  questions+=("Sort ${csv} by column ${col}|sort -t, -k${col} ${csv}|sort --field-separator=, -k${col} ${csv}|sort -t, --key=${col} ${csv}|sort --field-separator=, --key=${col} ${csv}")
-  questions+=("Sort ${csv} by column ${col} numerically§sort -t, -k${col}n ${csv}§sort -t, -nk${col} ${csv}§sort --field-separator=, -k${col}n ${csv}§sort -t, -k${col} -n ${csv}")
-  questions+=("Sort ${csv} by column ${col} descending§sort -t, -k${col}rn ${csv}§sort -t, -rnk${col} ${csv}§sort --field-separator=, -k${col}rn ${csv}§sort -t, -k${col} -rn ${csv}§sort -t, -k${col} -nr ${csv}")
+  questions+=("Sort ${csv} by column ${col}|sort -t, -k${col},${col} ${csv}|sort --field-separator=, -k${col},${col} ${csv}|sort -t, --key=${col},${col} ${csv}|sort --field-separator=, --key=${col},${col} ${csv}")
+  questions+=("Sort ${csv} by column ${col} numerically§sort -t, -k${col},${col}n ${csv}§sort -t, -nk${col},${col} ${csv}§sort --field-separator=, -k${col},${col}n ${csv}§sort -t, -k${col},${col} -n ${csv}")
+  questions+=("Sort ${csv} by column ${col} descending§sort -t, -k${col},${col}rn ${csv}§sort -t, -rnk${col},${col} ${csv}§sort --field-separator=, -k${col},${col}rn ${csv}§sort -t, -k${col},${col} -rn ${csv}§sort -t, -k${col},${col} -nr ${csv}")
   questions+=("Sort ${txt} by human-readable sizes (1K, 2M, 3G)|sort -h ${txt}|sort --human-numeric-sort ${txt}")
   questions+=("Sort ${txt} case-insensitively|sort -f ${txt}|sort --ignore-case ${txt}")
   questions+=("Sort ${csv} by column ${col} then ${col2}|sort -t, -k${col},${col} -k${col2},${col2} ${csv}|sort --field-separator=, -k${col},${col} -k${col2},${col2} ${csv}")
@@ -2981,6 +2987,88 @@ Fix log level to INFO§sed -i 's/level=DEBUG/level=INFO/' config.ini§sed -i 's/
 STEPS
 }
 
+# --- Scenario 9: Git Rescue ---
+_sc_setup_9() {
+  local d=$1
+  command -v git &>/dev/null || return 0
+  ( cd "$d" || return
+    git init -q -b main 2>/dev/null || git init -q
+    git config user.email scenario@cmdchamp
+    git config user.name scenario
+    printf 'feature_a=on\nfeature_b=on\nfeature_c=off\n' > features.conf
+    printf 'v1.0\n' > VERSION
+    git add -A && git commit -q -m "Initial release"
+    printf 'feature_a=off\nfeature_b=off\nfeature_c=off\n' > features.conf
+    git add -A && git commit -q -m "BAD: disable all features"
+    printf '# Changelog\n- v1.0 initial\n' > CHANGELOG.md
+    git add -A && git commit -q -m "Add changelog"
+  ) 2>/dev/null
+}
+_sc_steps_9() {
+  cat <<'STEPS'
+Show the last 3 commits one-line§git log --oneline -3§git log --oneline -n 3§git --no-pager log --oneline -3§git --no-pager log --oneline -n 3§git log -3 --oneline#output:~BAD
+Show what HEAD~1 (the bad commit) changed§git show HEAD~1§git show -p HEAD~1§git --no-pager show HEAD~1§git --no-pager show -p HEAD~1§git log -p -1 HEAD~1#output:~feature_a
+Create and switch to a 'fix' branch§git switch -c fix§git switch --create fix§git checkout -b fix#state:contains:.git/HEAD:fix
+Revert the bad commit (HEAD~1) without editor§git revert --no-edit HEAD~1§git revert HEAD~1 --no-edit§git revert -n HEAD~1 && git commit -m Revert§git revert --no-commit HEAD~1 && git commit -m Revert#state:contains:features.conf:feature_a=on,!contains:features.conf:feature_a=off
+Verify features.conf has feature_a=on§grep ^feature_a features.conf | head -1§grep -E '^feature_a' features.conf§head -1 features.conf§awk 'NR==1' features.conf§sed -n '1p' features.conf§awk '/^feature_a/' features.conf | head -1#output:~feature_a=on
+Tag this commit as v1.1§git tag v1.1§git tag -a v1.1 -m fix-release§git tag --annotate v1.1 --message fix-release#state:exists:.git/refs/tags/v1.1
+STEPS
+}
+
+# --- Scenario 10: Batch Refactor ---
+_sc_setup_10() {
+  local d=$1
+  local i
+  mkdir -p "$d/legacy" "$d/archive"
+  for i in 1 2 3 4 5; do
+    printf 'def old_func_%d():\n    print("hello from %d")\n    return %d\n' "$i" "$i" "$i" > "$d/legacy/mod${i}.py"
+  done
+  printf 'NAME=old_app\nVERSION=0.9\n' > "$d/legacy/config.env"
+  printf 'TODO: rename everything\nold_func references everywhere\n' > "$d/legacy/README.md"
+}
+_sc_steps_10() {
+  cat <<'STEPS'
+Count .py files under legacy/§find legacy -name '*.py' | wc -l§find legacy -type f -name '*.py' | wc -l§find legacy/ -name '*.py' | wc -l§find legacy -name '*.py' -type f | wc -l§ls legacy/*.py | wc -l§fd -e py . legacy | wc -l#output:5
+Replace 'old_func' with 'new_func' in every .py file under legacy/§find legacy -name '*.py' -exec sed -i 's/old_func/new_func/g' {} +§find legacy -name '*.py' -exec sed -i 's/old_func/new_func/g' {} \;§find legacy -type f -name '*.py' -exec sed -i 's/old_func/new_func/g' {} +§find legacy -type f -name '*.py' -exec sed -i 's/old_func/new_func/g' {} \;§fd -e py . legacy -x sed -i 's/old_func/new_func/g' {}§grep -rl old_func legacy | xargs sed -i 's/old_func/new_func/g'§grep -rl old_func legacy/ | xargs sed -i 's/old_func/new_func/g'#state:!contains:legacy/mod1.py:old_func,contains:legacy/mod1.py:new_func
+Count remaining 'old_func' occurrences in legacy/ (should be 0)§grep -r old_func legacy | wc -l§grep -r old_func legacy/ | wc -l§rg old_func legacy | wc -l§rg old_func legacy/ | wc -l#output:0
+Make every .py under legacy/ executable§find legacy -name '*.py' -exec chmod +x {} +§find legacy -name '*.py' -exec chmod +x {} \;§find legacy -type f -name '*.py' -exec chmod +x {} +§find legacy -type f -name '*.py' -exec chmod +x {} \;§chmod +x legacy/*.py§fd -e py . legacy -x chmod +x {}#state:perm:legacy/mod1.py:x
+Tar legacy/ into archive/legacy.tar.gz (gzip-compressed)§tar czf archive/legacy.tar.gz legacy§tar czf archive/legacy.tar.gz legacy/§tar -czf archive/legacy.tar.gz legacy§tar -czf archive/legacy.tar.gz legacy/§tar cvzf archive/legacy.tar.gz legacy§tar -cvzf archive/legacy.tar.gz legacy#state:exists:archive/legacy.tar.gz
+Verify the archive lists 5 .py files§tar tzf archive/legacy.tar.gz | grep -c '\.py$'§tar -tzf archive/legacy.tar.gz | grep -c '\.py$'§tar tf archive/legacy.tar.gz | grep -c '\.py$'§tar tvzf archive/legacy.tar.gz | grep -c '\.py$'§tar -tvzf archive/legacy.tar.gz | grep -c '\.py$'#output:5
+STEPS
+}
+
+# --- Scenario 11: Forensic Sweep ---
+_sc_setup_11() {
+  local d=$1
+  cat > "$d/server.log" <<'LOG'
+192.168.1.10 - - [10/Jan/2026:10:00:01 +0000] "GET /index.html HTTP/1.1" 200 1234
+10.0.0.99 - - [10/Jan/2026:10:00:05 +0000] "GET /admin HTTP/1.1" 401 12
+10.0.0.99 - - [10/Jan/2026:10:00:06 +0000] "POST /login HTTP/1.1" 401 12
+192.168.1.10 - - [10/Jan/2026:10:00:08 +0000] "GET /about HTTP/1.1" 200 567
+10.0.0.99 - - [10/Jan/2026:10:00:09 +0000] "POST /login HTTP/1.1" 401 12
+10.0.0.99 - - [10/Jan/2026:10:00:10 +0000] "POST /login HTTP/1.1" 401 12
+192.168.1.42 - - [10/Jan/2026:10:00:11 +0000] "GET /contact HTTP/1.1" 200 890
+10.0.0.99 - - [10/Jan/2026:10:00:12 +0000] "POST /login HTTP/1.1" 401 12
+10.0.0.99 - - [10/Jan/2026:10:00:13 +0000] "GET /etc/passwd HTTP/1.1" 403 9
+10.0.0.99 - - [10/Jan/2026:10:00:14 +0000] "GET /.env HTTP/1.1" 403 9
+192.168.1.10 - - [10/Jan/2026:10:00:15 +0000] "GET /index.html HTTP/1.1" 200 1234
+10.0.0.99 - - [10/Jan/2026:10:00:16 +0000] "POST /login HTTP/1.1" 200 45
+10.0.0.99 - - [10/Jan/2026:10:00:17 +0000] "GET /admin HTTP/1.1" 200 4567
+10.0.0.99 - - [10/Jan/2026:10:00:18 +0000] "GET /admin/users HTTP/1.1" 200 789
+192.168.1.42 - - [10/Jan/2026:10:00:19 +0000] "GET /about HTTP/1.1" 200 567
+LOG
+}
+_sc_steps_11() {
+  cat <<'STEPS'
+Extract every IP address from server.log§grep -oE '[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+' server.log§rg -o '[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+' server.log§grep -oP '\d+\.\d+\.\d+\.\d+' server.log§rg -o '\d+\.\d+\.\d+\.\d+' server.log#output:~10\.0\.0\.99
+Find the top attacker (most-frequent IP), show ONLY the IP§grep -oE '[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+' server.log | sort | uniq -c | sort -rn | head -1 | awk '{print $2}'§grep -oE '[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+' server.log | sort | uniq -c | sort -nr | head -1 | awk '{print $2}'§rg -o '[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+' server.log | sort | uniq -c | sort -rn | head -1 | awk '{print $2}'§awk '{print $1}' server.log | sort | uniq -c | sort -rn | head -1 | awk '{print $2}'§awk '{print $1}' server.log | sort | uniq -c | sort -nr | head -1 | awk '{print $2}'#output:10.0.0.99
+Save all 10.0.0.99 lines to attacker.log§grep '10.0.0.99' server.log > attacker.log§grep -F '10.0.0.99' server.log > attacker.log§rg '10.0.0.99' server.log > attacker.log§awk '/10\.0\.0\.99/' server.log > attacker.log§awk '$1=="10.0.0.99"' server.log > attacker.log#state:contains:attacker.log:10.0.0.99,!contains:attacker.log:192.168
+Count failed 401 logins from the attacker§grep 10.0.0.99 server.log | grep -c ' 401 '§grep '10.0.0.99' server.log | grep -c ' 401 '§awk '$1=="10.0.0.99" && /401/' server.log | wc -l§awk '/10\.0\.0\.99/ && /401/' server.log | wc -l§rg 10.0.0.99 server.log | rg -c ' 401 '#output:5
+Show the attacker's successful (200) requests§grep 10.0.0.99 server.log | grep ' 200 '§awk '$1=="10.0.0.99" && /200/' server.log§awk '/10\.0\.0\.99/ && / 200 /' server.log§rg 10.0.0.99 server.log | rg ' 200 '#output:~/admin
+Extract distinct URLs the attacker hit, sorted§awk '$1=="10.0.0.99" {print $7}' server.log | sort -u§awk '$1=="10.0.0.99" {print $7}' server.log | sort | uniq§grep 10.0.0.99 server.log | awk '{print $7}' | sort -u§grep 10.0.0.99 server.log | awk '{print $7}' | sort | uniq§rg 10.0.0.99 server.log | awk '{print $7}' | sort -u#output:~/admin
+STEPS
+}
+
 declare -A _LEVEL_CACHE=() _LEVEL_CACHE_N=() _LEVEL_ITEMS=() _LAST_PICK=() _LEVEL_CHAL=()
 
 declare -a CURRENT_QUESTIONS=()
@@ -3077,6 +3165,27 @@ _fnorm() {
     else _sf+=("$_sp"); fi
   done
   parts=("${_sf[@]}")
+  # Re-pair arg-taking flags with their value so sort keeps -d/-f pairs intact
+  # (cut -d: -f1 ≡ cut -f1 -d:). Short flags become -dX, long flags become --opt=X.
+  local _atf_short=" -d -f -F -t -e -k -c -m -K "
+  local _atf_long=" --delimiter --field-separator --fields --field --key --max-count --color --sort --reference --filter --hash-type --rules-file --since --until --regexp --file --include --exclude --exclude-dir --after-context --before-context --context --max-depth --maxdepth --mindepth "
+  local _rp=("${parts[0]}") _ri=1 _np=${#parts[@]} _ct _nt _is_atf
+  while ((_ri < _np)); do
+    _ct="${parts[$_ri]}"; _is_atf=0
+    if [[ "$_atf_short" == *" $_ct "* ]]; then _is_atf=1
+    elif [[ "$_atf_long" == *" $_ct "* ]]; then _is_atf=2
+    fi
+    if ((_is_atf)) && ((_ri + 1 < _np)); then
+      _nt="${parts[$((_ri+1))]}"
+      if [[ "$_nt" != -* && "$_nt" != "--" ]]; then
+        if ((_is_atf == 1)); then _rp+=("${_ct}${_nt}")
+        else _rp+=("${_ct}=${_nt}"); fi
+        _ri=$((_ri + 2)); continue
+      fi
+    fi
+    _rp+=("$_ct"); _ri=$((_ri + 1))
+  done
+  parts=("${_rp[@]}")
   REPLY="${parts[0]}"
   local _saw_dashdash=0
   for p in "${parts[@]:1}"; do
@@ -3504,7 +3613,7 @@ _read_line() {
   local _rl_hints=${1:-1} _rl_hist=${2:-1} _rl_timeout=${3:-0} _rl_deadline=0
   input="" cursor=0 mode="insert" _rep="" _man_open=0
   UNDO_STACK=()
-  _vi_reg="" _vi_lastf="" _vi_dot="" _vi_dotrep=""
+  _vi_reg="" _vi_lastf=""
   local _rl_last_sec=0
   if ((_rl_timeout > 0)); then printf -v _rl_deadline '%(%s)T' -1; ((_rl_deadline += _rl_timeout)); _rl_last_sec=$_rl_deadline; fi
   ((_rl_hist)) && { HIST_IDX=${#HIST[@]}; HIST_SAVE=""; }
@@ -4184,7 +4293,7 @@ _selftest() {
     $'combined split\tls -la\tls -a -l'
     $'single quotes\tgrep \'foo\' bar\tgrep foo bar'
     $'double quotes\tgrep "foo" bar\tgrep foo bar'
-    $'flag quote strip\tawk -F\',\'\tawk -F ,'
+    $'flag quote strip\tawk -F\',\'\tawk -F,'
     $'redirect split\techo hi >out\techo hi > out'
     $'stderr redirect\tcmd 2>/dev/null\tcmd 2> /dev/null'
     $'pipe\tcat f | grep x\tcat f | grep x'
@@ -4193,23 +4302,28 @@ _selftest() {
     $'head -N\thead -5 file\thead -n 5 file'
     $'tail -N\ttail -20 log\ttail -n 20 log'
     $'head --lines\thead --lines file\thead -n file'
-    $'long=val\tsort --field-separator=,\tsort --field-separator ,'
+    $'long=val\tsort --field-separator=,\tsort --field-separator=,'
     $'-n5 split\thead -n5 f\thead -n 5 f'
-    $'-t, split\tsort -t, file\tsort -t , file'
-    $'-F: split\tawk -F: prog file\tawk -F : prog file'
-    $'-d/ split\tcut -d/ -f1\tcut -d -f / 1'
+    $'-t, split\tsort -t, file\tsort -t, file'
+    $'-F: split\tawk -F: prog file\tawk -F: prog file'
+    $'-d/ split\tcut -d/ -f1\tcut -d/ -f1'
     $'dashdash\tgrep -- -v file\tgrep -- -v file'
     $'semicolon\tcmd1; cmd2\tcmd1 ; cmd2'
     $'semicolon glued\tcmd1;cmd2\tcmd1 ; cmd2'
     $'empty\t\t'
     $'double pipe\tcmd1 || cmd2\tcmd1 || cmd2'
     $'complex\tgrep -rn \'TODO\' ./src\tgrep -n -r TODO src'
-    $'awk -F:\tawk -F: \'{print $1}\' /etc/passwd\tawk -F : \'{print $1}\' /etc/passwd'
+    $'awk -F:\tawk -F: \'{print $1}\' /etc/passwd\tawk -F: \'{print $1}\' /etc/passwd'
     $'append redirect\techo hi >>out\techo hi >> out'
     $'multi args\tcp a b c\tcp a b c'
     $'tail +N\ttail -n +5 file\ttail -n +5 file'
     $'tar bundle sort\ttar xzf a.tar.gz\ttar fxz a.tar.gz'
     $'tar bundle sort2\ttar czf a.tar.gz dir\ttar cfz a.tar.gz dir'
+    $'cut pair order A\tcut -d: -f1 /etc/passwd\tcut -d: -f1 /etc/passwd'
+    $'cut pair order B\tcut -f1 -d: /etc/passwd\tcut -d: -f1 /etc/passwd'
+    $'cut pair spaced\tcut -d : -f 1 /etc/passwd\tcut -d: -f1 /etc/passwd'
+    $'cut long pair\tcut --delimiter=, --fields=1 f\tcut --delimiter=, --fields=1 f'
+    $'cut long pair reorder\tcut --fields=1 --delimiter=, f\tcut --delimiter=, --fields=1 f'
   )
   for _t in "${_ft[@]}"; do IFS=$'\t' read -r _d _i _w <<< "$_t"; _fnorm "$_i"; _assert "$_d" "$REPLY" "$_w"; done
 
