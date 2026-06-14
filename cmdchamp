@@ -59,7 +59,7 @@ _strip_ansi() {
   REPLY="$out"
 }
 
-VERSION="1.2.2"
+VERSION="1.2.3"
 SANDBOX_TIMEOUT=5      # Seconds before sandbox command times out
 BOSS_THRESHOLD=4       # Correct answers needed to beat boss (out of BOSS_TOTAL)
 BOSS_TOTAL=5           # Number of questions in boss round
@@ -2197,7 +2197,7 @@ gen_level21() {
   questions+=("View ${svc} errors, count unique messages§journalctl -u ${svc} -p err --no-pager | sort | uniq -c | sort -rn§journalctl --unit ${svc} -p err --no-pager | sort | uniq -c | sort -rn")
   questions+=("Find logs modified today under /var/log containing '${term}'§find /var/log -mtime 0 -type f -exec grep -l ${term} {} \\;§find /var/log -mtime 0 -type f -exec grep -l ${term} {} +§fd --changed-within 1d -t f . /var/log -x grep -l ${term}§fd --changed-within 1d -t f . /var/log -x rg -l ${term}")
   questions+=("Copy each .${ext} to backup_FILE.${ext} using xargs -I{}§ls *.${ext} | xargs -I{} cp {} backup_{}§printf '%s\\n' *.${ext} | xargs -I{} cp {} backup_{}§find . -maxdepth 1 -name '*.${ext}' -printf '%f\\n' | xargs -I{} cp {} backup_{}")
-  questions+=("Rename .txt to .md (GNU rename)|rename 's/\\.txt$/.md/' *.txt|rename .txt .md *.txt")
+  questions+=("Rename .txt to .md (perl-rename or util-linux rename)|rename 's/\\.txt$/.md/' *.txt|rename .txt .md *.txt")
   questions+=("Run ${script} every 6 hours|0 */6 * * * /usr/local/bin/${script}")
   questions+=("Run ${script} weekdays only at 9am|0 9 * * 1-5 /usr/local/bin/${script}|0 9 * * mon-fri /usr/local/bin/${script}|0 9 * * MON-FRI /usr/local/bin/${script}")
   questions+=("Skip xargs run if input is empty (-r / --no-run-if-empty)|xargs -r rm < filelist.txt|xargs --no-run-if-empty rm < filelist.txt")
