@@ -59,7 +59,7 @@ _strip_ansi() {
   REPLY="$out"
 }
 
-VERSION="1.2.3"
+VERSION="1.2.4"
 SANDBOX_TIMEOUT=5      # Seconds before sandbox command times out
 BOSS_THRESHOLD=4       # Correct answers needed to beat boss (out of BOSS_TOTAL)
 BOSS_TOTAL=5           # Number of questions in boss round
@@ -1988,7 +1988,7 @@ gen_level18() {
   questions+=("Convert to lowercase in ${W}${txt}${C}|tr 'A-Z' 'a-z' < ${txt}|tr '[:upper:]' '[:lower:]' < ${txt}|awk '{print tolower(\$0)}' ${txt}|sed 's/.*/\\L&/' ${txt}")
   questions+=("Convert to uppercase in ${W}${txt}${C}|tr 'a-z' 'A-Z' < ${txt}|tr '[:lower:]' '[:upper:]' < ${txt}|awk '{print toupper(\$0)}' ${txt}|sed 's/.*/\\U&/' ${txt}")
   questions+=("Delete all whitespace in ${W}${txt}${C}|tr -d '[:space:]' < ${txt}|tr --delete '[:space:]' < ${txt}")
-  questions+=("Replace newlines with spaces in ${W}${txt}${C}|tr '\\n' ' ' < ${txt}|paste -sd' ' ${txt}|paste -s -d' ' ${txt}|paste -sd ' ' ${txt}|xargs < ${txt}")
+  questions+=("Replace newlines with spaces in ${W}${txt}${C}|tr '\\n' ' ' < ${txt}|paste -sd' ' ${txt}|paste -s -d' ' ${txt}|paste -sd ' ' ${txt}")
   questions+=("Convert tabs to spaces in ${W}${txt}${C}|tr '\\t' ' ' < ${txt}|expand ${txt}|expand < ${txt}")
   questions+=("Top ${n} most common lines in ${log}§sort ${log} | uniq -c | sort -rn | head -${n}§sort ${log} | uniq -c | sort -rn | head -n ${n}§sort ${log} | uniq -c | sort -nr | head -${n}§sort ${log} | uniq -c | sort -nr | head -n ${n}§sort ${log} | uniq --count | sort -rn | head -${n}§sort ${log} | uniq --count | sort -rn | head -n ${n}")
   questions+=("Count unique values in column ${col} in ${W}${csv}${C}§cut -d, -f${col} ${csv} | sort | uniq -c§awk -F, '{print \$${col}}' ${csv} | sort | uniq -c")
@@ -2522,8 +2522,8 @@ gen_level26() {
   questions+=("Block radio with rfkill|rfkill block wifi|sudo rfkill block wifi|rfkill block all|sudo rfkill block all")
   questions+=("Unblock all radios|rfkill unblock all|sudo rfkill unblock all|rfkill unblock wifi|sudo rfkill unblock wifi")
   questions+=("Scan 433 MHz devices (RTL-SDR)|rtl_433|rtl_433 -F json|sudo rtl_433")
-  questions+=("Scan for nearby classic Bluetooth (BR/EDR) devices|bluetoothctl scan bredr|sudo bluetoothctl scan bredr|hcitool scan|sudo hcitool scan")
-  questions+=("Scan for nearby Bluetooth Low Energy (BLE) devices|bluetoothctl scan le|sudo bluetoothctl scan le|bluetoothctl --timeout 10 scan le|sudo bluetoothctl --timeout 10 scan le|hcitool lescan|sudo hcitool lescan")
+  questions+=("Scan for nearby classic Bluetooth (BR/EDR) devices|bluetoothctl scan bredr|sudo bluetoothctl scan bredr")
+  questions+=("Scan for nearby Bluetooth Low Energy (BLE) devices|bluetoothctl scan le|sudo bluetoothctl scan le|bluetoothctl --timeout 10 scan le|sudo bluetoothctl --timeout 10 scan le")
   questions+=("Start bettercap on ${W}${wiface}${C}, enabling wifi.recon module on launch|bettercap -iface ${wiface} -eval 'wifi.recon on'|sudo bettercap -iface ${wiface} -eval 'wifi.recon on'#boss-skip")
   questions+=("Connect to SSID ${W}CorpWiFi${C} via nmcli (password 'pass123')|nmcli dev wifi connect CorpWiFi password pass123|nmcli device wifi connect CorpWiFi password pass123|sudo nmcli dev wifi connect CorpWiFi password pass123|sudo nmcli device wifi connect CorpWiFi password pass123")
   questions+=("List saved nmcli connection profiles|nmcli connection show|nmcli con show|nmcli c show|nmcli c")
