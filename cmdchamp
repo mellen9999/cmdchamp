@@ -4631,8 +4631,10 @@ _selftest() {
   _assert "gatttool skip" "$(_can_sandbox 'gatttool -b AA -I' && echo y || echo n)" "n"
   _assert "hcxdumptool skip" "$(_can_sandbox 'hcxdumptool -i wlan0mon -o o' && echo y || echo n)" "n"
 
-  # /tmp must exist as a real tmpfs in the sandbox (bwrap --size --tmpfs syntax check)
-  if command -v bwrap &>/dev/null; then
+  # /tmp must exist as a real tmpfs in the sandbox (bwrap --size --tmpfs syntax check).
+  # Only when bwrap can actually create namespaces — restricted containers / CI runners
+  # without unprivileged userns would otherwise hard-fail a working build.
+  if command -v bwrap &>/dev/null && bwrap --dev-bind / / --unshare-all true 2>/dev/null; then
     local _tmpcheck
     _tmpcheck=$(bwrap --size 1048576 --tmpfs /tmp --ro-bind /usr /usr --ro-bind /bin /bin --ro-bind /lib /lib --ro-bind /lib64 /lib64 /bin/bash -c 'touch /tmp/t && echo OK' 2>&1)
     _assert "sandbox /tmp is real tmpfs" "$_tmpcheck" "OK"

@@ -14,6 +14,9 @@ jobs:
       - name: install bubblewrap (sandbox tests)
         run: sudo apt-get update && sudo apt-get install -y bubblewrap
 
+      - name: enable unprivileged user namespaces (so bwrap can sandbox)
+        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
+
       - name: shellcheck
         run: shellcheck cmdchamp
 
