@@ -3145,6 +3145,10 @@ generate_level() {
 # ═══ ANSWER CHECK ═══
 _fnorm() {
   [[ -z "$1" ]] && { REPLY=""; return; }
+  # Byte-order collation so flag sorting (and tar-char sorting) is identical in every
+  # locale — otherwise the same command normalizes differently under C vs en_US, since
+  # UTF-8 collation treats the leading hyphens of long flags as ignorable.
+  local LC_ALL=C
   # Handle pipes: normalize each segment independently (protect || from splitting)
   if [[ "$1" == *'|'* ]]; then
     local _segs _s _r="" _pg="${1//||/$'\x01'}"

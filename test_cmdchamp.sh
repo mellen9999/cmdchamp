@@ -87,9 +87,9 @@ r=$(run_norm "ls -rla")
 r=$(run_norm "sort --reverse file")
 [[ "$r" == "sort --reverse file" ]] && ok "norm preserves long flags" || fail "norm long" "got '$r'"
 
-# Long + short mixed
+# Long + short mixed — _fnorm sorts flags in byte order (LC_ALL=C), locale-independent
 r=$(run_norm "sort --reverse -n file")
-[[ "$r" == "sort -n --reverse file" ]] && ok "norm mixed long+short" || fail "norm mixed" "got '$r'"
+[[ "$r" == "sort --reverse -n file" ]] && ok "norm mixed long+short" || fail "norm mixed" "got '$r'"
 
 # Flags with values
 r=$(run_norm "head --lines=5 file")
