@@ -30,7 +30,10 @@ set -uo pipefail
 _tty() { [[ -t 0 ]] || { echo "Error: requires interactive terminal" >&2; exit 1; }; }
 command -v awk &>/dev/null || { echo "Error: awk not found" >&2; exit 1; }
 
-DATA="${XDG_DATA_HOME:-$HOME/.local/share}/cmdchamp"; mkdir -p "$DATA"; touch "$DATA/scores"
+DATA="${XDG_DATA_HOME:-${HOME:-/tmp}/.local/share}/cmdchamp"
+mkdir -p "$DATA" || { echo "Error: cannot create data dir: $DATA" >&2; exit 1; }
+DATA="$(cd "$DATA" && pwd)" || { echo "Error: data dir unavailable: $DATA" >&2; exit 1; }  # absolute path (bwrap --bind needs it)
+touch "$DATA/scores" 2>/dev/null
 
 if [[ -n ${NO_COLOR+x} || ${TERM:-} == dumb ]]; then
   R="" G="" Y="" U="" M="" C="" W="" B="" N="" D="" _SY="" _SN=""
@@ -59,7 +62,7 @@ _strip_ansi() {
   REPLY="$out"
 }
 
-VERSION="1.2.4"
+VERSION="1.2.5"
 SANDBOX_TIMEOUT=5      # Seconds before sandbox command times out
 BOSS_THRESHOLD=4       # Correct answers needed to beat boss (out of BOSS_TOTAL)
 BOSS_TOTAL=5           # Number of questions in boss round
@@ -105,9 +108,12 @@ _load_profile() {
       [[ -f "$DATA/profile" ]] && cp "$DATA/profile" "$DATA/profile.bak"
       [[ -f "$DATA/scores" ]] && cp "$DATA/scores" "$DATA/scores.bak"
       printf '%s\n' "Profile version mismatch (got $_file_ver, want $_PROFILE_VER) — reset. Backup in profile.bak/scores.bak" >&2
-      PLAYER_NAME="" BOSS_BEATEN=0 BEST_CHALLENGE=0 DISKS_FOUND="" SC_DONE="" LAST_DECAY=0
+      PLAYER_NAME="" BOSS_BEATEN=0 BEST_CHALLENGE=0 DISKS_FOUND="" SC_DONE="" LAST_DECAY=0 PLACED_THROUGH=0
       : > "$DATA/scores"
       rm -f "$DATA"/*.json
+      # Persist the reset NOW so a quit-before-save can't re-enter this path and
+      # overwrite the good backup with the already-emptied scores on next launch.
+      _save_profile
     fi
     [[ "$BOSS_BEATEN" =~ ^[0-9]+$ ]] || BOSS_BEATEN=0
     ((BOSS_BEATEN > MAX_LEVEL)) && BOSS_BEATEN=$MAX_LEVEL
@@ -554,7 +560,9 @@ _sandbox_exec() {
   [[ -e /lib64 ]] && bwrap_args+=(--ro-bind /lib64 /lib64)
 
   local _rc
-  timeout "$timeout_sec" bwrap "${bwrap_args[@]}" /bin/bash -c 'eval "$1"' -- "$cmd"; _rc=$?
+  # ulimit -u caps processes inside the sandbox so a fork bomb can't pin a core
+  # for the full timeout window. 256 is far above anything a real lesson needs.
+  timeout "$timeout_sec" bwrap "${bwrap_args[@]}" /bin/bash -c 'ulimit -u 256 2>/dev/null; eval "$1"' -- "$cmd"; _rc=$?
   ((_rc >= 125)) && printf '%s\n' "${R}sandbox error (exit ${_rc})${N}" >&2
   return "$_rc"
 }
@@ -668,7 +676,7 @@ _cleanup() {
   [[ -n "$_stty_saved" ]] && stty "$_stty_saved" 2>/dev/null
   ((_interactive)) || return 0
   rm -rf "$DATA/sandbox.snap" "$DATA/sandbox.snap.perms" 2>/dev/null
-  printf '\e[?25h'
+  printf '\e[?25h\e[?2004l'  # restore cursor + disable bracketed paste (interactive exit only)
   if ((_S_ANSWERED > 0)); then
     local _ts; printf -v _ts '%(%s)T' -1; local el=$((_ts - _S_START))
     printf '\n%s  %s/%s (%d%%)  streak %s  %dm%ds\n' \
@@ -677,7 +685,12 @@ _cleanup() {
       $((el/60)) $((el%60))
   else echo; fi
 }
-trap '_cleanup; exit 0' INT TERM HUP EXIT
+# EXIT trap must NOT call exit — that would clobber the script's real exit code
+# (e.g. `cmdchamp test` returning non-zero on failure, which CI depends on).
+trap '_cleanup' EXIT
+trap '_cleanup; exit 130' INT
+trap '_cleanup; exit 143' TERM
+trap '_cleanup; exit 129' HUP
 ((EUID == 0)) && PROMPT_CHAR='# ' || PROMPT_CHAR='$ '
 PROMPT_CHAR="${CMD_PROMPT:-$PROMPT_CHAR}"
 
@@ -1760,7 +1773,7 @@ gen_level14() {
   questions+=("Reverse DNS lookup for ${ip}|dig -x ${ip}|host ${ip}|nslookup ${ip}|drill -x ${ip}")
   questions+=("Check if port ${port} is open on ${ip}|nc -zv ${ip} ${port}|nc -z ${ip} ${port}|ncat -zv ${ip} ${port}|ncat -z ${ip} ${port}|bash -c 'echo >/dev/tcp/${ip}/${port}'|echo >/dev/tcp/${ip}/${port}")
   questions+=("Show listening ports|ss -tlnp|ss -ltnp|ss -nltp|ss -tulnp|netstat -tlnp|netstat -ltnp|netstat -tulnp|sudo ss -tlnp|sudo ss -tulnp|sudo netstat -tlnp|sudo netstat -tulnp|ss -tln|ss -ltn|ss -nlt")
-  questions+=("Show all network connections|ss -tunapl|netstat -tunapl|sudo ss -tunapl|sudo netstat -tunapl")
+  questions+=("Show all network connections|ss -tunap|netstat -tunap|sudo ss -tunap|sudo netstat -tunap")
   questions+=("Show routing table|ip route|ip r|ip route show|ip r show|route|netstat -r|netstat -rn")
   questions+=("Show network interfaces|ip addr|ip a|ip addr show|ip a show|ip address|ip address show|ifconfig|ifconfig -a|ip link|ip link show")
   questions+=("Show disk space usage (human-readable)|df -h|df --human-readable")
@@ -2245,7 +2258,7 @@ gen_level22() {
   questions+=("Transform case (lowercase) in ${W}${txt}${C}|sed 's/.*/\\L&/' ${txt}|tr '[:upper:]' '[:lower:]' < ${txt}|awk '{print tolower(\$0)}' ${txt}|tr A-Z a-z < ${txt}")
   questions+=("Transform case (uppercase) in ${W}${txt}${C}|sed 's/.*/\\U&/' ${txt}|tr '[:lower:]' '[:upper:]' < ${txt}|awk '{print toupper(\$0)}' ${txt}|tr a-z A-Z < ${txt}")
   questions+=("Capitalize first letter in ${W}${txt}${C}|sed 's/.*/\\u&/' ${txt}|awk '{print toupper(substr(\$0,1,1)) substr(\$0,2)}' ${txt}")
-  questions+=("Print lines where id > ${n2} in ${W}data.csv${C}|awk -F, '\$1 > ${n2}' data.csv|awk -F, 'NR>1 && \$1 > ${n2}' data.csv")
+  questions+=("Print lines where id > ${n2} in ${W}data.csv${C} (skip header)|awk -F, 'NR>1 && \$1 > ${n2}' data.csv|awk -F, '\$1 > ${n2} && NR>1' data.csv")
   questions+=("Print unique values from first column in ${W}${csv}${C}|awk -F, '!seen[\$1]++' ${csv}")
   questions+=("Find min id (skip header) in ${W}data.csv${C}|awk -F, 'NR==2{min=\$1} NR>1 && \$1<min{min=\$1} END{print min}' data.csv")
   questions+=("Conditional print in ${W}${csv}${C}|awk -F, '\$3==\"active\" {print \$1, \$2}' ${csv}")
@@ -2678,7 +2691,7 @@ gen_level29() {
   questions+=("SUID vim shell escape|vim -c ':!/bin/sh -p'|vim -c ':!/bin/bash -p'|vi -c ':!/bin/sh -p'|vi -c ':!/bin/bash -p'|vim -c ':!sh -p'|vim -c ':!bash -p'|vi -c ':!sh -p'|vi -c ':!bash -p'|vim -c ':py3 import os; os.execl(\"/bin/sh\", \"sh\", \"-p\")'|vim -c ':py3 import os; os.execl(\"/bin/bash\", \"bash\", \"-p\")'")
   questions+=("SUID python3 shell|python3 -c 'import os; os.execl(\"/bin/sh\", \"sh\", \"-p\")'|python3 -c 'import os; os.execl(\"/bin/bash\", \"bash\", \"-p\")'|python3 -c 'import pty; pty.spawn(\"/bin/sh\")'|python3 -c 'import pty; pty.spawn(\"/bin/bash\")'|python3 -c 'import os;os.system(\"/bin/sh -p\")'|python3 -c 'import os;os.system(\"/bin/bash -p\")'|python -c 'import pty; pty.spawn(\"/bin/sh\")'|python -c 'import pty; pty.spawn(\"/bin/bash\")'")
   questions+=("Sudo env privesc|sudo env /bin/sh|sudo env /bin/bash|sudo env sh|sudo env bash|sudo /usr/bin/env /bin/sh|sudo /usr/bin/env /bin/bash")
-  questions+=("Check kernel exploits (searchsploit, strip arch suffix)§searchsploit linux kernel \$(uname -r | cut -d- -f1)§searchsploit linux kernel | grep \$(uname -r | cut -d- -f1)§searchsploit -m linux/local/ kernel \$(uname -r | cut -d- -f1)#boss-skip")
+  questions+=("Check kernel exploits (searchsploit, strip arch suffix)§searchsploit linux kernel \$(uname -r | cut -d- -f1)§searchsploit linux kernel | grep \$(uname -r | cut -d- -f1)#boss-skip")
   questions+=("Docker socket check|ls -la /var/run/docker.sock|ls -l /var/run/docker.sock")
   questions+=("Docker escape via socket|docker run -v /:/mnt --rm -it alpine chroot /mnt sh|docker run -v /:/mnt --rm -it alpine chroot /mnt /bin/bash|docker run -v /:/mnt --rm -it alpine chroot /mnt /bin/sh|docker run -v /:/mnt --rm -it alpine chroot /mnt bash|sudo docker run -v /:/mnt --rm -it alpine chroot /mnt sh|sudo docker run -v /:/mnt --rm -it alpine chroot /mnt /bin/bash|sudo docker run -v /:/mnt --rm -it alpine chroot /mnt /bin/sh|sudo docker run -v /:/mnt --rm -it alpine chroot /mnt bash")
   questions+=("LXD privesc: init privileged ubuntu:22.04 container named 'privesc'|lxc init ubuntu:22.04 privesc -c security.privileged=true|lxc init ubuntu:22.04 privesc --config security.privileged=true|lxc init ubuntu:22.04 privesc --config=security.privileged=true|sudo lxc init ubuntu:22.04 privesc -c security.privileged=true|sudo lxc init ubuntu:22.04 privesc --config security.privileged=true")
@@ -3139,7 +3152,10 @@ _fnorm() {
       IFS='|' read -ra _segs <<< "$_pg"
       for _s in "${_segs[@]}"; do
         _s="${_s//$'\x01'/||}"; _trim "$_s"; _s=$REPLY
-        [[ -z "$_s" ]] && continue
+        # An empty stage means a malformed pipe (leading/trailing/double "|").
+        # Real commands never have one — return a sentinel so it can't match a
+        # canonical answer (else "| sort f" would normalize equal to "sort f").
+        [[ -z "$_s" ]] && { REPLY=$'\x02'; return; }
         _fnorm "$_s"
         [[ -n "$_r" ]] && _r+=" | "
         _r+="$REPLY"
@@ -3405,7 +3421,11 @@ norm() {
   done
 }
 _sflush() {
-  local _fd; exec {_fd}>"$DATA/scores.lock"; flock -x "$_fd"
+  # Best-effort advisory lock. If the data dir is unwritable (disk full, ro mount)
+  # the open fails — fall back to a lockless write rather than crashing under set -u
+  # and losing the session's scores.
+  local _fd=""
+  exec {_fd}>"$DATA/scores.lock" 2>/dev/null && flock -x "$_fd"
   # Merge with current disk state to survive concurrent instances: for shared
   # keys, keep whichever has the later timestamp.
   local -A _disk_sc=()
@@ -3426,7 +3446,7 @@ _sflush() {
   done
   { printf '#v1\n'; for _k in "${!_sc[@]}"; do printf '%s|%s\n' "$_k" "${_sc[$_k]}"; done; } > "$DATA/scores.tmp"
   mv "$DATA/scores.tmp" "$DATA/scores"
-  exec {_fd}>&-
+  [[ -n "$_fd" ]] && exec {_fd}>&-
 }
 
 _calc_mastery() {
@@ -3533,7 +3553,49 @@ _wfwd() { while ((cursor<${#input})) && [[ "${input:cursor:1}" != " " ]]; do ((+
 _wbck() { ((cursor>0)) && ((cursor--)); while ((cursor>0)) && [[ "${input:cursor:1}" == " " ]]; do ((cursor--)); done; while ((cursor>0)) && [[ "${input:cursor-1:1}" != " " ]]; do ((cursor--)); done; }
 _wend() { ((cursor<${#input}-1)) && ((++cursor)); while ((cursor<${#input}-1)) && [[ "${input:cursor:1}" == " " ]]; do ((++cursor)); done; while ((cursor<${#input}-1)) && [[ "${input:cursor+1:1}" != " " ]]; do ((++cursor)); done; }
 _clamp() { ((cursor>=${#input})) && cursor=$((${#input}>0?${#input}-1:0)); }
-_vi_read() { IFS= read -rsn1 c2; }
+# Consume the tail of a CSI sequence (e.g. the "~" of Home/End/Del/PgUp, or extra
+# digits of \e[15~) so leftover bytes don't leak into the next keystroke as commands.
+_csi_drain() { local _x; while IFS= read -rsn1 -t 0.01 _x && [[ ! "$_x" =~ ^[A-Za-z~]$ ]]; do :; done; }
+# Bracketed paste (\e[?2004h). After \e[2 is read, confirm a \e[200~ start marker.
+_paste_start() {
+  local _p=""; read -rsn1 -t 0.05 _p || _p=""
+  [[ "$_p" != "0" ]] && { [[ "$_p" != "~" ]] && _csi_drain; return 1; }  # \e[2~ (Insert) or other CSI
+  read -rsn1 -t 0.05 _p; read -rsn1 -t 0.05 _p  # consume the second 0 and the ~
+  return 0
+}
+# Read a paste body (past \e[200~) up to \e[201~. Flatten newlines/tabs to spaces —
+# this is a single-line command field. -t guards against a truncated/missing end marker.
+_paste_read() {
+  local _buf="" _ch _x
+  while IFS= read -rsn1 -t 2 _ch; do
+    [[ "$_ch" == $'\e' ]] && { read -rsn1 -t 0.05 _x; [[ "$_x" == "[" ]] && _csi_drain; break; }
+    # read returns empty on a newline (its line delimiter); treat that + CR/tab as a space
+    # so a multi-line paste flattens to one line without merging adjacent tokens.
+    [[ -z "$_ch" || "$_ch" == $'\r' || "$_ch" == $'\t' ]] && _ch=" "
+    _buf+="$_ch"
+  done
+  REPLY="$_buf"
+}
+# Insert pasted text at the cursor, respecting the 512-char line cap.
+_paste_insert() {
+  _paste_read
+  local _av=$((512 - ${#input})); ((_av < 0)) && _av=0
+  ((${#REPLY} > _av)) && REPLY="${REPLY:0:_av}"
+  input="${input:0:cursor}${REPLY}${input:cursor}"; ((cursor += ${#REPLY}))
+}
+_vi_read() {
+  # In timed modes (boss/challenge) honor the deadline so a vi operator key
+  # (r, f, d, c, y, g) awaiting its next char can't freeze the countdown forever.
+  if ((${_rl_deadline:-0})); then
+    local _now
+    while ! IFS= read -rsn1 -t 1 c2; do
+      printf -v _now '%(%s)T' -1
+      ((_now >= _rl_deadline)) && { c2=""; return; }
+    done
+  else
+    IFS= read -rsn1 c2
+  fi
+}
 _vi_hist() {
   ((_rl_hist)) || return 1
   if (($1 < 0)); then
@@ -3630,7 +3692,8 @@ _vi_normal() {
     G) cursor=$((${#input}>0?${#input}-1:0)); draw;;
     $'\x1b') local _e1 _e2; read -rsn1 -t 0.01 _e1 || _e1=""
       if [[ "$_e1" == "[" ]]; then read -rsn1 -t 0.01 _e2 || _e2=""
-        case "$_e2" in A) _vi_hist -1 && draw;; B) _vi_hist 1 && draw;; C) ((cursor<${#input}-1)) && ((++cursor)) && draw;; D) ((cursor>0)) && ((cursor--)) && draw;; esac; fi;;
+        if [[ "$_e2" == "2" ]]; then _paste_start && { _paste_insert; draw; }
+        else case "$_e2" in A) _vi_hist -1 && draw;; B) _vi_hist 1 && draw;; C) ((cursor<${#input}-1)) && ((++cursor)) && draw;; D) ((cursor>0)) && ((cursor--)) && draw;; *) [[ "$_e2" =~ ^[0-9\;]$ ]] && _csi_drain;; esac; fi; fi;;
     $'\x04') _quit;;
     q) _quit;;
     :) ;;
@@ -3663,6 +3726,7 @@ _read_line() {
   if ((_rl_timeout > 0)); then printf -v _rl_deadline '%(%s)T' -1; ((_rl_deadline += _rl_timeout)); _rl_last_sec=$_rl_deadline; fi
   ((_rl_hist)) && { HIST_IDX=${#HIST[@]}; HIST_SAVE=""; }
   read -t 0.01 -rsn 1000 ||:
+  printf '\e[?2004h'  # enable bracketed paste; _cleanup disables it on every exit
   draw
   while true; do
     if ((_rl_deadline)); then
@@ -3697,7 +3761,8 @@ _read_line() {
           local _e1 _e2; read -rsn1 -t 0.01 _e1 || _e1=""
           if [[ "$_e1" == "[" ]]; then
             read -rsn1 -t 0.01 _e2 || _e2=""
-            case "$_e2" in A) _vi_hist -1 && draw;; B) _vi_hist 1 && draw;; C) ((cursor<${#input})) && ((++cursor)) && draw;; D) ((cursor>0)) && ((cursor--)) && draw;; esac
+            if [[ "$_e2" == "2" ]]; then _paste_start && { _paste_insert; draw; }
+            else case "$_e2" in A) _vi_hist -1 && draw;; B) _vi_hist 1 && draw;; C) ((cursor<${#input})) && ((++cursor)) && draw;; D) ((cursor>0)) && ((cursor--)) && draw;; *) [[ "$_e2" =~ ^[0-9\;]$ ]] && _csi_drain;; esac; fi
           elif [[ "$_e1" == f ]]; then  # Alt-f: forward word
             while ((cursor<${#input})) && [[ "${input:cursor:1}" == " " ]]; do ((++cursor)); done
             while ((cursor<${#input})) && [[ "${input:cursor:1}" != " " ]]; do ((++cursor)); done; draw
@@ -3762,8 +3827,10 @@ _mode_init() {
         local _mid="${_dv#*|}"; _sc[$_dk]="0|${_mid%|*}|$_now"; _decayed=1
       fi
     done
-    LAST_DECAY=$_now; _save_profile
+    # Flush decayed scores to disk BEFORE persisting LAST_DECAY, so a crash
+    # between the two can't record "decay ran" while the old timestamps remain.
     ((_decayed)) && _sflush
+    LAST_DECAY=$_now; _save_profile
   fi
   _sget() { _hash "$1"; local _v="${_sc[$REPLY]:-0}"; REPLY="${_v%%|*}"; }
   HIST=() HIST_IDX=0 HIST_SAVE=""
@@ -4228,8 +4295,11 @@ _sc_snap_save() {
   _perms_restore "$SANDBOX_DIR" "$_perms_file"
 }
 _sc_snap_restore() {
+  # If the snapshot is missing (save failed) or a temp dir can't be made, reset to
+  # pristine instead of leaving the corrupted post-answer state for the retry.
+  [[ -d "$_sc_snap" ]] || { _sandbox_reset; return; }
   chmod -R u+rwX "$SANDBOX_DIR" 2>/dev/null
-  local _t; _t=$(mktemp -d "${SANDBOX_DIR}.XXXXXX") || return
+  local _t; _t=$(mktemp -d "${SANDBOX_DIR}.XXXXXX") || { _sandbox_reset; return; }
   if cp -a "$_sc_snap/." "$_t/"; then
     rm -rf "$SANDBOX_DIR"; mv "$_t" "$SANDBOX_DIR"
   else
@@ -4405,6 +4475,8 @@ _selftest() {
   check "cat /etc" '~^ls /tmp/' && _t=0 || _t=$?; _assert "regex no match" "$_t" "1"
   _qdelim='§'
   check "grep foo bar" 'grep foo bar§cat bar | grep foo' && _t=0 || _t=$?; _assert "§ delim" "$_t" "0"
+  check "cat f | grep x" 'cat f | grep x' && _t=0 || _t=$?; _assert "valid pipe ok" "$_t" "0"
+  check "| sort foo" 'sort foo' && _t=0 || _t=$?; _assert "leading pipe rejected" "$_t" "1"
   _qdelim='|'
   SANDBOX_MODE=$_save_sandbox
 
@@ -4827,8 +4899,14 @@ for _a in "$@"; do [[ "$_a" == "--no-sandbox" ]] && SANDBOX_MODE=0 || _args+=("$
 set -- "${_args[@]+"${_args[@]}"}"
 
 case "${1:-}" in
-  test|selftest) _selftest;;
-  r|reset) rm -f "$DATA"/*.json "$DATA/scores" "$DATA/scores.lock" "$DATA/profile" "$DATA/.bwrap_blocked"; rm -rf "$DATA/sandbox" "$DATA/sandbox.pristine" 2>/dev/null; echo "Reset.";;
+  test|selftest) _selftest; exit $?;;
+  r|reset)
+    # Irreversible wipe — confirm on a terminal; stays scriptable when piped/non-interactive.
+    if [[ -t 0 ]]; then
+      read -rp "wipe all cmdchamp progress? [y/N] " _yn
+      [[ "$_yn" =~ ^[Yy]$ ]] || { echo "cancelled"; exit 0; }
+    fi
+    rm -f "$DATA"/*.json "$DATA/scores" "$DATA/scores.lock" "$DATA/profile" "$DATA/.bwrap_blocked"; rm -rf "$DATA/sandbox" "$DATA/sandbox.pristine" 2>/dev/null; echo "reset";;
   preview)
     # Dev-only: dump all visual content for review
     [[ "${CMDCHAMP_DEV:-}" != "1" ]] && { echo "Unknown command. Try: cmdchamp help"; exit 1; }
