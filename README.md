@@ -44,6 +44,7 @@ cmdchamp                # Launch the game menu
 cmdchamp --no-sandbox   # Disable sandbox (text-match only)
 cmdchamp reset          # Clear all progress
 cmdchamp test           # Run self-tests
+cmdchamp version        # Print version
 cmdchamp help           # Show help
 ```
 
