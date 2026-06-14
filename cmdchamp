@@ -59,7 +59,7 @@ _strip_ansi() {
   REPLY="$out"
 }
 
-VERSION="1.2.1"
+VERSION="1.2.2"
 SANDBOX_TIMEOUT=5      # Seconds before sandbox command times out
 BOSS_THRESHOLD=4       # Correct answers needed to beat boss (out of BOSS_TOTAL)
 BOSS_TOTAL=5           # Number of questions in boss round
@@ -1951,7 +1951,7 @@ gen_level18() {
   questions+=("Sort ${txt} by human-readable sizes (1K, 2M, 3G)|sort -h ${txt}|sort --human-numeric-sort ${txt}")
   questions+=("Sort ${txt} case-insensitively|sort -f ${txt}|sort --ignore-case ${txt}")
   questions+=("Sort ${csv} by column ${col} then ${col2}|sort -t, -k${col},${col} -k${col2},${col2} ${csv}|sort --field-separator=, -k${col},${col} -k${col2},${col2} ${csv}")
-  questions+=("Remove adjacent duplicate lines in ${W}${txt}${C}|uniq ${txt}|uniq < ${txt}|cat ${txt} | uniq")
+  questions+=("Remove adjacent duplicate lines in ${W}${txt}${C}§uniq ${txt}§uniq < ${txt}§cat ${txt} | uniq")
   questions+=("Count occurrences of each unique line in ${W}${txt}${C}§sort ${txt} | uniq -c§sort ${txt} | uniq --count")
   questions+=("Show only duplicate lines in ${W}${txt}${C}§sort ${txt} | uniq -d§sort ${txt} | uniq --repeated")
   questions+=("Show only unique lines (appear once) in ${W}${txt}${C}§sort ${txt} | uniq -u§sort ${txt} | uniq --unique")
@@ -1965,9 +1965,9 @@ gen_level18() {
   questions+=("Extract column ${col} from colon-separated file|cut -d: -f${col} /etc/passwd|awk -F: '{print \$${col}}' /etc/passwd")
   questions+=("Extract all but column ${col} in ${W}${csv}${C}|cut -d, --complement -f${col} ${csv}|cut --delimiter=, --complement --fields=${col} ${csv}")
   questions+=("Extract column ${col} from ${W}${txt}${C} using tab delimiter|cut -f${col} ${txt}|cut --fields=${col} ${txt}|cut -f${col} < ${txt}|cut --fields=${col} < ${txt}")
-  questions+=("Print first column of ${txt}|awk '{print \$1}' ${txt}|cat ${txt} | awk '{print \$1}'")
-  questions+=("Print last column of each line in ${W}${txt}${C}|awk '{print \$NF}' ${txt}|cat ${txt} | awk '{print \$NF}'")
-  questions+=("Print columns ${col} and ${col2} in ${W}${txt}${C}|awk '{print \$${col}, \$${col2}}' ${txt}|cat ${txt} | awk '{print \$${col}, \$${col2}}'")
+  questions+=("Print first column of ${txt}§awk '{print \$1}' ${txt}§cat ${txt} | awk '{print \$1}'")
+  questions+=("Print last column of each line in ${W}${txt}${C}§awk '{print \$NF}' ${txt}§cat ${txt} | awk '{print \$NF}'")
+  questions+=("Print columns ${col} and ${col2} in ${W}${txt}${C}§awk '{print \$${col}, \$${col2}}' ${txt}§cat ${txt} | awk '{print \$${col}, \$${col2}}'")
   questions+=("Print lines longer than ${chars} chars in ${W}${txt}${C}|awk 'length > ${chars}' ${txt}|awk 'length(\$0) > ${chars}' ${txt}")
   questions+=("Print line numbers with content in ${W}${txt}${C}|awk '{print NR, \$0}' ${txt}|cat -n ${txt}|nl -ba ${txt}|grep -n '' ${txt}")
   local _statuses=(active inactive pending); _fpick _statuses; local _status=$REPLY
@@ -1979,7 +1979,7 @@ gen_level18() {
   questions+=("Print lines ${n} through ${n2} in ${W}${txt}${C}§awk 'NR>=${n} && NR<=${n2}' ${txt}§sed -n '${n},${n2}p' ${txt}§head -n ${n2} ${txt} | tail -n +${n}§head -${n2} ${txt} | tail -n +${n}§awk 'NR==${n},NR==${n2}' ${txt}")
   questions+=("Average of column 1 (skip header)|awk -F, 'NR>1{sum+=\$1; count++} END {print sum/count}' data.csv")
   questions+=("Maximum value in column 1 (skip header)§awk -F, 'NR==2{max=\$1} NR>1 && \$1>max{max=\$1} END{print max}' data.csv§tail -n+2 data.csv | cut -d, -f1 | sort -rn | head -1")
-  questions+=("Swap columns 1 and 2 in ${W}${txt}${C} output|awk '{print \$2, \$1}' ${txt}|cat ${txt} | awk '{print \$2, \$1}'")
+  questions+=("Swap columns 1 and 2 in ${W}${txt}${C} output§awk '{print \$2, \$1}' ${txt}§cat ${txt} | awk '{print \$2, \$1}'")
   questions+=("Print unique values from column ${col} (skip header) in ${W}${csv}${C}§awk -F, 'NR>1 && !seen[\$${col}]++ {print \$${col}}' ${csv}§tail -n+2 ${csv} | cut -d, -f${col} | sort -u")
   questions+=("Count records by column ${col} value in ${W}${csv}${C}§awk -F, 'NR>1{count[\$${col}]++} END {for(k in count) print k, count[k]}' ${csv}§tail -n+2 ${csv} | cut -d, -f${col} | sort | uniq -c")
   questions+=("Replace spaces with tabs in ${W}${txt}${C}|tr ' ' '\\t' < ${txt}|tr ' ' \$'\\t' < ${txt}|sed 's/ /\\t/g' ${txt}")
@@ -2385,13 +2385,13 @@ gen_level24() {
   questions+=("Extract all URLs from ${W}${pcap}${C}|tshark -r ${pcap} -Y 'http.request' -T fields -e http.host -e http.request.uri")
   questions+=("Show TCP conversations in ${W}${pcap}${C}|tshark -r ${pcap} -q -z conv,tcp")
   questions+=("Extract credentials (FTP, HTTP basic) in ${W}${pcap}${C}§tshark -r ${pcap} -Y 'ftp.request.command == \"PASS\" || http.authorization'§tshark -r ${pcap} -Y 'ftp.request.command==\"PASS\" || http.authorization'")
-  questions+=("Pretty print JSON file|jq '.' data/export.json|jq . data/export.json|python3 -m json.tool data/export.json|jq '.' < data/export.json|jq . < data/export.json|cat data/export.json | jq '.'|cat data/export.json | jq .")
-  questions+=("Extract '${key}' array from JSON|jq '.${key}' data/export.json|jq '.${key}' < data/export.json|cat data/export.json | jq '.${key}'")
-  questions+=("Extract first item from '${key}' array|jq '.${key}[0]' data/export.json|jq '.${key}[0]' < data/export.json|cat data/export.json | jq '.${key}[0]'")
+  questions+=("Pretty print JSON file§jq '.' data/export.json§jq . data/export.json§python3 -m json.tool data/export.json§jq '.' < data/export.json§jq . < data/export.json§cat data/export.json | jq '.'§cat data/export.json | jq .")
+  questions+=("Extract '${key}' array from JSON§jq '.${key}' data/export.json§jq '.${key}' < data/export.json§cat data/export.json | jq '.${key}'")
+  questions+=("Extract first item from '${key}' array§jq '.${key}[0]' data/export.json§jq '.${key}[0]' < data/export.json§cat data/export.json | jq '.${key}[0]'")
   questions+=("Extract 'name' field from each item in '${key}' array§jq '.${key}[] | .name' data/export.json§jq '.${key}[] | .name' < data/export.json§jq '.${key}[].name' data/export.json")
   questions+=("Filter items in '${key}' where status is 'active'§jq '.${key}[] | select(.status == \"active\")' data/export.json§jq '.${key}[] | select(.status==\"active\")' data/export.json§jq '[.${key}[] | select(.status == \"active\")]' data/export.json")
   questions+=("Count items in '${key}' array§jq '.${key} | length' data/export.json§jq '.${key} | length' < data/export.json§jq '.${key}|length' data/export.json")
-  questions+=("Get keys of JSON object|jq 'keys' data/export.json|jq 'keys' < data/export.json|jq '. | keys' data/export.json")
+  questions+=("Get keys of JSON object§jq 'keys' data/export.json§jq 'keys' < data/export.json§jq '. | keys' data/export.json")
   questions+=("Compact JSON (remove whitespace)|jq -c '.' data/export.json|jq --compact-output '.' data/export.json")
   questions+=("Raw string output (no quotes) for '.${key}[0].name'§jq -r '.${key}[0].name' data/export.json§jq --raw-output '.${key}[0].name' data/export.json")
   questions+=("Create new {name, id} object from each '${key}' item§jq '.${key}[] | {name: .name, id: .id}' data/export.json§jq '.${key}[] | {name: .name, id: .id}' < data/export.json§cat data/export.json | jq '.${key}[] | {name: .name, id: .id}'")
@@ -2420,7 +2420,7 @@ gen_level24() {
   questions+=("Download ${url}/file.tar.gz|wget ${url}/file.tar.gz|curl -O ${url}/file.tar.gz|curl --remote-name ${url}/file.tar.gz")
   questions+=("Continue interrupted download of ${url}/large.iso|wget -c ${url}/large.iso|wget --continue ${url}/large.iso|curl -C - -O ${url}/large.iso")
   questions+=("Mirror ${url} for offline|wget -mk ${url}|wget --mirror -k ${url}|wget -m --convert-links ${url}|wget --mirror --convert-links ${url}")
-  questions+=("Check SSL cert of ${W}${host}${C} (with SNI)|openssl s_client -connect ${host}:443 -servername ${host}|openssl s_client -connect ${host}:443 -servername ${host} < /dev/null|echo | openssl s_client -connect ${host}:443 -servername ${host}|openssl s_client -servername ${host} -connect ${host}:443")
+  questions+=("Check SSL cert of ${W}${host}${C} (with SNI)§openssl s_client -connect ${host}:443 -servername ${host}§openssl s_client -connect ${host}:443 -servername ${host} < /dev/null§echo | openssl s_client -connect ${host}:443 -servername ${host}§openssl s_client -servername ${host} -connect ${host}:443")
   questions+=("Inspect ${W}cert.pem${C} (issuer, subject, dates)|openssl x509 -in cert.pem -text -noout|openssl x509 -in cert.pem -noout -text|openssl x509 -text -in cert.pem -noout|openssl x509 -text -noout -in cert.pem")
   questions+=("Generate random 32-byte hex string|openssl rand -hex 32")
   questions+=("Encrypt ${W}file.txt${C} with AES-256-CBC (pbkdf2, salted) to ${W}file.enc${C}|openssl enc -aes-256-cbc -pbkdf2 -salt -in file.txt -out file.enc")
@@ -2529,7 +2529,7 @@ gen_level26() {
   questions+=("List saved nmcli connection profiles|nmcli connection show|nmcli con show|nmcli c show|nmcli c")
   questions+=("Show wireless regulatory domain|iw reg get|sudo iw reg get|iw reg|sudo iw reg")
   questions+=("Multi-vector deauth flood on AP ${W}${mac}${C} via ${W}${wiface}mon${C} channel 6 (mdk4)|mdk4 ${wiface}mon d -B ${mac} -c 6|sudo mdk4 ${wiface}mon d -B ${mac} -c 6")
-  questions+=("BLE GATT enumerate services on ${W}${mac}${C} (interactive)|gatttool -b ${mac} -I|gatttool -t random -b ${mac} -I|sudo gatttool -b ${mac} -I|sudo gatttool -t random -b ${mac} -I|#boss-skip#chal-skip")
+  questions+=("BLE GATT enumerate services on ${W}${mac}${C} (interactive)|gatttool -b ${mac} -I|gatttool -t random -b ${mac} -I|sudo gatttool -b ${mac} -I|sudo gatttool -t random -b ${mac} -I#boss-skip#chal-skip")
 }
 
 # Level 27: Hash Cracking
@@ -2710,7 +2710,7 @@ gen_level29() {
   questions+=("LXD privesc step 3: start the privileged container|lxc start privesc|sudo lxc start privesc")
   questions+=("LXD privesc step 4: chroot into host filesystem via container|lxc exec privesc -- chroot /mnt sh|lxc exec privesc -- chroot /mnt /bin/sh|sudo lxc exec privesc -- chroot /mnt sh|sudo lxc exec privesc -- chroot /mnt /bin/sh")
   questions+=("Check glibc for Looney Tunables (CVE-2023-4911, vuln glibc 2.34-2.38)§ldd --version | head -1§getconf GNU_LIBC_VERSION§rpm -q glibc 2>/dev/null§dpkg -l libc6 2>/dev/null§ldd --version")
-  questions+=("Check runc for Leaky Vessels (CVE-2024-21626, fixed in 1.1.12)|runc --version|docker info 2>/dev/null | grep -i runc|crictl version")
+  questions+=("Check runc for Leaky Vessels (CVE-2024-21626, fixed in 1.1.12)§runc --version§docker info 2>/dev/null | grep -i runc§crictl version")
   questions+=("Check OpenSSH for regreSSHion (CVE-2024-6387, vuln 8.5p1-9.7p1)|sshd -V 2>&1|ssh -V|ssh -V 2>&1")
   questions+=("Auto-suggest kernel exploits for current host|linux-exploit-suggester.sh|./linux-exploit-suggester.sh|les.sh|./les.sh|bash linux-exploit-suggester.sh")
   questions+=("Enumerate Windows host via SMB null session at ${W}${ip}${C}|enum4linux-ng -A ${ip}|enum4linux-ng ${ip}|enum4linux -a ${ip}")
@@ -2788,7 +2788,7 @@ gen_level30() {
   questions+=("Follow logs for ${W}${proc}${C} live|journalctl -fu ${proc}|journalctl -f -u ${proc}|sudo journalctl -fu ${proc}|sudo journalctl -f -u ${proc}|journalctl --follow --unit ${proc}|sudo journalctl --follow --unit ${proc}")
   questions+=("Sample CPU stacks of ${W}${proc}${C} at 99 Hz for 10s (perf)|perf record -F 99 -p \$(pgrep -f ${proc}) -g -- sleep 10|sudo perf record -F 99 -p \$(pgrep -f ${proc}) -g -- sleep 10|perf record -F 99 -p \$(pidof ${proc}) -g -- sleep 10|sudo perf record -F 99 -p \$(pidof ${proc}) -g -- sleep 10#boss-skip#chal-skip")
   questions+=("List all loaded eBPF programs|bpftool prog list|sudo bpftool prog list|bpftool prog show|sudo bpftool prog show")
-  questions+=("Print current process capability sets (bounding, permitted, effective)|capsh --print|sudo capsh --print|capsh --decode=\$(grep ^CapEff /proc/self/status | awk '{print \$2}')")
+  questions+=("Print current process capability sets (bounding, permitted, effective)§capsh --print§sudo capsh --print§capsh --decode=\$(grep ^CapEff /proc/self/status | awk '{print \$2}')")
   questions+=("Spawn unprivileged shell in new user+UTS+net namespaces|unshare -Uurn /bin/bash|unshare -Uurn bash|unshare -Uurn /bin/sh|unshare --user --uts --net --map-root-user /bin/bash|unshare --user --uts --net --map-root-user bash")
   questions+=("List tracked connections (conntrack table)|conntrack -L|sudo conntrack -L|conntrack -L -o timestamp|sudo conntrack -L -o timestamp")
   questions+=("Per-device extended I/O stats, skip idle, 1s interval|iostat -xz 1|iostat -x 1|sudo iostat -xz 1|sudo iostat -x 1")
@@ -4688,6 +4688,21 @@ _selftest() {
       ((_pass++))
     fi
   done
+
+  printf '%s\n' "${B}=== delimiter invariant ===${N}"
+  # A |-delimited question must never contain a shell pipe — those split on |
+  # into garbage answers (so the piped form is silently rejected). Such answers
+  # must use the § delimiter instead. Shell pipes are always written spaced.
+  local _di_viol=0 _di_q _di_s
+  for ((_lv=1; _lv<=30; _lv++)); do
+    local _di_arr=(); "gen_level${_lv}" _di_arr
+    for _di_s in "${_di_arr[@]}"; do
+      if [[ "$_di_s" != *§* && "$_di_s" == *" | "* ]]; then
+        ((_di_viol++)); printf '  FAIL: L%d uses | delimiter with a shell pipe: %s\n' "$_lv" "${_di_s:0:70}"
+      fi
+    done
+  done
+  if ((_di_viol)); then ((_fail++)); else ((_pass++)); fi
 
   printf '%s\n' "${B}=== challenge filter ===${N}"
   local _trials_per_lv=200 _trial _tagged_drawn=0 _untagged_drawn=0
