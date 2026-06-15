@@ -4,15 +4,11 @@ Bash CLI trainer — 30 levels from `ls` to privilege escalation.
 
 ![demo](demo.gif)
 
-Every question asks you to type a real command — get instant feedback, move on. Many questions run against real files in the sandbox, all accept multiple valid syntaxes (both `sort -u` and `sort | uniq`), and Tab toggles the manpage when you need a reference. Randomized each run so you can't memorize the order. A mastery system tracks what you know and what you don't: get a question right twice to master it, get it wrong and it demotes so you see it again sooner. Hit a 5-answer streak and you enter fire mode — a streak banner that keeps going until you miss.
+Every question asks you to type a real command — get instant feedback, move on. Many run against real files in the sandbox, and all accept multiple valid syntaxes (`sort -u` or `sort | uniq`). Tab toggles the manpage when you need a reference, and the order is randomized each run so you can't memorize it. Mastery tracks what you know: get a question right twice to master it, miss it and it demotes so it comes back sooner. A 5-answer streak triggers fire mode — a banner that runs until you miss.
 
 Each level ends with a boss round — no manpages, 4/5 to pass. Fail and you can retry the boss immediately or go back to practice. Beat all 30 and challenge mode unlocks: every level, 20s timer, no manpages, one miss and you're done. First run includes a short tutorial and a placement test that lets you skip levels you already know.
 
 With [bubblewrap](https://github.com/containers/bubblewrap), commands run in a real sandboxed filesystem. Without it, answers are text-matched. Search levels (16-17) accept both `rg`/`fd` and `grep`/`find` syntax. Vi line editing built in.
-
-### How scoring works
-
-Each question has three mastery tiers (unseen → learning → mastered). Get it right to promote, wrong to demote. Tab toggles the manpage for the relevant command — a reference, not a spoiler.
 
 ## Install
 
@@ -43,7 +39,7 @@ cd cmdchamp && make install
 
 **Optional:** [bubblewrap](https://github.com/containers/bubblewrap) (`bwrap`) for sandbox mode (Linux only) — most desktop distros include it. Without it, answers are text-matched only
 
-**Accessibility:** Honors `NO_COLOR` and `TERM=dumb`. Layout adapts to `COLUMNS` / `tput cols`. Mastery bars carry both color and a `✓` / `~` / `x` symbol so colorblind play works.
+**Accessibility:** Honors `NO_COLOR` and `TERM=dumb`. Layout adapts to `COLUMNS` / `tput cols`. Mastery bars carry both color and a `✓` / `~` / `x` symbol — readable without color.
 
 ## Usage
 
@@ -56,7 +52,7 @@ cmdchamp version        # Print version
 cmdchamp help           # Show help
 ```
 
-Everything else lives in the menu: continue, new game, scenarios, challenge mode, stats, options. Hotkeys 1–7 jump straight to a menu item; `j`/`k` or arrow keys move; Enter selects.
+The menu holds continue, new game, scenarios, challenge mode, stats, and options. Hotkeys 1–7 jump straight to an item; `j`/`k` or arrows move; Enter selects.
 
 ## Levels
 
@@ -97,7 +93,7 @@ Everything else lives in the menu: continue, new game, scenarios, challenge mode
 
 ## Scenarios
 
-Multi-step sandbox challenges — state persists between steps. Pick from the **Scenarios** menu item once you've cleared the unlock boss.
+Multi-step sandbox challenges — state persists between steps. Available from the **Scenarios** menu once you clear the unlock boss.
 
 | # | Name | Unlocks at | Steps |
 |---|------|-----------|-------|

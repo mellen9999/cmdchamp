@@ -62,7 +62,7 @@ _strip_ansi() {
   REPLY="$out"
 }
 
-VERSION="1.2.6"
+VERSION="1.2.7"
 SANDBOX_TIMEOUT=5      # Seconds before sandbox command times out
 BOSS_THRESHOLD=4       # Correct answers needed to beat boss (out of BOSS_TOTAL)
 BOSS_TOTAL=5           # Number of questions in boss round
@@ -886,7 +886,7 @@ declare -A MANPAGE=(
   [wc]=$'word, line, byte count\n  \e[36m-l\e[0m        lines                  \e[36m-w\e[0m        words\n  \e[36m-c\e[0m        bytes\n  \e[2mwc -l file.txt    wc -w file.txt    ls | wc -l\e[0m'
   [tr]=$'translate characters\n  \e[36m-d\e[0m        delete chars           \e[36m-s\e[0m        squeeze consecutive dupes to one\n  \e[32m<\e[0m \e[33mFILE\e[0m   tr reads stdin — redirect from file\n  \e[2mtr a-z A-Z < file    tr -d \'\\n\' < file    tr -s \' \' < file\e[0m'
   [sed]=$'stream editor\n  \e[31m\'s/old/new/\'\e[0m    replace first     \e[31m\'s/old/new/g\'\e[0m  replace all\n  \e[36m-i\e[0m            edit in place     \e[31m\'/pat/d\'\e[0m       delete lines\n  \e[36m-n\e[0m            suppress output  \e[36m-e\e[0m            multi commands\n  \e[36m-E\e[0m            extended regex\n  \e[35mvs awk\e[0m        sed is best for search-and-replace and line filtering.\n              awk is best for column-based processing and math\n  \e[2msed \'s/foo/bar/g\' file    sed -i \'/^#/d\' file    sed -n \'5,10p\' file\e[0m'
-  [awk]=$'pattern scanning\n  \e[31m\'{print $1}\'\e[0m   first field       \e[31m\'{print $NF}\'\e[0m  last field\n  \e[36m-F\e[0m\e[2m\',\'\e[0m          delimiter       \e[31mNR\e[0m          line number\n  \e[2mawk \'{print $1}\' file    awk -F, \'{print $2}\' data.csv    awk \'/error/\' log\e[0m'
+  [awk]=$'pattern scanning & field processing\n  \e[31m\'{print $1}\'\e[0m   first field       \e[31m\'{print $NF}\'\e[0m  last field\n  \e[36m-F\e[0m\e[2m\',\'\e[0m          delimiter       \e[31mNR\e[0m          line number\n  \e[2mawk \'{print $1}\' file    awk -F, \'{print $2}\' data.csv    awk \'/error/\' log\e[0m'
   [xargs]=$'build commands from stdin\n  \e[36m-I\e[0m \e[32m{}\e[0m     placeholder            \e[36m-0\e[0m        null delim\n  \e[36m-n\e[0m \e[33mN\e[0m      args per command       \e[36m-P\e[0m \e[33mN\e[0m      parallel\n  \e[36m-p\e[0m        confirm each           \e[36m-t\e[0m        trace (show cmd)\n  \e[2mfind . -print0 | xargs -0 rm    cat urls | xargs -P4 -I{} curl {}\e[0m'
   [tar]=$'archive tool\n  \e[36m-c\e[0m create   \e[36m-x\e[0m extract   \e[36m-t\e[0m list     \e[36m-f\e[0m \e[33mFILE\e[0m\n  \e[36m-z\e[0m gzip     \e[36m-v\e[0m verbose\n  \e[36m-C\e[0m \e[33mDIR\e[0m   change to DIR (works for create AND extract)\n  \e[2mtar czf archive.tar.gz dir/    tar xzf archive.tar.gz    tar tf archive.tar.gz\e[0m'
   [chmod]=$'change file permissions\n  \e[32m+x\e[0m        add execute            \e[32m755\e[0m       rwxr-xr-x\n  \e[32m644\e[0m       rw-r--r--              \e[32mg+w\e[0m       group write\n  \e[36m-R\e[0m        recursive              \e[36m--reference\e[0m=\e[33mFILE\e[0m copy perms\n  \e[2mchmod +x script.sh    chmod 755 script.sh    chmod -R a+r dir/\e[0m'
@@ -976,7 +976,7 @@ declare -A MANPAGE=(
   [hydra]=$'network login brute-forcer\n  \e[36m-l\e[0m \e[33mUSER\e[0m   single username          \e[36m-L\e[0m \e[33mFILE\e[0m   username list\n  \e[36m-P\e[0m \e[33mFILE\e[0m   password list            \e[36m-t\e[0m \e[33mN\e[0m      parallel tasks per target\n  \e[2mhydra -l admin -P rockyou.txt ssh://10.0.0.1\e[0m'
   [bpftrace]=$'eBPF dynamic tracing\n  \e[36m-e\e[0m \e[33mPROG\e[0m   one-liner program\n  \e[33mtracepoint:CAT:NAME\e[0m   kernel tracepoint\n  \e[2mbpftrace -e \'tracepoint:syscalls:sys_enter_execve { printf("%s\\n", comm); }\'\e[0m'
   [auditctl]=$'kernel audit rules\n  \e[36m-w\e[0m \e[33mPATH\e[0m   watch file/dir            \e[36m-p\e[0m \e[33mPERMS\e[0m  r/w/x/a\n  \e[36m-k\e[0m \e[33mKEY\e[0m    tag rule\n  \e[2mauditctl -w /etc/passwd -p wa -k passwd_watch\e[0m'
-  [openssl]=$'crypto Swiss-army knife\n  \e[32mrand\e[0m \e[36m-hex\e[0m \e[33mN\e[0m       random hex bytes\n  \e[32menc\e[0m \e[36m-aes-256-cbc\e[0m \e[36m-pbkdf2\e[0m   symmetric encryption\n  \e[32mgenrsa\e[0m \e[36m-out\e[0m \e[33mF\e[0m \e[33mBITS\e[0m  RSA key pair\n  \e[32mx509\e[0m \e[36m-in\e[0m \e[33mF\e[0m \e[36m-text\e[0m       inspect cert\n  \e[32ms_client\e[0m \e[36m-connect\e[0m \e[33mH:P\e[0m  TLS client\n  \e[32mdgst\e[0m \e[36m-sha256\e[0m              hash file\n  \e[2mopenssl rand -hex 32    openssl genrsa -out key.pem 4096    openssl s_client -connect host:443\e[0m'
+  [openssl]=$'crypto toolkit\n  \e[32mrand\e[0m \e[36m-hex\e[0m \e[33mN\e[0m       random hex bytes\n  \e[32menc\e[0m \e[36m-aes-256-cbc\e[0m \e[36m-pbkdf2\e[0m   symmetric encryption\n  \e[32mgenrsa\e[0m \e[36m-out\e[0m \e[33mF\e[0m \e[33mBITS\e[0m  RSA key pair\n  \e[32mx509\e[0m \e[36m-in\e[0m \e[33mF\e[0m \e[36m-text\e[0m       inspect cert\n  \e[32ms_client\e[0m \e[36m-connect\e[0m \e[33mH:P\e[0m  TLS client\n  \e[32mdgst\e[0m \e[36m-sha256\e[0m              hash file\n  \e[2mopenssl rand -hex 32    openssl genrsa -out key.pem 4096    openssl s_client -connect host:443\e[0m'
   [whois]=$'domain/IP registration info\n  \e[36m-h\e[0m \e[33mHOST\e[0m   use specific whois server\n  \e[2mwhois example.com    whois 8.8.8.8    whois -h whois.cymru.com " -p 8.8.8.8"\e[0m'
   [ssh-copy-id]=$'install SSH public key on remote\n  \e[36m-i\e[0m \e[33mKEY\e[0m    specific public key\n  \e[2mssh-copy-id user@host    ssh-copy-id -i ~/.ssh/id_ed25519.pub user@host\e[0m'
   [gdb]=$'GNU debugger\n  \e[36m-p\e[0m \e[33mPID\e[0m    attach to running PID    \e[36m-ex\e[0m \e[33mCMD\e[0m   run gdb command\n  \e[35mkeys\e[0m      \e[33mrun\e[0m start  \e[33mbreak\e[0m \e[2mset bp\e[0m  \e[33mc\e[0m continue  \e[33mn\e[0m next  \e[33ms\e[0m step\n           \e[33mbt\e[0m backtrace  \e[33minfo registers\e[0m  \e[33mx/16x\e[0m \e[2maddr\e[0m hex dump  \e[33mq\e[0m quit\n  \e[2mgdb ./prog    gdb -p 1234    gdb -ex run -ex bt ./prog\e[0m'
@@ -986,7 +986,7 @@ declare -A MANPAGE=(
   [getfattr]=$'list extended file attributes\n  \e[36m-d\e[0m        dump all (default)       \e[36m-m\e[0m \e[33mPAT\e[0m    name pattern (- for any)\n  \e[2mgetfattr -d file    getfattr -d -m \'.*\' file\e[0m'
   [chattr]=$'set/clear file attributes (ext fs)\n  \e[32m+i\e[0m        immutable (cannot edit)\n  \e[2msudo chattr +i file    sudo chattr -i file    lsattr file\e[0m'
   [conntrack]=$'kernel connection tracking\n  \e[36m-L\e[0m        list connections\n  \e[2mconntrack -L    sudo conntrack -L -o timestamp\e[0m'
-  [enum4linux-ng]=$'modern SMB/NetBIOS enumerator (Python rewrite)\n  \e[36m-A\e[0m        full enumeration\n  \e[2menum4linux-ng -A 10.0.0.1\e[0m'
+  [enum4linux-ng]=$'modern SMB/NetBIOS enumerator\n  \e[36m-A\e[0m        full enumeration\n  \e[2menum4linux-ng -A 10.0.0.1\e[0m'
 )
 _mp_show() {
   local cmd=$1 _t; local data="${MANPAGE[$cmd]}"
@@ -3509,7 +3509,7 @@ stats() {
     if ((BEST_CHALLENGE > 0)); then
       printf '  %s %s\n' "${U}Challenge:${N}" "${Y}${BEST_CHALLENGE}${N}"
     else
-      printf '  %s\n' "${D}No records yet — try challenge!${N}"
+      printf '  %s\n' "${D}no records yet — beat challenge to set one${N}"
     fi
   fi
 }
@@ -3761,7 +3761,7 @@ _read_line() {
         else
           printf '%s\e[?25l\n\e[J\e[A\r%s%s' "$_SY" "$_DB" "$_SN"
         fi
-      else printf '%s\e[?25l\n%s%s' "$_SY" "${R}Not available in this mode!${N}" "$_SN"; sleep 0.5; _draw_buf; printf '%s\e[A\r\e[J%s%s' "$_SY" "$_DB" "$_SN"; fi
+      else printf '%s\e[?25l\n%s%s' "$_SY" "${R}not available in this mode${N}" "$_SN"; sleep 0.5; _draw_buf; printf '%s\e[A\r\e[J%s%s' "$_SY" "$_DB" "$_SN"; fi
       continue
     fi
     if [[ "$mode" == "insert" ]]; then
@@ -4010,7 +4010,7 @@ run() {
     ((boss_correct == boss_total)) && _disk_check flawless
     printf '%s\n' "${G}${B}══ ${M}${B}${boss}${G} DEFEATED ══${N}"
     printf '%s\n' "${G}${boss_correct}/${boss_total}${N} correct!"
-    printf '%s\n\n' "${W}You acquired: ${G}${LEVEL_NAMES[$lv]}${N}"
+    printf '%s\n\n' "${W}Cleared: ${G}${LEVEL_NAMES[$lv]}${N}"
     if ((BOSS_BEATEN < lv)); then
       BOSS_BEATEN=$lv; _save_profile
       # Notify about newly unlocked scenarios
@@ -4233,8 +4233,8 @@ _main_menu() {
     # build tagline — center under 71-char banner
     local _tl_text _tl_w _tl_pad _tagline
     if ((BOSS_BEATEN >= MAX_LEVEL)); then _tl_text="${G}░▒▓█${N} ${W}${B}ALL BOSSES DEFEATED${N} ${G}█▓▒░${N}" _tl_w=29
-    elif ((BOSS_BEATEN >= 20)); then _tl_text="${Y}░▒▓█${N} ${W}ALMOST THERE${N} ${Y}█▓▒░${N}" _tl_w=22
-    elif ((BOSS_BEATEN >= 10)); then _tl_text="${D}░▒▓█${N} ${W}KEEP CLIMBING${N} ${D}█▓▒░${N}" _tl_w=23
+    elif ((BOSS_BEATEN >= 20)); then _tl_text="${Y}░▒▓█${N} ${W}NEARING ROOT${N} ${Y}█▓▒░${N}" _tl_w=22
+    elif ((BOSS_BEATEN >= 10)); then _tl_text="${D}░▒▓█${N} ${W}GOING DEEPER${N} ${D}█▓▒░${N}" _tl_w=22
     else _tl_text="${D}░▒▓█ MASTER THE COMMAND LINE █▓▒░${N}" _tl_w=33; fi
     printf -v _tl_pad '%*s' $(( (71 - _tl_w) / 2 )) ''
     _tagline="${_tl_pad}${_tl_text}"
@@ -4884,7 +4884,7 @@ place() {
   # User quit mid-placement: don't save partial result, exit cleanly
   if ((_QUIT)); then
     _sflush_if_dirty
-    printf '%s\n' "${D}placement abandoned — try again from the menu${N}"
+    printf '%s\n' "${D}placement abandoned${N}"
     return
   fi
   # Set placement
