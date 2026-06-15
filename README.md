@@ -16,6 +16,14 @@ Each question has three mastery tiers (unseen → learning → mastered). Get it
 
 ## Install
 
+**Arch (AUR):**
+
+```bash
+paru -S cmdchamp   # or: yay -S cmdchamp
+```
+
+**Anywhere (single file):**
+
 ```bash
 mkdir -p ~/.local/bin && curl -sL https://raw.githubusercontent.com/mellen9999/cmdchamp/main/cmdchamp -o ~/.local/bin/cmdchamp && chmod +x ~/.local/bin/cmdchamp
 ```
