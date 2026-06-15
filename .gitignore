@@ -4,7 +4,3 @@ cmdchamp.bak.*
 
 # Local-only config
 CLAUDE.md
-
-# demo build intermediates (see demo.sh)
-demo_play.mp4
-demo_stats.mp4

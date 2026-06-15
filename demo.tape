@@ -1,13 +1,12 @@
-# cmdchamp demo — segment 1: the core practice loop (level 1)
-# Rendered + concatenated with demo_stats.tape by ./demo.sh
-Output demo_play.mp4
+# cmdchamp demo - CLI trainer showcase
+Output demo.gif
 
 Require bash
 
 Set Shell "bash"
 Set FontSize 16
 Set Width 1200
-Set Height 960
+Set Height 700
 Set Framerate 24
 Set TypingSpeed 1ms
 Set Padding 20
@@ -26,6 +25,7 @@ Enter
 Sleep 2.5s
 Show
 
+# Main menu — Continue is the first item, Enter selects it
 Sleep 1.2s
 Enter
 Sleep 1.5s
@@ -55,7 +55,7 @@ Sleep 1.2s
 Enter
 Sleep 600ms
 
-# ── Q6: "Create directory" → Tab manpage, then correct ──
+# ── Q6: "Create directory tools" → Tab manpage, then correct ──
 Sleep 300ms
 Tab
 Sleep 2s
@@ -71,4 +71,10 @@ Sleep 300ms
 Type "rm -r temp"
 Sleep 200ms
 Enter
-Sleep 2s
+Sleep 1.5s
+
+# Quit to menu, then exit — second Ctrl+D fires session summary
+Ctrl+D
+Sleep 1.5s
+Ctrl+D
+Sleep 3s
