@@ -3725,6 +3725,11 @@ _vi_normal() {
 
 _rl_rem() { local _n; printf -v _n '%(%s)T' -1; REPLY=$((_rl_deadline - _n)); ((REPLY < 0)) && REPLY=0; }
 
+# Countdown tick: only the header digits change, so never touch the prompt
+# line — save cursor, rewrite header (line-clears only, no \e[J), restore.
+# Blink-proof even where DEC 2026 isn't honored (tmux passthrough is spotty).
+_rl_tick() { printf '\e[?25l\e7'; _REDRAW_HDR; printf '\e8\e[?25h'; }
+
 # $1: allow manpages  $2: allow history  $3: timeout (0=none, returns 1 on timeout)
 # Caller defines _REDRAW_HDR(). Uses dynamic scoping for ans, HIST, etc.
 _read_line() {
@@ -3742,11 +3747,11 @@ _read_line() {
     if ((_rl_deadline)); then
       local _now; printf -v _now '%(%s)T' -1; local _rem=$((_rl_deadline - _now))
       ((_rem <= 0)) && { printf '\e[?25h'; input=""; return 1; }
-      if ((_now != _rl_last_sec)); then _rl_last_sec=$_now; _REDRAW_HDR; draw; fi
+      if ((_now != _rl_last_sec)); then _rl_last_sec=$_now; _rl_tick; fi
       IFS= read -rsn1 -t 1 c || {
         printf -v _now '%(%s)T' -1; _rem=$((_rl_deadline - _now))
         ((_rem <= 0)) && { printf '\e[?25h'; input=""; return 1; }
-        _rl_last_sec=$_now; _REDRAW_HDR; draw; continue
+        _rl_last_sec=$_now; _rl_tick; continue
       }
     else
       IFS= read -rsn1 c || break
@@ -3975,7 +3980,7 @@ run() {
     _REDRAW_HDR() {
       local _t=$_bt
       if ((${_rl_deadline:-0})); then _rl_rem; _t=$REPLY; fi
-      printf '%s\e[H%s  %s\e[K\n\e[K\n%s\e[K\n\e[K\n\e[J%s' "$_SY" "${M}${B}═══ BOSS ${U}$((bi+1))/${boss_total}${M} ═══${N}" "${W}${_t}s${N}" "${C}${prompt}${N}" "$_SN"
+      printf '%s\e[H%s  %s\e[K\n\e[K\n%s\e[K\n\e[K\n%s' "$_SY" "${M}${B}═══ BOSS ${U}$((bi+1))/${boss_total}${M} ═══${N}" "${W}${_t}s${N}" "${C}${prompt}${N}" "$_SN"
     }
     printf '\e[2J'; _REDRAW_HDR
     if _read_line 0 0 "$_bt"; then
@@ -4109,7 +4114,7 @@ challenge() {
     _REDRAW_HDR() {
       local _t=20
       if ((${_rl_deadline:-0})); then _rl_rem; _t=$REPLY; fi
-      printf '%s\e[H%s  %s  %s\e[K\n\e[K\n%s\e[K\n\e[K\n\e[J%s' "$_SY" "${M}${B}CHALLENGE${N}" "${U}Score: ${score}${N}" "${W}${_t}s${N}" "${C}${prompt}${N}" "$_SN"
+      printf '%s\e[H%s  %s  %s\e[K\n\e[K\n%s\e[K\n\e[K\n%s' "$_SY" "${M}${B}CHALLENGE${N}" "${U}Score: ${score}${N}" "${W}${_t}s${N}" "${C}${prompt}${N}" "$_SN"
     }
     printf '\e[2J'; _REDRAW_HDR
 
@@ -4863,7 +4868,7 @@ place() {
       _REDRAW_HDR() {
         local _t=30
         if ((${_rl_deadline:-0})); then _rl_rem; _t=$REPLY; fi
-        printf '%s\e[H%s  %s  %s\e[K\n\e[K\n%s\e[K\n\e[K\n\e[J%s' "$_SY" "${U}Level ${lv}${N}" "${U}Q${qi}/2${N}" "${W}${_t}s${N}" "${C}${prompt}${N}" "$_SN"
+        printf '%s\e[H%s  %s  %s\e[K\n\e[K\n%s\e[K\n\e[K\n%s' "$_SY" "${U}Level ${lv}${N}" "${U}Q${qi}/2${N}" "${W}${_t}s${N}" "${C}${prompt}${N}" "$_SN"
       }
       printf '\e[2J'; _REDRAW_HDR
       if _read_line 0 0 30; then
