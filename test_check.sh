@@ -23,8 +23,10 @@ _extract() {
     p { print; for(i=1;i<=length($0);i++){c=substr($0,i,1); if(c=="{")d++; if(c=="}")d--}; if(d==0&&NR>1)exit }
   ' "$SRC"
 }
+eval "$(_extract _trim)"
 eval "$(_extract _fnorm)"
 eval "$(_extract _qparse)"
+eval "$(_extract _text_match)"
 eval "$(_extract check)"
 
 ok()   { PASS=$((PASS + 1)); }

@@ -12,19 +12,25 @@ CMDCHAMP="$SCRIPT_DIR/cmdchamp"
 # Extract everything before the main case statement
 # This gives us all function defs, variable pools, constants
 _bootstrap() {
-  # Disable tty check, override interactive bits
+  # Source everything up to the CLI entrypoint (same approach as test_cmdchamp.sh)
+  eval "$(sed -e 's/^_tty().*/\_tty() { :; }/' \
+              -e '/^# ═══ CLI ENTRYPOINT ═══/,$d' \
+              "$CMDCHAMP")"
+
+  # Override interactive bits — must come AFTER the eval, or it redefines them
   _tty() { :; }
   _first_run() { :; }
   _load_profile() { PLAYER_NAME="auditor" BOSS_BEATEN=30; }
   _save_profile() { :; }
   _intro() { :; }
   _tutorial() { :; }
-
-  # Source everything up to main flow (same approach as test_cmdchamp.sh)
-  eval "$(sed -e 's/^_tty().*/\_tty() { :; }/' \
-              -e '/^\[.*--no-sandbox/,$d' \
-              "$CMDCHAMP")"
   _load_profile
+}
+
+# Fill an array with a level's questions (gen_level* writes via nameref, not stdout)
+_gen() {
+  local -n _gq=$2; _gq=()
+  gen_level"$1" _gq 2>/dev/null
 }
 
 _bootstrap
@@ -58,10 +64,11 @@ phase1_syntax() {
 
     # Generate 3 times to catch randomization issues
     for round in 1 2 3; do
-      local raw
-      raw=$(gen_level${lv} 2>/dev/null) || { _fail "L${lv}: gen_level${lv} crashed (round $round)"; ((errors++)); continue; }
+      local -a raw=()
+      _gen "$lv" raw || { _fail "L${lv}: gen_level${lv} crashed (round $round)"; ((errors++)); continue; }
+      ((${#raw[@]})) || { _fail "L${lv}: gen_level${lv} produced no questions (round $round)"; ((errors++)); continue; }
 
-      while IFS= read -r line; do
+      for line in "${raw[@]}"; do
         [[ -z "$line" ]] && continue
         ((count++))
 
@@ -121,7 +128,7 @@ phase1_syntax() {
           done
         fi
 
-      done <<< "$raw"
+      done
     done
 
     ((errors == 0)) && _ok
@@ -142,10 +149,10 @@ phase2_positive() {
 
   for lv in {1..30}; do
     local tested=0 passed=0 failed=0 skipped=0
-    local raw
-    raw=$(gen_level${lv} 2>/dev/null) || continue
+    local -a raw=()
+    _gen "$lv" raw || continue
 
-    while IFS= read -r line; do
+    for line in "${raw[@]}"; do
       [[ -z "$line" ]] && continue
       _qparse "$line"
 
@@ -186,7 +193,7 @@ phase2_positive() {
           # For state checks, need to re-execute after reset
           if _is_destructive "$ans"; then
             _sandbox_reset 2>/dev/null
-            { _sandbox_exec "$ans" 5 2>/dev/null; } 2>/dev/null
+            { _sandbox_exec "$ans" 5 &>/dev/null; } 2>/dev/null
           fi
           _sandbox_check_state "$_qstate" || state_ok=0
         fi
@@ -201,7 +208,7 @@ phase2_positive() {
         ((state_ok)) || reason+="state_fail "
         _fail "L${lv}: answer '${ans:0:60}' fails own validator [${reason}] for: ${_qprompt:0:50}"
       fi
-    done <<< "$raw"
+    done
 
     if ((tested > 0 || failed > 0)); then
       printf '  L%02d %-22s tested:%d pass:%d fail:%d skip:%d\n' \
@@ -461,15 +468,27 @@ _mutate() {
   printf '%s\n' "${mutations[@]}"
 }
 
+# A mutation the question itself lists as an accepted answer is not a wrong answer —
+# it's a declared-correct alternate, so it must not count as a leak. Keeps the mutation
+# rules intact for every other question instead of deleting them globally.
+_is_listed() {
+  local mut=$1 answers=$2 delim=$3 a
+  local -a opts; IFS="$delim" read -ra opts <<< "$answers"
+  for a in "${opts[@]}"; do
+    _trim "$a"; [[ "$mut" == "$REPLY" ]] && return 0
+  done
+  return 1
+}
+
 phase3_confusable() {
   printf '\n%s\n' "═══ PHASE 3: Confusable Negative Testing ═══"
 
   for lv in {1..30}; do
     local tested=0 caught=0 leaked=0
-    local raw
-    raw=$(gen_level${lv} 2>/dev/null) || continue
+    local -a raw=()
+    _gen "$lv" raw || continue
 
-    while IFS= read -r line; do
+    for line in "${raw[@]}"; do
       [[ -z "$line" ]] && continue
       _qparse "$line"
       local ans="$_qans"
@@ -499,7 +518,7 @@ phase3_confusable() {
           ((caught++)); _ok
         fi
       done <<< "$mut_list"
-    done <<< "$raw"
+    done
 
     printf '  L%02d %-22s tested:%d caught:%d leaked:%d\n' \
       "$lv" "${LEVEL_NAMES[$lv]}" "$tested" "$caught" "$leaked"
@@ -517,12 +536,12 @@ phase4_generic() {
 
   for lv in {1..30}; do
     local tested=0 caught=0 leaked=0
-    local raw
-    raw=$(gen_level${lv} 2>/dev/null) || continue
+    local -a raw=()
+    _gen "$lv" raw || continue
 
     # Test first 10 questions per level (enough for generics)
     local qcount=0
-    while IFS= read -r line; do
+    for line in "${raw[@]}"; do
       [[ -z "$line" ]] && continue
       ((qcount++ >= 10)) && break
 
@@ -545,7 +564,7 @@ phase4_generic() {
           ((caught++)); _ok
         fi
       done
-    done <<< "$raw"
+    done
 
     printf '  L%02d %-22s tested:%d caught:%d leaked:%d\n' \
       "$lv" "${LEVEL_NAMES[$lv]}" "$tested" "$caught" "$leaked"
@@ -577,9 +596,9 @@ phase5_crosscheck() {
   # Check boss can find 5 unseen questions per level
   printf '  Checking boss question availability...\n'
   for lv in {1..30}; do
-    local raw count=0
-    raw=$(gen_level${lv} 2>/dev/null) || continue
-    while IFS= read -r line; do [[ -n "$line" ]] && ((count++)); done <<< "$raw"
+    local -a raw=(); local count=0
+    _gen "$lv" raw || continue
+    for line in "${raw[@]}"; do [[ -n "$line" ]] && ((count++)); done
     if ((count < 5)); then
       _fail "L${lv}: only $count questions, boss needs 5"
     else
@@ -608,7 +627,7 @@ phase6_scenarios() {
     return
   fi
 
-  for sc_id in {1..8}; do
+  for ((sc_id=1; sc_id<=SC_TOTAL; sc_id++)); do
     local tested=0 passed=0 failed=0 skipped=0
 
     # Init sandbox and run setup
@@ -676,7 +695,7 @@ phase7_scenario_negatives() {
     return
   fi
 
-  for sc_id in {1..8}; do
+  for ((sc_id=1; sc_id<=SC_TOTAL; sc_id++)); do
     local tested=0 caught=0 leaked=0
 
     local steps
@@ -702,6 +721,7 @@ phase7_scenario_negatives() {
       while IFS= read -r mut; do
         [[ -z "$mut" ]] && continue
         [[ "$mut" == "$ans" ]] && continue
+        _is_listed "$mut" "$answers" "$_qdelim" && continue
         ((tested++))
 
         # Reset sandbox, run setup, then replay all PRIOR steps correctly
@@ -709,7 +729,7 @@ phase7_scenario_negatives() {
         _sc_setup_${sc_id} "$SANDBOX_DIR"
         for ((pi=0; pi<si; pi++)); do
           _qparse "${step_arr[$pi]}"
-          { _sandbox_exec "$_qans" 5 2>/dev/null; } 2>/dev/null || true
+          { _sandbox_exec "$_qans" 5 &>/dev/null; } 2>/dev/null || true
         done
         # Restore current step's parse state
         _qparse "${step_arr[$si]}"
@@ -730,7 +750,7 @@ phase7_scenario_negatives() {
         _sc_setup_${sc_id} "$SANDBOX_DIR"
         for ((pi=0; pi<si; pi++)); do
           _qparse "${step_arr[$pi]}"
-          { _sandbox_exec "$_qans" 5 2>/dev/null; } 2>/dev/null || true
+          { _sandbox_exec "$_qans" 5 &>/dev/null; } 2>/dev/null || true
         done
         _qparse "${step_arr[$si]}"
         if check "$wrong" "$answers" 2>/dev/null; then

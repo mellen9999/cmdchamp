@@ -25,3 +25,9 @@ jobs:
 
       - name: full suite
         run: ./test_cmdchamp.sh
+
+      - name: check() unit tests
+        run: ./test_check.sh
+
+      - name: audit (grading + wrong-answer rejection)
+        run: ./audit.sh

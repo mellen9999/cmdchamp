@@ -32,7 +32,10 @@ touch "$DATA/scores"
 
 # Helper: run bash snippet with sourced cmdchamp
 _run() { bash -c "source '$SOURCE_FILE' 2>/dev/null; $1" 2>/dev/null; }
-_rune() { bash -c "source '$SOURCE_FILE' 2>/dev/null; $1" 2>/dev/null; }
+
+# gen_level* write into a nameref array and print NOTHING to stdout — they must be
+# handed an array, which is then emitted one question per line.
+_qgen() { _run "declare -a Q=(); gen_level${1} Q; printf '%s\n' \"\${Q[@]}\""; }
 
 # ─────────────────────────────────────────────────────────────────────────────
 section "Syntax"
@@ -418,7 +421,7 @@ lc=$(wc -l < "$GEN_DIR/data.csv")
 section "Question Generation (all 30 levels)"
 
 for lv in {1..30}; do
-  output=$(_run "local -a Q=(); gen_level${lv} Q; printf '%s\n' \"\${Q[@]}\"")
+  output=$(_qgen "$lv")
   qcount=$(printf '%s\n' "$output" | grep -c '.')
   if ((qcount < 3)); then
     fail "gen_level${lv}" "only $qcount questions (need >=3)"
@@ -434,7 +437,7 @@ for lv in {1..30}; do
     if [[ "$line" != *"|"* && "$line" != *"§"* ]]; then
       bad_format+=("L${lv}: ${line:0:60}")
     fi
-  done < <(_run "local -a Q=(); gen_level${lv} Q; printf '%s\n' \"\${Q[@]}\"")
+  done < <(_qgen "$lv")
 done
 if ((${#bad_format[@]} == 0)); then
   ok "all questions have | or § delimiter"
@@ -451,7 +454,7 @@ total_q=0 empty_prompts=0 parse_fails=0 dupe_count=0
 for lv in {1..30}; do
   r=$(_run "
     declare -A seen
-    local -a Q=()
+    declare -a Q=()
     dupes=0; empty=0; pfails=0; count=0
     gen_level${lv} Q
     for line in \"\${Q[@]}\"; do
@@ -556,34 +559,66 @@ r=$(bash -c "
 # ─────────────────────────────────────────────────────────────────────────────
 section "Score System"
 
-r=$(_run "
-  declare -A _sc
-  _sget() { _hash \"\$1\"; local _v=\"\${_sc[\$REPLY]:-1}\"; REPLY=\"\${_v%%|*}\"; }
-  _sset() { _hash \"\$1\"; _sc[\$REPLY]=\"\$2|1\"; _sflush; }
+# Drive the REAL score functions. _sget is defined by _mode_init (not at top level),
+# which also declares _sc, loads the scores file and sets _MODE_TAG.
+_score_env() {  # $1 = data dir suffix, $2 = mode tag, $3 = snippet
+  bash -c "
+    export DATA='$TDIR/$1'; mkdir -p \"\$DATA\"; touch \"\$DATA/scores\"
+    source '$SOURCE_FILE' 2>/dev/null
+    DATA='$TDIR/$1'
+    _mode_init '$2' >/dev/null 2>&1
+    $3
+  " 2>/dev/null
+}
 
-  _sget 'test q'; echo \"default=\$REPLY\"
-  _sset 'test q' 2
-  _sget 'test q'; echo \"after=\$REPLY\"
-  _sget 'other q'; echo \"other=\$REPLY\"
-")
-echo "$r" | grep -q 'default=1' && ok "default tier=1" || fail "score default" "$r"
+r=$(_score_env sc_basic 3 '
+  _sget "test q"; echo "default=$REPLY"
+  _sset "test q" 2
+  _sget "test q"; echo "after=$REPLY"
+  _sget "other q"; echo "other=$REPLY"
+')
+echo "$r" | grep -q 'default=0' && ok "default tier=0 (unseen)" || fail "score default" "$r"
 echo "$r" | grep -q 'after=2' && ok "tier updates to 2" || fail "score update" "$r"
-echo "$r" | grep -q 'other=1' && ok "unrelated unaffected" || fail "score isolation" "$r"
+echo "$r" | grep -q 'other=0' && ok "unrelated unaffected" || fail "score isolation" "$r"
 
-# Atomic flush + reload
-r=$(_run "
-  declare -A _sc
-  _sget() { _hash \"\$1\"; local _v=\"\${_sc[\$REPLY]:-1}\"; REPLY=\"\${_v%%|*}\"; }
-  _sset() { _hash \"\$1\"; _sc[\$REPLY]=\"\$2|1\"; _sflush; }
-  _sset 'persist q' 2
+# _sset writes 3 fields: tier|mode_tag|unix_ts
+r=$(_score_env sc_fields 7 '
+  _sset "fmt q" 2
+  _hash "fmt q"; echo "raw=${_sc[$REPLY]}"
+')
+val=$(echo "$r" | sed -n 's/^raw=//p')
+[[ "$val" == "2|7|"* ]] && ok "_sset writes tier|mode_tag|ts" || fail "sset format" "got '$val'"
+ts="${val##*|}"
+[[ "$ts" =~ ^[0-9]{10,}$ ]] && ok "_sset stamps unix timestamp" || fail "sset ts" "got '$ts'"
 
-  # Reload from file
+# Batched flush: dirty writes stay in memory until 10 accumulate
+r=$(_score_env sc_batch 1 '
+  _sset "b1" 2
+  echo "after1=[$(grep -c . "$DATA/scores")] dirty=$_sdirty"
+  for i in 2 3 4 5 6 7 8 9 10; do _sset "b$i" 2; done
+  echo "after10=[$(grep -vc "^#" "$DATA/scores")] dirty=$_sdirty"
+')
+echo "$r" | grep -q 'after1=\[0\] dirty=1' && ok "_sset batches (no flush at 1 dirty)" || fail "sset batch" "$r"
+echo "$r" | grep -q 'after10=\[10\] dirty=0' && ok "_sset flushes at 10 dirty" || fail "sset flush@10" "$r"
+
+# _sflush_if_dirty flushes a partial batch
+r=$(_score_env sc_partial 1 '
+  _sset "p1" 2
+  _sflush_if_dirty
+  echo "rows=$(grep -vc "^#" "$DATA/scores") dirty=$_sdirty"
+')
+echo "$r" | grep -q 'rows=1 dirty=0' && ok "_sflush_if_dirty flushes partial batch" || fail "flush_if_dirty" "$r"
+
+# Flush + reload round-trip through the real file format
+r=$(_score_env sc_reload 4 '
+  _sset "persist q" 2
+  _sflush_if_dirty
   declare -A _sc2
-  while IFS='|' read -r k v; do _sc2[\$k]=\$v; done < \"\$DATA/scores\"
-  _hash 'persist q'
-  echo \"reloaded=\${_sc2[\$REPLY]:-missing}\"
-")
-echo "$r" | grep -q 'reloaded=2|1' && ok "flush+reload consistent" || fail "flush reload" "$r"
+  while IFS="|" read -r k v; do [[ "$k" == "#"* ]] && continue; _sc2[$k]=$v; done < "$DATA/scores"
+  _hash "persist q"
+  echo "reloaded=${_sc2[$REPLY]:-missing}"
+')
+echo "$r" | grep -qE 'reloaded=2\|4\|[0-9]{10,}' && ok "flush+reload consistent" || fail "flush reload" "$r"
 
 # Back-compat: old format hash|tier (no level)
 r=$(bash -c "
@@ -617,19 +652,9 @@ r=$(bash -c "
 echo "$r" | grep -q 'count=1' && ok "loader skips # lines" || fail "loader skip" "$r"
 echo "$r" | grep -q 'val=2|1' && ok "loader reads data after header" || fail "loader data" "$r"
 
-# ─────────────────────────────────────────────────────────────────────────────
-section "Level Locking"
-
-for bb in 0 1 5 14 29 30; do
-  for lv in 1 2 6 15 30; do
-    r=$(_run "BOSS_BEATEN=$bb; if (($lv > 1 && $lv > BOSS_BEATEN + 1)); then echo LOCKED; else echo OPEN; fi")
-    if ((lv > 1 && lv > bb + 1)); then
-      [[ "$r" == "LOCKED" ]] && ok "L$lv locked@BB=$bb" || fail "lock L$lv@$bb" "$r"
-    else
-      [[ "$r" == "OPEN" ]] && ok "L$lv open@BB=$bb" || fail "unlock L$lv@$bb" "$r"
-    fi
-  done
-done
+# NOTE: there is no per-level lock. Progression is linear (run() sets LVL=lv+1 on a
+# boss win) and placement raises BOSS_BEATEN/PLACED_THROUGH directly. The only real
+# gate is _post_root_check (BOSS_BEATEN < MAX_LEVEL), covered under "Gauntlet Logic".
 
 # ─────────────────────────────────────────────────────────────────────────────
 section "Array Structure"
@@ -679,9 +704,9 @@ r=$(_run "echo \"\$MAX_LEVEL \$BOSS_TOTAL \$BOSS_THRESHOLD \$FIRE_STREAK\"")
 # ─────────────────────────────────────────────────────────────────────────────
 section "Level 5/6 Split"
 
-l5=$(_run "local -a Q=(); gen_level5 Q; printf '%s\n' \"\${Q[@]}\"")
+l5=$(_qgen 5)
 echo "$l5" | grep -q '<<<' && fail "L5" "contains <<<" || ok "L5 no <<<"
-l6=$(_run "local -a Q=(); gen_level6 Q; printf '%s\n' \"\${Q[@]}\"")
+l6=$(_qgen 6)
 echo "$l6" | grep -q '<<<' && ok "L6 has <<<" || fail "L6" "no <<<"
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -727,87 +752,86 @@ else
     _gen_sandbox_files '$SB_PRISTINE'
   " 2>/dev/null
 
-  sb_pass=0 sb_fail=0 sb_skip=0 sb_total=0
+  sb_pass=0 sb_fail=0 sb_skip=0 sb_total=0 sb_qcount=0
   sb_errors=()
 
-  for lv in {1..30}; do
-    lv_pass=0 lv_fail=0 lv_skip=0 lv_total=0
+  # One worker per level: sources cmdchamp ONCE, then generates, parses and executes
+  # every answer in-process. The sandbox is still reset to pristine on disk before each
+  # answer (identical isolation to a per-answer subshell — sandbox state lives in the
+  # directory, not the shell), and the reset is verified so a failed reset can never
+  # masquerade as a pass. Emits a tab-separated event per question/answer:
+  #   Q = question seen   S = question skipped   P = answer passed
+  #   F = answer failed   E = sandbox reset broke
+  _sb_level() {
+    bash -c '
+      lv=$1 SB_SOURCE=$2 SB_DATA=$3 SB_PRISTINE=$4 SB_DIR=$5
+      export DATA="$SB_DATA" SANDBOX_PRISTINE="$SB_PRISTINE" SANDBOX_DIR="$SB_DIR"
+      source "$SB_SOURCE" 2>/dev/null
+      SANDBOX_MODE=1; SANDBOX_PRISTINE="$SB_PRISTINE"; SANDBOX_DIR="$SB_DIR"
 
-    while IFS= read -r line; do
-      [[ -z "$line" ]] && continue
+      declare -a Q=(); "gen_level$lv" Q
+      for line in "${Q[@]}"; do
+        [[ -z "$line" ]] && continue
+        printf "Q\n"
+        _qparse "$line"
+        # #text: questions and questions with no sandbox markers cannot be executed
+        if [[ "$_qtext" == "1" || ( -z "$_qoutput" && -z "$_qstate" ) ]]; then
+          printf "S\n"; continue
+        fi
+        # Snapshot the expectations — the check helpers below must not see a later parse
+        exp_out=$_qoutput exp_state=$_qstate delim=$_qdelim answers=$_qanswers
 
-      # Parse the question
-      IFS=$'\x1e' read -r _qprompt _qans _qoutput _qstate _qtext _qdelim _qanswers < <(bash -c "
-        source '$SB_SOURCE' 2>/dev/null
-        _qparse \"\$1\"
-        printf '%s\x1e%s\x1e%s\x1e%s\x1e%s\x1e%s\x1e%s' \"\$_qprompt\" \"\$_qans\" \"\$_qoutput\" \"\$_qstate\" \"\$_qtext\" \"\$_qdelim\" \"\$_qanswers\"
-      " _ "$line" 2>/dev/null)
+        IFS="$delim" read -ra all <<< "$answers"
+        for a in "${all[@]}"; do
+          a="${a#"${a%%[![:space:]]*}"}"; a="${a%"${a##*[![:space:]]}"}"
+          [[ -z "$a" ]] && continue
+          [[ "$a" == "~"* || "$a" == "#"* ]] && continue
 
-      # Skip #text: questions (no sandbox validation possible)
-      if [[ "$_qtext" == "1" ]]; then
-        ((++lv_skip)); ((++sb_skip))
-        continue
-      fi
+          # Reset to pristine. chmod first: an answer may have chmod-ed a dir unreadable.
+          chmod -R u+rwX "$SB_DIR" 2>/dev/null
+          rm -rf "$SB_DIR"
+          if ! cp -a "$SB_PRISTINE" "$SB_DIR" 2>/dev/null || [[ ! -e "$SB_DIR/server.log" ]]; then
+            printf "E\t%s\treset to pristine failed\n" "$a"; continue
+          fi
 
-      # Skip questions with no sandbox markers
-      if [[ -z "$_qoutput" && -z "$_qstate" ]]; then
-        ((++lv_skip)); ((++sb_skip))
-        continue
-      fi
-
-      # Split ALL answers (primary + alternates) and test each one
-      IFS="$_qdelim" read -ra all_answers <<< "$_qanswers"
-      for answer in "${all_answers[@]}"; do
-        # Trim whitespace
-        answer="${answer#"${answer%%[![:space:]]*}"}"; answer="${answer%"${answer##*[![:space:]]}"}"
-        [[ -z "$answer" ]] && continue
-        # Skip regex/marker-only answers (start with ~ or #)
-        [[ "$answer" == "~"* || "$answer" == "#"* ]] && continue
-
-        ((++lv_total)); ((++sb_total))
-
-        # Reset sandbox to pristine for each answer
-        rm -rf "$SB_DIR"
-        cp -a "$SB_PRISTINE" "$SB_DIR"
-
-        # Execute this answer in sandbox and check
-        result=$(bash -c "
-          export DATA='$SB_DATA'
-          export SANDBOX_PRISTINE='$SB_PRISTINE'
-          export SANDBOX_DIR='$SB_DIR'
-          source '$SB_SOURCE' 2>/dev/null
-          SANDBOX_MODE=1
-          SANDBOX_PRISTINE='$SB_PRISTINE'
-          SANDBOX_DIR='$SB_DIR'
-
-          _qparse \"\$1\"
-
-          # Execute the specific answer (not just primary)
-          output=\$(_sandbox_exec \"\$2\" 5 2>/dev/null) || true
+          output=$(_sandbox_exec "$a" 5 2>/dev/null) || true
 
           passed=1
-          if [[ -n \"\$_qoutput\" ]]; then
-            _sandbox_check_output \"\$output\" \"\$_qoutput\" || passed=0
-          fi
-          if [[ -n \"\$_qstate\" ]]; then
-            _sandbox_check_state \"\$_qstate\" || passed=0
-          fi
+          [[ -n "$exp_out" ]] && { _sandbox_check_output "$output" "$exp_out" || passed=0; }
+          [[ -n "$exp_state" ]] && { _sandbox_check_state "$exp_state" || passed=0; }
 
           if ((passed)); then
-            echo PASS
+            printf "P\n"
           else
-            echo \"FAIL|output=\${output:0:80}|expected_out=\$_qoutput|expected_state=\$_qstate\"
+            # Flatten: the event stream is line-based
+            det=${output:0:80}; det=${det//[$'\n\t']/ }
+            printf "F\t%s\toutput=%s|expected_out=%s|expected_state=%s\n" "$a" "$det" "$exp_out" "$exp_state"
           fi
-        " _ "$line" "$answer" 2>/dev/null)
-
-        if [[ "$result" == "PASS" ]]; then
-          ((++lv_pass)); ((++sb_pass))
-        else
-          ((++lv_fail)); ((++sb_fail))
-          sb_errors+=("L${lv}: ${answer} -> ${result}")
-        fi
+        done
       done
-    done < <(bash -c "source '$SB_SOURCE' 2>/dev/null; gen_level${lv}" 2>/dev/null)
+    ' _ "$1" "$SB_SOURCE" "$SB_DATA" "$SB_PRISTINE" "$SB_DIR" 2>/dev/null
+  }
+
+  for lv in {1..30}; do
+    lv_pass=0 lv_fail=0 lv_skip=0 lv_total=0 lv_qcount=0
+
+    while IFS=$'\t' read -r tag answer detail; do
+      case "$tag" in
+        Q) ((++lv_qcount)); ((++sb_qcount)) ;;
+        S) ((++lv_skip));   ((++sb_skip)) ;;
+        P) ((++lv_total)); ((++sb_total)); ((++lv_pass)); ((++sb_pass)) ;;
+        F) ((++lv_total)); ((++sb_total)); ((++lv_fail)); ((++sb_fail))
+           sb_errors+=("L${lv}: ${answer} -> ${detail}") ;;
+        E) ((++lv_total)); ((++sb_total)); ((++lv_fail)); ((++sb_fail))
+           sb_errors+=("L${lv}: ${answer} -> SANDBOX RESET FAILED: ${detail}") ;;
+      esac
+    done < <(_sb_level "$lv")
+
+    # A level that yields no questions means extraction broke — never a silent pass
+    if ((lv_qcount == 0)); then
+      fail "sandbox extraction" "L${lv} generated 0 questions"
+      continue
+    fi
 
     # Per-level summary (compact)
     if ((lv_total > 0)); then
@@ -822,12 +846,19 @@ else
   done
 
   # Sandbox summary
-  printf '\n  %sSandbox totals:%s %s%d pass%s / %s%d fail%s / %s%d skip%s (of %d)\n' \
-    "$B" "$N" "$G" "$sb_pass" "$N" "$R" "$sb_fail" "$N" "$Y" "$sb_skip" "$N" "$sb_total"
+  printf '\n  %sSandbox totals:%s %s%d pass%s / %s%d fail%s / %s%d skip%s (of %d, from %d questions)\n' \
+    "$B" "$N" "$G" "$sb_pass" "$N" "$R" "$sb_fail" "$N" "$Y" "$sb_skip" "$N" "$sb_total" "$sb_qcount"
 
-  if ((sb_fail == 0)); then
+  # Guard: this section is the suite's core guarantee. Zero questions or zero
+  # executable answers means it verified nothing — that is a failure, not a pass.
+  ((sb_qcount > 0)) && ok "extracted $sb_qcount questions across 30 levels" \
+    || fail "sandbox extraction" "0 questions extracted (gen_level nameref contract broken?)"
+  ((sb_total > 0)) || fail "sandbox coverage" "0 answers executed (of $sb_qcount questions)"
+
+  if ((sb_fail == 0 && sb_total > 0)); then
     ok "all $sb_total sandbox answers verified (every alternate)"
-    ((++PASS))  # extra for total
+  elif ((sb_total == 0)); then
+    : # already failed above
   else
     fail "sandbox verification" "$sb_fail/$sb_total failed"
     printf '\n  %sFailed sandbox answers:%s\n' "$R" "$N"
@@ -843,55 +874,57 @@ fi
 # ═════════════════════════════════════════════════════════════════════════════
 section "Text-Match Alternate Verification"
 
-tm_pass=0 tm_fail=0 tm_skip=0 tm_total=0
+tm_pass=0 tm_fail=0 tm_skip=0 tm_total=0 tm_qcount=0
 tm_errors=()
 
-for lv in {1..30}; do
-  lv_pass=0 lv_fail=0 lv_skip=0 lv_total=0
+# One worker per level (see _sb_level): sources cmdchamp ONCE, then parses every question
+# and runs the real check() over every alternate in-process. Per-answer globals are set
+# exactly as run() leaves them — _qparse first, then check() — so _qrequire is honoured.
+# Emits: Q = question seen, S = question skipped, P = accepted, F = rejected.
+_tm_level() {
+  bash -c '
+    lv=$1 SRC=$2
+    source "$SRC" 2>/dev/null
+    declare -a Q=(); "gen_level$lv" Q
+    for line in "${Q[@]}"; do
+      [[ -z "$line" ]] && continue
+      printf "Q\n"
+      _qparse "$line"
+      if [[ "$_qtext" == "1" ]]; then printf "S\n"; continue; fi
+      delim=$_qdelim answers=$_qanswers require=$_qrequire
 
-  while IFS= read -r line; do
-    [[ -z "$line" ]] && continue
+      IFS="$delim" read -ra all <<< "$answers"
+      for a in "${all[@]}"; do
+        a="${a#"${a%%[![:space:]]*}"}"; a="${a%"${a##*[![:space:]]}"}"
+        [[ -z "$a" ]] && continue
+        # Regex answers are patterns, not literal inputs; #-answers are sandbox markers
+        [[ "$a" == "~"* || "$a" == "#"* ]] && continue
 
-    # Parse the question
-    IFS=$'\x1e' read -r _qprompt _qans _qoutput _qstate _qtext _qdelim _qanswers < <(bash -c "
-      source '$SOURCE_FILE' 2>/dev/null
-      _qparse \"\$1\"
-      printf '%s\x1e%s\x1e%s\x1e%s\x1e%s\x1e%s\x1e%s' \"\$_qprompt\" \"\$_qans\" \"\$_qoutput\" \"\$_qstate\" \"\$_qtext\" \"\$_qdelim\" \"\$_qanswers\"
-    " _ "$line" 2>/dev/null)
-
-    # Skip #text: (no text matching)
-    if [[ "$_qtext" == "1" ]]; then
-      ((++lv_skip)); ((++tm_skip))
-      continue
-    fi
-
-    # Split ALL answers and verify check() accepts each
-    IFS="$_qdelim" read -ra all_answers <<< "$_qanswers"
-    for answer in "${all_answers[@]}"; do
-      answer="${answer#"${answer%%[![:space:]]*}"}"; answer="${answer%"${answer##*[![:space:]]}"}"
-      [[ -z "$answer" ]] && continue
-      # Skip regex answers (check() handles them differently — they're patterns, not literal answers)
-      [[ "$answer" == "~"* ]] && continue
-      # Skip sandbox marker-only answers
-      [[ "$answer" == "#"* ]] && continue
-
-      ((++lv_total)); ((++tm_total))
-
-      # Run check() in text-match mode (SANDBOX_MODE=0) with this answer as input
-      result=$(bash -c "
-        source '$SOURCE_FILE' 2>/dev/null
-        SANDBOX_MODE=0; _qdelim='$_qdelim'; _qoutput=''; _qstate=''; _qtext=0
-        check \"\$1\" \"\$2\" && echo PASS || echo FAIL
-      " _ "$answer" "$_qanswers" 2>/dev/null)
-
-      if [[ "$result" == "PASS" ]]; then
-        ((++lv_pass)); ((++tm_pass))
-      else
-        ((++lv_fail)); ((++tm_fail))
-        tm_errors+=("L${lv}: '${answer}' rejected by check()")
-      fi
+        # Text-match mode, fresh per answer: no sandbox, no stale expectations
+        SANDBOX_MODE=0; _qdelim=$delim; _qrequire=$require; _qoutput=""; _qstate=""; _qtext=0
+        if check "$a" "$answers"; then printf "P\n"; else printf "F\t%s\n" "$a"; fi
+      done
     done
-  done < <(_run "gen_level${lv}")
+  ' _ "$1" "$SOURCE_FILE" 2>/dev/null
+}
+
+for lv in {1..30}; do
+  lv_pass=0 lv_fail=0 lv_skip=0 lv_total=0 lv_qcount=0
+
+  while IFS=$'\t' read -r tag answer; do
+    case "$tag" in
+      Q) ((++lv_qcount)); ((++tm_qcount)) ;;
+      S) ((++lv_skip));   ((++tm_skip)) ;;
+      P) ((++lv_total)); ((++tm_total)); ((++lv_pass)); ((++tm_pass)) ;;
+      F) ((++lv_total)); ((++tm_total)); ((++lv_fail)); ((++tm_fail))
+         tm_errors+=("L${lv}: '${answer}' rejected by check()") ;;
+    esac
+  done < <(_tm_level "$lv")
+
+  if ((lv_qcount == 0)); then
+    fail "text-match extraction" "L${lv} generated 0 questions"
+    continue
+  fi
 
   if ((lv_total > 0)); then
     if ((lv_fail == 0)); then
@@ -904,11 +937,18 @@ for lv in {1..30}; do
   fi
 done
 
-printf '\n  %sText-match totals:%s %s%d pass%s / %s%d fail%s / %s%d skip%s (of %d)\n' \
-  "$B" "$N" "$G" "$tm_pass" "$N" "$R" "$tm_fail" "$N" "$Y" "$tm_skip" "$N" "$tm_total"
+printf '\n  %sText-match totals:%s %s%d pass%s / %s%d fail%s / %s%d skip%s (of %d, from %d questions)\n' \
+  "$B" "$N" "$G" "$tm_pass" "$N" "$R" "$tm_fail" "$N" "$Y" "$tm_skip" "$N" "$tm_total" "$tm_qcount"
 
-if ((tm_fail == 0)); then
+# Guard: zero questions or zero checked answers means check() went unverified
+((tm_qcount > 0)) && ok "extracted $tm_qcount questions across 30 levels" \
+  || fail "text-match extraction" "0 questions extracted (gen_level nameref contract broken?)"
+((tm_total > 0)) || fail "text-match coverage" "0 answers checked (of $tm_qcount questions)"
+
+if ((tm_fail == 0 && tm_total > 0)); then
   ok "all $tm_total text-match answers verified (every alternate)"
+elif ((tm_total == 0)); then
+  : # already failed above
 else
   fail "text-match verification" "$tm_fail/$tm_total failed"
   printf '\n  %sFailed text-match answers:%s\n' "$R" "$N"
@@ -941,7 +981,7 @@ qc=$(echo "$r" | grep 'qcount=' | grep -o '[0-9]*')
 ((qc >= 5)) && ok "L1 has >=5 questions for boss" || fail "boss q pool" "only $qc"
 
 # Boss excludes seen prompts
-r=$(_rune '
+r=$(_run '
   BOSS_BEATEN=30
   generate_level 1
   declare -A _seen_map
@@ -969,11 +1009,15 @@ r=$(_run "BOSS_BEATEN=5; ((4 >= BOSS_THRESHOLD)) && { ((BOSS_BEATEN < 6)) && BOS
 r=$(_run "BOSS_BEATEN=5; ((2 >= BOSS_THRESHOLD)) || true; echo \$BOSS_BEATEN")
 [[ "$r" == "5" ]] && ok "BOSS_BEATEN stable on loss" || fail "boss loss stable" "$r"
 
-# Level unlock after boss beat
-r=$(_run "BOSS_BEATEN=5; lv=6; if ((lv > 1 && lv > BOSS_BEATEN + 1)); then echo LOCKED; else echo OPEN; fi")
-[[ "$r" == "OPEN" ]] && ok "L6 open after BB=5" || fail "boss unlock L6" "$r"
-r=$(_run "BOSS_BEATEN=5; lv=7; if ((lv > 1 && lv > BOSS_BEATEN + 1)); then echo LOCKED; else echo OPEN; fi")
-[[ "$r" == "LOCKED" ]] && ok "L7 locked after BB=5" || fail "boss lock L7" "$r"
+# BOSS_BEATEN clamps to MAX_LEVEL on the real load path (no unbounded growth)
+r=$(bash -c "
+  source '$SOURCE_FILE' 2>/dev/null
+  DATA='$TDIR/data_bb_clamp'; mkdir -p \"\$DATA\"; touch \"\$DATA/scores\"
+  printf 'PLAYER_NAME=x\nBOSS_BEATEN=31\nPROFILE_VER=5\n' > \"\$DATA/profile\"
+  _load_profile
+  echo \"bb=\$BOSS_BEATEN\"
+" 2>/dev/null)
+echo "$r" | grep -q 'bb=30' && ok "BOSS_BEATEN=31 clamped to MAX_LEVEL" || fail "bb clamp" "$r"
 
 # ─────────────────────────────────────────────────────────────────────────────
 section "Challenge Mechanics"
@@ -1016,72 +1060,68 @@ echo "$r" | grep -q 'snd=1' && ok "OPT_SOUND garbage→1" || fail "snd validate"
 echo "$r" | grep -q 'alt=1' && ok "OPT_ALTS garbage→1" || fail "alt validate" "$r"
 echo "$r" | grep -q 'pt=0' && ok "PLACED_THROUGH garbage→0" || fail "pt validate" "$r"
 
-# PLACED_THROUGH unlocks levels through placement
-for pt in 0 5 15 30; do
-  for lv in 1 6 16 30; do
-    r=$(_run "PLACED_THROUGH=$pt; BOSS_BEATEN=0; if (($lv > 1 && $lv > BOSS_BEATEN + 1 && $lv > PLACED_THROUGH)); then echo LOCKED; else echo OPEN; fi")
-    if ((lv > 1 && lv > pt && lv > 1)); then
-      [[ "$r" == "LOCKED" ]] && ok "L$lv locked@PT=$pt" || fail "place lock L$lv@$pt" "$r"
-    else
-      [[ "$r" == "OPEN" ]] && ok "L$lv open@PT=$pt" || fail "place unlock L$lv@$pt" "$r"
-    fi
-  done
-done
+# PLACED_THROUGH doesn't gate levels — it only marks placed levels 'p' in stats
+# (cmdchamp: `((lv <= PLACED_THROUGH)) && boss_mark="p"`, else '+' if beaten, '·' if not).
+r=$(bash -c "
+  export DATA='$TDIR/data_pt_stats'; mkdir -p \"\$DATA\"; touch \"\$DATA/scores\"
+  source '$SOURCE_FILE' 2>/dev/null
+  DATA='$TDIR/data_pt_stats'
+  PLAYER_NAME=pt BOSS_BEATEN=10 PLACED_THROUGH=5
+  stats
+" 2>/dev/null | sed -e 's/\x1b\[[0-9;]*m//g')
+echo "$r" | grep -qE '^ +p +5 ' && ok "stats marks L5 placed (PT=5)" || fail "stats placed mark" "no 'p' on L5"
+echo "$r" | grep -qE '^ +\+ +6 ' && ok "stats marks L6 beaten-not-placed" || fail "stats beaten mark" "no '+' on L6"
+echo "$r" | grep -qE '^ +· +11 ' && ok "stats marks L11 unbeaten" || fail "stats unbeaten mark" "no '·' on L11"
+
+# PLACED_THROUGH clamps to MAX_LEVEL on load
+r=$(bash -c "
+  source '$SOURCE_FILE' 2>/dev/null
+  DATA='$TDIR/data_pt_clamp'; mkdir -p \"\$DATA\"; touch \"\$DATA/scores\"
+  printf 'PLAYER_NAME=x\nBOSS_BEATEN=30\nPLACED_THROUGH=99\nPROFILE_VER=5\n' > \"\$DATA/profile\"
+  _load_profile
+  echo \"pt=\$PLACED_THROUGH\"
+" 2>/dev/null)
+echo "$r" | grep -q 'pt=30' && ok "PLACED_THROUGH=99 clamped to MAX_LEVEL" || fail "pt clamp" "$r"
 
 # ─────────────────────────────────────────────────────────────────────────────
 section "Tier/Mastery System"
 
-# Default tier is 1 (learning)
-r=$(_run 'declare -A _sc; _sget() { _hash "$1"; local _v="${_sc[$REPLY]:-1}"; REPLY="${_v%%|*}"; }; _sget "brand new"; echo $REPLY')
-[[ "$r" == "1" ]] && ok "default tier=1 (learning)" || fail "default tier" "$r"
+# Tiers: 0 = unseen, 1 = learning, 2 = mastered. Unseen questions default to 0.
+r=$(_score_env tier_default 1 '_sget "brand new"; echo "t=$REPLY"')
+echo "$r" | grep -q 't=0' && ok "default tier=0 (unseen)" || fail "default tier" "$r"
 
-# Correct answer promotes 1->2
+# Tier round-trips through the real _sset/_sget at each rung
+for t in 0 1 2; do
+  r=$(_score_env "tier_rt$t" 1 "_sset 'rt q' $t; _sget 'rt q'; echo \"t=\$REPLY\"")
+  echo "$r" | grep -q "t=$t" && ok "tier $t round-trips" || fail "tier rt $t" "$r"
+done
+
+# _calc_mastery: 3-field values (tier|lvtag|ts) — the timestamp must be stripped off
+# the level tag, else every question buckets under a bogus "tag|ts" level.
 r=$(_run '
-  declare -A _sc
-  _sget() { _hash "$1"; local _v="${_sc[$REPLY]:-1}"; REPLY="${_v%%|*}"; }
-  _sget "q1"; tier=$REPLY
-  new_tier=$((tier<2?tier+1:2))
-  echo "old=$tier new=$new_tier"
+  declare -A sc lv_total lv_mastered
+  sc[a]="2|3|1700000000"; sc[b]="1|3|1700000000"; sc[c]="0|3|1700000000"
+  _calc_mastery sc
+  echo "l3_total=${lv_total[3]:-0} l3_mast=${lv_mastered[3]:-0}"
+  echo "seen=$_cm_seen learning=$_cm_t1 mastered=$_cm_t2 tagged=$_cm_tagged"
 ')
-echo "$r" | grep -q 'old=1 new=2' && ok "correct: tier 1->2 (mastered)" || fail "tier promote" "$r"
+echo "$r" | grep -q 'l3_total=3 l3_mast=1' && ok "_calc_mastery strips ts from level tag" || fail "mastery lvtag" "$r"
+echo "$r" | grep -q 'seen=3 learning=2 mastered=1' && ok "_calc_mastery: tier 0|1 learning, >=2 mastered" || fail "mastery tiers" "$r"
+echo "$r" | grep -q 'tagged=1' && ok "_calc_mastery flags tagged scores" || fail "mastery tagged" "$r"
 
-# Wrong answer demotes 2->1
+# _calc_mastery back-compat: 2-field (tier|lvtag) and bare (tier) values
 r=$(_run '
-  declare -A _sc
-  _hash "q1"; _sc[$REPLY]="2|1"
-  _sget() { _hash "$1"; local _v="${_sc[$REPLY]:-1}"; REPLY="${_v%%|*}"; }
-  _sget "q1"; tier=$REPLY
-  new_tier=$((tier>0?tier-1:0))
-  echo "old=$tier new=$new_tier"
+  declare -A sc lv_total lv_mastered
+  sc[a]="2|5"; sc[b]="2"
+  _calc_mastery sc
+  echo "l5_total=${lv_total[5]:-0} l5_mast=${lv_mastered[5]:-0} seen=$_cm_seen"
 ')
-echo "$r" | grep -q 'old=2 new=1' && ok "wrong: tier 2->1 (demoted)" || fail "tier demote" "$r"
+echo "$r" | grep -q 'l5_total=1 l5_mast=1' && ok "_calc_mastery reads 2-field format" || fail "mastery 2-field" "$r"
+echo "$r" | grep -q 'seen=2' && ok "_calc_mastery counts untagged scores as seen" || fail "mastery untagged" "$r"
 
-# Wrong answer demotes 1->0
-r=$(_run '
-  declare -A _sc
-  _hash "q1"; _sc[$REPLY]="1|1"
-  _sget() { _hash "$1"; local _v="${_sc[$REPLY]:-1}"; REPLY="${_v%%|*}"; }
-  _sget "q1"; tier=$REPLY
-  new_tier=$((tier>0?tier-1:0))
-  echo "old=$tier new=$new_tier"
-')
-echo "$r" | grep -q 'old=1 new=0' && ok "wrong: tier 1->0" || fail "tier demote 1->0" "$r"
-
-# Tier caps at 2
-r=$(_run 'tier=2; new_tier=$((tier<2?tier+1:2)); echo $new_tier')
-[[ "$r" == "2" ]] && ok "tier capped at 2" || fail "tier cap" "$r"
-
-# Tier floors at 0
-r=$(_run 'tier=0; new_tier=$((tier>0?tier-1:0)); echo $new_tier')
-[[ "$r" == "0" ]] && ok "tier floored at 0" || fail "tier floor" "$r"
-
-# FIRE_STREAK forces tier 2 (recall mode)
-r=$(_run '
-  streak=$FIRE_STREAK tier=1
-  ((streak>=FIRE_STREAK)) && tier=2
-  echo $tier
-')
-[[ "$r" == "2" ]] && ok "fire streak forces tier 2" || fail "fire tier" "$r"
+# FIRE_STREAK is flavor only (banner at streak>=5) — it does not touch tiers
+r=$(_run 'echo "fs=$FIRE_STREAK"')
+echo "$r" | grep -q 'fs=5' && ok "FIRE_STREAK=5 (banner threshold)" || fail "fire streak" "$r"
 
 # ─────────────────────────────────────────────────────────────────────────────
 section "Gauntlet Logic"
@@ -1127,66 +1167,38 @@ r=$(bash -c "
 " 2>/dev/null)
 [[ "$r" == "15" ]] && ok "gauntlet best score persists" || fail "gauntlet best" "$r"
 
-# ─────────────────────────────────────────────────────────────────────────────
-section "Timed Mode Logic"
-
-# Valid durations
-for dur in 60 120 300; do
-  r=$(_run "
-    case $dur in 60|120|300) echo valid;; *) echo invalid;; esac
-  ")
-  [[ "$r" == "valid" ]] && ok "timed duration $dur valid" || fail "timed dur $dur" "$r"
-done
-
-# Invalid duration rejected
-r=$(_run 'case 90 in 60|120|300) echo valid;; *) echo invalid;; esac')
-[[ "$r" == "invalid" ]] && ok "timed rejects 90s" || fail "timed reject" "$r"
-
-# Timed mode was merged into challenge mode (see commit 57685d8). _timed_set /
-# _timed_best no longer exist; coverage moved to "Challenge Mechanics" section.
-skip "timed best score persists (timed mode merged into challenge)"
+# NOTE: timed mode was merged into challenge mode (commit 57685d8). No _timed_* function
+# or duration set exists any more — coverage lives in "Challenge Mechanics".
 
 # ─────────────────────────────────────────────────────────────────────────────
 section "Review Mode Logic"
 
-# Weak level detection: <80% mastery = weak
-r=$(_rune '
-  declare -A _sc
-  for i in {1..10}; do _hash "q$i"; _sc[$REPLY]="1|1"; done
-  for i in {1..6}; do _hash "q$i"; _sc[$REPLY]="2|1"; done
-  declare -A lv_total lv_mastered
-  for k in "${!_sc[@]}"; do
-    _val="${_sc[$k]}" _tier="${_val%%|*}"
-    [[ "$_val" == *"|"* ]] && _lvtag="${_val#*|}" || _lvtag=""
-    [[ -n "$_lvtag" ]] && {
-      lv_total[$_lvtag]=$(( ${lv_total[$_lvtag]:-0} + 1 ))
-      [[ "$_tier" != "0" && "$_tier" != "1" ]] && lv_mastered[$_lvtag]=$(( ${lv_mastered[$_lvtag]:-0} + 1 ))
-    }
-  done
-  lt=${lv_total[1]:-0} lm=${lv_mastered[1]:-0}
-  ((lt > 0)) && pct=$((lm * 100 / lt)) || pct=0
-  ((pct < 80)) && echo "weak pct=$pct" || echo "strong pct=$pct"
-')
+# Weak/strong is derived from the REAL _calc_mastery over real 3-field score values.
+# stats() calls it the same way: >=80% mastered is strong (green ✓), below is weak.
+_mastery_pct() {  # $1 = level tag, $2... = score values to seed
+  local lv=$1; shift
+  local seed="" i=0
+  for v in "$@"; do seed+="_hash \"mq$((++i))\"; sc[\$REPLY]=\"$v\"; "; done
+  _run "
+    declare -A sc lv_total lv_mastered
+    $seed
+    _calc_mastery sc
+    lt=\${lv_total[$lv]:-0} lm=\${lv_mastered[$lv]:-0}
+    ((lt > 0)) && pct=\$((lm * 100 / lt)) || pct=0
+    ((pct < 80)) && echo \"weak pct=\$pct\" || echo \"strong pct=\$pct\"
+  "
+}
+
+# 6 mastered of 10 on level 1 = 60% = weak
+r=$(_mastery_pct 1 "2|1|1700000000" "2|1|1700000000" "2|1|1700000000" "2|1|1700000000" \
+                   "2|1|1700000000" "2|1|1700000000" "1|1|1700000000" "1|1|1700000000" \
+                   "0|1|1700000000" "1|1|1700000000")
 echo "$r" | grep -q 'weak pct=60' && ok "60% mastery = weak" || fail "review weak" "$r"
 
-# Strong level detection: >=80% mastery
-r=$(_rune '
-  declare -A _sc
-  for i in {1..10}; do _hash "s$i"; _sc[$REPLY]="2|2"; done
-  for i in {1..2}; do _hash "s$i"; _sc[$REPLY]="1|2"; done
-  declare -A lv_total lv_mastered
-  for k in "${!_sc[@]}"; do
-    _val="${_sc[$k]}" _tier="${_val%%|*}"
-    [[ "$_val" == *"|"* ]] && _lvtag="${_val#*|}" || _lvtag=""
-    [[ -n "$_lvtag" ]] && {
-      lv_total[$_lvtag]=$(( ${lv_total[$_lvtag]:-0} + 1 ))
-      [[ "$_tier" != "0" && "$_tier" != "1" ]] && lv_mastered[$_lvtag]=$(( ${lv_mastered[$_lvtag]:-0} + 1 ))
-    }
-  done
-  lt=${lv_total[2]:-0} lm=${lv_mastered[2]:-0}
-  ((lt > 0)) && pct=$((lm * 100 / lt)) || pct=0
-  ((pct < 80)) && echo "weak pct=$pct" || echo "strong pct=$pct"
-')
+# 8 mastered of 10 on level 2 = 80% = strong
+r=$(_mastery_pct 2 "2|2|1700000000" "2|2|1700000000" "2|2|1700000000" "2|2|1700000000" \
+                   "2|2|1700000000" "2|2|1700000000" "2|2|1700000000" "2|2|1700000000" \
+                   "1|2|1700000000" "0|2|1700000000")
 echo "$r" | grep -q 'strong pct=80' && ok "80% mastery = strong" || fail "review strong" "$r"
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1197,35 +1209,35 @@ section "Floppy Disks (easter eggs)"
 _disk_setup='DISKS_FOUND=""; _save_profile() { :; }; _disk_found() { local name=$1; [[ ",$DISKS_FOUND," == *",$name,"* ]] && return; [[ -n "$DISKS_FOUND" ]] && DISKS_FOUND="$DISKS_FOUND,$name" || DISKS_FOUND="$name"; }'
 
 # sudorm disk
-r=$(_rune "$_disk_setup; _disk_check wrong \"sudo rm -rf /\"; echo \"\$DISKS_FOUND\"")
+r=$(_run "$_disk_setup; _disk_check wrong \"sudo rm -rf /\"; echo \"\$DISKS_FOUND\"")
 echo "$r" | grep -q 'sudorm' && ok "disk: sudorm" || fail "disk sudorm" "$r"
 
 # forkbomb disk
-r=$(_rune "$_disk_setup; _disk_check wrong ':(){ :|:& };:'; echo \"\$DISKS_FOUND\"")
+r=$(_run "$_disk_setup; _disk_check wrong ':(){ :|:& };:'; echo \"\$DISKS_FOUND\"")
 echo "$r" | grep -q 'forkbomb' && ok "disk: forkbomb" || fail "disk forkbomb" "$r"
 
 # rtfm disk
-r=$(_rune "$_disk_setup; _disk_check wrong man; echo \"\$DISKS_FOUND\"")
+r=$(_run "$_disk_setup; _disk_check wrong man; echo \"\$DISKS_FOUND\"")
 echo "$r" | grep -q 'rtfm' && ok "disk: rtfm" || fail "disk rtfm" "$r"
 
 # streak10 disk
-r=$(_rune "$_disk_setup; _S_STREAK=10; _disk_check streak; echo \"\$DISKS_FOUND\"")
+r=$(_run "$_disk_setup; _S_STREAK=10; _disk_check streak; echo \"\$DISKS_FOUND\"")
 echo "$r" | grep -q 'streak10' && ok "disk: streak10" || fail "disk streak10" "$r"
 
 # streak10 doesn't fire at 9
-r=$(_rune "$_disk_setup; _S_STREAK=9; _disk_check streak; echo \"disks=\${DISKS_FOUND:-none}\"")
+r=$(_run "$_disk_setup; _S_STREAK=9; _disk_check streak; echo \"disks=\${DISKS_FOUND:-none}\"")
 echo "$r" | grep -q 'disks=none' && ok "disk: streak9 no trigger" || fail "disk streak9" "$r"
 
 # flawless disk
-r=$(_rune "$_disk_setup; _disk_check flawless; echo \"\$DISKS_FOUND\"")
+r=$(_run "$_disk_setup; _disk_check flawless; echo \"\$DISKS_FOUND\"")
 echo "$r" | grep -q 'flawless' && ok "disk: flawless" || fail "disk flawless" "$r"
 
 # _disk_found deduplication
-r=$(_rune "$_disk_setup; _disk_found sudorm; _disk_found sudorm; echo \"\$DISKS_FOUND\"")
+r=$(_run "$_disk_setup; _disk_found sudorm; _disk_found sudorm; echo \"\$DISKS_FOUND\"")
 [[ "$(echo "$r" | tail -1)" == "sudorm" ]] && ok "disk: no duplicates" || fail "disk dedup" "$r"
 
 # Multiple disks accumulate
-r=$(_rune "$_disk_setup; _disk_found sudorm; _disk_found rtfm; echo \"\$DISKS_FOUND\"")
+r=$(_run "$_disk_setup; _disk_found sudorm; _disk_found rtfm; echo \"\$DISKS_FOUND\"")
 echo "$r" | grep -q 'sudorm,rtfm' && ok "disk: accumulate" || fail "disk accumulate" "$r"
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1311,7 +1323,7 @@ r=$(_run "echo \"\${#SC_UNLOCK[@]}\"")
 [[ "$r" == "12" ]] && ok "SC_UNLOCK has 12 entries (padded)" || fail "SC_UNLOCK size" "$r"
 
 # _sc_is_done / _sc_mark_done
-r=$(_rune 'SC_DONE=""; _save_profile() { :; }
+r=$(_run 'SC_DONE=""; _save_profile() { :; }
   _sc_is_done 1 && echo "already" || echo "not_done"
   _sc_mark_done 1
   _sc_is_done 1 && echo "done" || echo "still_not"
