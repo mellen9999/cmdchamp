@@ -13,7 +13,7 @@
 #   MANPAGES & EXP .... inline manpage data, explain() renderer
 #   QUESTION DSL ...... _qparse, format docs
 #   LEVEL GENERATORS .. gen_level1–30 (question content)
-#   SCENARIOS ......... 8 sc_setup/sc_steps functions
+#   SCENARIOS ......... 11 sc_setup/sc_steps functions
 #   ANSWER CHECK ...... _fnorm, check, load/save
 #   SCORING & UI ...... _hash, norm, stats, hdr, qdisp, draw
 #   VI HANDLER ........ _vi_normal, _read_line (shared input)
@@ -303,6 +303,7 @@ _boss_splash() {
 SANDBOX_MODE=1  # ON by default
 SANDBOX_PRISTINE="$DATA/sandbox.pristine"
 SANDBOX_DIR="$DATA/sandbox"
+_SANDBOX_GEN=3  # fixture generation — bump to force a pristine rebuild on existing installs
 
 _BWRAP_FLAG="$DATA/.bwrap_blocked"
 _bwrap_notice() {
@@ -326,7 +327,7 @@ _bwrap_notice() {
       ;;
   esac
   printf '%s\n\n' "${D}(shown once; pass --no-sandbox to silence)${N}" >&2
-  [[ -t 0 && -t 2 ]] && _pause >&2 2>/dev/null ||:
+  [[ -t 0 && -t 2 ]] && _pause >&2 ||:
 }
 
 _check_bwrap() {
@@ -357,9 +358,14 @@ _gen_log() {
   local now; printf -v now '%(%s)T' -1
   local step=$((86400 / lines))
   : > "$f"
+  # Guarantee every searchable method/code (see gen_level5 term pool) appears
+  local fmeths=("GET" "POST") fcodes=("200" "404" "500")
   for ((i=0; i<lines; i++)); do
-    _fpick ips; local ip=$REPLY; _fpick codes; local code=$REPLY
-    _fpick methods; local method=$REPLY; _fpick paths; local path=$REPLY
+    _fpick ips; local ip=$REPLY
+    local code method
+    if ((i < 3)); then code=${fcodes[$i]}; else _fpick codes; code=$REPLY; fi
+    if ((i < 2)); then method=${fmeths[$i]}; else _fpick methods; method=$REPLY; fi
+    _fpick paths; local path=$REPLY
     _fpick agents; local agent=$REPLY; local size=$((RANDOM % 50000 + 100))
     local ts; printf -v ts '%(%d/%b/%Y:%H:%M:%S +0000)T' "$((now - (lines - i) * step + RANDOM % step))"
     printf '%s - - [%s] "%s %s HTTP/1.1" %s %d "%s"\n' "$ip" "$ts" "$method" "$path" "$code" "$size" "$agent"
@@ -481,9 +487,14 @@ _gen_sandbox_files() {
   _gen_log "$dir/logs/access.log" 30
   _gen_app_log "$dir/logs/error.log" 20
 
-  printf '%s\n' '#!/bin/bash' 'echo "Backup started at $(date)"' 'echo "Backing up files..."' 'echo "Backup complete!"' > "$dir/backup.sh"
+  # Both scripts write an UPPERCASE error line to stderr: it gives 2>/2>&1 lessons real
+  # stderr to capture, and makes `grep error` (case-sensitive) genuinely miss it, so
+  # level 7's `grep -i` question can't be passed without the -i.
+  printf '%s\n' '#!/bin/bash' 'echo "Backup started at $(date)"' 'echo "Backing up files..."' \
+    'echo "ERROR: 2 files skipped (permission denied)" >&2' 'echo "Backup complete!"' > "$dir/backup.sh"
   chmod +x "$dir/backup.sh"
-  printf '%s\n' '#!/bin/bash' 'echo "Deploying application..."' "echo \"Version: \$(cat VERSION 2>/dev/null || echo 'unknown')\"" 'echo "Deploy complete!"' > "$dir/deploy.sh"
+  printf '%s\n' '#!/bin/bash' 'echo "Deploying application..."' "echo \"Version: \$(cat VERSION 2>/dev/null || echo 'unknown')\"" \
+    'echo "ERROR: healthcheck failed on node2" >&2' 'echo "Deploy complete!"' > "$dir/deploy.sh"
   chmod +x "$dir/deploy.sh"
 
   printf '%s\n' '#!/usr/bin/env python3' '"""Main application module."""' '' \
@@ -506,8 +517,14 @@ _sandbox_init() {
     printf '%s\n' "${Y}Warning: low disk space, sandbox disabled${N}" >&2
     SANDBOX_MODE=0; return 1
   fi
-  if [[ ! -d "$SANDBOX_PRISTINE" ]]; then
-    _gen_sandbox_files "$SANDBOX_PRISTINE"
+  # Marker lives outside the pristine tree so it can't leak into the sandbox listing.
+  # Bump _SANDBOX_GEN whenever fixture content changes, so stale pristines regenerate.
+  local _sbmark="$DATA/.sandbox_gen$_SANDBOX_GEN"
+  if [[ ! -d "$SANDBOX_PRISTINE" || ! -f "$_sbmark" ]]; then
+    rm -rf "$SANDBOX_PRISTINE"
+    _gen_sandbox_files "$SANDBOX_PRISTINE" || return 1
+    rm -f "$DATA"/.sandbox_gen*
+    : > "$_sbmark"
   fi
   _sandbox_reset
 }
@@ -571,9 +588,11 @@ _sandbox_exec() {
 _SANDBOX_DESTRUCTIVE=0
 _is_destructive() {
   local cmd="$1"
-  [[ "$cmd" =~ (^|[[:space:];&|])(rm|mv|cp|dd|truncate|shred|unlink|tee|chmod|chown|mkfs|fdisk|parted|install|split|patch|ln|mkdir|touch)[[:space:]] ]] && return 0
+  # trailing ([[:space:]]|$) so pipeline tails like `xargs gzip` / `fd -X gzip` still match
+  [[ "$cmd" =~ (^|[[:space:];&|])(rm|mv|cp|dd|truncate|shred|unlink|tee|chmod|chown|mkfs|fdisk|parted|install|split|patch|ln|mkdir|touch|tar|gzip|gunzip|bzip2|xz|zip|unzip|rename)([[:space:]]|$) ]] && return 0
   [[ "$cmd" =~ ([^0-9\<\>]|^|[0-9])(\>\>|\>[^>]) ]] && return 0
   [[ "$cmd" =~ sed[[:space:]]+(-i|--in-place) ]] && return 0
+  [[ "$cmd" =~ (^|[[:space:];&|])sort[[:space:]].*(-o|--output) ]] && return 0
   [[ "$cmd" =~ :[[:space:]]*\> ]] && return 0
   [[ "$cmd" =~ find[[:space:]].*-delete ]] && return 0
   [[ "$cmd" =~ rsync[[:space:]].*--delete|xargs[[:space:]].*(rm|mv)|find[[:space:]].*-exec[[:space:]].*(rm|mv) ]] && return 0
@@ -653,7 +672,7 @@ _sandbox_check_state() {
         ;;
       line1:*:*)
         local rest="${check#line1:}"; local file="${rest%%:*}" text="${rest#*:}"
-        local first; read -r first < "$SANDBOX_DIR/$file" 2>/dev/null || return 1
+        local first=""; read -r first < "$SANDBOX_DIR/$file" 2>/dev/null || [[ -n "$first" ]] || return 1  # EOF w/o newline still populates first
         [[ "$first" == *"$text"* ]] || return 1
         ;;
       perm:*:*|!perm:*:*)
@@ -730,7 +749,7 @@ _disk_check() {
       [[ "$ctx" == ":q"* || "$ctx" == ":wq"* ]] && _disk_found vimquit
       ;;
     streak) ((_S_STREAK >= 10)) && _disk_found streak10;;
-    nightowl) local h; printf -v h '%(%H)T' -1; ((h < 4)) && _disk_found nightowl;;
+    nightowl) local h; printf -v h '%(%H)T' -1; ((10#$h < 4)) && _disk_found nightowl;;
     flawless) _disk_found flawless;;
     completionist)
       local i done=1
@@ -751,19 +770,9 @@ SANDBOX_CSVS=(data.csv users.csv)
 SANDBOX_CFGS=(config.ini settings.yaml)
 SANDBOX_SCRIPTS=(backup.sh deploy.sh)
 SANDBOX_DIRS=(src logs data backup temp config test)
-LOGS=(server.log app.log system.log auth.log access.log error.log debug.log nginx.log apache.log syslog
-  messages kern.log daemon.log mail.log secure dpkg.log pacman.log audit.log boot.log faillog lastlog
-  wtmp btmp cron.log yum.log dmesg)
-CONFIGS=(config.ini settings.conf app.yaml server.conf nginx.conf httpd.conf my.cnf pg.conf
-  redis.conf sshd_config sudoers fstab hosts resolv.conf profile bashrc vimrc tmux.conf gitconfig
-  docker-compose.yml)
 SCRIPTS=(backup.sh deploy.sh build.sh test.sh cleanup.sh migrate.sh sync.sh init.sh
   setup.sh install.sh update.sh monitor.sh healthcheck.sh rotate.sh fetch.sh push.sh start.sh stop.sh
   restart.sh validate.sh)
-TXTS=(data.txt notes.txt output.txt report.txt dump.txt results.txt temp.txt
-  readme.txt todo.txt changelog.txt manifest.txt inventory.txt urls.txt hosts.txt targets.txt)
-CSVS=(data.csv users.csv logs.csv export.csv report.csv stats.csv
-  metrics.csv transactions.csv inventory.csv orders.csv customers.csv events.csv)
 BINS=(binary.exe program.elf app.bin firmware.bin malware.exe sample.bin
   payload.dll trojan.exe rootkit.so agent.bin dropper.exe beacon.bin)
 IMGS=(disk.img backup.img system.img evidence.img
@@ -778,8 +787,6 @@ ARCHIVES=(backup.tar.gz archive.tar.gz files.tgz data.tar.bz2 export.zip
   snapshot.tar.xz bundle.tar release.tar.gz package.tar.gz source.tar.bz2 logs.tar.gz dump.tar.zst)
 PHOTOS=(photo.jpg image.png screenshot.png evidence.jpg document.pdf
   scan.tiff capture.bmp diagram.svg icon.ico avatar.webp thumbnail.gif render.raw)
-DIRS=(src lib bin tmp logs data config backup output cache
-  build dist vendor node_modules target public static assets uploads downloads)
 EXTS=(py js ts go rs c cpp java rb sh log txt conf yaml json
   toml md html css sql xml csv ini env php pl lua zig swift)
 SEARCH_TERMS=(error warning panic fatal timeout exception failed invalid denied refused connection
@@ -1020,7 +1027,7 @@ declare -A EXP=(
   [fd]="fast find (regex default, respects .gitignore — find is POSIX/everywhere, more powerful predicates)"
   [eza]="modern ls (git integration, color — ls is POSIX/everywhere)"
   [bat]="cat with highlighting (use cat for piping, bat for reading)"
-  [sd]="simple sed (literal strings by default — sed uses regex)" [dust]="visual du (bar chart — du is POSIX/scriptable)"
+  [sd]="simpler sed (saner regex syntax, in-place by default; -F for literal — sed is POSIX/everywhere)" [dust]="visual du (bar chart — du is POSIX/scriptable)"
   [tree]="directory tree" [sed]="stream editor" [xxd]="hex dump"
   [md5sum]="MD5 hash (weak)" [sha256sum]="SHA256 hash" [nmap]="port scanner" [hydra]="password cracker"
   [hashcat]="GPU hash cracker" [john]="John the Ripper" [tshark]="terminal wireshark"
@@ -1066,7 +1073,7 @@ declare -A EXP=(
   ['${var:?}']="error if unset" ['${var:+}']="alt if set" ['${var#}']="remove prefix (short)"
   ['${var##}']="remove prefix (long)" ['${var%}']="remove suffix (short)" ['${var%%}']="remove suffix (long)"
   ['${var/}']="replace first" ['${var//}']="replace all" ['${var:n}']="substring from n"
-  ['${var:n:m}']="substring n to m" ['${var,,}']="lowercase" ['${var^^}']="uppercase"
+  ['${var:n:m}']="substring: offset n, length m" ['${var,,}']="lowercase" ['${var^^}']="uppercase"
   [declare]="declare variable type" [mapfile]="read lines into array (same as readarray)" [readarray]="read lines into array (same as mapfile)"
   ['${arr[@]}']="all array elements" ['${#arr[@]}']="array length" ['${!arr[@]}']="array indices"
   [if]="conditional execution" [then]="if body start" [else]="if alternative" [elif]="else if"
@@ -1409,7 +1416,9 @@ gen_level5() {
   else
     _fphrase TODO Review Deploy Update Schedule; term2=$REPLY
   fi
-  _fphrase server database logging cache host port localhost info enabled; term3=$REPLY
+  # "server" excluded: `ls` lists the server.log fixture, so `grep server cfg` and a bare
+  # `ls` become indistinguishable by the ~term output check. Remaining terms match no filename.
+  _fphrase database logging cache host port localhost info enabled; term3=$REPLY
   questions+=("Count items in current directory (pipe ${Y}ls${C} to ${Y}wc${C})§ls | wc -l§ls -1 | wc -l§ls | wc --lines§ls -1 | wc --lines")
   _fphrase "Search for" "Find"; questions+=("${REPLY} ${Y}${term1}${C} in ${W}${log}${C}§grep ${term1} ${log}§cat ${log} | grep ${term1}§#output:~${term1}")
   questions+=("Find ${Y}${term2}${C} in ${W}${txt}${C}§grep ${term2} ${txt}§cat ${txt} | grep ${term2}§#output:~${term2}")
@@ -1449,7 +1458,11 @@ gen_level6() {
   questions+=("Shuffle lines of ${W}${csv}${C} randomly using redirection|shuf < ${csv}")
   questions+=("Show first ${n} lines of ${W}${log}${C} using redirection|head -${n} < ${log}|head -n ${n} < ${log}|head --lines ${n} < ${log}|head --lines=${n} < ${log}")
   questions+=("Display ${W}${txt}${C} using input redirection|cat < ${txt}")
-  questions+=("Sort ${W}${csv}${C} and save output to ${W}sorted.csv${C}|sort < ${csv} > sorted.csv|sort ${csv} > sorted.csv|sort > sorted.csv < ${csv}|#state:exists:sorted.csv")
+  # No #state marker: an exists: check can't tell ascending from `sort -r` (both create
+  # the file), and no allowed marker checks line order. Without a marker, sandbox rescue
+  # is inert here, so the skeleton guard + text-match decide — and `sort -r` (unlisted,
+  # skeleton "< >" matches, but no marker to rescue it) correctly falls through to reject.
+  questions+=("Sort ${W}${csv}${C} and save output to ${W}sorted.csv${C}|sort < ${csv} > sorted.csv|sort ${csv} > sorted.csv|sort > sorted.csv < ${csv}")
   questions+=("Show last ${n} lines of ${W}${log}${C} using redirection|tail -${n} < ${log}|tail -n ${n} < ${log}|tail --lines ${n} < ${log}|tail --lines=${n} < ${log}")
   questions+=("Count bytes in ${W}${txt}${C} — just the number|wc -c < ${txt}|wc --bytes < ${txt}")
   # Here-strings (<<<)
@@ -1457,12 +1470,12 @@ gen_level6() {
   _fphrase hello world example config backup server admin debug; word=$REPLY
   _fphrase test data input query search token ready active; word2=$REPLY
   local num1=$((RANDOM % 50 + 10)) num2=$((RANDOM % 20 + 5))
-  questions+=("Uppercase the string ${Y}'${word}'${C} directly§tr a-z A-Z <<< '${word}'§tr a-z A-Z <<< ${word}§tr '[:lower:]' '[:upper:]' <<< '${word}'§tr '[:lower:]' '[:upper:]' <<< ${word}§echo '${word}' | tr a-z A-Z§echo ${word} | tr a-z A-Z§echo '${word}' | tr '[:lower:]' '[:upper:]'§echo ${word} | tr '[:lower:]' '[:upper:]'§#output:${word^^}")
-  questions+=("Lowercase the string ${Y}'${word2^^}'${C} directly§tr A-Z a-z <<< '${word2^^}'§tr A-Z a-z <<< ${word2^^}§tr '[:upper:]' '[:lower:]' <<< '${word2^^}'§tr '[:upper:]' '[:lower:]' <<< ${word2^^}§echo '${word2^^}' | tr A-Z a-z§echo ${word2^^} | tr A-Z a-z§echo '${word2^^}' | tr '[:upper:]' '[:lower:]'§echo ${word2^^} | tr '[:upper:]' '[:lower:]'§#output:${word2}")
+  questions+=("Uppercase the string ${Y}'${word}'${C} directly§tr a-z A-Z <<< '${word}'§tr a-z A-Z <<< ${word}§tr '[:lower:]' '[:upper:]' <<< '${word}'§tr '[:lower:]' '[:upper:]' <<< ${word}§echo '${word}' | tr a-z A-Z§echo ${word} | tr a-z A-Z§echo '${word}' | tr '[:lower:]' '[:upper:]'§echo ${word} | tr '[:lower:]' '[:upper:]'§#require:${word}#output:${word^^}")
+  questions+=("Lowercase the string ${Y}'${word2^^}'${C} directly§tr A-Z a-z <<< '${word2^^}'§tr A-Z a-z <<< ${word2^^}§tr '[:upper:]' '[:lower:]' <<< '${word2^^}'§tr '[:upper:]' '[:lower:]' <<< ${word2^^}§echo '${word2^^}' | tr A-Z a-z§echo ${word2^^} | tr A-Z a-z§echo '${word2^^}' | tr '[:upper:]' '[:lower:]'§echo ${word2^^} | tr '[:upper:]' '[:lower:]'§#require:${word2^^}#output:${word2}")
   local _rw="" _rw2="" _i; for ((_i=${#word}-1;_i>=0;_i--)); do _rw+="${word:_i:1}"; done
   for ((_i=${#word2}-1;_i>=0;_i--)); do _rw2+="${word2:_i:1}"; done
-  questions+=("Reverse the string ${Y}'${word}'${C}§rev <<< '${word}'§rev <<< ${word}§echo '${word}' | rev§echo ${word} | rev§#output:~${_rw}")
-  questions+=("Reverse the string ${Y}'${word2}'${C}§rev <<< '${word2}'§rev <<< ${word2}§echo '${word2}' | rev§echo ${word2} | rev§#output:~${_rw2}")
+  questions+=("Reverse the string ${Y}'${word}'${C}§rev <<< '${word}'§rev <<< ${word}§echo '${word}' | rev§echo ${word} | rev§#require:${word}#output:~${_rw}")
+  questions+=("Reverse the string ${Y}'${word2}'${C}§rev <<< '${word2}'§rev <<< ${word2}§echo '${word2}' | rev§echo ${word2} | rev§#require:${word2}#output:~${_rw2}")
   command -v bc &>/dev/null && questions+=("Calculate ${Y}${num1}+${num2}${C} with bc§bc <<< '${num1}+${num2}'§bc <<< ${num1}+${num2}§echo '${num1}+${num2}' | bc§echo ${num1}+${num2} | bc§#require:${num1}+${num2}#output:~^$((num1+num2))$")
   questions+=("Extract home dir from ${Y}'root:x:0:0:root:/root:/bin/bash'${C}§cut -d: -f6 <<< 'root:x:0:0:root:/root:/bin/bash'§cut --delimiter=: --fields=6 <<< 'root:x:0:0:root:/root:/bin/bash'§echo 'root:x:0:0:root:/root:/bin/bash' | cut -d: -f6§echo 'root:x:0:0:root:/root:/bin/bash' | cut --delimiter=: --fields=6§awk -F: '{print \$6}' <<< 'root:x:0:0:root:/root:/bin/bash'§echo 'root:x:0:0:root:/root:/bin/bash' | awk -F: '{print \$6}'§#require:root:x:0:0:root:/root:/bin/bash#output:~^/root$")
   questions+=("Get the login name (field 1) from ${Y}'john:x:1000:1000:John:/home/john:/bin/bash'${C}§cut -d: -f1 <<< 'john:x:1000:1000:John:/home/john:/bin/bash'§cut --delimiter=: --fields=1 <<< 'john:x:1000:1000:John:/home/john:/bin/bash'§echo 'john:x:1000:1000:John:/home/john:/bin/bash' | cut -d: -f1§echo 'john:x:1000:1000:John:/home/john:/bin/bash' | cut --delimiter=: --fields=1§awk -F: '{print \$1}' <<< 'john:x:1000:1000:John:/home/john:/bin/bash'§echo 'john:x:1000:1000:John:/home/john:/bin/bash' | awk -F: '{print \$1}'§#require:john:x:1000:1000:John:/home/john:/bin/bash#output:~^john$")
@@ -1489,7 +1502,10 @@ gen_level7() {
   questions+=("Run ${W}./${script}${C}, discard any errors|./${script} 2> /dev/null|./${script} 2>/dev/null")
   questions+=("Capture ALL output from ${W}./${script}${C} to ${W}${outfile}${C} (stdout and stderr)|./${script} &> ${outfile}|./${script} >& ${outfile}|./${script} > ${outfile} 2>&1|./${script} 1> ${outfile} 2>&1")
   questions+=("Run ${W}./${script}${C} completely silently — no output at all|./${script} &> /dev/null|./${script} >& /dev/null|./${script} > /dev/null 2>&1|./${script} 1> /dev/null 2>&1")
-  questions+=("Run ${W}./${script}${C}, search ALL output for 'error'§./${script} 2>&1 | grep -i error§./${script} |& grep -i error§./${script} 2>&1 | grep --ignore-case error§./${script} |& grep --ignore-case error§~^\\./[^ ]+ 2>&1 \\| grep (-i |--ignore-case )?error$§~^\\./[^ ]+ \\|& grep (-i |--ignore-case )?error$§./${script} 2>&1 | grep error§./${script} |& grep error")
+  # The scripts log exactly one "ERROR:" line to stderr, in caps. `grep -i error` returns
+  # that one line (@1); `grep error` (no -i) returns nothing; `grep -v error` returns every
+  # line (case-sensitive, so the uppercase ERROR line is NOT excluded) — @1 rejects both.
+  questions+=("Run ${W}./${script}${C}, search ALL output for 'error' — any case§./${script} 2>&1 | grep -i error§./${script} |& grep -i error§./${script} 2>&1 | grep --ignore-case error§./${script} |& grep --ignore-case error§~^\\./[^ ]+ 2>&1 \\| grep (-i|--ignore-case) error$§~^\\./[^ ]+ \\|& grep (-i|--ignore-case) error$§#output:@1")
   questions+=("Run ${W}./${script2}${C}, pipe all output to ${Y}less${C}§./${script2} 2>&1 | less§./${script2} |& less§#text:")
   questions+=("Run ${W}./${script}${C}, count total lines (stdout+stderr)§./${script} 2>&1 | wc -l§./${script} 2>&1 | wc --lines§./${script} |& wc -l§./${script} |& wc --lines")
   questions+=("List files in detail, save to ${W}${outfile}${C}, errors to ${W}${errfile}${C}|ls -la > ${outfile} 2> ${errfile}|ls -al > ${outfile} 2> ${errfile}|ls -l > ${outfile} 2> ${errfile}|ls -la 2> ${errfile} > ${outfile}|ls -al 2> ${errfile} > ${outfile}|ls -l 2> ${errfile} > ${outfile}|ls -la 1> ${outfile} 2> ${errfile}|ls -al 1> ${outfile} 2> ${errfile}|ls -l 1> ${outfile} 2> ${errfile}")
@@ -1606,14 +1622,14 @@ gen_level10() {
   questions+=("Store last exit status in ${Y}\$status${C}, then echo 'ok' if it was 0§status=\$? ; [[ \$status -eq 0 ]] && echo ok§status=\$? ; [ \$status -eq 0 ] && echo ok§status=\$? ; test \$status -eq 0 && echo ok§status=\$? ; (( status == 0 )) && echo ok§status=\$? ; [[ \$status == 0 ]] && echo ok§status=\$? ; [[ \$status = 0 ]] && echo ok§status=\$? ; [ \$status = 0 ] && echo ok§status=\$? ; (( \$status == 0 )) && echo ok")
   questions+=("Test if last command succeeded (exit 0)|[[ \$? -eq 0 ]] && echo success|[ \$? -eq 0 ] && echo success|[ \$? = 0 ] && echo success|[ \$? == 0 ] && echo success|test \$? -eq 0 && echo success|(( \$? == 0 )) && echo success|[[ \$? == 0 ]] && echo success|[[ \$? = 0 ]] && echo success|test \$? = 0 && echo success|test \$? == 0 && echo success")
   questions+=("Search '${term}' in ${W}${log}${C}, append exit status to ${W}status.log${C}§grep ${term} ${log} ; echo \$? >> status.log§grep ${term} ${log} ; echo \${?} >> status.log§grep '${term}' ${log} ; echo \$? >> status.log")
-  questions+=("Print 'failed' to stderr if command fails§ls /nonexistent 2>/dev/null ; [[ \$? -ne 0 ]] && echo failed >&2§ls /nonexistent 2>/dev/null ; [ \$? -ne 0 ] && echo failed >&2§ls /nonexistent 2>/dev/null ; test \$? -ne 0 && echo failed >&2§ls /nonexistent 2>/dev/null || echo failed >&2§ls /nonexistent 2>/dev/null ; [[ \$? -ne 0 ]] && echo failed 1>&2§ls /nonexistent 2>/dev/null ; [ \$? -ne 0 ] && echo failed 1>&2§ls /nonexistent 2>/dev/null ; test \$? -ne 0 && echo failed 1>&2§ls /nonexistent 2>/dev/null || echo failed 1>&2§ls /nonexistent 2>/dev/null ; [[ \$? != 0 ]] && echo failed >&2§ls /nonexistent 2>/dev/null ; [ \$? != 0 ] && echo failed >&2§ls /nonexistent 2>/dev/null ; [[ \$? != 0 ]] && echo failed 1>&2§ls /nonexistent 2>/dev/null ; [ \$? != 0 ] && echo failed 1>&2")
+  questions+=("Run ${W}ls /nonexistent${C} silencing its stderr, print 'failed' to stderr if it fails§ls /nonexistent 2>/dev/null ; [[ \$? -ne 0 ]] && echo failed >&2§ls /nonexistent 2>/dev/null ; [ \$? -ne 0 ] && echo failed >&2§ls /nonexistent 2>/dev/null ; test \$? -ne 0 && echo failed >&2§ls /nonexistent 2>/dev/null || echo failed >&2§ls /nonexistent 2>/dev/null ; [[ \$? -ne 0 ]] && echo failed 1>&2§ls /nonexistent 2>/dev/null ; [ \$? -ne 0 ] && echo failed 1>&2§ls /nonexistent 2>/dev/null ; test \$? -ne 0 && echo failed 1>&2§ls /nonexistent 2>/dev/null || echo failed 1>&2§ls /nonexistent 2>/dev/null ; [[ \$? != 0 ]] && echo failed >&2§ls /nonexistent 2>/dev/null ; [ \$? != 0 ] && echo failed >&2§ls /nonexistent 2>/dev/null ; [[ \$? != 0 ]] && echo failed 1>&2§ls /nonexistent 2>/dev/null ; [ \$? != 0 ] && echo failed 1>&2")
   questions+=("List files in home directory using \$HOME|ls \$HOME|ls \$HOME/|ls ~|ls ~/|ls \${HOME}|ls \${HOME}/")
   questions+=("Create file in home using \$HOME|touch \$HOME/test.txt|touch ~/test.txt|touch \${HOME}/test.txt")
   questions+=("Print your username|whoami|id -un")
   questions+=("Print your numeric user ID|id -u")
   questions+=("Print all your group names|id -Gn|id -nG")
   questions+=("Show full identity info (UID, GID, groups)|id")
-  questions+=("Search in user's home for ${Y}${term}${C}§grep -r ${term} \$HOME 2>/dev/null | head -5§grep -R ${term} \$HOME 2>/dev/null | head -5§grep --recursive ${term} \$HOME 2>/dev/null | head -5§grep -r ${term} ~ 2>/dev/null | head -5§grep -R ${term} ~ 2>/dev/null | head -5§grep --recursive ${term} ~ 2>/dev/null | head -5§grep -r ${term} ~/ 2>/dev/null | head -5§grep -R ${term} ~/ 2>/dev/null | head -5§grep -r ${term} \$HOME/ 2>/dev/null | head -5§grep -R ${term} \$HOME/ 2>/dev/null | head -5§grep -r ${term} \${HOME} 2>/dev/null | head -5§grep -R ${term} \${HOME} 2>/dev/null | head -5§grep --recursive ${term} \${HOME} 2>/dev/null | head -5§grep --recursive ${term} ~ 2>/dev/null | head -5§grep --recursive ${term} ~/ 2>/dev/null | head -5§grep --recursive ${term} \$HOME/ 2>/dev/null | head -5§grep --recursive ${term} \${HOME}/ 2>/dev/null | head -5§grep -r ${term} ~ | head -5§grep -R ${term} ~ | head -5§grep --recursive ${term} ~ | head -5§grep -r ${term} \$HOME | head -5§grep -R ${term} \$HOME | head -5")
+  questions+=("Search in user's home for ${Y}${term}${C}, show first 5 matches§grep -r ${term} \$HOME 2>/dev/null | head -5§grep -R ${term} \$HOME 2>/dev/null | head -5§grep --recursive ${term} \$HOME 2>/dev/null | head -5§grep -r ${term} ~ 2>/dev/null | head -5§grep -R ${term} ~ 2>/dev/null | head -5§grep --recursive ${term} ~ 2>/dev/null | head -5§grep -r ${term} ~/ 2>/dev/null | head -5§grep -R ${term} ~/ 2>/dev/null | head -5§grep -r ${term} \$HOME/ 2>/dev/null | head -5§grep -R ${term} \$HOME/ 2>/dev/null | head -5§grep -r ${term} \${HOME} 2>/dev/null | head -5§grep -R ${term} \${HOME} 2>/dev/null | head -5§grep --recursive ${term} \${HOME} 2>/dev/null | head -5§grep --recursive ${term} ~ 2>/dev/null | head -5§grep --recursive ${term} ~/ 2>/dev/null | head -5§grep --recursive ${term} \$HOME/ 2>/dev/null | head -5§grep --recursive ${term} \${HOME}/ 2>/dev/null | head -5§grep -r ${term} ~ | head -5§grep -R ${term} ~ | head -5§grep --recursive ${term} ~ | head -5§grep -r ${term} \$HOME | head -5§grep -R ${term} \$HOME | head -5")
 }
 
 # Level 11: Job Control (&, jobs, bg, fg)
@@ -1637,11 +1653,11 @@ gen_level11() {
   questions+=("Run ${W}${script}${C} in background, stdout to ${W}${outfile}${C}, stderr to ${W}${errfile}${C}|./${script} > ${outfile} 2> ${errfile} &|./${script} 2> ${errfile} > ${outfile} &|./${script} 1> ${outfile} 2> ${errfile} &")
   questions+=("Run ${W}${script}${C} silently in background|./${script} &>/dev/null &|./${script} >/dev/null 2>&1 &|./${script} >& /dev/null &|./${script} > /dev/null 2>&1 &|./${script} 1>/dev/null 2>&1 &|bash ${script} &>/dev/null &|sh ${script} &>/dev/null &")
   questions+=("Run ${W}${script}${C} in background and echo 'started'|./${script} & echo started|./${script} & echo 'started'|./${script} & echo \"started\"")
-  questions+=("Wait for all jobs, then echo 'done'|wait && echo done|wait && echo 'done'|wait && echo \"done\"|wait; echo done|wait; echo 'done'|wait; echo \"done\"")
+  questions+=("Wait for all jobs, then echo 'done'|wait && echo done|wait && echo 'done'|wait && echo \"done\"")
   questions+=("Kill job ${n2}, echo 'killed' on success|kill %${n2} && echo killed|kill %${n2} && echo 'killed'|kill %${n2} && echo \"killed\"")
   questions+=("Run ${W}${script}${C} in background, print its PID§./${script} & echo \$!§./${script} & echo \${!}§bash ${script} & echo \$!§sh ${script} & echo \$!")
   questions+=("Start ${Y}sleep 60${C} in background, show PID|sleep 60 & echo \$!|sleep 60 & echo \${!}")
-  questions+=("Run ${W}${script}${C} in background and wait for it by PID§./${script} & pid=\$! && wait \$pid§./${script} & wait \$!§./${script} & pid=\$!; wait \$pid§./${script} & pid=\${!} && wait \$pid§./${script} & wait \${!}§./${script} & pid=\${!}; wait \$pid")
+  questions+=("Run ${W}${script}${C} in background and wait for it by PID§./${script} & pid=\$! && wait \$pid§./${script} & wait \$!§./${script} & pid=\${!} && wait \$pid§./${script} & wait \${!}")
   questions+=("Start ${W}${script}${C} in background, save PID to file§./${script} & echo \$! > pid.txt§./${script} & echo \${!} > pid.txt")
   questions+=("Run ${W}${script}${C} > ${W}${outfile}${C} in background, sleep 1, then grep '${term}' in ${W}${outfile}${C}§./${script} > ${outfile} & sleep 1 && grep ${term} ${outfile}")
   questions+=("Tail ${W}${log}${C} in background|tail -f ${log} &|tail --follow ${log} &|tail -F ${log} &")
@@ -1704,8 +1720,6 @@ gen_level13() {
   local -n questions=${1:-CURRENT_QUESTIONS}; questions=(); eval "local $_QV"; _ctx
   local perm1=$((RANDOM % 8))$((RANDOM % 8))$((RANDOM % 8))
   _fphrase ERROR WARN INFO DEBUG; local searchterm=$REPLY
-  [[ "$cfg2" == "$cfg" ]] && { _fpick CONFIGS; cfg2=$REPLY; }
-  [[ "$txt2" == "$txt" ]] && { _fpick TXTS; txt2=$REPLY; }
   questions+=("Concatenate ${txt} and ${txt2} together|cat ${txt} ${txt2}|cat -- ${txt} ${txt2}")
   questions+=("List sorted by size, largest first|ls -lS|ls -Sl|ls -lhS|ls -lSh|ls -Slh|ls -Shl|ls -hlS|ls -hSl|eza -l --sort size -r|eza --long --sort size --reverse|eza -l --sort size --reverse|eza --long --sort size -r")
   questions+=("List sorted by time, newest first|ls -lt|ls -tl|ls -lth|ls -tlh|ls -hlt|ls -htl|ls -thl|ls -lht|eza -l --sort modified -r|eza --long --sort modified --reverse|eza -l --sort modified --reverse|eza --long --sort modified -r")
@@ -1820,7 +1834,7 @@ gen_level14() {
   questions+=("Search for package ${pkg} (Fedora)|dnf search ${pkg}|yum search ${pkg}")
   _fphrase "df -h" "free -h" "ss -tlnp" "ps aux"; local watchcmd=$REPLY
   _fphrase 2 5 10; local watchn=$REPLY
-  questions+=("Run '${watchcmd}' every ${watchn} seconds|watch -n ${watchn} ${watchcmd}|watch -n${watchn} ${watchcmd}|watch --interval ${watchn} ${watchcmd}|watch --interval=${watchn} ${watchcmd}")
+  questions+=("Run '${watchcmd}' every ${watchn} seconds|watch -n ${watchn} ${watchcmd}|watch -n${watchn} ${watchcmd}|watch --interval ${watchn} ${watchcmd}|watch --interval=${watchn} ${watchcmd}|watch -n ${watchn} '${watchcmd}'|watch -n${watchn} '${watchcmd}'|watch --interval ${watchn} '${watchcmd}'|watch --interval=${watchn} '${watchcmd}'")
   questions+=("Watch disk space, highlight changes|watch -d df -h|watch --differences df -h|watch -d 'df -h'|watch --differences 'df -h'")
   questions+=("Run full system security audit|lynis audit system|sudo lynis audit system")
   questions+=("Lynis: only audit the 'networking' category|lynis audit system --tests-from-group networking|sudo lynis audit system --tests-from-group networking|lynis audit system --tests-from-group=networking|sudo lynis audit system --tests-from-group=networking")
@@ -1956,6 +1970,7 @@ gen_level18() {
   local -n questions=${1:-CURRENT_QUESTIONS}; questions=(); eval "local $_QV"; _ctx
   _frnum 1 5; local col2=$REPLY; local col3=$((col % 5 + 1)); _frnum 10 80; local chars=$REPLY; _frnum 1 25; local thresh=$REPLY
   ((col3 < col)) && { local _t=$col; col=$col3; col3=$_t; }  # ensure col <= col3 for ranges
+  ((col2 == col)) && col2=$((col % 5 + 1))  # post-swap col is 1-4, so col+1 never collides
   ((n > n2)) && { local _t2=$n; n=$n2; n2=$_t2; }
   questions+=("Sort ${W}${txt}${C} numerically descending|sort -rn ${txt}|sort -nr ${txt}|sort --numeric-sort --reverse ${txt}|sort --reverse --numeric-sort ${txt}|sort -n -r ${txt}|sort -r -n ${txt}")
   questions+=("Sort and remove duplicates in ${W}${txt}${C}§sort -u ${txt}§sort --unique ${txt}§sort ${txt} | uniq")
@@ -2515,7 +2530,7 @@ gen_level26() {
   _fpick WIFI_INTERFACES; local wiface=$REPLY
   questions+=("Enable monitor mode on ${wiface}|airmon-ng start ${wiface}|sudo airmon-ng start ${wiface}")
   questions+=("Scan for WiFi networks on ${W}${wiface}mon${C}|airodump-ng ${wiface}mon|sudo airodump-ng ${wiface}mon")
-  questions+=("Capture handshake on ${W}${wiface}mon${C} from AP ${W}${mac}${C} channel 6, write to ${W}capture${C}|airodump-ng -c 6 --bssid ${mac} -w capture ${wiface}mon|sudo airodump-ng -c 6 --bssid ${mac} -w capture ${wiface}mon|airodump-ng --bssid ${mac} --channel 6 --write capture ${wiface}mon|airodump-ng --bssid ${mac} --channel 6 -w capture ${wiface}mon|airodump-ng --bssid ${mac} -c 6 --write capture ${wiface}mon|airodump-ng -c 6 --bssid ${mac} --write capture ${wiface}mon|sudo airodump-ng --bssid ${mac} --channel 6 --write capture ${wiface}mon|sudo airodump-ng --bssid ${mac} --channel 6 -w capture ${wiface}mon|sudo airodump-ng --bssid ${mac} -c 6 --write capture ${wiface}mon|sudo airodump-ng -c 6 --bssid ${mac} --write capture ${wiface}mon|airodump-ng -c 6 -b ${mac} -w capture ${wiface}mon|sudo airodump-ng -c 6 -b ${mac} -w capture ${wiface}mon|airodump-ng -b ${mac} -c 6 -w capture ${wiface}mon|sudo airodump-ng -b ${mac} -c 6 -w capture ${wiface}mon")
+  questions+=("Capture handshake on ${W}${wiface}mon${C} from AP ${W}${mac}${C} channel 6, write to ${W}capture${C}|airodump-ng -c 6 --bssid ${mac} -w capture ${wiface}mon|sudo airodump-ng -c 6 --bssid ${mac} -w capture ${wiface}mon|airodump-ng --bssid ${mac} --channel 6 --write capture ${wiface}mon|airodump-ng --bssid ${mac} --channel 6 -w capture ${wiface}mon|airodump-ng --bssid ${mac} -c 6 --write capture ${wiface}mon|airodump-ng -c 6 --bssid ${mac} --write capture ${wiface}mon|sudo airodump-ng --bssid ${mac} --channel 6 --write capture ${wiface}mon|sudo airodump-ng --bssid ${mac} --channel 6 -w capture ${wiface}mon|sudo airodump-ng --bssid ${mac} -c 6 --write capture ${wiface}mon|sudo airodump-ng -c 6 --bssid ${mac} --write capture ${wiface}mon|airodump-ng -c 6 -d ${mac} -w capture ${wiface}mon|sudo airodump-ng -c 6 -d ${mac} -w capture ${wiface}mon|airodump-ng -d ${mac} -c 6 -w capture ${wiface}mon|sudo airodump-ng -d ${mac} -c 6 -w capture ${wiface}mon")
   questions+=("Send ${W}5${C} deauth packets via ${W}${wiface}mon${C} to AP ${W}${mac}${C} to force handshake|aireplay-ng -0 5 -a ${mac} ${wiface}mon|aireplay-ng --deauth 5 -a ${mac} ${wiface}mon|sudo aireplay-ng -0 5 -a ${mac} ${wiface}mon|sudo aireplay-ng --deauth 5 -a ${mac} ${wiface}mon|aireplay-ng -a ${mac} -0 5 ${wiface}mon|sudo aireplay-ng -a ${mac} -0 5 ${wiface}mon|aireplay-ng -a ${mac} --deauth 5 ${wiface}mon|sudo aireplay-ng -a ${mac} --deauth 5 ${wiface}mon")
   questions+=("Crack WPA handshake in ${W}capture-01.cap${C} using ${W}${wordlist}${C}|aircrack-ng -w ${wordlist} capture-01.cap|sudo aircrack-ng -w ${wordlist} capture-01.cap|aircrack-ng capture-01.cap -w ${wordlist}|sudo aircrack-ng capture-01.cap -w ${wordlist}")
   questions+=("WPS pixie-dust on AP ${W}${mac}${C} via ${W}${wiface}mon${C}|reaver -i ${wiface}mon -b ${mac} -K 1|sudo reaver -i ${wiface}mon -b ${mac} -K 1|reaver -i ${wiface}mon -b ${mac} --pixie-dust|sudo reaver -i ${wiface}mon -b ${mac} --pixie-dust|bully -b ${mac} -d ${wiface}mon|sudo bully -b ${mac} -d ${wiface}mon")
@@ -2703,10 +2718,10 @@ gen_level29() {
   questions+=("Check current PATH|echo \$PATH|echo \${PATH}|printenv PATH")
   questions+=("Prepend current dir to PATH|export PATH=.:\$PATH|PATH=.:\$PATH")
   questions+=("Create malicious binary|echo '#!/bin/bash' > /tmp/ls && echo '/bin/bash -p' >> /tmp/ls && chmod +x /tmp/ls|echo '#!/bin/bash' > /tmp/ls; echo '/bin/bash -p' >> /tmp/ls; chmod +x /tmp/ls")
-  questions+=("Exploit relative path in SUID|export PATH=/tmp:\$PATH && ./vulnerable_suid|export PATH=/tmp:\$PATH; ./vulnerable_suid")
+  questions+=("Exploit relative path in SUID|export PATH=/tmp:\$PATH && ./vulnerable_suid")
   questions+=("Check NFS exports on ${ip}|showmount -e ${ip}|cat /etc/exports")
   questions+=("Mount NFS export ${ip}:/share at /mnt|mount -t nfs ${ip}:/share /mnt|sudo mount -t nfs ${ip}:/share /mnt|mount ${ip}:/share /mnt|mount -t nfs ${ip}:/share /mnt/|sudo mount -t nfs ${ip}:/share /mnt/|mount ${ip}:/share /mnt/|sudo mount ${ip}:/share /mnt|sudo mount ${ip}:/share /mnt/")
-  questions+=("Create SUID on NFS|cp /bin/bash /mnt && chmod +s /mnt/bash|cp /bin/bash /mnt && chmod u+s /mnt/bash|cp /bin/bash /mnt; chmod +s /mnt/bash|cp /bin/bash /mnt; chmod u+s /mnt/bash|cp /bin/bash /mnt && chmod 4755 /mnt/bash|cp /bin/bash /mnt; chmod 4755 /mnt/bash|cp /bin/sh /mnt && chmod +s /mnt/sh|cp /bin/sh /mnt; chmod +s /mnt/sh|cp /bin/sh /mnt && chmod u+s /mnt/sh|cp /bin/sh /mnt; chmod u+s /mnt/sh|cp /bin/sh /mnt && chmod 4755 /mnt/sh|cp /bin/sh /mnt; chmod 4755 /mnt/sh")
+  questions+=("Create SUID on NFS|cp /bin/bash /mnt && chmod +s /mnt/bash|cp /bin/bash /mnt && chmod u+s /mnt/bash|cp /bin/bash /mnt && chmod 4755 /mnt/bash|cp /bin/sh /mnt && chmod +s /mnt/sh|cp /bin/sh /mnt && chmod u+s /mnt/sh|cp /bin/sh /mnt && chmod 4755 /mnt/sh")
   questions+=("Run linpeas (auto-enum)§curl -L https://github.com/peass-ng/PEASS-ng/releases/latest/download/linpeas.sh | sh§wget -qO- https://github.com/peass-ng/PEASS-ng/releases/latest/download/linpeas.sh | sh§curl -L https://github.com/carlospolop/PEASS-ng/releases/latest/download/linpeas.sh | sh§bash linpeas.sh#boss-skip")
   questions+=("Run pspy (process spy, no root needed)|./pspy64|./pspy32|./pspy64 -pf -i 1000")
   questions+=("SUID awk shell escape|awk 'BEGIN{system(\"/bin/sh -p\")}'|awk 'BEGIN{system(\"/bin/bash -p\")}'|awk 'BEGIN {system(\"/bin/sh\")}'|awk 'BEGIN {system(\"/bin/bash\")}'")
@@ -2740,10 +2755,10 @@ gen_level30() {
   questions+=("Chroot into system mounted at /mnt|chroot /mnt /bin/bash|chroot /mnt /bin/sh|chroot /mnt|arch-chroot /mnt|chroot /mnt bash|chroot /mnt sh|sudo chroot /mnt /bin/bash|sudo chroot /mnt /bin/sh|sudo chroot /mnt|sudo arch-chroot /mnt|sudo chroot /mnt bash|sudo chroot /mnt sh|arch-chroot /mnt bash|arch-chroot /mnt /bin/bash|sudo arch-chroot /mnt bash|sudo arch-chroot /mnt /bin/bash")
   questions+=("Regenerate initramfs (Arch)|mkinitcpio -P|mkinitcpio --allpresets|sudo mkinitcpio -P|sudo mkinitcpio --allpresets")
   questions+=("Regenerate GRUB config|grub-mkconfig -o /boot/grub/grub.cfg|grub2-mkconfig -o /boot/grub2/grub.cfg|update-grub|sudo grub-mkconfig -o /boot/grub/grub.cfg|sudo grub2-mkconfig -o /boot/grub2/grub.cfg|sudo update-grub")
-  questions+=("Fix broken sudo (as root, chown then chmod)|chown root:root /usr/bin/sudo && chmod 4755 /usr/bin/sudo|chown root:root /usr/bin/sudo && chmod u+s /usr/bin/sudo|chown root:root /usr/bin/sudo; chmod 4755 /usr/bin/sudo|chown root:root /usr/bin/sudo; chmod u+s /usr/bin/sudo")
+  questions+=("Fix broken sudo (as root, chown then chmod)|chown root:root /usr/bin/sudo && chmod 4755 /usr/bin/sudo|chown root:root /usr/bin/sudo && chmod u+s /usr/bin/sudo")
   questions+=("Reinstall bootloader to MBR|grub-install /dev/sda|grub2-install /dev/sda|sudo grub-install /dev/sda|sudo grub2-install /dev/sda")
   questions+=("Check and repair filesystem|fsck -y /dev/sda1|sudo fsck -y /dev/sda1|e2fsck -y /dev/sda1|sudo e2fsck -y /dev/sda1|fsck -p /dev/sda1|sudo fsck -p /dev/sda1|e2fsck -p /dev/sda1|sudo e2fsck -p /dev/sda1|fsck /dev/sda1|sudo fsck /dev/sda1")
-  questions+=("Mount LUKS encrypted partition|cryptsetup open /dev/sda2 cryptroot && mount /dev/mapper/cryptroot /mnt|cryptsetup luksOpen /dev/sda2 cryptroot && mount /dev/mapper/cryptroot /mnt|cryptsetup open /dev/sda2 cryptroot; mount /dev/mapper/cryptroot /mnt|cryptsetup luksOpen /dev/sda2 cryptroot; mount /dev/mapper/cryptroot /mnt|sudo cryptsetup open /dev/sda2 cryptroot && mount /dev/mapper/cryptroot /mnt|sudo cryptsetup luksOpen /dev/sda2 cryptroot && mount /dev/mapper/cryptroot /mnt|sudo cryptsetup open /dev/sda2 cryptroot; mount /dev/mapper/cryptroot /mnt|sudo cryptsetup luksOpen /dev/sda2 cryptroot; mount /dev/mapper/cryptroot /mnt")
+  questions+=("Mount LUKS encrypted partition|cryptsetup open /dev/sda2 cryptroot && mount /dev/mapper/cryptroot /mnt|cryptsetup luksOpen /dev/sda2 cryptroot && mount /dev/mapper/cryptroot /mnt|sudo cryptsetup open /dev/sda2 cryptroot && mount /dev/mapper/cryptroot /mnt|sudo cryptsetup luksOpen /dev/sda2 cryptroot && mount /dev/mapper/cryptroot /mnt")
   questions+=("Find and kill process using port ${port}§kill \$(lsof -t -i:${port})§fuser -k ${port}/tcp§lsof -ti:${port} | xargs kill§kill \$(lsof -ti:${port})§sudo kill \$(lsof -t -i:${port})§sudo fuser -k ${port}/tcp§fuser -k -n tcp ${port}§sudo fuser -k -n tcp ${port}§kill \$(lsof -t -i :${port})§lsof -ti :${port} | xargs kill§kill \$(lsof -ti :${port})§sudo kill \$(lsof -t -i :${port})")
   questions+=("Find large files (>100M) modified in 24h|find / -type f -size +100M -mtime -1 2>/dev/null|find / -size +100M -type f -mtime -1 2>/dev/null|find / -type f -mtime -1 -size +100M 2>/dev/null|find / -size +100M -mtime -1 -type f 2>/dev/null|find / -mtime -1 -type f -size +100M 2>/dev/null|find / -mtime -1 -size +100M -type f 2>/dev/null|fd -S +100M --changed-within 1d /|fd --size +100M --changed-within 1d /|fd -S +100M --changed-within 24h /")
   questions+=("Watch for new connections in realtime|watch -n1 'ss -tn state established'|watch -n 1 'ss -tn state established'|watch -n1 'ss -tnp state established'|watch -n 1 'ss -tnp state established'")
@@ -2759,7 +2774,7 @@ gen_level30() {
   questions+=("Test if ${W}${ip}${C} is up via port 22 (no ping)|timeout 1 bash -c \"echo >/dev/tcp/${ip}/22\" && echo up|nc -zw1 ${ip} 22|nc -z -w 1 ${ip} 22|nc -zw 1 ${ip} 22")
   questions+=("Bind shell with ncat on port ${W}${port}${C}|ncat -lvnp ${port} -e /bin/bash|ncat -nlvp ${port} -e /bin/bash|ncat -lvnp ${port} -e /bin/sh|ncat -nlvp ${port} -e /bin/sh|ncat -lvnp ${port} -e bash|ncat -nlvp ${port} -e bash|ncat -lvnp ${port} -e sh|ncat -nlvp ${port} -e sh|nc -lvnp ${port} -e /bin/bash|nc -nlvp ${port} -e /bin/bash|nc -lvnp ${port} -e /bin/sh|nc -nlvp ${port} -e /bin/sh")
   questions+=("Encrypted listener (openssl s_server, quiet) on port ${W}${port}${C} using ${W}key.pem${C} + ${W}cert.pem${C}|openssl s_server -quiet -key key.pem -cert cert.pem -port ${port}|openssl s_server -quiet -cert cert.pem -key key.pem -port ${port}|openssl s_server -key key.pem -cert cert.pem -quiet -port ${port}|openssl s_server -cert cert.pem -key key.pem -quiet -port ${port}|openssl s_server -key key.pem -cert cert.pem -port ${port} -quiet|openssl s_server -cert cert.pem -key key.pem -port ${port} -quiet|openssl s_server -quiet -key key.pem -cert cert.pem -accept ${port}|openssl s_server -quiet -cert cert.pem -key key.pem -accept ${port}")
-  questions+=("Pivot through ${W}${user}@${host}${C} (SOCKS 9050) then proxychains nmap ${ip}§ssh -D 9050 ${user}@${host} -fN && proxychains nmap ${ip}§ssh -D 9050 ${user}@${host} -fN; proxychains nmap ${ip}§ssh -D 9050 ${user}@${host} -fN && proxychains4 nmap ${ip}§ssh -D 9050 ${user}@${host} -fN; proxychains4 nmap ${ip}#boss-skip#chal-skip")
+  questions+=("Pivot through ${W}${user}@${host}${C} (SOCKS 9050) then proxychains nmap ${ip}§ssh -D 9050 ${user}@${host} -fN && proxychains nmap ${ip}§ssh -D 9050 ${user}@${host} -fN && proxychains4 nmap ${ip}#boss-skip#chal-skip")
   questions+=("List all cron jobs system-wide|crontab -l; cat /etc/crontab; ls /etc/cron.d/|crontab -l && cat /etc/crontab && ls /etc/cron.d/|crontab -l; cat /etc/crontab; ls /etc/cron.d|crontab -l && cat /etc/crontab && ls /etc/cron.d")
   questions+=("Find files owned by nobody/nogroup|find / -nouser -o -nogroup 2>/dev/null|find / -nouser -or -nogroup 2>/dev/null")
   questions+=("List all users with shell access§grep -vE 'nologin|false' /etc/passwd§grep -v -E 'nologin|false' /etc/passwd§egrep -v 'nologin|false' /etc/passwd§grep --invert-match -E 'nologin|false' /etc/passwd§rg -v 'nologin|false' /etc/passwd§rg --invert-match 'nologin|false' /etc/passwd")
@@ -2796,7 +2811,7 @@ gen_level30() {
   questions+=("Stream live kernel messages|dmesg -w|dmesg --follow|sudo dmesg -w|sudo dmesg --follow")
   questions+=("Load kernel module ${W}nf_conntrack${C}|modprobe nf_conntrack|sudo modprobe nf_conntrack|modprobe -v nf_conntrack|sudo modprobe -v nf_conntrack")
   questions+=("Enter network namespace of ${W}${proc}${C}|nsenter -t \$(pidof ${proc}) -n|nsenter --target \$(pidof ${proc}) --net|sudo nsenter -t \$(pidof ${proc}) -n|sudo nsenter --target \$(pidof ${proc}) --net|nsenter -t \$(pgrep -f ${proc}) -n|sudo nsenter -t \$(pgrep -f ${proc}) -n#boss-skip")
-  questions+=("Create and enter new network namespace 'testns'|ip netns add testns && ip netns exec testns bash|sudo ip netns add testns && sudo ip netns exec testns bash|ip netns add testns; ip netns exec testns bash|sudo ip netns add testns; sudo ip netns exec testns bash")
+  questions+=("Create and enter new network namespace 'testns'|ip netns add testns && ip netns exec testns bash|sudo ip netns add testns && sudo ip netns exec testns bash")
   questions+=("Capture HTTP traffic on any interface (ASCII)|tcpdump -i any -nn -A 'tcp port 80'|sudo tcpdump -i any -nn -A 'tcp port 80'|tcpdump -i any -nn -A port 80|sudo tcpdump -i any -nn -A port 80")
   questions+=("Audit watch on /etc/passwd (writes + attrs)|auditctl -w /etc/passwd -p wa -k passwd_watch|sudo auditctl -w /etc/passwd -p wa -k passwd_watch|auditctl -w /etc/passwd -p wa|sudo auditctl -w /etc/passwd -p wa")
   questions+=("Follow logs for ${W}${proc}${C} live|journalctl -fu ${proc}|journalctl -f -u ${proc}|sudo journalctl -fu ${proc}|sudo journalctl -f -u ${proc}|journalctl --follow --unit ${proc}|sudo journalctl --follow --unit ${proc}")
@@ -2847,8 +2862,8 @@ _sc_setup_1() {
 _sc_steps_1() {
   cat <<'STEPS'
 List permissions to see what's broken§ls -l§ls -la§ls -al§ls -lh§ls -lah§ls -lA§ls --format=long§stat config.ini backup.sh logs#output:~----------
-Make config.ini readable§chmod 644 config.ini§chmod a+r config.ini§chmod u+r config.ini§chmod +r config.ini§chmod 444 config.ini§chmod 664 config.ini§chmod 600 config.ini§chmod 400 config.ini§chmod 440 config.ini§chmod 0644 config.ini§chmod 0600 config.ini§chmod 0444 config.ini§chmod 0400 config.ini§chmod ugo+r config.ini#state:perm:config.ini:r
-Verify config.ini is readable now§cat config.ini§less config.ini§more config.ini§head config.ini§head -n 10 config.ini§tail config.ini#output:~\[server\]
+Make config.ini readable§chmod 644 config.ini§chmod a+r config.ini§chmod u+r config.ini§chmod +r config.ini§chmod 444 config.ini§chmod 664 config.ini§chmod 600 config.ini§chmod 400 config.ini§chmod 440 config.ini§chmod 0644 config.ini§chmod 0600 config.ini§chmod 0444 config.ini§chmod 0400 config.ini§chmod ugo+r config.ini#state:perm:config.ini:r,!perm:config.ini:x
+Verify config.ini is readable now§cat config.ini§less config.ini§more config.ini§head config.ini§head -n 10 config.ini§head -5 config.ini§head -n 5 config.ini§tail config.ini#output:~\[server\]
 Make backup.sh executable§chmod +x backup.sh§chmod 755 backup.sh§chmod u+x backup.sh§chmod a+x backup.sh§chmod 0755 backup.sh§chmod 775 backup.sh§chmod 0775 backup.sh§chmod ugo+x backup.sh#state:perm:backup.sh:x
 Make logs/ directory accessible§chmod 755 logs§chmod +rx logs§chmod a+rx logs§chmod u+rx logs§chmod 700 logs§chmod 770 logs§chmod 750 logs§chmod 0755 logs§chmod 0700 logs§chmod 0770 logs§chmod 0750 logs§chmod u+rwx logs§chmod ugo+rx logs§chmod 755 logs/§chmod +rx logs/§chmod a+rx logs/#state:perm:logs:rx
 Run backup.sh to verify it works§./backup.sh§bash backup.sh§sh backup.sh§source backup.sh§. backup.sh§. ./backup.sh§source ./backup.sh#output:~Backup complete
@@ -2862,6 +2877,8 @@ _sc_setup_2() {
   printf '2.0\n' > "$d/release/VERSION"
   printf '# Release Notes\nNew features.\n' > "$d/release/README.md"
   printf 'print("hello")\n' > "$d/release/app.py"
+  # Space in the name on purpose: `ls | wc -w` must not pass as a file count
+  printf 'ship it\n' > "$d/release/known issues.md"
 }
 _sc_steps_2() {
   cat <<'STEPS'
@@ -2869,8 +2886,8 @@ Create a tar.gz of the release/ directory§tar czf release.tar.gz release§tar -
 List the archive contents§tar tzf release.tar.gz§tar -tzf release.tar.gz§tar tf release.tar.gz§tar -tf release.tar.gz§tar tzvf release.tar.gz§tar -tzvf release.tar.gz§tar tvf release.tar.gz§tar -tvf release.tar.gz#output:~release/
 Delete the original release/ directory§rm -rf release§rm -r release§rm -rf release/§rm -r release/§rm -Rf release§rm -Rf release/§rm --recursive release§rm --recursive --force release§rm --recursive release/§rm --recursive --force release/#state:!exists:release
 Extract the archive to restore it§tar xzf release.tar.gz§tar -xzf release.tar.gz§tar xf release.tar.gz§tar -xf release.tar.gz§tar xzvf release.tar.gz§tar -xzvf release.tar.gz§tar xvf release.tar.gz§tar -xvf release.tar.gz#state:exists:release/VERSION
-Verify VERSION was restored§cat release/VERSION§less release/VERSION§more release/VERSION§head release/VERSION§head -n 1 release/VERSION#output:~2\.0
-Count files in restored release/§ls release | wc -l§ls release/ | wc -l§ls -1 release | wc -l§ls -1 release/ | wc -l§ls release | wc --lines§ls release/ | wc --lines§ls -1 release | wc --lines§ls -1 release/ | wc --lines#output:3
+Verify VERSION was restored§cat release/VERSION§less release/VERSION§more release/VERSION§head release/VERSION§head -n 1 release/VERSION§head -5 release/VERSION§head -n 5 release/VERSION#output:~2\.0
+Count files in restored release/§ls release | wc -l§ls release/ | wc -l§ls -1 release | wc -l§ls -1 release/ | wc -l§ls release | wc --lines§ls release/ | wc --lines§ls -1 release | wc --lines§ls -1 release/ | wc --lines#output:4
 STEPS
 }
 
@@ -2912,10 +2929,10 @@ _sc_setup_4() {
 id,name,status
 3,charlie,active
 1,alice,active
-2,bob,inactive
+2,bob smith,inactive
 1,alice,active
 4,dave,active
-2,bob,inactive
+2,bob smith,inactive
 CSV
 }
 _sc_steps_4() {
@@ -2949,7 +2966,7 @@ Find the IP with the most requests§awk '{print $3}' server.log | sort | uniq -c
 Count failed login attempts (401)§grep 401 server.log | wc -l§grep -c 401 server.log§grep 401 server.log | wc --lines§grep -c ' 401' server.log§grep ' 401' server.log | wc -l§grep -cF 401 server.log§grep ' 401' server.log | wc --lines§grep -w 401 server.log | wc -l§grep -cw 401 server.log§grep -F 401 server.log | wc -l§grep -F 401 server.log | wc --lines§grep -w 401 server.log | wc --lines§awk '/401/{c++}END{print c}' server.log§awk '/ 401/{c++}END{print c}' server.log#output:3
 Check if the attacker got in (find 200 after 401s from same IP)§grep 10.10.10.50 server.log | grep 200§grep '10.10.10.50.*200' server.log§grep 10.10.10.50 server.log | grep ' 200'§grep -F 10.10.10.50 server.log | grep 200§grep -F 10.10.10.50 server.log | grep -F 200§grep 10.10.10.50 server.log | grep -F 200§grep -w 10.10.10.50 server.log | grep 200§grep -Fw 10.10.10.50 server.log | grep 200§awk '/10.10.10.50/ && /200/' server.log§awk '/10\.10\.10\.50/ && /200/' server.log#output:~login 200
 Save all attacker activity to attacker.log§grep 10.10.10.50 server.log > attacker.log§grep '10.10.10.50' server.log > attacker.log§grep -F 10.10.10.50 server.log > attacker.log§grep "10.10.10.50" server.log > attacker.log§grep -Fw 10.10.10.50 server.log > attacker.log§grep -w 10.10.10.50 server.log > attacker.log§grep -E 10.10.10.50 server.log > attacker.log§grep -E '10.10.10.50' server.log > attacker.log§awk '/10.10.10.50/' server.log > attacker.log§awk '/10\.10\.10\.50/' server.log > attacker.log#state:contains:attacker.log:10.10.10.50,lines:attacker.log:6
-Count unique IPs in the log§awk '{print $3}' server.log | sort -u | wc -l§awk '{print $3}' server.log | sort | uniq | wc -l§awk '{print $3}' server.log | sort --unique | wc -l§awk '{print $3}' server.log | sort -u | wc --lines§awk '{print $3}' server.log | sort | uniq | wc --lines§cut -d' ' -f3 server.log | sort -u | wc -l§cut -d' ' -f3 server.log | sort --unique | wc -l§cut -d' ' -f3 server.log | sort -u | wc --lines§cut -d' ' -f3 server.log | sort | uniq | wc -l§cut -d' ' -f3 server.log | sort | uniq | wc --lines§cut -d ' ' -f3 server.log | sort -u | wc -l§cut -d ' ' -f3 server.log | sort -u | wc --lines§cut -d ' ' -f3 server.log | sort | uniq | wc -l§cut -d ' ' -f3 server.log | sort | uniq | wc --lines§awk '!seen[$3]++{c++}END{print c}' server.log#output:2
+Count unique endpoints hit (method + path)§awk '{print $4, $5}' server.log | sort -u | wc -l§awk '{print $4,$5}' server.log | sort -u | wc -l§awk '{print $4, $5}' server.log | sort | uniq | wc -l§awk '{print $4,$5}' server.log | sort | uniq | wc -l§awk '{print $4, $5}' server.log | sort --unique | wc -l§awk '{print $4, $5}' server.log | sort -u | wc --lines§awk '{print $4,$5}' server.log | sort -u | wc --lines§cut -d' ' -f4,5 server.log | sort -u | wc -l§cut -d' ' -f4,5 server.log | sort | uniq | wc -l§cut -d' ' -f4,5 server.log | sort -u | wc --lines§cut -d ' ' -f4,5 server.log | sort -u | wc -l§cut -d ' ' -f4,5 server.log | sort | uniq | wc -l§cut -d ' ' -f4,5 server.log | sort -u | wc --lines#output:6
 STEPS
 }
 
@@ -2965,7 +2982,7 @@ _sc_steps_6() {
 Check permissions on deploy.sh§ls -l deploy.sh§ls -la deploy.sh§ls -ld deploy.sh§ls -lh deploy.sh§stat deploy.sh#output:~-rw-r--r--
 Make deploy.sh executable§chmod +x deploy.sh§chmod 755 deploy.sh§chmod u+x deploy.sh§chmod a+x deploy.sh§chmod 0755 deploy.sh§chmod 775 deploy.sh§chmod 0775 deploy.sh§chmod ugo+x deploy.sh#state:perm:deploy.sh:x
 Create VERSION file with "1.0"§echo 1.0 > VERSION§echo '1.0' > VERSION§echo "1.0" > VERSION§printf '1.0\n' > VERSION§printf "1.0\n" > VERSION§printf '%s\n' 1.0 > VERSION#state:contains:VERSION:1.0,lines:VERSION:1
-Backup config.ini before editing§cp config.ini config.ini.bak§cp -p config.ini config.ini.bak§cp -- config.ini config.ini.bak§cp -a config.ini config.ini.bak#state:exists:config.ini.bak
+Backup config.ini before editing§cp config.ini config.ini.bak§cp -p config.ini config.ini.bak§cp -- config.ini config.ini.bak§cp -a config.ini config.ini.bak#state:exists:config.ini.bak,exists:config.ini
 Fix the host in config.ini to localhost§sed -i 's/host=CHANGEME/host=localhost/' config.ini§sed -i 's/host=CHANGEME/host=localhost/g' config.ini§sed -i 's/CHANGEME/localhost/' config.ini§sed -i 's/CHANGEME/localhost/g' config.ini§sed -i -e 's/host=CHANGEME/host=localhost/' config.ini§sed -i -e 's/host=CHANGEME/host=localhost/g' config.ini§sed -i -e 's/CHANGEME/localhost/' config.ini§sed -i -e 's/CHANGEME/localhost/g' config.ini§sed --in-place 's/host=CHANGEME/host=localhost/' config.ini§sed --in-place 's/CHANGEME/localhost/' config.ini#state:contains:config.ini:host=localhost,!contains:config.ini:CHANGEME
 Fix the port in config.ini to 8080§sed -i 's/port=0/port=8080/' config.ini§sed -i 's/port=0/port=8080/g' config.ini§sed -i '/port/s/0/8080/' config.ini§sed -i -e 's/port=0/port=8080/' config.ini§sed -i -e 's/port=0/port=8080/g' config.ini§sed -i '/port/s/0/8080/g' config.ini§sed -i -e '/port/s/0/8080/' config.ini§sed -i -e '/port/s/0/8080/g' config.ini§sed --in-place 's/port=0/port=8080/' config.ini§sed --in-place 's/port=0/port=8080/g' config.ini#state:contains:config.ini:port=8080,!contains:config.ini:port=0
 Run the deploy script§./deploy.sh§bash deploy.sh§sh deploy.sh§source deploy.sh§. deploy.sh§. ./deploy.sh§source ./deploy.sh#output:~Deploy complete
@@ -3065,16 +3082,19 @@ _sc_setup_10() {
     printf 'def old_func_%d():\n    print("hello from %d")\n    return %d\n' "$i" "$i" "$i" > "$d/legacy/mod${i}.py"
   done
   printf 'NAME=old_app\nVERSION=0.9\n' > "$d/legacy/config.env"
-  printf 'TODO: rename everything\nold_func references everywhere\n' > "$d/legacy/README.md"
+  printf 'TODO: rename everything\nlegacy module docs\n' > "$d/legacy/README.md"
+  # Space in the name on purpose: `find ... | wc -w` must not pass as a file count.
+  # Holds no old_func, so `grep -rl old_func legacy | xargs sed` stays a valid answer.
+  printf '# dead module, do not import\n' > "$d/legacy/old script.py"
 }
 _sc_steps_10() {
   cat <<'STEPS'
-Count .py files under legacy/§find legacy -name '*.py' | wc -l§find legacy -type f -name '*.py' | wc -l§find legacy/ -name '*.py' | wc -l§find legacy -name '*.py' -type f | wc -l§ls legacy/*.py | wc -l§fd -e py . legacy | wc -l#output:5
-Replace 'old_func' with 'new_func' in every .py file under legacy/§find legacy -name '*.py' -exec sed -i 's/old_func/new_func/g' {} +§find legacy -name '*.py' -exec sed -i 's/old_func/new_func/g' {} \;§find legacy -type f -name '*.py' -exec sed -i 's/old_func/new_func/g' {} +§find legacy -type f -name '*.py' -exec sed -i 's/old_func/new_func/g' {} \;§fd -e py . legacy -x sed -i 's/old_func/new_func/g' {}§grep -rl old_func legacy | xargs sed -i 's/old_func/new_func/g'§grep -rl old_func legacy/ | xargs sed -i 's/old_func/new_func/g'#state:!contains:legacy/mod1.py:old_func,contains:legacy/mod1.py:new_func
-Count remaining 'old_func' occurrences in legacy/ (should be 0)§grep -r old_func legacy | wc -l§grep -r old_func legacy/ | wc -l§rg old_func legacy | wc -l§rg old_func legacy/ | wc -l#output:0
-Make every .py under legacy/ executable§find legacy -name '*.py' -exec chmod +x {} +§find legacy -name '*.py' -exec chmod +x {} \;§find legacy -type f -name '*.py' -exec chmod +x {} +§find legacy -type f -name '*.py' -exec chmod +x {} \;§chmod +x legacy/*.py§fd -e py . legacy -x chmod +x {}#state:perm:legacy/mod1.py:x
+Count .py files under legacy/§find legacy -name '*.py' | wc -l§find legacy -type f -name '*.py' | wc -l§find legacy/ -name '*.py' | wc -l§find legacy -name '*.py' -type f | wc -l§find legacy -iname '*.py' | wc -l§ls legacy/*.py | wc -l§fd -e py . legacy | wc -l#output:6
+Replace 'old_func' with 'new_func' in every .py file under legacy/§find legacy -name '*.py' -exec sed -i 's/old_func/new_func/g' {} +§find legacy -name '*.py' -exec sed -i 's/old_func/new_func/g' {} \;§find legacy -type f -name '*.py' -exec sed -i 's/old_func/new_func/g' {} +§find legacy -type f -name '*.py' -exec sed -i 's/old_func/new_func/g' {} \;§find legacy -iname '*.py' -exec sed -i 's/old_func/new_func/g' {} +§fd -e py . legacy -x sed -i 's/old_func/new_func/g' {}§grep -rl old_func legacy | xargs sed -i 's/old_func/new_func/g'§grep -rl old_func legacy/ | xargs sed -i 's/old_func/new_func/g'#state:!contains:legacy/mod1.py:old_func,contains:legacy/mod1.py:new_func
+Count 'new_func' lines in legacy/ — the rename should have landed in all 5 modules§grep -r new_func legacy | wc -l§grep -r new_func legacy/ | wc -l§grep -r new_func legacy | wc --lines§rg new_func legacy | wc -l§rg new_func legacy/ | wc -l#output:5
+Make every .py under legacy/ executable§find legacy -name '*.py' -exec chmod +x {} +§find legacy -name '*.py' -exec chmod +x {} \;§find legacy -type f -name '*.py' -exec chmod +x {} +§find legacy -type f -name '*.py' -exec chmod +x {} \;§find legacy -iname '*.py' -exec chmod +x {} +§chmod +x legacy/*.py§fd -e py . legacy -x chmod +x {}#state:perm:legacy/mod1.py:x
 Tar legacy/ into archive/legacy.tar.gz (gzip-compressed)§tar czf archive/legacy.tar.gz legacy§tar czf archive/legacy.tar.gz legacy/§tar -czf archive/legacy.tar.gz legacy§tar -czf archive/legacy.tar.gz legacy/§tar cvzf archive/legacy.tar.gz legacy§tar -cvzf archive/legacy.tar.gz legacy#state:exists:archive/legacy.tar.gz
-Verify the archive lists 5 .py files§tar tzf archive/legacy.tar.gz | grep -c '\.py$'§tar -tzf archive/legacy.tar.gz | grep -c '\.py$'§tar tf archive/legacy.tar.gz | grep -c '\.py$'§tar tvzf archive/legacy.tar.gz | grep -c '\.py$'§tar -tvzf archive/legacy.tar.gz | grep -c '\.py$'#output:5
+Verify the archive lists 6 .py files§tar tzf archive/legacy.tar.gz | grep -c '\.py$'§tar -tzf archive/legacy.tar.gz | grep -c '\.py$'§tar tf archive/legacy.tar.gz | grep -c '\.py$'§tar tvzf archive/legacy.tar.gz | grep -c '\.py$'§tar -tvzf archive/legacy.tar.gz | grep -c '\.py$'#output:6
 STEPS
 }
 
@@ -3150,6 +3170,33 @@ _fnorm() {
   # locale — otherwise the same command normalizes differently under C vs en_US, since
   # UTF-8 collation treats the leading hyphens of long flags as ignorable.
   local LC_ALL=C
+  # Handle statement separators (&&, ||, ;): normalize each segment independently and
+  # rejoin with the literal separator, so a flag in one segment can't hoist into the next
+  # (grep x f > t && mv -v t f must NOT normalize equal to grep -v x f > t && mv t f) and
+  # `a && b` never matches `a ; b`. Protect find's `\;` terminator so it isn't a boundary.
+  local _prot="${1//\\;/$'\x03'}"
+  if [[ "$_prot" == *'&&'* || "$_prot" == *'||'* || "$_prot" == *';'* ]]; then
+    # Distinct control-char markers per separator (& is special in a replacement string,
+    # so we can't put a literal && there); \x05=&&  \x06=||  \x07=; — split on \x04.
+    _prot="${_prot//&&/$'\x04\x05\x04'}"
+    _prot="${_prot//||/$'\x04\x06\x04'}"
+    _prot="${_prot//;/$'\x04\x07\x04'}"
+    local -a _toks; IFS=$'\x04' read -ra _toks <<< "$_prot"
+    local _out="" _tk
+    for _tk in "${_toks[@]}"; do
+      case "$_tk" in
+        $'\x05') _out+=" && " ;;
+        $'\x06') _out+=" || " ;;
+        $'\x07') _out+=" ; " ;;
+        *)
+          _tk="${_tk//$'\x03'/\\;}"; _trim "$_tk"; _tk=$REPLY
+          # empty segment => leading/trailing/double separator (malformed) — sentinel it
+          [[ -z "$_tk" ]] && { REPLY=$'\x02'; return; }
+          _fnorm "$_tk"; _out+="$REPLY" ;;
+      esac
+    done
+    _trim "$_out"; return
+  fi
   # Handle pipes: normalize each segment independently (protect || from splitting)
   if [[ "$1" == *'|'* ]]; then
     local _segs _s _r="" _pg="${1//||/$'\x01'}"
@@ -3168,7 +3215,7 @@ _fnorm() {
       REPLY="$_r"; return
     fi
   fi
-  local parts flags=() args=() postdd=() p
+  local parts flags=() args=() postdd=() p j
   read -ra parts <<< "$1"
   # Preprocess: split on ; boundaries (cmd; cmd2 → cmd ; cmd2)
   local _semi=() _sp
@@ -3220,6 +3267,9 @@ _fnorm() {
   # Re-pair arg-taking flags with their value so sort keeps -d/-f pairs intact
   # (cut -d: -f1 ≡ cut -f1 -d:). Short flags become -dX, long flags become --opt=X.
   local _atf_short=" -d -f -F -t -e -k -c -m -K "
+  # grep's -c/-F take no argument; gluing them to the next word would make normalization
+  # order-dependent (grep -cw ≠ grep -w -c). Keep -e/-f/-m paired (they do take args).
+  case "${parts[0]}" in grep|egrep|fgrep|zgrep|rg) _atf_short=" -d -f -t -e -k -m -K " ;; esac
   local _atf_long=" --delimiter --field-separator --fields --field --key --max-count --color --sort --reference --filter --hash-type --rules-file --since --until --regexp --file --include --exclude --exclude-dir --after-context --before-context --context --max-depth --maxdepth --mindepth "
   local _rp=("${parts[0]}") _ri=1 _np=${#parts[@]} _ct _nt _is_atf
   while ((_ri < _np)); do
@@ -3344,6 +3394,96 @@ _sandbox_validate() {
   return 1
 }
 
+# Operator skeleton: the ordered sequence of TOP-LEVEL shell operators in a command
+# (>, >>, <, <<<, |, &&, ||, ;, &, 2>, 2>&1, ...). Quoted text, backslash escapes
+# (find's \;), command substitutions, (( )) arithmetic and [[ ]] tests are structure,
+# not top level, so operators inside them are skipped.
+# Canonical forms so equivalent spellings share a skeleton:
+#   1> == >   |   &>f / >&f == "> 2>&1"   |   cmd |& == "2>&1 |"   |   >&2 == 1>&2
+# Adjacent duplicates collapse, so a 4-stage pipeline matches a 3-stage one — pipe
+# COUNT was never what a level teaches, and collapsing keeps alternate approaches alive.
+# shellcheck disable=SC1003  # '\' is a literal backslash, not a botched quote escape
+_opskel() {
+  local s=$1
+  local n=${#s} i=0 c t fd tgt out="" prev="" depth=0 bdepth=0
+  while ((i < n)); do
+    c=${s:i:1}
+    if [[ $c == "'" ]]; then
+      ((i++)); while ((i < n)) && [[ ${s:i:1} != "'" ]]; do ((i++)); done; ((i++)); continue
+    elif [[ $c == '"' ]]; then
+      ((i++)); while ((i < n)) && [[ ${s:i:1} != '"' ]]; do [[ ${s:i:1} == '\' ]] && ((i++)); ((i++)); done; ((i++)); continue
+    elif [[ $c == '`' ]]; then
+      ((i++)); while ((i < n)) && [[ ${s:i:1} != '`' ]]; do ((i++)); done; ((i++)); continue
+    elif [[ $c == '\' ]]; then ((i += 2)); continue
+    elif [[ $c == '(' ]]; then depth=$((depth + 1)); ((i++)); continue
+    elif [[ $c == ')' ]]; then ((depth > 0)) && depth=$((depth - 1)); ((i++)); continue
+    elif [[ ${s:i:2} == '[[' ]]; then bdepth=$((bdepth + 1)); ((i += 2)); continue
+    elif [[ ${s:i:2} == ']]' ]]; then ((bdepth > 0)) && bdepth=$((bdepth - 1)); ((i += 2)); continue
+    elif ((depth || bdepth)); then ((i++)); continue
+    fi
+    # fd-prefixed redirect (2>, 2>>, 2>&1) — only at a word boundary, so `chmod 644 f` is safe
+    fd=""
+    if [[ $c == [0-9] && ( ${s:i+1:1} == '>' || ${s:i+1:1} == '<' ) ]] && { ((i == 0)) || [[ ${s:i-1:1} == ' ' ]]; }; then
+      fd=$c; ((i++)); c=${s:i:1}
+    fi
+    t=""
+    case $c in
+      '>')
+        if [[ ${s:i+1:1} == '&' ]]; then
+          tgt=""; ((i += 2))
+          while ((i < n)) && [[ ${s:i:1} == [0-9-] ]]; do tgt+=${s:i:1}; ((i++)); done
+          if [[ -n $tgt ]]; then t="${fd:-1}>&${tgt}"          # dup: 2>&1, >&2 == 1>&2
+          else t='> 2>&1'; fi                                  # >&file == &>file
+        elif [[ ${s:i+1:1} == '>' ]]; then
+          ((i += 2)); [[ $fd == 2 ]] && t='2>>' || t='>>'
+          [[ -n $fd && $fd != 1 && $fd != 2 ]] && t="${fd}>>"
+        else
+          ((i++)); [[ $fd == 2 ]] && t='2>' || t='>'
+          [[ -n $fd && $fd != 1 && $fd != 2 ]] && t="${fd}>"
+        fi ;;
+      '<')
+        if [[ ${s:i+1:2} == '<<' ]]; then t='<<<'; ((i += 3))
+        elif [[ ${s:i+1:1} == '<' ]]; then t='<<'; ((i += 2))
+        else t='<'; ((i++)); fi ;;
+      '&')
+        if [[ ${s:i+1:1} == '&' ]]; then t='&&'; ((i += 2))
+        elif [[ ${s:i+1:2} == '>>' ]]; then t='>> 2>&1'; ((i += 3))
+        elif [[ ${s:i+1:1} == '>' ]]; then t='> 2>&1'; ((i += 2))
+        else t='&'; ((i++)); fi ;;
+      '|')
+        if [[ ${s:i+1:1} == '|' ]]; then t='||'; ((i += 2))
+        elif [[ ${s:i+1:1} == '&' ]]; then t='2>&1 |'; ((i += 2))
+        else t='|'; ((i++)); fi ;;
+      ';') t=';'; ((i++)) ;;
+      *) ((i++)) ;;
+    esac
+    if [[ -n $t ]]; then
+      [[ $t == "$prev" ]] || { [[ -n $out ]] && out+=" "; out+="$t"; }
+      prev=$t
+    fi
+  done
+  REPLY=$out
+}
+
+# Sandbox equivalence may only rescue an answer whose operator skeleton matches an
+# accepted one. A fresh sandbox can't tell `ls >> f` from `ls > f` (file didn't exist)
+# or `a ; b` from `a && b` (nothing fails) — but those are exactly the near-misses of
+# the command being taught. Alternates listed with different operators are compared
+# against their OWN skeleton, so they keep passing.
+_skel_ok() {
+  local inp=$1 answers=$2 delim=$3 a b lit=0
+  _opskel "$inp"; local uskel=$REPLY
+  local -a opts; IFS="$delim" read -ra opts <<< "$answers"
+  for a in "${opts[@]}"; do
+    _trim "$a"; b=$REPLY
+    [[ -z "$b" || "$b" == ~* ]] && continue   # regex alternates have no literal skeleton
+    lit=1
+    _opskel "$b"; [[ "$REPLY" == "$uskel" ]] && return 0
+  done
+  ((lit)) || return 0   # nothing literal to compare against — don't block the sandbox
+  return 1
+}
+
 _text_match() {
   local inp=$1 ninp=$2 answers=$3 delim=$4 a b
   local -a opts; IFS="$delim" read -ra opts <<< "$answers"
@@ -3361,7 +3501,7 @@ _text_match() {
 check() {
   _trim "$1"; local inp=$REPLY; _fnorm "$inp"; local ninp=$REPLY
   _SANDBOX_REQUIRE_FAIL=0
-  ((SANDBOX_MODE && !_qtext)) && _sandbox_validate "$inp" && return 0
+  ((SANDBOX_MODE && !_qtext)) && _skel_ok "$inp" "$2" "$_qdelim" && _sandbox_validate "$inp" && return 0
   [[ -n "${_qrequire:-}" && "$inp" != *"${_qrequire}"* ]] && return 1
   _text_match "$inp" "$ninp" "$2" "$_qdelim"
 }
@@ -3454,8 +3594,10 @@ _sflush() {
       _sc[$_k]="${_disk_sc[$_k]}"
     fi
   done
-  { printf '#v1\n'; for _k in "${!_sc[@]}"; do printf '%s|%s\n' "$_k" "${_sc[$_k]}"; done; } > "$DATA/scores.tmp"
-  mv "$DATA/scores.tmp" "$DATA/scores"
+  # Only replace the live file if the whole payload wrote — a failed printf (ENOSPC)
+  # makes the group's status nonzero, so a truncated tmp can never clobber good scores.
+  { printf '#v1\n'; for _k in "${!_sc[@]}"; do printf '%s|%s\n' "$_k" "${_sc[$_k]}"; done; } > "$DATA/scores.tmp" \
+    && mv "$DATA/scores.tmp" "$DATA/scores" || rm -f "$DATA/scores.tmp"
   [[ -n "$_fd" ]] && exec {_fd}>&-
 }
 
@@ -3625,6 +3767,8 @@ _vi_range() {
     h) ((cursor>0)) && _rs=$((cursor-1)) || return 1;;
     l) ((_re<${#input})) && _re=$((cursor+1)) || return 1;;
     w) while ((_re<${#input})) && [[ "${input:_re:1}" != " " ]]; do ((++_re)); done; while ((_re<${#input})) && [[ "${input:_re:1}" == " " ]]; do ((++_re)); done;;
+    # synthetic motion: w without the trailing-space skip — vim's cw acts like ce on a non-blank
+    cw) while ((_re<${#input})) && [[ "${input:_re:1}" != " " ]]; do ((++_re)); done;;
     e) ((_re<${#input}-1)) && ((++_re)); while ((_re<${#input}-1)) && [[ "${input:_re:1}" == " " ]]; do ((++_re)); done; while ((_re<${#input}-1)) && [[ "${input:_re+1:1}" != " " ]]; do ((++_re)); done; ((++_re));;
     b) ((_re>0)) && ((_re--)); while ((_re>0)) && [[ "${input:_re:1}" == " " ]]; do ((_re--)); done; while ((_re>0)) && [[ "${input:_re-1:1}" != " " ]]; do ((_re--)); done; _rs=$_re; _re=$cursor;;
     f|F|t|T) _vi_read; local p
@@ -3651,20 +3795,44 @@ _yank() { # $1=motion — like _del but only copies to register
   _vi_range "$1" || return
   _vi_reg="${input:_rs:_re-_rs}"
 }
-# $1=dir(f/F/t/T) $2=char $3=count
+_yankn() { # $1=motion $2=count — accumulate N objects (the range is idempotent, so
+  # repeating _yank would re-copy the same text); cursor is restored afterwards.
+  local _m=$1 _c=$2 _sv=$cursor _acc=""
+  case "$_m" in y) _vi_reg="$input"; return;; esac
+  for ((;_c>0;_c--)); do
+    _vi_range "$_m" || break
+    if ((_rs<cursor)); then _acc="${input:_rs:_re-_rs}$_acc"; cursor=$_rs
+    else _acc+="${input:_rs:_re-_rs}"; cursor=$_re; fi
+  done
+  cursor=$_sv; [[ -n "$_acc" ]] && _vi_reg="$_acc"
+}
+# $1=dir(f/F/t/T) $2=char $3=count $4=start skip (t/T only: 1 on ;/, repeat, so a
+# t-motion sitting one char before its match doesn't re-find that same char forever)
 _vi_fmove() {
-  local _d=$1 _ch=$2 _cnt=$3 p
+  local _d=$1 _ch=$2 _cnt=$3 _sk=${4:-0} p
   case "$_d" in
     f) for ((_i=0;_i<_cnt;_i++)); do for ((p=cursor+1;p<${#input};p++)); do [[ "${input:p:1}" == "$_ch" ]] && { cursor=$p; break; }; done; done;;
     F) for ((_i=0;_i<_cnt;_i++)); do for ((p=cursor-1;p>=0;p--)); do [[ "${input:p:1}" == "$_ch" ]] && { cursor=$p; break; }; done; done;;
-    t) local _lp=$((cursor+1)); for ((_i=0;_i<_cnt;_i++)); do for ((p=_lp;p<${#input};p++)); do [[ "${input:p:1}" == "$_ch" ]] && { cursor=$((p-1)); _lp=$((p+1)); break; }; done; done;;
-    T) local _lp=$((cursor-1)); for ((_i=0;_i<_cnt;_i++)); do for ((p=_lp;p>=0;p--)); do [[ "${input:p:1}" == "$_ch" ]] && { cursor=$((p+1)); _lp=$((p-1)); break; }; done; done;;
+    t) local _lp=$((cursor+1+_sk)); for ((_i=0;_i<_cnt;_i++)); do for ((p=_lp;p<${#input};p++)); do [[ "${input:p:1}" == "$_ch" ]] && { cursor=$((p-1)); _lp=$((p+1)); break; }; done; done;;
+    T) local _lp=$((cursor-1-_sk)); for ((_i=0;_i<_cnt;_i++)); do for ((p=_lp;p>=0;p--)); do [[ "${input:p:1}" == "$_ch" ]] && { cursor=$((p+1)); _lp=$((p-1)); break; }; done; done;;
   esac
+}
+# Operator (y/d/c) suffix: read an optional inner count, leave the motion in c2 and
+# the clamped total (outer × inner) in REPLY.
+_vi_opcount() {
+  _vi_read; local _ic=""
+  [[ "$c2" =~ ^[1-9]$ ]] && { _ic="$c2"; _vi_read; while [[ "$c2" =~ ^[0-9]$ ]]; do _ic+="$c2"; _vi_read; done; }
+  _ic=${_ic:-1}; ((${#_ic} > 3 || _ic > 512)) && _ic=512
+  REPLY=$(( $1 * _ic )); ((REPLY > 512)) && REPLY=512
 }
 _vi_normal() {
   if [[ "$c" =~ ^[1-9]$ ]] || { [[ "$c" == "0" ]] && [[ -n "$_rep" ]]; }; then _rep+="$c"; return 1; fi
-  local _n=${_rep:-1}; _rep=""
-  case "$c" in s|S|x|X|D|C|d|c|r|'~'|p|P) UNDO_STACK+=("$cursor:$input");; esac
+  # Clamp the count: an unbounded one freezes the session (999999999w) and a 20-digit
+  # one silently overflows int64. Length test first — short-circuits before the arithmetic.
+  local _n=${_rep:-1}; _rep=""; ((${#_n} > 3 || _n > 512)) && _n=512
+  # Snapshot before any handler mutates cursor/input — i/a/A/I included, so the text
+  # typed in the insert session they open is undoable as one step.
+  case "$c" in i|a|A|I|s|S|x|X|D|C|d|c|r|'~'|p|P) UNDO_STACK+=("$cursor:$input");; esac
   case "$c" in
     i) mode="insert"; draw;; a) mode="insert"; ((cursor<${#input})) && ((++cursor)); draw;;
     A) mode="insert"; cursor=${#input}; draw;; I) mode="insert"; cursor=0; draw;;
@@ -3680,10 +3848,12 @@ _vi_normal() {
     b) for ((_i=0;_i<_n;_i++)); do _wbck; done; draw;;
     e) for ((_i=0;_i<_n;_i++)); do _wend; done; draw;;
     f|F|t|T) _vi_read; _vi_lastf="${c}${c2}"; _vi_fmove "$c" "$c2" "$_n"; draw;;
-    \;) [[ -n "$_vi_lastf" ]] && { local _sv="$_vi_lastf"; _vi_fmove "${_vi_lastf:0:1}" "${_vi_lastf:1:1}" "$_n"; _vi_lastf="$_sv"; draw; };;
-    ,) [[ -n "$_vi_lastf" ]] && { local _sv="$_vi_lastf" _rv
-      case "${_vi_lastf:0:1}" in f) _rv=F;; F) _rv=f;; t) _rv=T;; T) _rv=t;; esac
-      _vi_fmove "$_rv" "${_vi_lastf:1:1}" "$_n"; _vi_lastf="$_sv"; draw; };;
+    \;) [[ -n "$_vi_lastf" ]] && { local _sv="$_vi_lastf" _fs=0
+      case "${_vi_lastf:0:1}" in t|T) _fs=1;; esac
+      _vi_fmove "${_vi_lastf:0:1}" "${_vi_lastf:1:1}" "$_n" "$_fs"; _vi_lastf="$_sv"; draw; };;
+    ,) [[ -n "$_vi_lastf" ]] && { local _sv="$_vi_lastf" _rv _fs=0
+      case "${_vi_lastf:0:1}" in f) _rv=F;; F) _rv=f;; t) _rv=T; _fs=1;; T) _rv=t; _fs=1;; esac
+      _vi_fmove "$_rv" "${_vi_lastf:1:1}" "$_n" "$_fs"; _vi_lastf="$_sv"; draw; };;
     x) _vi_reg=""; for ((_i=0;_i<_n&&${#input}>0&&cursor<${#input};_i++)); do _vi_reg+="${input:cursor:1}"; input="${input:0:cursor}${input:cursor+1}"; done; _clamp; draw;;
     X) _vi_reg=""; for ((_i=0;_i<_n&&cursor>0;_i++)); do _vi_reg="${input:cursor-1:1}$_vi_reg"; input="${input:0:cursor-1}${input:cursor}"; ((cursor--)); done; draw;;
     D) _vi_reg="${input:cursor}"; input="${input:0:cursor}"; ((cursor>0)) && ((cursor--)); draw;;
@@ -3692,11 +3862,14 @@ _vi_normal() {
     '~') for ((_i=0;_i<_n&&cursor<${#input};_i++)); do local _ch="${input:cursor:1}"
       if [[ "$_ch" =~ [a-z] ]]; then _ch="${_ch^^}"; elif [[ "$_ch" =~ [A-Z] ]]; then _ch="${_ch,,}"; fi
       input="${input:0:cursor}${_ch}${input:cursor+1}"; ((cursor<${#input}-1)) && ((++cursor)); done; draw;;
-    p) for ((_i=0;_i<_n;_i++)); do [[ -n "$_vi_reg" ]] && { input="${input:0:cursor+1}${_vi_reg}${input:cursor+1}"; ((cursor+=${#_vi_reg})); }; done; draw;;
-    P) for ((_i=0;_i<_n;_i++)); do [[ -n "$_vi_reg" ]] && { input="${input:0:cursor}${_vi_reg}${input:cursor}"; ((cursor+=${#_vi_reg}-1)); }; done; draw;;
-    y) _vi_read; local _ic=""; [[ "$c2" =~ ^[1-9]$ ]] && { _ic="$c2"; _vi_read; while [[ "$c2" =~ ^[0-9]$ ]]; do _ic+="$c2"; _vi_read; done; }; local _yn=$((_n * ${_ic:-1})); for ((_i=0;_i<_yn;_i++)); do _yank "$c2"; done; draw;;
-    d) _vi_read; local _ic=""; [[ "$c2" =~ ^[1-9]$ ]] && { _ic="$c2"; _vi_read; while [[ "$c2" =~ ^[0-9]$ ]]; do _ic+="$c2"; _vi_read; done; }; local _dn=$((_n * ${_ic:-1})); for ((_i=0;_i<_dn;_i++)); do _del "$c2"; done; draw;;
-    c) _vi_read; local _ic=""; [[ "$c2" =~ ^[1-9]$ ]] && { _ic="$c2"; _vi_read; while [[ "$c2" =~ ^[0-9]$ ]]; do _ic+="$c2"; _vi_read; done; }; local _dn=$((_n * ${_ic:-1})); for ((_i=0;_i<_dn;_i++)); do _del "$c2"; done; mode="insert"; draw;;
+    p) for ((_i=0;_i<_n;_i++)); do ((${#input} >= 512)) && break; [[ -n "$_vi_reg" ]] && { input="${input:0:cursor+1}${_vi_reg}${input:cursor+1}"; ((cursor+=${#_vi_reg})); }; done; _clamp; draw;;
+    P) for ((_i=0;_i<_n;_i++)); do ((${#input} >= 512)) && break; [[ -n "$_vi_reg" ]] && { input="${input:0:cursor}${_vi_reg}${input:cursor}"; ((cursor+=${#_vi_reg}-1)); }; done; _clamp; draw;;
+    y) _vi_opcount "$_n"; _yankn "$c2" "$REPLY"; draw;;
+    d) _vi_opcount "$_n"; local _dn=$REPLY; for ((_i=0;_i<_dn;_i++)); do _del "$c2"; done; draw;;
+    c) _vi_opcount "$_n"; local _cn=$REPLY
+      # vim special-cases cw/cW to behave like ce on a non-blank (no trailing-space eat).
+      # Re-decide per iteration: the cursor moves between counted changes.
+      for ((_i=0;_i<_cn;_i++)); do local _m="$c2"; [[ "$c2" == w && "${input:cursor:1}" != " " ]] && _m=cw; _del "$_m"; done; mode="insert"; draw;;
     u) ((${#UNDO_STACK[@]}>0)) && { local _u="${UNDO_STACK[-1]}"; unset 'UNDO_STACK[-1]'; cursor="${_u%%:*}"; input="${_u#*:}"; draw; };;
     g) _vi_read; [[ "$c2" == "g" ]] && { cursor=0; draw; };;
     G) cursor=$((${#input}>0?${#input}-1:0)); draw;;
@@ -3790,7 +3963,9 @@ _read_line() {
             while ((_wp<${#input})) && [[ "${input:_wp:1}" != " " ]]; do ((_wp++)); done
             input="${input:0:cursor}${input:_wp}"; draw
           elif [[ -z "$_e1" ]] && ((VI_MODE)); then
-            UNDO_STACK+=("$cursor:$input"); mode="normal"; ((cursor>0)) && ((cursor--)); draw
+            # No snapshot here — the pre-insert state was pushed by the key that opened
+            # insert mode (i/a/A/I/s/S/C/c), so `u` undoes the whole insert session.
+            mode="normal"; ((cursor>0)) && ((cursor--)); draw
           fi;;
         $'\x7f'|$'\b') ((cursor>0)) && { input="${input:0:cursor-1}${input:cursor}"; ((cursor--)); draw; };;
         $'\x17') if ((cursor>0)); then local _wp=$((cursor-1))  # Ctrl-w: delete word back
@@ -3931,7 +4106,11 @@ run() {
         [[ -n "$input" ]] && { HIST+=("$input"); HIST_IDX=${#HIST[@]}; HIST_SAVE=""; }
         ((_S_ANSWERED++)); _S_STREAK=0; _wrong_show; _disk_check wrong "$input"
         explain "$ans"
-        streak=0; _sset "$prompt" "$((_real_tier>0?_real_tier-1:0))"; _pause
+        # Keep the demotion: the question repeats until answered, and without refreshing
+        # the local tier the eventual correct answer would promote from the stale one and
+        # erase the miss. Block the promote too, so a miss always costs a tier (like boss).
+        streak=0; _real_tier=$((_real_tier>0?_real_tier-1:0)); _sset "$prompt" "$_real_tier"
+        _hash "$prompt"; _S_PROMOTED[$REPLY]=1; _pause
       fi
       printf '\e[2J'; _REDRAW_HDR
     done
@@ -3974,6 +4153,7 @@ run() {
 
   local _bt=$((BOSS_TIMER + lv / 3))  # scale: 30s@L1 → 40s@L30
   for ((bi=0; bi<${#boss_q[@]}; bi++)); do
+    _preq_reset  # boss answers run in the sandbox too — a destructive one must not leak into the next question
     _qparse "${boss_q[$bi]}"; local prompt=$_qprompt ans=$_qans
     [[ -z "$prompt" ]] && { ((boss_total--)); ((boss_total > 0 && _boss_thresh > boss_total)) && _boss_thresh=$boss_total; continue; }
     _sget "$prompt"; local _boss_tier=$REPLY
@@ -4136,18 +4316,22 @@ challenge() {
   done
 
   _sflush_if_dirty
+  # Record the best before the quit check — the answers were earned either way, and
+  # quitting can't inflate the score (the unanswered question just doesn't count).
+  local prev_best=$BEST_CHALLENGE
+  ((score > BEST_CHALLENGE)) && { BEST_CHALLENGE=$score; _save_profile; }
   if ((_QUIT)); then return; fi
   printf '%s\e[2J\e[H' "$_SY"
   printf '%s\n\n' "${R}${B}═══ GAME OVER ═══${N}"
   printf 'Score: %s\n' "${B}${score}${N}"
-  if ((score > BEST_CHALLENGE)); then
-    printf '%s\n' "${G}${B}NEW BEST!${N} (was ${BEST_CHALLENGE})"
-    BEST_CHALLENGE=$score; _save_profile
+  if ((score > prev_best)); then
+    printf '%s\n' "${G}${B}NEW BEST!${N} (was ${prev_best})"
   else
     printf '%s\n' "${D}Best: ${BEST_CHALLENGE}${N}"
   fi
   printf '%s' "$_SN"
   echo
+  _pause  # the menu's next draw clears the screen — hold the score until a keypress
 }
 
 
@@ -4178,6 +4362,10 @@ _sel() {
       if [[ -z "$k" ]]; then ((_SEL_BACK)) && return 1; continue; fi
       ((${#k} < 2)) && continue
       k="${k:1}"
+      # Only arrows may fall through. Multi-byte CSI keys (Del \e[3~, PgDn \e[6~,
+      # Ctrl+Right \e[1;5C) leave a digit in $k that would otherwise fire a numeric
+      # menu hotkey — drop the sequence's tail and ignore the key.
+      [[ "$k" == [ABCD] ]] || { _csi_drain; continue; }
     fi
     # hotkey: match (k) prefix in items
     local _hi; for ((_hi=0;_hi<n;_hi++)); do
@@ -4279,6 +4467,9 @@ _main_menu() {
           [[ "$yn" =~ ^[Yy] ]] || continue
         fi
         rm -f "$DATA"/*.json "$DATA/scores" "$DATA/scores.lock" "$DATA/profile"; rm -rf "$DATA/sandbox" "$DATA/sandbox.pristine" 2>/dev/null
+        # Reset position too: load() keeps the current globals when session.json is gone,
+        # so an abandoned placement (Ctrl+D) would drop the fresh profile into the old level.
+        LVL=1 QI=0
         PLAYER_NAME="" BOSS_BEATEN=0; _load_profile; load
         _first_run; _run_loop;;
       sc) _sc_sel;;
@@ -4295,7 +4486,7 @@ _main_menu() {
 
 # ═══ SCENARIO ENGINE ═══
 
-_perms_restore() { while IFS=' ' read -r _pmode _ppath; do [[ -n "$_ppath" ]] && chmod "$_pmode" "$_ppath" 2>/dev/null; done < "$2"; }
+_perms_restore() { while IFS=' ' read -r _pmode _ppath; do [[ -n "$_ppath" ]] && chmod "$_pmode" "$_ppath" 2>/dev/null; done < "$1"; }
 # Uses dynamic-scoped _sc_snap, _perms_file from scenario()
 _sc_snap_save() {
   find "$SANDBOX_DIR" -printf '%m %p\n' > "$_perms_file" 2>/dev/null
@@ -4307,7 +4498,7 @@ _sc_snap_save() {
   else
     rm -rf "$_t"
   fi
-  _perms_restore "$SANDBOX_DIR" "$_perms_file"
+  _perms_restore "$_perms_file"
 }
 _sc_snap_restore() {
   # If the snapshot is missing (save failed) or a temp dir can't be made, reset to
@@ -4320,7 +4511,7 @@ _sc_snap_restore() {
   else
     rm -rf "$_t"
   fi
-  _perms_restore "$SANDBOX_DIR" "$_perms_file"
+  _perms_restore "$_perms_file"
 }
 scenario() {
   local sc_id=${1:-0}
@@ -4402,6 +4593,7 @@ scenario() {
   _sc_mark_done "$sc_id"
   _disk_check completionist
   _sflush_if_dirty
+  _pause  # the menu's next draw clears the screen — hold the completion screen
   echo
 }
 
@@ -4460,8 +4652,22 @@ _selftest() {
     $'cut pair spaced\tcut -d : -f 1 /etc/passwd\tcut -d: -f1 /etc/passwd'
     $'cut long pair\tcut --delimiter=, --fields=1 f\tcut --delimiter=, --fields=1 f'
     $'cut long pair reorder\tcut --fields=1 --delimiter=, f\tcut --delimiter=, --fields=1 f'
+    # Statement separators: each segment normalizes on its own, so a flag can never hoist
+    # across a boundary, and && / || / ; stay distinct from one another.
+    $'&& keeps flags in segment\tgrep x f > t && mv -v t f\tgrep x f > t && mv -v t f'
+    $'&& no flag hoist\tls -l && ls -a\tls -l && ls -a'
+    $'|| separator kept\tmkdir d || echo fail\tmkdir d || echo fail'
+    $'; separator kept\tcd /tmp ; ls -la\tcd /tmp ; ls -a -l'
+    $'find -exec \\; not a separator\tfind . -name x -exec rm {} \\;\tfind -a -c -e -e -e -m -n -x . x rm {} \\;'
   )
   for _t in "${_ft[@]}"; do IFS=$'\t' read -r _d _i _w <<< "$_t"; _fnorm "$_i"; _assert "$_d" "$REPLY" "$_w"; done
+  # A flag hoisting across && would make these two collide — they must stay distinct.
+  _fnorm 'grep x f > t && mv -v t f'; local _sep_a=$REPLY
+  _fnorm 'grep -v x f > t && mv t f'; local _sep_eq=1; [[ "$REPLY" != "$_sep_a" ]] && _sep_eq=0
+  _assert "&& segments do not share flags" "$_sep_eq" "0"
+  _fnorm 'a && b'; _sep_a=$REPLY
+  _fnorm 'a ; b'; _sep_eq=1; [[ "$REPLY" != "$_sep_a" ]] && _sep_eq=0
+  _assert "&& is not equivalent to ;" "$_sep_eq" "0"
 
   printf '%s\n' "${B}=== _hash ===${N}"
   _hash "test123"; local h1=$REPLY
@@ -4496,6 +4702,74 @@ _selftest() {
   check "| sort foo" 'sort foo' && _t=0 || _t=$?; _assert "leading pipe rejected" "$_t" "1"
   _qdelim='|'
   SANDBOX_MODE=$_save_sandbox
+
+  printf '%s\n' "${B}=== operator skeleton ===${N}"
+  _opskel "ls"; _assert "skel none" "$REPLY" ""
+  _opskel "ls > list.txt"; _assert "skel >" "$REPLY" ">"
+  _opskel "ls >> list.txt"; _assert "skel >>" "$REPLY" ">>"
+  _opskel "sort < data.csv > sorted.csv"; _assert "skel < >" "$REPLY" "< >"
+  _opskel "sort <<< data.csv > sorted.csv"; _assert "skel <<< >" "$REPLY" "<<< >"
+  _opskel "wait && echo done"; _assert "skel &&" "$REPLY" "&&"
+  _opskel "wait ; echo done"; _assert "skel ;" "$REPLY" ";"
+  _opskel "./backup.sh & pid=\$! && wait \$pid"; _assert "skel & &&" "$REPLY" "& &&"
+  _opskel "./deploy.sh 2>&1 | grep -i error"; _assert "skel 2>&1 |" "$REPLY" "2>&1 |"
+  _opskel "./deploy.sh |& grep -i error"; _assert "skel |& == 2>&1 |" "$REPLY" "2>&1 |"
+  _opskel "./deploy.sh &> out.log"; _assert "skel &>" "$REPLY" "> 2>&1"
+  _opskel "./deploy.sh > out.log 2>&1"; _assert "skel > 2>&1" "$REPLY" "> 2>&1"
+  _opskel "./deploy.sh 1> out.log 2>&1"; _assert "skel 1> == >" "$REPLY" "> 2>&1"
+  _opskel "./deploy.sh >& out.log"; _assert "skel >&file == &>" "$REPLY" "> 2>&1"
+  _opskel "echo failed >&2"; _assert "skel >&2 == 1>&2" "$REPLY" "1>&2"
+  _opskel "ls -la > out 2> err"; _assert "skel > 2>" "$REPLY" "> 2>"
+  _opskel "find . -name '*.py' -exec chmod +x {} \\;"; _assert "skel find \\; not ;" "$REPLY" ""
+  _opskel "grep -rnE 'TODO|FIXME' . > report.txt"; _assert "skel quoted | ignored" "$REPLY" ">"
+  _opskel "echo \"a > b\""; _assert "skel dquoted > ignored" "$REPLY" ""
+  _opskel "(( num > 5 ))"; _assert "skel arith > ignored" "$REPLY" ""
+  _opskel "[[ \$(wc -w < f) -gt 5 ]] && echo big"; _assert "skel nested < ignored" "$REPLY" "&&"
+  _opskel "chmod 644 f"; _assert "skel digit not fd" "$REPLY" ""
+  _opskel "sort f | uniq -c | sort -rn"; _assert "skel pipes collapse" "$REPLY" "|"
+  # the guard itself: sandbox equivalence must not rescue a different skeleton
+  _skel_ok "ls >> list.txt" "ls > list.txt|ls -1 > list.txt" '|' && _t=0 || _t=$?
+  _assert "guard rejects >> for >" "$_t" "1"
+  _skel_ok "ls -1 > list.txt" "ls > list.txt|ls -1 > list.txt" '|' && _t=0 || _t=$?
+  _assert "guard accepts same skeleton" "$_t" "0"
+  _skel_ok "wait ; echo done" "wait && echo done" '|' && _t=0 || _t=$?
+  _assert "guard rejects ; for &&" "$_t" "1"
+  _skel_ok "sort <<< data.csv > sorted.csv" "sort < data.csv > sorted.csv|sort data.csv > sorted.csv" '|' && _t=0 || _t=$?
+  _assert "guard rejects <<< for <" "$_t" "1"
+  _skel_ok "sort data.csv > sorted.csv" "sort < data.csv > sorted.csv|sort data.csv > sorted.csv" '|' && _t=0 || _t=$?
+  _assert "guard accepts listed alt w/ other ops" "$_t" "0"
+  _skel_ok "./deploy.sh &> out.log" "./deploy.sh > out.log 2>&1" '|' && _t=0 || _t=$?
+  _assert "guard accepts &> for > 2>&1" "$_t" "0"
+  _skel_ok "cut -d, -f2 data.csv | sort -u" "awk -F, '{print \$2}' data.csv | sort -u" '§' && _t=0 || _t=$?
+  _assert "guard allows different tool, same skeleton" "$_t" "0"
+  _skel_ok "cat f | grep x" "~^grep x f" '|' && _t=0 || _t=$?
+  _assert "guard inert when all alts are regex" "$_t" "0"
+
+  # Scenario grading leans on these: SC1 rejects `chmod 755` for "make readable" via
+  # !perm:x, SC6 rejects `mv` for "backup" by asserting the original survives.
+  printf '%s\n' "${B}=== scenario state checks ===${N}"
+  local _sd _save_sd=${SANDBOX_DIR:-}
+  if _sd=$(mktemp -d); then
+    SANDBOX_DIR=$_sd
+    printf 'x\n' > "$_sd/f"; chmod 644 "$_sd/f"
+    _sandbox_check_state "perm:f:r" && _t=0 || _t=$?
+    _assert "state 644 is readable" "$_t" "0"
+    _sandbox_check_state "perm:f:r,!perm:f:x" && _t=0 || _t=$?
+    _assert "state 644 readable, not executable" "$_t" "0"
+    chmod 755 "$_sd/f"
+    _sandbox_check_state "perm:f:r" && _t=0 || _t=$?
+    _assert "state 755 is readable too" "$_t" "0"
+    _sandbox_check_state "perm:f:r,!perm:f:x" && _t=0 || _t=$?
+    _assert "state !perm:x rejects 755" "$_t" "1"
+    cp "$_sd/f" "$_sd/f.bak"
+    _sandbox_check_state "exists:f.bak,exists:f" && _t=0 || _t=$?
+    _assert "state cp keeps the original" "$_t" "0"
+    rm -f "$_sd/f"
+    _sandbox_check_state "exists:f.bak,exists:f" && _t=0 || _t=$?
+    _assert "state mv loses the original" "$_t" "1"
+    rm -rf "$_sd"
+  fi
+  SANDBOX_DIR=$_save_sd
 
   printf '%s\n' "${B}=== _qparse ===${N}"
   _qparse "Print current directory|pwd|#output:~^/"
@@ -4542,7 +4816,7 @@ _selftest() {
   local _rl_hints=0 _rl_hist=0 _man_open=0 mode=normal _rep=""
   local UNDO_STACK=() HIST=() HIST_IDX=0 HIST_SAVE=""
 
-  # Feed buffer for compound keys (d,c,r,f,F,t,T,g)
+  # Feed buffer for compound keys (d,c,y,r,f,F,t,T,g)
   local _vi_feed=""
   _vi_read() { c2="${_vi_feed:0:1}"; _vi_feed="${_vi_feed:1}"; }
 
@@ -4552,11 +4826,17 @@ _selftest() {
     local desc=$1 init_input=$2 init_cursor=$3 keys=$4 want_input=$5 want_cursor=$6
     local want_mode="${7:-normal}"
     input="$init_input" cursor=$init_cursor _rep="" mode="normal" UNDO_STACK=() _vi_feed=""
+    _vi_reg="" _vi_lastf=""
     local _k _ch
     for ((_k=0; _k<${#keys}; _k++)); do
       _ch="${keys:_k:1}"
-      # For compound keys, next char goes to feed buffer
-      case "$_ch" in d|c|r|f|F|t|T|g) ((_k++)); _vi_feed="${keys:_k:1}"; esac
+      # For compound keys, the rest of the key goes to the feed buffer. Operators take an
+      # optional inner count first (d2w, y3b), so feed the digits along with the motion.
+      case "$_ch" in
+        d|c|y) while [[ "${keys:_k+1:1}" == [0-9] ]]; do ((_k++)); _vi_feed+="${keys:_k:1}"; done
+          ((_k++)); _vi_feed+="${keys:_k:1}";;
+        r|f|F|t|T|g) ((_k++)); _vi_feed="${keys:_k:1}";;
+      esac
       c="$_ch"; _vi_normal || true
     done
     local _ok=1
@@ -4598,7 +4878,11 @@ _selftest() {
   _vi_assert "dd del line"       "hello" 2 "dd"   ""      0
   _vi_assert 'd$ del to end'     "hello" 2 'd$'   "he"    1
   _vi_assert "d0 del to start"   "hello" 2 "d0"   "llo"   0
-  _vi_assert "cw change word"    "foo bar" 0 "cw"  "bar"   0  "insert"
+  # vim's cw acts like ce on a non-blank: the space after the word survives (retyping the
+  # word must not glue it to the next token). dw/yw keep the trailing space — no special case.
+  _vi_assert "cw change word"    "foo bar" 0 "cw"  " bar"  0  "insert"
+  _vi_assert "cw at word end"    "foo bar" 2 "cw"  "fo bar" 2 "insert"
+  _vi_assert "cw on blank = dw"  "foo  bar" 3 "cw" "foobar" 3 "insert"
   _vi_assert "cc change line"    "hello" 2 "cc"   ""      0  "insert"
   _vi_assert "C change to end"   "hello" 2 "C"    "he"    2  "insert"
   _vi_assert "rx replace char"   "hello" 1 "rx"   "hxllo" 1
@@ -4611,6 +4895,30 @@ _selftest() {
   _vi_assert "A enters insert"   "abc" 1 "A"   "abc" 3  "insert"
   _vi_assert "I enters insert"   "abc" 1 "I"   "abc" 0  "insert"
   _vi_assert "s subst+insert"    "abc" 1 "s"   "ac"  1  "insert"
+  # ; / , repeat a t-motion: without a start skip the cursor sits on the char before the
+  # match and instantly re-finds it, so the repeat is a permanent no-op.
+  _vi_assert "; repeats to"      "hello world" 0 "to;" "hello world" 6
+  _vi_assert ", reverses to"     "hello world" 0 "to;," "hello world" 5
+  _vi_assert "; repeats fo"      "foo boo" 0 "fo;"  "foo boo" 2
+  # y with a count must yank N objects, not the same range N times
+  _vi_assert "y2w yanks 2 words" "foo bar baz" 0 "y2wP" "foo bar foo bar baz" 7
+  _vi_assert "yl yanks char"     "abc" 0 "ylp"  "aabc" 1
+  _vi_assert "p on empty clamps" "hello" 2 "ddp" "hello" 4
+
+  # p with a count stops at the 512-char line cap (insert mode and paste do the same)
+  input="ab" cursor=1 mode=normal _rep="" _vi_reg="ab" UNDO_STACK=()
+  c="9"; _vi_normal || true; c="9"; _vi_normal || true; c="9"; _vi_normal || true
+  c="p"; _vi_normal || true
+  _assert "p count capped at 512" "$((${#input} <= 514))" "1"
+
+  # u must undo a whole insert session: the snapshot is taken by the key that OPENS
+  # insert mode, not by the ESC that leaves it (which would save the post-typing state).
+  input="abc" cursor=0 mode=normal _rep="" UNDO_STACK=()
+  c="i"; _vi_normal || true
+  input="XYZabc" cursor=3          # simulated typing in insert mode
+  mode=normal; ((cursor>0)) && ((cursor--))   # simulated ESC
+  c="u"; _vi_normal || true
+  _assert "u undoes insert session" "$input" "abc"
 
   eval "$_save_draw"
   eval "$_save_vi_read"
@@ -4722,43 +5030,30 @@ _selftest() {
   _sc[$REPLY]="1|1|$((_now - 3024000))"  # 35d ago, tier 1 (just past 30d T1)
   _sflush
   LAST_DECAY=0
-  _save_profile() { :; }  # no-op
-  local _dk _dv _dt
-  for _dk in "${!_sc[@]}"; do
-    _dv="${_sc[$_dk]}"; _dt="${_dv%%|*}"
-    local _deps="${_dv##*|}"
-    [[ "$_deps" =~ ^[0-9]{10,}$ ]] || continue
-    local _age=$((_now - _deps))
-    if ((_dt >= 2 && _age > _DECAY_T2)); then
-      local _mid="${_dv#*|}"; _sc[$_dk]="$((_dt - 1))|${_mid%|*}|$_now"
-    elif ((_dt == 1 && _age > _DECAY_T1)); then
-      local _mid="${_dv#*|}"; _sc[$_dk]="0|${_mid%|*}|$_now"
-    fi
-  done
+  # Run the real decay path: _mode_init reloads _sc from the flushed scores and decays it
+  # in place (the assignments land on the _sc declared above — same dynamic scope).
+  # Sandbox off, _interactive back off: this test only needs the scoring half.
+  local _save_sandbox=$SANDBOX_MODE; SANDBOX_MODE=0
+  _mode_init 1
+  SANDBOX_MODE=$_save_sandbox; _interactive=0
   _hash "decay test q1"; _assert "decay tier2->1" "${_sc[$REPLY]%%|*}" "1"
   _hash "decay test q2"; _assert "decay tier1->0" "${_sc[$REPLY]%%|*}" "0"
+  _assert "decay stamps LAST_DECAY" "$((LAST_DECAY >= _now))" "1"
   DATA="$_save_data"
   rm -rf "$_test_data"
 
   printf '%s\n' "${B}=== profile ===${N}"
   _test_data=$(mktemp -d)
   _save_data="$DATA"; DATA="$_test_data"
+  # Real _save_profile → real _load_profile round-trip (DATA points at the temp dir).
+  # OPT_* are saved as 0 on purpose: _load_profile defaults an invalid value to 1, so
+  # 0 proves the value was actually read back rather than falling back.
   PLAYER_NAME="testplayer" BOSS_BEATEN=15 BEST_CHALLENGE=42 DISKS_FOUND="vimquit,konami" SC_DONE="1,2,3" LAST_DECAY=12345 PLACED_THROUGH=5
-  _save_profile() {
-    printf 'PLAYER_NAME=%s\nBOSS_BEATEN=%d\nBEST_CHALLENGE=%d\nDISKS_FOUND=%s\nSC_DONE=%s\nLAST_DECAY=%d\nPLACED_THROUGH=%d\nPROFILE_VER=%d\n' \
-      "$PLAYER_NAME" "$BOSS_BEATEN" "$BEST_CHALLENGE" "$DISKS_FOUND" "$SC_DONE" "$LAST_DECAY" "$PLACED_THROUGH" "$_PROFILE_VER" > "$DATA/profile.tmp"
-    mv "$DATA/profile.tmp" "$DATA/profile"
-  }
+  OPT_VI=0 OPT_SOUND=0 OPT_ALTS=0
   _save_profile
   PLAYER_NAME="" BOSS_BEATEN=0 BEST_CHALLENGE=0 DISKS_FOUND="" SC_DONE="" LAST_DECAY=0 PLACED_THROUGH=0
-  while IFS='=' read -r key val; do
-    case "$key" in
-      PLAYER_NAME) PLAYER_NAME="$val";; BOSS_BEATEN) BOSS_BEATEN="$val";;
-      BEST_CHALLENGE) BEST_CHALLENGE="$val";;
-      DISKS_FOUND) DISKS_FOUND="$val";; SC_DONE) SC_DONE="$val";; LAST_DECAY) LAST_DECAY="$val";;
-      PLACED_THROUGH) PLACED_THROUGH="$val";;
-    esac
-  done < "$DATA/profile"
+  OPT_VI=1 OPT_SOUND=1 OPT_ALTS=1
+  _load_profile
   _assert "profile name"       "$PLAYER_NAME"  "testplayer"
   _assert "profile boss"       "$BOSS_BEATEN"  "15"
   _assert "profile challenge"  "$BEST_CHALLENGE" "42"
@@ -4766,11 +5061,14 @@ _selftest() {
   _assert "profile sc_done"    "$SC_DONE"      "1,2,3"
   _assert "profile last_decay" "$LAST_DECAY"   "12345"
   _assert "profile placed"     "$PLACED_THROUGH" "5"
+  _assert "profile opt_vi"     "$OPT_VI"       "0"
+  _assert "profile opt_sound"  "$OPT_SOUND"    "0"
+  _assert "profile opt_alts"   "$OPT_ALTS"     "0"
   DATA="$_save_data"
   rm -rf "$_test_data"
 
   printf '%s\n' "${B}=== gen_level smoke ===${N}"
-  local _lv _lines _empty_ok=0
+  local _lv _lines
   for ((_lv=1; _lv<=30; _lv++)); do
     local _test_q=(); "gen_level${_lv}" _test_q; _lines=${#_test_q[@]}
     if ((_lines < 5)); then
@@ -4979,7 +5277,7 @@ Options:
 
 Commands:
   r|reset       Reset all progress (also removes sandbox cache)
-  test          Run self-tests (~196 assertions, no game state touched)
+  test          Run self-tests (no game state touched)
   v|version     Print version
   h|help        Show this help
 
@@ -5002,7 +5300,7 @@ Data files (under \$XDG_DATA_HOME/cmdchamp):
 
 Tips:
   - Press Tab during a question to see the relevant manpage.
-  - 'M' opens the inline manpage; use ↑/↓ to scroll history.
+  - ↑/↓ (or k/j in vi normal mode) recall input history.
   - Vi mode (Options menu): Esc → normal, i/a → insert, h/l/w/b move,
     dw/cw delete/change word.
   - Beat the boss of each level to unlock the next. Boss runs without
