@@ -713,10 +713,10 @@ phase7_scenario_negatives() {
 
       local ans="$_qans" answers="$_qanswers" prompt="$_qprompt"
 
-      # Generate confusable mutations
+      # Generate confusable mutations. No mutations (plain grep/sed/git answers)
+      # must NOT skip the step — the generic wrong-answer loop below still runs.
       local mut_list
-      mut_list=$(_mutate "$ans") || continue
-      [[ -z "$mut_list" ]] && continue
+      mut_list=$(_mutate "$ans") || mut_list=""
 
       while IFS= read -r mut; do
         [[ -z "$mut" ]] && continue

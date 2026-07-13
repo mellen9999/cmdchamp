@@ -517,6 +517,14 @@ _sandbox_init() {
     printf '%s\n' "${Y}Warning: low disk space, sandbox disabled${N}" >&2
     SANDBOX_MODE=0; return 1
   fi
+  # Reap orphans from a signal landing mid-swap in _sandbox_reset: the rename-aside
+  # (sandbox.old.<pid>) and mktemp staging (sandbox.XXXXXX) dirs are never reused.
+  local _orph
+  for _orph in "$SANDBOX_DIR".old.* "$SANDBOX_DIR".[a-zA-Z0-9][a-zA-Z0-9][a-zA-Z0-9][a-zA-Z0-9][a-zA-Z0-9][a-zA-Z0-9]; do
+    [[ -d "$_orph" && "$_orph" != "$SANDBOX_PRISTINE" ]] || continue
+    chmod -R u+rwX "$_orph" 2>/dev/null
+    rm -rf "$_orph"
+  done
   # Marker lives outside the pristine tree so it can't leak into the sandbox listing.
   # Bump _SANDBOX_GEN whenever fixture content changes, so stale pristines regenerate.
   local _sbmark="$DATA/.sandbox_gen$_SANDBOX_GEN"
@@ -548,6 +556,7 @@ _sandbox_reset() {
   fi
   mv "$_sb_tmp" "$SANDBOX_DIR"
   [[ -d "$_sb_old" ]] && rm -rf "$_sb_old"
+  return 0  # the [[ -d ]] guard above must not leak exit 1 on the common no-old-dir path
 }
 
 _sandbox_exec() {
@@ -2912,7 +2921,7 @@ PY
 }
 _sc_steps_3() {
   cat <<'STEPS'
-Find files containing TODO§grep -rl TODO .§grep -rl TODO§grep -Rl TODO .§grep -Rl TODO§grep --recursive -l TODO .§grep --recursive -l TODO§grep -rli TODO .§grep -Rli TODO .§grep -rli TODO§grep -Rli TODO§grep -rwl TODO .§grep -Rwl TODO .§grep -rwl TODO§grep -Rwl TODO#output:~main\.py
+Find files containing TODO§grep -rl TODO .§grep -rl TODO§grep -Rl TODO .§grep -Rl TODO§grep --recursive -l TODO .§grep --recursive -l TODO§grep -rli TODO .§grep -Rli TODO .§grep -rli TODO§grep -Rli TODO§grep -rwl TODO .§grep -Rwl TODO .§grep -rwl TODO§grep -Rwl TODO#output:~^(\./)?(main\.py|backup\.sh)[[:space:]]+(\./)?(main\.py|backup\.sh)$
 Count total TODO/FIXME/HACK markers§grep -rE 'TODO|FIXME|HACK' . | wc -l§grep -r 'TODO\|FIXME\|HACK' . | wc -l§grep -RE 'TODO|FIXME|HACK' . | wc -l§grep -rE 'TODO|FIXME|HACK' . | wc --lines§grep -RE 'TODO|FIXME|HACK' . | wc --lines§grep -rE 'TODO|FIXME|HACK' | wc -l§grep -rE 'TODO|FIXME|HACK' | wc --lines§grep -r 'TODO\|FIXME\|HACK' . | wc --lines§grep -RE 'TODO|FIXME|HACK' | wc -l§grep -RE 'TODO|FIXME|HACK' | wc --lines§grep -r 'TODO\|FIXME\|HACK' | wc -l§grep -r 'TODO\|FIXME\|HACK' | wc --lines#output:4
 Show markers with line numbers§grep -rnE 'TODO|FIXME|HACK' .§grep -rn 'TODO\|FIXME\|HACK' .§grep -RnE 'TODO|FIXME|HACK' .§grep -Rn 'TODO\|FIXME\|HACK' .§grep -rnE 'TODO|FIXME|HACK'§grep -RnE 'TODO|FIXME|HACK'§grep -rn 'TODO\|FIXME\|HACK'§grep -Rn 'TODO\|FIXME\|HACK'#output:~TODO
 Find the file with FIXME§grep -rl FIXME .§grep -rl FIXME§grep -Rl FIXME .§grep -Rl FIXME§grep --recursive -l FIXME .§grep --recursive -l FIXME§grep -rFl FIXME .§grep -RFl FIXME .§grep -rFl FIXME§grep -RFl FIXME§grep -rwl FIXME .§grep -Rwl FIXME .§grep -rwl FIXME§grep -Rwl FIXME§grep -rli FIXME .§grep -Rli FIXME .§grep -rli FIXME§grep -Rli FIXME#output:~helpers\.py
@@ -3048,11 +3057,16 @@ STEPS
 # --- Scenario 9: Git Rescue ---
 _sc_setup_9() {
   local d=$1
-  command -v git &>/dev/null || return 0
-  ( cd "$d" || return
+  command -v git &>/dev/null || return 1
+  # Hermetic git: host config (gpgsign policies, hooksPath, templates) must not
+  # touch the seeded history — a failed commit here would silently break every step.
+  ( cd "$d" || exit 1
+    export HOME=$d GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_SYSTEM=/dev/null GIT_CONFIG_NOSYSTEM=1
     git init -q -b main 2>/dev/null || git init -q
     git config user.email scenario@cmdchamp
     git config user.name scenario
+    git config commit.gpgsign false
+    git config core.hooksPath /dev/null
     printf 'feature_a=on\nfeature_b=on\nfeature_c=off\n' > features.conf
     printf 'v1.0\n' > VERSION
     git add -A && git commit -q -m "Initial release"
@@ -3060,6 +3074,7 @@ _sc_setup_9() {
     git add -A && git commit -q -m "BAD: disable all features"
     printf '# Changelog\n- v1.0 initial\n' > CHANGELOG.md
     git add -A && git commit -q -m "Add changelog"
+    [[ "$(git rev-list --count HEAD 2>/dev/null)" == 3 ]]
   ) 2>/dev/null
 }
 _sc_steps_9() {
@@ -4206,8 +4221,11 @@ run() {
     fi
     printf '%s' "$_SN"
     if ((lv<MAX_LEVEL)); then
+      # Advance + persist session BEFORE the blocking prompt: ctrl-c here must not
+      # desync profile (boss beaten) from session.json (still pre-boss level/qi)
+      LVL=$((lv+1)); QI=0; save; _sflush_if_dirty
       printf "${D}Press Enter for Level %d...${N}\n" "$((lv+1))"; read -r
-      LVL=$((lv+1)); QI=0; save; _sflush_if_dirty; _NEXT_LV=$LVL _NEXT_BOSS=0; return 0
+      _NEXT_LV=$LVL _NEXT_BOSS=0; return 0
     else
       _victory
       _sflush_if_dirty; return 1
@@ -4311,7 +4329,7 @@ challenge() {
       ((_QUIT)) && break
     fi
     if ! ((_ok)); then
-      _sw; printf '\n%s  %s %s\n' "${R}${B}✗${N}" "${D}expected:${N}" "${Y}${ans}${N}"; _pause; break
+      _sw; _pause; break
     fi
   done
 
@@ -4388,6 +4406,7 @@ _sel() {
 
 
 _sc_sel() {
+  local _SEL_CUR=0  # shadow the main menu's cursor — its index must not preselect a scenario
   local -a it=()
   for ((i=1;i<=SC_TOTAL;i++)); do
     local req=${SC_UNLOCK[$i]:-$MAX_LEVEL}
@@ -4437,7 +4456,8 @@ _main_menu() {
     fi
     it+=("$((_n++)) New Game"); act+=(new)
     local _any=0; for ((i=1;i<=SC_TOTAL;i++)); do ((BOSS_BEATEN>=${SC_UNLOCK[$i]:-$MAX_LEVEL})) && _any=1; done
-    if ((_any)); then it+=("$((_n++)) Scenarios"); act+=(sc)
+    if ((_any && SANDBOX_MODE)); then it+=("$((_n++)) Scenarios"); act+=(sc)
+    elif ((_any)); then it+=($'\x01'"$((_n++)) Scenarios (needs sandbox)"); act+=(x)
     else it+=($'\x01'"$((_n++)) Scenarios"); act+=(x); fi
     if ((BOSS_BEATEN>=MAX_LEVEL)); then
       it+=("$((_n++)) Challenge"); act+=(challenge)
@@ -4462,7 +4482,7 @@ _main_menu() {
     _QUIT=0
     case "${act[$REPLY]}" in
       cont) _run_loop;;
-      new) if [[ -n "$PLAYER_NAME" ]] && ((LVL>1||QI>0)); then
+      new) if [[ -n "$PLAYER_NAME" ]] && { ((LVL>1||QI>0||BOSS_BEATEN>0||PLACED_THROUGH>0)) || [[ -s "$DATA/scores" ]]; }; then
           printf '\n'; read -rp "  ${R}Reset all progress? [y/N]${N} " yn
           [[ "$yn" =~ ^[Yy] ]] || continue
         fi
@@ -4528,9 +4548,12 @@ scenario() {
   _session_init
   _mode_init "sc${sc_id}"
 
-  # Fresh sandbox + apply broken state
-  _sandbox_reset
-  "_sc_setup_${sc_id}" "$SANDBOX_DIR"
+  # Fresh sandbox + apply broken state — abort loudly on failure rather than
+  # letting text-match fallback fake a completable scenario over broken state
+  if ! _sandbox_reset || ! "_sc_setup_${sc_id}" "$SANDBOX_DIR"; then
+    printf '%s\n' "${R}scenario setup failed${N} ${D}— check required tools (e.g. git) are installed${N}"
+    return 1
+  fi
 
   # Load steps
   local -a steps=()
@@ -5201,9 +5224,13 @@ place() {
   if ((placed == 0)); then
     printf '%s\n' "Starting from ${U}Level 1${N}"
   elif ((placed >= MAX_LEVEL)); then
-    printf '%s\n' "${G}${B}Perfect!${N} All levels cleared — post-ROOT modes unlocked"
+    printf '%s\n' "${G}${B}Perfect!${N} All levels cleared — scenarios + post-ROOT modes unlocked"
   else
     printf '%s\n' "Placed at ${U}Level $((placed + 1))${N}"
+    local _si
+    for ((_si=1; _si<=SC_TOTAL; _si++)); do
+      ((placed >= SC_UNLOCK[_si])) && printf '%s\n' "${G}★ Scenario unlocked: ${SC_NAMES[$_si]}${N}"
+    done
   fi
   printf '%s' "$_SN"
   _sflush_if_dirty
