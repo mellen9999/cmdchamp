@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# cmdchamp — CLI trainer (single file, no deps beyond bash 4.3+ / bwrap)
+# cmdchamp — CLI trainer (single file, no deps beyond bash 4.4+ / bwrap)
 #
 # FILE MAP (search for ═══ SECTION ═══ markers):
 #   INIT .............. bash check, XDG, colors, constants
@@ -26,7 +26,7 @@
 #   CLI ENTRYPOINT .... arg parsing, dispatch
 # ═══ INIT ═══
 set -uo pipefail
-[[ ${BASH_VERSINFO[0]:-0} -lt 4 || (${BASH_VERSINFO[0]} -eq 4 && ${BASH_VERSINFO[1]:-0} -lt 3) ]] && { echo "Requires bash 4.3+"; exit 1; }
+[[ ${BASH_VERSINFO[0]:-0} -lt 4 || (${BASH_VERSINFO[0]} -eq 4 && ${BASH_VERSINFO[1]:-0} -lt 4) ]] && { echo "Requires bash 4.4+"; exit 1; }  # 4.4: empty-array expansion under set -u (boss-retry path expands empty SEEN_PROMPTS)
 _tty() { [[ -t 0 ]] || { echo "Error: requires interactive terminal" >&2; exit 1; }; }
 command -v awk &>/dev/null || { echo "Error: awk not found" >&2; exit 1; }
 
@@ -62,7 +62,7 @@ _strip_ansi() {
   REPLY="$out"
 }
 
-VERSION="1.2.8"
+VERSION="1.2.9"
 SANDBOX_TIMEOUT=5      # Seconds before sandbox command times out
 BOSS_THRESHOLD=4       # Correct answers needed to beat boss (out of BOSS_TOTAL)
 BOSS_TOTAL=5           # Number of questions in boss round
@@ -100,6 +100,7 @@ _load_profile() {
         PROFILE_VER) _file_ver="$val";;
       esac
     done < "$DATA/profile"
+    [[ "$_file_ver" =~ ^[0-9]+$ ]] || _file_ver=0  # corrupt version -> reset-with-backup path
     if ((_file_ver >= 2 && _file_ver < _PROFILE_VER)); then
       # Graceful migration: re-save in current format. Defaults already loaded
       # for any new fields the old profile didn't set.
@@ -131,8 +132,9 @@ _load_profile() {
 
 _save_profile() {
   printf 'PLAYER_NAME=%s\nBOSS_BEATEN=%d\nBEST_CHALLENGE=%d\nDISKS_FOUND=%s\nSC_DONE=%s\nLAST_DECAY=%d\nOPT_VI=%d\nOPT_SOUND=%d\nOPT_ALTS=%d\nPLACED_THROUGH=%d\nPROFILE_VER=%d\n' \
-    "$PLAYER_NAME" "$BOSS_BEATEN" "$BEST_CHALLENGE" "$DISKS_FOUND" "$SC_DONE" "$LAST_DECAY" "$OPT_VI" "$OPT_SOUND" "$OPT_ALTS" "$PLACED_THROUGH" "$_PROFILE_VER" > "$DATA/profile.tmp"
-  mv "$DATA/profile.tmp" "$DATA/profile"
+    "$PLAYER_NAME" "$BOSS_BEATEN" "$BEST_CHALLENGE" "$DISKS_FOUND" "$SC_DONE" "$LAST_DECAY" "$OPT_VI" "$OPT_SOUND" "$OPT_ALTS" "$PLACED_THROUGH" "$_PROFILE_VER" > "$DATA/profile.tmp" \
+    && mv "$DATA/profile.tmp" "$DATA/profile" \
+    || rm -f "$DATA/profile.tmp"  # never let a partial write replace a good profile
 }
 
 _first_run() {
@@ -999,7 +1001,7 @@ declare -A MANPAGE=(
   [gcore]=$'dump core file of running process\n  \e[36m-o\e[0m \e[33mPFX\e[0m    output filename prefix\n  \e[2mgcore -o dump 1234    gcore $(pidof firefox)\e[0m'
   [hostname]=$'show or set system hostname\n  \e[2mhostname    sudo hostname newname\e[0m'
   [hashid]=$'identify hash type by format\n  \e[36m-m\e[0m        show hashcat mode number\n  \e[2mhashid hash.txt    hashid -m hash.txt    hashid \'$1$abc$def\'\e[0m'
-  [getfattr]=$'list extended file attributes\n  \e[36m-d\e[0m        dump all (default)       \e[36m-m\e[0m \e[33mPAT\e[0m    name pattern (- for any)\n  \e[2mgetfattr -d file    getfattr -d -m \'.*\' file\e[0m'
+  [getfattr]=$'list extended file attributes\n  \e[36m-d\e[0m        dump values\e[36m-m\e[0m \e[33mPAT\e[0m    name pattern (- for any)\n  \e[2mgetfattr -d file    getfattr -d -m \'.*\' file\e[0m'
   [chattr]=$'set/clear file attributes (ext fs)\n  \e[32m+i\e[0m        immutable (cannot edit)\n  \e[2msudo chattr +i file    sudo chattr -i file    lsattr file\e[0m'
   [conntrack]=$'kernel connection tracking\n  \e[36m-L\e[0m        list connections\n  \e[2mconntrack -L    sudo conntrack -L -o timestamp\e[0m'
   [enum4linux-ng]=$'modern SMB/NetBIOS enumerator\n  \e[36m-A\e[0m        full enumeration\n  \e[2menum4linux-ng -A 10.0.0.1\e[0m'
@@ -1375,7 +1377,7 @@ gen_level3() {
   num=$((RANDOM % 100 + 1))
   questions+=("Write '${word}' to ${W}${txt}${C}, overwriting it|echo ${word} > ${txt}|echo '${word}' > ${txt}|echo \"${word}\" > ${txt}|printf '%s\n' ${word} > ${txt}|printf '%s\n' '${word}' > ${txt}|printf '%s\n' \"${word}\" > ${txt}|#state:contains:${txt}:${word},lines:${txt}:1")
   questions+=("Append '${word2}' to the end of ${W}${log}${C}|echo ${word2} >> ${log}|echo '${word2}' >> ${log}|echo \"${word2}\" >> ${log}|printf '%s\n' ${word2} >> ${log}|printf '%s\n' '${word2}' >> ${log}|printf '%s\n' \"${word2}\" >> ${log}|#state:contains:${log}:${word2},contains:${log}:[")
-  questions+=("Save ls output to ${W}${outfile}${C}, overwriting it|ls > ${outfile}|ls -1 > ${outfile}|#state:exists:${outfile}")
+  questions+=("Save ls output to ${W}${outfile}${C}, overwriting it|ls > ${outfile}|ls -1 > ${outfile}|#state:contains:${outfile}:server.log")
   questions+=("Append a timestamp to ${W}${log}${C}|date >> ${log}")
   questions+=("Save whoami output to ${W}${outfile}${C}, overwriting it|whoami > ${outfile}|id -un > ${outfile}")
   questions+=("Append hostname to ${W}${log}${C}|hostname >> ${log}|uname -n >> ${log}")
@@ -1790,7 +1792,7 @@ gen_level13() {
 gen_level14() {
   local -n questions=${1:-CURRENT_QUESTIONS}; questions=(); eval "local $_QV"; _ctx
   _fphrase git vim tmux htop curl wget rsync jq; local pkg=$REPLY
-  questions+=("Ping ${ip} 5 times|ping -c 5 ${ip}|ping -c5 ${ip}|ping --count 5 ${ip}|ping --count=5 ${ip}")
+  questions+=("Ping ${ip} 5 times|ping -c 5 ${ip}|ping -c5 ${ip}")
   questions+=("Ping ${ip} continuously|ping ${ip}")
   questions+=("Trace the network path to ${ip}|traceroute ${ip}|tracepath ${ip}|mtr ${ip}|mtr -r ${ip}|mtr --report ${ip}")
   questions+=("DNS lookup for ${host}|dig ${host}|nslookup ${host}|host ${host}|drill ${host}")
@@ -2449,7 +2451,7 @@ gen_level24() {
   questions+=("Copy SSH key to ${W}${user}@${host}${C}|ssh-copy-id ${user}@${host}|ssh-copy-id -i ~/.ssh/id_ed25519.pub ${user}@${host}|ssh-copy-id -i ~/.ssh/id_rsa.pub ${user}@${host}")
   questions+=("SSH ${W}${user}@${host}${C} local forward: access remote ${port} via local 8080|ssh -L 8080:localhost:${port} ${user}@${host}|ssh -NL 8080:localhost:${port} ${user}@${host}|ssh -L8080:localhost:${port} ${user}@${host}|ssh -NL8080:localhost:${port} ${user}@${host}|ssh -L 8080:127.0.0.1:${port} ${user}@${host}|ssh -NL 8080:127.0.0.1:${port} ${user}@${host}|ssh -L 8080:localhost:${port} -N ${user}@${host}#chal-skip")
   questions+=("SSH ${W}${user}@${host}${C} remote forward: expose local ${port} on remote ${port}|ssh -R ${port}:localhost:${port} ${user}@${host}|ssh -NR ${port}:localhost:${port} ${user}@${host}|ssh -R${port}:localhost:${port} ${user}@${host}|ssh -NR${port}:localhost:${port} ${user}@${host}")
-  questions+=("SSH ${W}${user}@${host}${C} dynamic SOCKS proxy on port 1080|ssh -D 1080 ${user}@${host}|ssh -ND 1080 ${user}@${host}|ssh -DN 1080 ${user}@${host}|ssh -D1080 ${user}@${host}|ssh -ND1080 ${user}@${host}")
+  questions+=("SSH ${W}${user}@${host}${C} dynamic SOCKS proxy on port 1080|ssh -D 1080 ${user}@${host}|ssh -ND 1080 ${user}@${host}|ssh -D1080 ${user}@${host}|ssh -ND1080 ${user}@${host}")
   questions+=("SSH as ${user} through jump host 'jump' to 'target'|ssh -J ${user}@jump ${user}@target|ssh -o ProxyJump=${user}@jump ${user}@target")
   questions+=("SSH tunnel to ${W}${user}@${host}${C} in background, local 8080 -> remote ${port}|ssh -fN -L 8080:localhost:${port} ${user}@${host}|ssh -fNL 8080:localhost:${port} ${user}@${host}|ssh -f -N -L 8080:localhost:${port} ${user}@${host}")
   questions+=("SSH ${W}${user}@${host}${C} and run 'ls -la'|ssh ${user}@${host} 'ls -la'|ssh ${user}@${host} \"ls -la\"|ssh ${user}@${host} ls -la")
@@ -2479,7 +2481,7 @@ gen_level24() {
   questions+=("Show all IP addresses (modern, replaces ifconfig)|ip a|ip address|ip address show|ip a show|ip addr|ip addr show")
   questions+=("Show routing table (modern, replaces 'route')|ip r|ip route|ip route show|ip r show")
   questions+=("Show interface link state up/down|ip l|ip link|ip link show|ip l show")
-  questions+=("Ping ${W}${ip}${C} with count ${W}${n}${C}|ping -c ${n} ${ip}|ping -c${n} ${ip}|ping --count ${n} ${ip}|ping --count=${n} ${ip}")
+  questions+=("Ping ${W}${ip}${C} with count ${W}${n}${C}|ping -c ${n} ${ip}|ping -c${n} ${ip}")
   questions+=("Trace route to ${W}${ip}${C} with ICMP probes|traceroute -I ${ip}|sudo traceroute -I ${ip}|tracepath ${ip}|tracepath -n ${ip}")
   questions+=("MTR report-mode probe to ${W}${ip}${C} (${n} cycles)|mtr -r -c ${n} ${ip}|mtr --report --report-cycles ${n} ${ip}|mtr -rwc ${n} ${ip}|sudo mtr -r -c ${n} ${ip}")
   questions+=("SSH with agent forwarding to ${W}${user}@${host}${C}|ssh -A ${user}@${host}|ssh -A ${host}")
@@ -3379,15 +3381,16 @@ _can_sandbox() {
   return 0
 }
 _sandbox_validate() {
-  local inp=$1 output _sb_err _sb_rc _req_fail=0
+  local inp=$1 output _sb_rc _req_fail=0
   [[ -n "$_qrequire" && "$inp" != *"$_qrequire"* ]] && _req_fail=1
   _SANDBOX_REQUIRE_FAIL=0
   if ! _can_sandbox "$inp"; then
     ((_req_fail)) && _SANDBOX_REQUIRE_FAIL=1
     return 1
   fi
+  # Redirect sandbox stderr to a file so it stays off-screen and out of the graded
+  # output; the contents aren't inspected, only kept from leaking into the UI.
   output=$(_sandbox_exec "$inp" 5 2>"$SANDBOX_DIR/.stderr"); _sb_rc=$?
-  local _sb_err; _sb_err=$(<"$SANDBOX_DIR/.stderr") 2>/dev/null || _sb_err=""
   _is_destructive "$inp" && _SANDBOX_DESTRUCTIVE=1
   # Reject command-not-found (127) and cannot-execute (126)
   ((_sb_rc == 127 || _sb_rc == 126)) && { ((_req_fail)) && _SANDBOX_REQUIRE_FAIL=1; return 1; }
@@ -3590,7 +3593,11 @@ _sflush() {
   # the open fails — fall back to a lockless write rather than crashing under set -u
   # and losing the session's scores.
   local _fd=""
-  exec {_fd}>"$DATA/scores.lock" 2>/dev/null && flock -x "$_fd"
+  # NB: brace-group scopes the 2>/dev/null to just this open — a bare
+  # `exec ... 2>/dev/null` would redirect the whole game's stderr permanently
+  # (exec with no command makes redirections stick), silently eating every
+  # later `read -p` prompt so the game looks frozen at the next _pause.
+  { exec {_fd}>"$DATA/scores.lock"; } 2>/dev/null && flock -x "$_fd"
   # Merge with current disk state to survive concurrent instances: for shared
   # keys, keep whichever has the later timestamp.
   local -A _disk_sc=()
@@ -3727,7 +3734,11 @@ _csi_drain() { local _x; while IFS= read -rsn1 -t 0.01 _x && [[ ! "$_x" =~ ^[A-Z
 _paste_start() {
   local _p=""; read -rsn1 -t 0.05 _p || _p=""
   [[ "$_p" != "0" ]] && { [[ "$_p" != "~" ]] && _csi_drain; return 1; }  # \e[2~ (Insert) or other CSI
-  read -rsn1 -t 0.05 _p; read -rsn1 -t 0.05 _p  # consume the second 0 and the ~
+  # Now at \e[20. A real paste continues 0~ (=> \e[200~); F9 is \e[20~ — must reject,
+  # else the blind old read treated F9 as a paste start and swallowed typing.
+  read -rsn1 -t 0.05 _p || _p=""
+  [[ "$_p" != "0" ]] && { [[ "$_p" != "~" ]] && _csi_drain; return 1; }  # \e[20~ (F9) or other CSI
+  read -rsn1 -t 0.05 _p  # consume the trailing ~
   return 0
 }
 # Read a paste body (past \e[200~) up to \e[201~. Flatten newlines/tabs to spaces —
@@ -3873,12 +3884,16 @@ _vi_normal() {
     X) _vi_reg=""; for ((_i=0;_i<_n&&cursor>0;_i++)); do _vi_reg="${input:cursor-1:1}$_vi_reg"; input="${input:0:cursor-1}${input:cursor}"; ((cursor--)); done; draw;;
     D) _vi_reg="${input:cursor}"; input="${input:0:cursor}"; ((cursor>0)) && ((cursor--)); draw;;
     C) _vi_reg="${input:cursor}"; input="${input:0:cursor}"; mode="insert"; draw;;
-    r) _vi_read; [[ -n "$c2" && "$c2" != $'\x1b' ]] && { input="${input:0:cursor}${c2}${input:cursor+1}"; draw; };;
+    r) _vi_read; [[ -n "$c2" && "$c2" != $'\x1b' && ${#input} -gt 0 ]] && { input="${input:0:cursor}${c2}${input:cursor+1}"; draw; };;  # vim: r no-ops on empty line
     '~') for ((_i=0;_i<_n&&cursor<${#input};_i++)); do local _ch="${input:cursor:1}"
       if [[ "$_ch" =~ [a-z] ]]; then _ch="${_ch^^}"; elif [[ "$_ch" =~ [A-Z] ]]; then _ch="${_ch,,}"; fi
       input="${input:0:cursor}${_ch}${input:cursor+1}"; ((cursor<${#input}-1)) && ((++cursor)); done; draw;;
-    p) for ((_i=0;_i<_n;_i++)); do ((${#input} >= 512)) && break; [[ -n "$_vi_reg" ]] && { input="${input:0:cursor+1}${_vi_reg}${input:cursor+1}"; ((cursor+=${#_vi_reg})); }; done; _clamp; draw;;
-    P) for ((_i=0;_i<_n;_i++)); do ((${#input} >= 512)) && break; [[ -n "$_vi_reg" ]] && { input="${input:0:cursor}${_vi_reg}${input:cursor}"; ((cursor+=${#_vi_reg}-1)); }; done; _clamp; draw;;
+    p) if [[ -n "$_vi_reg" ]]; then local _pp="" _pj; for ((_pj=0;_pj<_n;_pj++)); do _pp+="$_vi_reg"; done  # vim: count repeats the register, not interleaved
+      local _pav=$((512 - ${#input})); ((_pav<0)) && _pav=0; ((${#_pp}>_pav)) && _pp="${_pp:0:_pav}"
+      [[ -n "$_pp" ]] && { input="${input:0:cursor+1}${_pp}${input:cursor+1}"; ((cursor+=${#_pp})); }; fi; _clamp; draw;;
+    P) if [[ -n "$_vi_reg" ]]; then local _pp="" _pj; for ((_pj=0;_pj<_n;_pj++)); do _pp+="$_vi_reg"; done
+      local _pav=$((512 - ${#input})); ((_pav<0)) && _pav=0; ((${#_pp}>_pav)) && _pp="${_pp:0:_pav}"
+      [[ -n "$_pp" ]] && { input="${input:0:cursor}${_pp}${input:cursor}"; ((cursor+=${#_pp}-1)); }; fi; _clamp; draw;;
     y) _vi_opcount "$_n"; _yankn "$c2" "$REPLY"; draw;;
     d) _vi_opcount "$_n"; local _dn=$REPLY; for ((_i=0;_i<_dn;_i++)); do _del "$c2"; done; draw;;
     c) _vi_opcount "$_n"; local _cn=$REPLY
@@ -3921,7 +3936,7 @@ _rl_tick() { printf '\e[?25l\e7'; _REDRAW_HDR; printf '\e8\e[?25h'; }
 # $1: allow manpages  $2: allow history  $3: timeout (0=none, returns 1 on timeout)
 # Caller defines _REDRAW_HDR(). Uses dynamic scoping for ans, HIST, etc.
 _read_line() {
-  local _rl_hints=${1:-1} _rl_hist=${2:-1} _rl_timeout=${3:-0} _rl_deadline=0
+  local _rl_hints=${1:-1} _rl_hist=${2:-1} _rl_timeout=${3:-0} _rl_deadline=0 _rc=0
   input="" cursor=0 mode="insert" _rep="" _man_open=0
   UNDO_STACK=()
   _vi_reg="" _vi_lastf=""
@@ -3936,13 +3951,15 @@ _read_line() {
       local _now; printf -v _now '%(%s)T' -1; local _rem=$((_rl_deadline - _now))
       ((_rem <= 0)) && { printf '\e[?25h'; input=""; return 1; }
       if ((_now != _rl_last_sec)); then _rl_last_sec=$_now; _rl_tick; fi
-      IFS= read -rsn1 -t 1 c || {
+      IFS= read -rsn1 -t 1 c || { _rc=$?
+        # rc>128 = the 1s read timed out (normal countdown tick); rc<=128 = real EOF/error.
+        ((_rc <= 128)) && { printf '\e[?25h'; _QUIT=1; input=""; return 2; }  # stdin closed: quit, don't spin to deadline
         printf -v _now '%(%s)T' -1; _rem=$((_rl_deadline - _now))
         ((_rem <= 0)) && { printf '\e[?25h'; input=""; return 1; }
         _rl_last_sec=$_now; _rl_tick; continue
       }
     else
-      IFS= read -rsn1 c || break
+      IFS= read -rsn1 c || { printf '\e[?25h'; _QUIT=1; input=""; return 2; }  # EOF (e.g. stdin closed): quit, don't spin
     fi
     if [[ "$c" == $'\t' ]]; then
       if ((_rl_hints)); then
@@ -4023,6 +4040,7 @@ _mode_init() {
   if ((_now - LAST_DECAY >= _DECAY_INTERVAL)); then
     for _dk in "${!_sc[@]}"; do
       local _dv="${_sc[$_dk]}" _dt="${_sc[$_dk]%%|*}"
+      [[ "$_dt" =~ ^[0-9]+$ ]] || continue  # corrupt tier field: skip, don't crash under set -u
       local _deps="${_dv##*|}"  # last field: epoch or mode_tag
       [[ "$_deps" =~ ^[0-9]{10,}$ ]] || continue  # no timestamp = no decay
       local _age=$((_now - _deps))
@@ -4037,7 +4055,7 @@ _mode_init() {
     ((_decayed)) && _sflush
     LAST_DECAY=$_now; _save_profile
   fi
-  _sget() { _hash "$1"; local _v="${_sc[$REPLY]:-0}"; REPLY="${_v%%|*}"; }
+  _sget() { _hash "$1"; local _v="${_sc[$REPLY]:-0}"; REPLY="${_v%%|*}"; [[ "$REPLY" =~ ^[0-9]+$ ]] || REPLY=0; }  # corrupt tier -> 0, never crash arithmetic callers
   HIST=() HIST_IDX=0 HIST_SAVE=""
   _interactive=1
   ((SANDBOX_MODE)) && _sandbox_init
@@ -4490,7 +4508,7 @@ _main_menu() {
         # Reset position too: load() keeps the current globals when session.json is gone,
         # so an abandoned placement (Ctrl+D) would drop the fresh profile into the old level.
         LVL=1 QI=0
-        PLAYER_NAME="" BOSS_BEATEN=0; _load_profile; load
+        PLAYER_NAME="" BOSS_BEATEN=0 BEST_CHALLENGE=0 DISKS_FOUND="" SC_DONE="" PLACED_THROUGH=0 LAST_DECAY=0; _load_profile; load
         _first_run; _run_loop;;
       sc) _sc_sel;;
       challenge) challenge;;
@@ -4511,12 +4529,15 @@ _perms_restore() { while IFS=' ' read -r _pmode _ppath; do [[ -n "$_ppath" ]] &&
 _sc_snap_save() {
   find "$SANDBOX_DIR" -printf '%m %p\n' > "$_perms_file" 2>/dev/null
   chmod -R u+rwX "$SANDBOX_DIR" 2>/dev/null
-  local _t; _t=$(mktemp -d "${_sc_snap}.XXXXXX") || return
+  # On any failure, drop the stale snapshot (so _sc_snap_restore falls back to
+  # pristine) AND restore perms — bailing after the chmod above would leave the
+  # sandbox permission-boosted and silently break permission-state grading.
+  local _t; _t=$(mktemp -d "${_sc_snap}.XXXXXX") || { rm -rf "$_sc_snap"; _perms_restore "$_perms_file"; return; }
   # Copy INTO existing temp dir (no rm-then-cp TOCTOU window).
   if cp -a "$SANDBOX_DIR/." "$_t/"; then
     rm -rf "$_sc_snap"; mv "$_t" "$_sc_snap"
   else
-    rm -rf "$_t"
+    rm -rf "$_t" "$_sc_snap"
   fi
   _perms_restore "$_perms_file"
 }
@@ -5314,7 +5335,7 @@ Environment:
   CMD_PROMPT    Override prompt char (default: $ or # for root)
 
 Requirements:
-  - bash 4.3+
+  - bash 4.4+
   - awk
   - bwrap (bubblewrap) — for sandboxed answer execution; without it,
     answers are checked by text match only.
