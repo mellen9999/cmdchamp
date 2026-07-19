@@ -62,7 +62,7 @@ _strip_ansi() {
   REPLY="$out"
 }
 
-VERSION="1.2.9"
+VERSION="1.2.10"
 SANDBOX_TIMEOUT=5      # Seconds before sandbox command times out
 BOSS_THRESHOLD=4       # Correct answers needed to beat boss (out of BOSS_TOTAL)
 BOSS_TOTAL=5           # Number of questions in boss round
@@ -101,6 +101,20 @@ _load_profile() {
       esac
     done < "$DATA/profile"
     [[ "$_file_ver" =~ ^[0-9]+$ ]] || _file_ver=0  # corrupt version -> reset-with-backup path
+    # Validate/clamp BEFORE any migration re-save below: an out-of-range but numeric
+    # field (e.g. BOSS_BEATEN=999 from a manual edit) would otherwise be written under
+    # the new PROFILE_VER and frozen on disk forever, since migration never re-fires.
+    [[ "$BOSS_BEATEN" =~ ^[0-9]+$ ]] || BOSS_BEATEN=0
+    ((BOSS_BEATEN > MAX_LEVEL)) && BOSS_BEATEN=$MAX_LEVEL
+    [[ "$BEST_CHALLENGE" =~ ^[0-9]+$ ]] || BEST_CHALLENGE=0
+    [[ "$LAST_DECAY" =~ ^[0-9]+$ ]] || LAST_DECAY=0
+    [[ "$OPT_VI" =~ ^[01]$ ]] || OPT_VI=1
+    [[ "$OPT_SOUND" =~ ^[01]$ ]] || OPT_SOUND=1
+    [[ "$OPT_ALTS" =~ ^[01]$ ]] || OPT_ALTS=1
+    [[ "$PLACED_THROUGH" =~ ^[0-9]+$ ]] || PLACED_THROUGH=0
+    ((PLACED_THROUGH > MAX_LEVEL)) && PLACED_THROUGH=$MAX_LEVEL
+    local _now_l; printf -v _now_l '%(%s)T' -1
+    ((LAST_DECAY > _now_l)) && LAST_DECAY=0  # clock-skew guard: future timestamps would block decay forever
     if ((_file_ver >= 2 && _file_ver < _PROFILE_VER)); then
       # Graceful migration: re-save in current format. Defaults already loaded
       # for any new fields the old profile didn't set.
@@ -116,17 +130,6 @@ _load_profile() {
       # overwrite the good backup with the already-emptied scores on next launch.
       _save_profile
     fi
-    [[ "$BOSS_BEATEN" =~ ^[0-9]+$ ]] || BOSS_BEATEN=0
-    ((BOSS_BEATEN > MAX_LEVEL)) && BOSS_BEATEN=$MAX_LEVEL
-    [[ "$BEST_CHALLENGE" =~ ^[0-9]+$ ]] || BEST_CHALLENGE=0
-    [[ "$LAST_DECAY" =~ ^[0-9]+$ ]] || LAST_DECAY=0
-    [[ "$OPT_VI" =~ ^[01]$ ]] || OPT_VI=1
-    [[ "$OPT_SOUND" =~ ^[01]$ ]] || OPT_SOUND=1
-    [[ "$OPT_ALTS" =~ ^[01]$ ]] || OPT_ALTS=1
-    [[ "$PLACED_THROUGH" =~ ^[0-9]+$ ]] || PLACED_THROUGH=0
-    ((PLACED_THROUGH > MAX_LEVEL)) && PLACED_THROUGH=$MAX_LEVEL
-    local _now_l; printf -v _now_l '%(%s)T' -1
-    ((LAST_DECAY > _now_l)) && LAST_DECAY=0  # clock-skew guard: future timestamps would block decay forever
   fi
 }
 
@@ -240,7 +243,7 @@ _victory() {
   for k in "${!sc[@]}"; do
     ((++total))
     local _tier="${sc[$k]%%|*}"
-    [[ "$_tier" != "0" && "$_tier" != "1" ]] && ((++mastered))
+    [[ "$_tier" =~ ^[0-9]+$ ]] && ((10#$_tier >= 2)) && ((++mastered))  # mastered = valid tier >=2; corrupt tiers aren't mastery
   done
   local s
   cat <<'EOF'
@@ -527,6 +530,18 @@ _sandbox_init() {
     chmod -R u+rwX "$_orph" 2>/dev/null
     rm -rf "$_orph"
   done
+  # Also reap scenario-snapshot mktemp staging (sandbox.snap.<6 rand>) orphaned by a
+  # signal in the window between its mktemp and rename — same transient-staging class as
+  # above, one dot deeper so the globs above miss it. The fixed-name live checkpoint
+  # (sandbox.snap/.perms) is deliberately NOT reaped: _mode_init runs on every level and
+  # challenge entry, and a concurrent instance may hold sandbox.snap live mid-scenario —
+  # deleting it would break its rollback. The next scenario's _sc_snap_save overwrites a
+  # stale fixed-name snap, and the exit trap clears it, so it self-heals without this.
+  for _orph in "$SANDBOX_DIR".snap.[a-zA-Z0-9][a-zA-Z0-9][a-zA-Z0-9][a-zA-Z0-9][a-zA-Z0-9][a-zA-Z0-9]; do
+    [[ -d "$_orph" ]] || continue
+    chmod -R u+rwX "$_orph" 2>/dev/null
+    rm -rf "$_orph"
+  done
   # Marker lives outside the pristine tree so it can't leak into the sandbox listing.
   # Bump _SANDBOX_GEN whenever fixture content changes, so stale pristines regenerate.
   local _sbmark="$DATA/.sandbox_gen$_SANDBOX_GEN"
@@ -702,8 +717,11 @@ _sandbox_check_state() {
 _stty_saved=$(stty -g 2>/dev/null) || _stty_saved=""
 _interactive=0 _CLEANING=0
 _cleanup() {
-  ((_CLEANING)) && return; _CLEANING=1
+  # Flush BEFORE the re-entrancy guard: menu-quit paths pre-set _CLEANING=1 then exit,
+  # which would otherwise skip this last-line-of-defense flush. Idempotent (clears
+  # _sdirty), so a re-entrant cleanup can't double-write.
   _sflush_if_dirty 2>/dev/null
+  ((_CLEANING)) && return; _CLEANING=1
   [[ -n "$_stty_saved" ]] && stty "$_stty_saved" 2>/dev/null
   ((_interactive)) || return 0
   rm -rf "$DATA/sandbox.snap" "$DATA/sandbox.snap.perms" 2>/dev/null
@@ -2317,8 +2335,8 @@ gen_level22() {
 gen_level23() {
   local -n questions=${1:-CURRENT_QUESTIONS}; questions=(); eval "local $_QV"; _ctx
   questions+=("Initialize new git repo|git init|git init .")
-  questions+=("Clone repo from URL§~^git clone (https?://|git@)\\S+")
-  questions+=("Clone repo to specific dir§~^git clone (https?://|git@)\\S+ \\S+")
+  questions+=("Clone repo from URL§~^git clone (https?://|git@)\\S+$")
+  questions+=("Clone repo to specific dir§~^git clone (https?://|git@)\\S+ \\S+$")
   questions+=("Check repo status|git status|git status -s|git status --short")
   questions+=("Show current branch|git branch --show-current|git rev-parse --abbrev-ref HEAD")
   questions+=("Stage file '${txt}' for commit|git add ${txt}|git stage ${txt}")
@@ -2337,7 +2355,7 @@ gen_level23() {
   questions+=("Force delete local branch '${branch}'|git branch -D ${branch}|git branch --delete --force ${branch}")
   questions+=("Delete remote branch '${branch}'|git push origin --delete ${branch}|git push origin :${branch}|git push origin -d ${branch}|git push --delete origin ${branch}")
   questions+=("Rename current branch to '${branch}'|git branch -m ${branch}|git branch --move ${branch}")
-  questions+=("Add remote origin|~^git remote add origin .+")
+  questions+=("Add remote origin|~^git remote add origin .+$")
   questions+=("List remotes|git remote -v|git remote --verbose|git remote")
   questions+=("Fetch from remote|git fetch origin|git fetch|git fetch --all")
   questions+=("Pull branch '${branch}' from remote|git pull origin ${branch}")
@@ -2370,23 +2388,23 @@ gen_level23() {
   questions+=("Rebase current onto main|git rebase main")
   questions+=("Continue rebase after conflict|git rebase --continue")
   questions+=("Abort rebase|git rebase --abort")
-  questions+=("Cherry-pick a commit|~^git cherry-pick [0-9a-f]+")
+  questions+=("Cherry-pick a commit|~^git cherry-pick [0-9a-f]+$")
   questions+=("Squash last ${n} commits|git rebase -i HEAD~${n}|git rebase --interactive HEAD~${n}")
   questions+=("List tags|git tag|git tag -l|git tag --list")
-  questions+=("Create lightweight tag|~^git tag v[0-9]")
-  questions+=("Create annotated tag|~^git tag -a v[0-9].* -m ")
+  questions+=("Create lightweight tag|~^git tag v[0-9][^ ]*$")
+  questions+=("Create annotated tag|~^git tag -a v[0-9].* -m .+$")
   questions+=("Push tags to remote|git push --tags|git push origin --tags")
-  questions+=("Delete a tag§~^git tag (-d|--delete) v[0-9]")
-  questions+=("Set user name globally|~^git config --global user\\.name .+")
-  questions+=("Set user email globally|~^git config --global user\\.email .+@.+")
+  questions+=("Delete a tag§~^git tag (-d|--delete) v[0-9][^ ]*$")
+  questions+=("Set user name globally|~^git config --global user\\.name .+$")
+  questions+=("Set user email globally|~^git config --global user\\.email .+@.+$")
   questions+=("List all config|git config --list|git config -l")
   questions+=("Set default branch name|git config --global init.defaultBranch main")
-  questions+=("Find commit that introduced bug|~^git bisect start")
+  questions+=("Find commit that introduced bug|~^git bisect start$")
   questions+=("Clean untracked files (dry run)|git clean -n|git clean --dry-run")
   questions+=("Clean untracked files|git clean -f|git clean --force")
   questions+=("Clean untracked files and dirs|git clean -fd|git clean -df|git clean -f -d|git clean --force -d|git clean -d --force")
   questions+=("Show reflog|git reflog|git reflog show")
-  questions+=("Recover deleted branch from reflog§~^git (checkout -b|switch -c|switch --create|branch) \\S+ ([0-9a-f]+|HEAD@\\{[0-9]+\\})#boss-skip")
+  questions+=("Recover deleted branch from reflog§~^git (checkout -b|switch -c|switch --create|branch) \\S+ ([0-9a-f]+|HEAD@\\{[0-9]+\\})$#boss-skip")
   questions+=("Mark current commit as bad (bisect)|git bisect bad|git bisect bad HEAD")
   questions+=("Mark current commit as good (bisect)|git bisect good|git bisect good HEAD")
   questions+=("End bisect session|git bisect reset")
@@ -2394,7 +2412,7 @@ gen_level23() {
   questions+=("Add a worktree at ../wt for branch '${branch}'|git worktree add ../wt ${branch}")
   questions+=("Show commits by ${user} on current branch|git log --author=${user}|git log --author ${user}|git log --author='${user}'")
   questions+=("Search commit messages for '${term}'|git log --grep=${term}|git log --grep ${term}|git log --grep='${term}'")
-  questions+=("Create signed annotated tag|~^git tag -s v[0-9].* -m #boss-skip")
+  questions+=("Create signed annotated tag|~^git tag -s v[0-9].* -m .+$#boss-skip")
   questions+=("Force-push '${branch}' safely with --force-with-lease + --force-if-includes (git 2.30+)|git push --force-with-lease --force-if-includes origin ${branch}|git push --force-if-includes --force-with-lease origin ${branch}")
   questions+=("Rebase onto main or '${branch}' or HEAD~${n}, updating dependent refs (git 2.38+, stacked-branch workflow)|git rebase --update-refs main|git rebase --update-refs ${branch}|git rebase -i --update-refs HEAD~${n}|git rebase --update-refs -i HEAD~${n}")
   questions+=("Mark commit as fixup of HEAD~${n}|git commit --fixup=HEAD~${n}|git commit --fixup HEAD~${n}")
@@ -3382,7 +3400,10 @@ _can_sandbox() {
 }
 _sandbox_validate() {
   local inp=$1 output _sb_rc _req_fail=0
-  [[ -n "$_qrequire" && "$inp" != *"$_qrequire"* ]] && _req_fail=1
+  # Require is an anti-cheat gate (input must contain the expression, not a hardcoded
+  # result); compare whitespace-insensitively so legal operator spacing like "3 + 4"
+  # for require "3+4" still satisfies it. Correctness is still gated by #output.
+  [[ -n "$_qrequire" && "${inp// /}" != *"${_qrequire// /}"* ]] && _req_fail=1
   _SANDBOX_REQUIRE_FAIL=0
   if ! _can_sandbox "$inp"; then
     ((_req_fail)) && _SANDBOX_REQUIRE_FAIL=1
@@ -3520,7 +3541,7 @@ check() {
   _trim "$1"; local inp=$REPLY; _fnorm "$inp"; local ninp=$REPLY
   _SANDBOX_REQUIRE_FAIL=0
   ((SANDBOX_MODE && !_qtext)) && _skel_ok "$inp" "$2" "$_qdelim" && _sandbox_validate "$inp" && return 0
-  [[ -n "${_qrequire:-}" && "$inp" != *"${_qrequire}"* ]] && return 1
+  [[ -n "${_qrequire:-}" && "${inp// /}" != *"${_qrequire// /}"* ]] && return 1  # whitespace-insensitive (see _sandbox_validate)
   _text_match "$inp" "$ninp" "$2" "$_qdelim"
 }
 
@@ -3611,7 +3632,16 @@ _sflush() {
   for _k in "${!_disk_sc[@]}"; do
     if [[ -n "${_sc[$_k]:-}" ]]; then
       _dt="${_disk_sc[$_k]##*|}"; _mt="${_sc[$_k]##*|}"
-      [[ "$_dt" =~ ^[0-9]+$ && "$_mt" =~ ^[0-9]+$ && $_dt -gt $_mt ]] && _sc[$_k]="${_disk_sc[$_k]}"
+      if [[ "$_dt" =~ ^[0-9]+$ && "$_mt" =~ ^[0-9]+$ ]]; then
+        if ((_dt > _mt)); then _sc[$_k]="${_disk_sc[$_k]}"
+        elif ((_dt == _mt)); then
+          # Same-second tie between two concurrent instances: strict > kept whoever
+          # flushed last, silently downgrading the other's progress. Prefer the higher
+          # tier so real advancement is never lost on a 1s-resolution collision.
+          local _dtr="${_disk_sc[$_k]%%|*}" _mtr="${_sc[$_k]%%|*}"
+          [[ "$_dtr" =~ ^[0-9]+$ && "$_mtr" =~ ^[0-9]+$ ]] && ((10#$_dtr > 10#$_mtr)) && _sc[$_k]="${_disk_sc[$_k]}"
+        fi
+      fi
     else
       _sc[$_k]="${_disk_sc[$_k]}"
     fi
@@ -3630,11 +3660,13 @@ _calc_mastery() {
     _tier="${_val%%|*}"
     if [[ "$_val" == *"|"* ]]; then _lvtag="${_val#*|}"; _lvtag="${_lvtag%%|*}"; _cm_tagged=1
     else _lvtag=""; fi
-    case "$_tier" in 0|1) ((_cm_t1++));; *) ((_cm_t2++));; esac
+    # mastered = a valid tier >=2; a corrupt/out-of-range tier must NOT read as mastery
+    # (would paint a level green/✓ off garbage) — bucket it as learning, matching _sget.
+    if [[ "$_tier" =~ ^[0-9]+$ ]] && ((10#$_tier >= 2)); then ((_cm_t2++)); else ((_cm_t1++)); fi
     ((_cm_seen++))
     [[ -n "$_lvtag" ]] && {
       lv_total[$_lvtag]=$(( ${lv_total[$_lvtag]:-0} + 1 ))
-      [[ "$_tier" != "0" && "$_tier" != "1" ]] && lv_mastered[$_lvtag]=$(( ${lv_mastered[$_lvtag]:-0} + 1 ))
+      [[ "$_tier" =~ ^[0-9]+$ ]] && ((10#$_tier >= 2)) && lv_mastered[$_lvtag]=$(( ${lv_mastered[$_lvtag]:-0} + 1 ))
     }
   done
 }
@@ -3797,7 +3829,7 @@ _vi_range() {
     cw) while ((_re<${#input})) && [[ "${input:_re:1}" != " " ]]; do ((++_re)); done;;
     e) ((_re<${#input}-1)) && ((++_re)); while ((_re<${#input}-1)) && [[ "${input:_re:1}" == " " ]]; do ((++_re)); done; while ((_re<${#input}-1)) && [[ "${input:_re+1:1}" != " " ]]; do ((++_re)); done; ((++_re));;
     b) ((_re>0)) && ((_re--)); while ((_re>0)) && [[ "${input:_re:1}" == " " ]]; do ((_re--)); done; while ((_re>0)) && [[ "${input:_re-1:1}" != " " ]]; do ((_re--)); done; _rs=$_re; _re=$cursor;;
-    f|F|t|T) _vi_read; local p
+    f|F|t|T) [[ -n "$_vi_ft" ]] && c2=$_vi_ft || { _vi_read; _vi_ft=$c2; }; local p  # target read once per operator; repeats reuse it (sticky)
       if [[ "$m" == "f" ]]; then for ((p=cursor+1;p<${#input};p++)); do [[ "${input:p:1}" == "$c2" ]] && { _re=$((p+1)); break; }; done
       elif [[ "$m" == "F" ]]; then for ((p=cursor-1;p>=0;p--)); do [[ "${input:p:1}" == "$c2" ]] && { _rs=$p; _re=$cursor; break; }; done
       elif [[ "$m" == "t" ]]; then for ((p=cursor+1;p<${#input};p++)); do [[ "${input:p:1}" == "$c2" ]] && { _re=$p; break; }; done
@@ -3825,6 +3857,7 @@ _yankn() { # $1=motion $2=count — accumulate N objects (the range is idempoten
   # repeating _yank would re-copy the same text); cursor is restored afterwards.
   local _m=$1 _c=$2 _sv=$cursor _acc=""
   case "$_m" in y) _vi_reg="$input"; return;; esac
+  _vi_ft=""  # read a find-motion target once, reuse across the counted repeats
   for ((;_c>0;_c--)); do
     _vi_range "$_m" || break
     if ((_rs<cursor)); then _acc="${input:_rs:_re-_rs}$_acc"; cursor=$_rs
@@ -3888,18 +3921,18 @@ _vi_normal() {
     '~') for ((_i=0;_i<_n&&cursor<${#input};_i++)); do local _ch="${input:cursor:1}"
       if [[ "$_ch" =~ [a-z] ]]; then _ch="${_ch^^}"; elif [[ "$_ch" =~ [A-Z] ]]; then _ch="${_ch,,}"; fi
       input="${input:0:cursor}${_ch}${input:cursor+1}"; ((cursor<${#input}-1)) && ((++cursor)); done; draw;;
-    p) if [[ -n "$_vi_reg" ]]; then local _pp="" _pj; for ((_pj=0;_pj<_n;_pj++)); do _pp+="$_vi_reg"; done  # vim: count repeats the register, not interleaved
-      local _pav=$((512 - ${#input})); ((_pav<0)) && _pav=0; ((${#_pp}>_pav)) && _pp="${_pp:0:_pav}"
-      [[ -n "$_pp" ]] && { input="${input:0:cursor+1}${_pp}${input:cursor+1}"; ((cursor+=${#_pp})); }; fi; _clamp; draw;;
-    P) if [[ -n "$_vi_reg" ]]; then local _pp="" _pj; for ((_pj=0;_pj<_n;_pj++)); do _pp+="$_vi_reg"; done
-      local _pav=$((512 - ${#input})); ((_pav<0)) && _pav=0; ((${#_pp}>_pav)) && _pp="${_pp:0:_pav}"
-      [[ -n "$_pp" ]] && { input="${input:0:cursor}${_pp}${input:cursor}"; ((cursor+=${#_pp}-1)); }; fi; _clamp; draw;;
+    p) if [[ -n "$_vi_reg" ]]; then local _ps="" _pj; for ((_pj=0;_pj<_n;_pj++)); do _ps+="$_vi_reg"; done  # vim: count repeats the register, not interleaved
+      local _pav=$((512 - ${#input})); ((_pav<0)) && _pav=0; ((${#_ps}>_pav)) && _ps="${_ps:0:_pav}"
+      [[ -n "$_ps" ]] && { input="${input:0:cursor+1}${_ps}${input:cursor+1}"; ((cursor+=${#_ps})); }; fi; _clamp; draw;;
+    P) if [[ -n "$_vi_reg" ]]; then local _ps="" _pj; for ((_pj=0;_pj<_n;_pj++)); do _ps+="$_vi_reg"; done
+      local _pav=$((512 - ${#input})); ((_pav<0)) && _pav=0; ((${#_ps}>_pav)) && _ps="${_ps:0:_pav}"
+      [[ -n "$_ps" ]] && { input="${input:0:cursor}${_ps}${input:cursor}"; ((cursor+=${#_ps}-1)); }; fi; _clamp; draw;;
     y) _vi_opcount "$_n"; _yankn "$c2" "$REPLY"; draw;;
-    d) _vi_opcount "$_n"; local _dn=$REPLY; for ((_i=0;_i<_dn;_i++)); do _del "$c2"; done; draw;;
-    c) _vi_opcount "$_n"; local _cn=$REPLY
+    d) _vi_opcount "$_n"; local _dn=$REPLY _dm=$c2; _vi_ft=""; for ((_i=0;_i<_dn;_i++)); do _del "$_dm"; done; draw;;
+    c) _vi_opcount "$_n"; local _cn=$REPLY _cm=$c2; _vi_ft=""
       # vim special-cases cw/cW to behave like ce on a non-blank (no trailing-space eat).
       # Re-decide per iteration: the cursor moves between counted changes.
-      for ((_i=0;_i<_cn;_i++)); do local _m="$c2"; [[ "$c2" == w && "${input:cursor:1}" != " " ]] && _m=cw; _del "$_m"; done; mode="insert"; draw;;
+      for ((_i=0;_i<_cn;_i++)); do local _m="$_cm"; [[ "$_cm" == w && "${input:cursor:1}" != " " ]] && _m=cw; _del "$_m"; done; mode="insert"; draw;;
     u) ((${#UNDO_STACK[@]}>0)) && { local _u="${UNDO_STACK[-1]}"; unset 'UNDO_STACK[-1]'; cursor="${_u%%:*}"; input="${_u#*:}"; draw; };;
     g) _vi_read; [[ "$c2" == "g" ]] && { cursor=0; draw; };;
     G) cursor=$((${#input}>0?${#input}-1:0)); draw;;
@@ -4740,6 +4773,11 @@ _selftest() {
   check "wrong" "pwd" && _t=0 || _t=$?; _assert "wrong answer" "$_t" "1"
   check "ls /tmp/foo" '~^ls /tmp/' && _t=0 || _t=$?; _assert "regex match" "$_t" "0"
   check "cat /etc" '~^ls /tmp/' && _t=0 || _t=$?; _assert "regex no match" "$_t" "1"
+  # Regression: anchored regexes must reject trailing appended commands (false-accept guard)
+  check "git bisect start && rm -rf /" '~^git bisect start$' && _t=0 || _t=$?; _assert "regex append rejected" "$_t" "1"
+  check "git bisect start" '~^git bisect start$' && _t=0 || _t=$?; _assert "regex anchored ok" "$_t" "0"
+  check "git tag v1 && rm -rf ~" '~^git tag v[0-9][^ ]*$' && _t=0 || _t=$?; _assert "regex tail append rejected" "$_t" "1"
+  check "git tag v1.2.3" '~^git tag v[0-9][^ ]*$' && _t=0 || _t=$?; _assert "regex versioned tail ok" "$_t" "0"
   _qdelim='§'
   check "grep foo bar" 'grep foo bar§cat bar | grep foo' && _t=0 || _t=$?; _assert "§ delim" "$_t" "0"
   check "cat f | grep x" 'cat f | grep x' && _t=0 || _t=$?; _assert "valid pipe ok" "$_t" "0"

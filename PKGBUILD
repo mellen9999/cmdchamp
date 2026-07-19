@@ -1,5 +1,5 @@
 pkgname=cmdchamp
-pkgver=1.2.9
+pkgver=1.2.10
 pkgrel=1
 pkgdesc='CLI trainer — 30 levels from ls to privilege escalation'
 arch=('any')
