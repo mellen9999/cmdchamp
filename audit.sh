@@ -9,6 +9,11 @@ set -uo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CMDCHAMP="$SCRIPT_DIR/cmdchamp"
 
+# Isolate: cmdchamp computes DATA from XDG_DATA_HOME at load, so point it at a temp
+# dir — otherwise the bootstrap eval touches the user's real ~/.local/share/cmdchamp.
+export XDG_DATA_HOME; XDG_DATA_HOME="$(mktemp -d)"
+trap 'rm -rf "$XDG_DATA_HOME"' EXIT
+
 # Extract everything before the main case statement
 # This gives us all function defs, variable pools, constants
 _bootstrap() {

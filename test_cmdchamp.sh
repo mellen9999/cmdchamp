@@ -20,7 +20,11 @@ CMDCHAMP="$SCRIPT_DIR/cmdchamp"
 # Source cmdchamp without running main
 SOURCE_FILE="$TDIR/cmdchamp_source.sh"
 {
+  # Honor a pre-exported DATA so tests stay inside $TDIR. Production computes DATA
+  # from XDG_DATA_HOME/HOME unconditionally at load; without this rewrite every test
+  # would read/write the user's real ~/.local/share/cmdchamp save.
   sed -e 's/^_tty().*/\_tty() { :; }/' \
+      -e 's|^DATA=.*|DATA="${DATA:-${XDG_DATA_HOME:-${HOME:-/tmp}/.local/share}/cmdchamp}"|' \
       -e '/^# ═══ CLI ENTRYPOINT ═══/,$d' \
       "$CMDCHAMP"
   echo 'SANDBOX_MODE=0'
