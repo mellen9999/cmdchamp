@@ -62,7 +62,7 @@ _strip_ansi() {
   REPLY="$out"
 }
 
-VERSION="1.2.12"
+VERSION="1.2.13"
 SANDBOX_TIMEOUT=5      # Seconds before sandbox command times out
 BOSS_THRESHOLD=4       # Correct answers needed to beat boss (out of BOSS_TOTAL)
 BOSS_TOTAL=5           # Number of questions in boss round
@@ -632,6 +632,10 @@ _sandbox_exec() {
   )
   [[ -e /lib ]] && bwrap_args+=(--ro-bind /lib /lib)
   [[ -e /lib64 ]] && bwrap_args+=(--ro-bind /lib64 /lib64)
+  # Debian/Ubuntu front core tools (awk→mawk, vi, pager, ...) via /etc/alternatives
+  # symlinks. Without this bind those symlinks dangle in the sandbox and the tool
+  # silently produces nothing — awk answers would fail for every Debian-family user.
+  [[ -e /etc/alternatives ]] && bwrap_args+=(--ro-bind /etc/alternatives /etc/alternatives)
 
   local _rc
   # ulimit -u caps processes inside the sandbox so a fork bomb can't pin a core
