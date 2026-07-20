@@ -128,16 +128,47 @@ _load_profile() {
       rm -f "$DATA"/*.json
       # Persist the reset NOW so a quit-before-save can't re-enter this path and
       # overwrite the good backup with the already-emptied scores on next launch.
-      _save_profile
+      # Raw write: merging would resurrect fields from the incompatible old profile.
+      _write_profile
     fi
   fi
 }
 
-_save_profile() {
+# Raw write, no merge — only for paths that must overwrite disk (version reset).
+_write_profile() {
   printf 'PLAYER_NAME=%s\nBOSS_BEATEN=%d\nBEST_CHALLENGE=%d\nDISKS_FOUND=%s\nSC_DONE=%s\nLAST_DECAY=%d\nOPT_VI=%d\nOPT_SOUND=%d\nOPT_ALTS=%d\nPLACED_THROUGH=%d\nPROFILE_VER=%d\n' \
     "$PLAYER_NAME" "$BOSS_BEATEN" "$BEST_CHALLENGE" "$DISKS_FOUND" "$SC_DONE" "$LAST_DECAY" "$OPT_VI" "$OPT_SOUND" "$OPT_ALTS" "$PLACED_THROUGH" "$_PROFILE_VER" > "$DATA/profile.tmp" \
     && mv "$DATA/profile.tmp" "$DATA/profile" \
     || rm -f "$DATA/profile.tmp"  # never let a partial write replace a good profile
+}
+# CSV union helper: add each item of $2 missing from the CSV in the var named $1.
+_csv_merge() {
+  local -n _cv=$1; local _it
+  for _it in ${2//,/ }; do
+    [[ ",$_cv," == *",$_it,"* ]] || _cv="${_cv:+$_cv,}$_it"
+  done
+}
+_save_profile() {
+  # Lock + monotonic merge (mirrors the scores pattern): a second instance's save
+  # was last-writer-wins, silently reverting boss/placement progress the other
+  # instance had already written. Progress fields take max(disk, memory), CSV
+  # collections union; options/name stay last-writer.
+  local _fd=""
+  { exec {_fd}>"$DATA/profile.lock"; } 2>/dev/null && flock -x "$_fd"
+  if [[ -f "$DATA/profile" ]]; then
+    local key val
+    while IFS='=' read -r key val; do
+      case "$key" in
+        BOSS_BEATEN)    [[ "$val" =~ ^[0-9]+$ ]] && ((val <= MAX_LEVEL && val > BOSS_BEATEN)) && BOSS_BEATEN=$val;;
+        PLACED_THROUGH) [[ "$val" =~ ^[0-9]+$ ]] && ((val <= MAX_LEVEL && val > PLACED_THROUGH)) && PLACED_THROUGH=$val;;
+        BEST_CHALLENGE) [[ "$val" =~ ^[0-9]+$ ]] && ((val > BEST_CHALLENGE)) && BEST_CHALLENGE=$val;;
+        DISKS_FOUND)    [[ -n "$val" ]] && _csv_merge DISKS_FOUND "$val";;
+        SC_DONE)        [[ -n "$val" ]] && _csv_merge SC_DONE "$val";;
+      esac
+    done < "$DATA/profile"
+  fi
+  _write_profile
+  [[ -n "$_fd" ]] && exec {_fd}>&-
 }
 
 _first_run() {
@@ -238,7 +269,7 @@ SC_FLAVOR=(""
 
 _victory() {
   printf '%s\e[2J\e[H' "$_SY"
-  local -A sc; [[ -f "$DATA/scores" ]] && while IFS='|' read -r k v; do [[ "$k" == "#"* ]] && continue; sc[$k]=$v; done < "$DATA/scores"
+  local -A sc; [[ -f "$DATA/scores" ]] && while IFS='|' read -r k v; do [[ "$k" == "#"* || -z "$k" ]] && continue; sc[$k]=$v; done < "$DATA/scores"
   local total=0 mastered=0
   for k in "${!sc[@]}"; do
     ((++total))
@@ -715,17 +746,17 @@ _sandbox_check_state() {
 }
 # ═══ SESSION ═══
 _stty_saved=$(stty -g 2>/dev/null) || _stty_saved=""
-_interactive=0 _CLEANING=0
+_interactive=0 _CLEANING=0 _RL_W=80
 _cleanup() {
-  # Flush BEFORE the re-entrancy guard: menu-quit paths pre-set _CLEANING=1 then exit,
-  # which would otherwise skip this last-line-of-defense flush. Idempotent (clears
-  # _sdirty), so a re-entrant cleanup can't double-write.
+  # Flush + terminal restore BEFORE the re-entrancy guard: menu-quit paths pre-set
+  # _CLEANING=1 then exit (to skip the session summary), which would otherwise also
+  # skip these. All idempotent, so a re-entrant cleanup can't double-write or garble.
   _sflush_if_dirty 2>/dev/null
-  ((_CLEANING)) && return; _CLEANING=1
   [[ -n "$_stty_saved" ]] && stty "$_stty_saved" 2>/dev/null
+  ((_interactive)) && printf '\e[?25h\e[?2004l'  # restore cursor + disable bracketed paste
+  ((_CLEANING)) && return; _CLEANING=1
   ((_interactive)) || return 0
   rm -rf "$DATA/sandbox.snap" "$DATA/sandbox.snap.perms" 2>/dev/null
-  printf '\e[?25h\e[?2004l'  # restore cursor + disable bracketed paste (interactive exit only)
   if ((_S_ANSWERED > 0)); then
     local _ts; printf -v _ts '%(%s)T' -1; local el=$((_ts - _S_START))
     printf '\n%s  %s/%s (%d%%)  streak %s  %dm%ds\n' \
@@ -2176,7 +2207,8 @@ gen_level20() {
   questions+=("Disable debug mode|set +x|set +o xtrace")
   questions+=("Interactive menu with select: options ${term} ${term2} quit|select opt in ${term} ${term2} quit; do [[ \"\$opt\" == quit ]] && break; echo \"\$opt\"; done")
   questions+=("Parse -v flag and -f arg with getopts§while getopts \"vf:\" opt; do case \$opt in v) verbose=1;; f) file=\$OPTARG;; esac; done§while getopts ':vf:' opt; do case \$opt in v) verbose=1;; f) file=\$OPTARG;; esac; done")
-  questions+=("Branch on arithmetic test: if ${n} > 0 echo positive|(( ${n} > 0 )) && echo positive|(( ${n} > 0 )) && echo positive || echo nonpositive")
+  # § delimiter: the third alternate contains '||' which a |-split would fragment
+  questions+=("Branch on arithmetic test: if ${n} > 0 echo positive§(( ${n} > 0 )) && echo positive§(( ${n} > 0 )) && echo positive || echo nonpositive")
   questions+=("Default value if var unset|echo \"\${var:-default}\"|: \"\${var:=default}\" && echo \"\$var\"")
   questions+=("Loop over script positional args (for x; do — implicit \$@)|for arg; do echo \"\$arg\"; done|for arg in \"\$@\"; do echo \"\$arg\"; done")
   questions+=("Loop ${W}1..${n}${C} via brace expansion (no seq subshell)|for i in {1..${n}}; do echo \$i; done|for i in {1..${n}}; do echo \"\$i\"; done")
@@ -2194,8 +2226,9 @@ gen_level21() {
   questions+=("Make all .sh files executable|find . -name '*.sh' -exec chmod +x {} \\;|find . -name '*.sh' -exec chmod +x {} +|fd -e sh -x chmod +x {}|fd --extension sh -x chmod +x {}|fd -e sh -X chmod +x|fd --extension sh -X chmod +x|find . -type f -name '*.sh' -exec chmod +x {} \\;|find . -type f -name '*.sh' -exec chmod +x {} +")
   questions+=("Search '${term}' in each .${ext} file|find . -name '*.${ext}' -exec grep ${term} {} \\;|find . -name '*.${ext}' -exec grep ${term} {} +|fd -e ${ext} -x rg ${term} {}|fd --extension ${ext} -x rg ${term} {}|fd -e ${ext} -x grep ${term} {}|fd --extension ${ext} -x grep ${term} {}|grep -r --include='*.${ext}' ${term} .|grep -R --include='*.${ext}' ${term} .|rg ${term} -g '*.${ext}'")
   questions+=("Show size of files larger than ${size}|find . -size +${size} -exec du -h {} \\;|find . -size +${size} -exec du -h {} +|fd -S +${size} -x du -h {}|fd --size +${size} -x du -h {}")
-  questions+=("Copy all .${ext} files to ${dir}/|find . -name '*.${ext}' -exec cp {} ${dir}/ \\;|find . -name '*.${ext}' -exec cp {} ${dir}/ +|fd -e ${ext} -x cp {} ${dir}/|fd --extension ${ext} -x cp {} ${dir}/|fd -e ${ext} -X cp -t ${dir}/|fd --extension ${ext} -X cp -t ${dir}/")
-  questions+=("Move all .${ext2} files to ${dir}/|find . -name '*.${ext2}' -exec mv {} ${dir}/ \\;|find . -name '*.${ext2}' -exec mv {} ${dir}/ +|fd -e ${ext2} -x mv {} ${dir}/|fd --extension ${ext2} -x mv {} ${dir}/|fd -e ${ext2} -X mv -t ${dir}/|fd --extension ${ext2} -X mv -t ${dir}/")
+  # NB: '-exec cp {} dir/ +' is invalid find syntax ({} must be last before +) — the + batch form needs cp -t
+  questions+=("Copy all .${ext} files to ${dir}/|find . -name '*.${ext}' -exec cp {} ${dir}/ \\;|find . -name '*.${ext}' -exec cp -t ${dir}/ {} +|fd -e ${ext} -x cp {} ${dir}/|fd --extension ${ext} -x cp {} ${dir}/|fd -e ${ext} -X cp -t ${dir}/|fd --extension ${ext} -X cp -t ${dir}/")
+  questions+=("Move all .${ext2} files to ${dir}/|find . -name '*.${ext2}' -exec mv {} ${dir}/ \\;|find . -name '*.${ext2}' -exec mv -t ${dir}/ {} +|fd -e ${ext2} -x mv {} ${dir}/|fd --extension ${ext2} -x mv {} ${dir}/|fd -e ${ext2} -X mv -t ${dir}/|fd --extension ${ext2} -X mv -t ${dir}/")
   questions+=("Change owner of all files in ${dir}/ to ${user}|find ${dir}/ -exec chown ${user}:${user} {} \\;|chown -R ${user}:${user} ${dir}/|chown -R ${user} ${dir}/|chown -R ${user}: ${dir}/|chown --recursive ${user}:${user} ${dir}/|chown --recursive ${user} ${dir}/|chown --recursive ${user}: ${dir}/|find ${dir}/ -exec chown ${user}:${user} {} +|find ${dir}/ -exec chown ${user} {} \\;|find ${dir}/ -exec chown ${user} {} +|find ${dir}/ -exec chown ${user}: {} \\;|find ${dir}/ -exec chown ${user}: {} +|sudo find ${dir}/ -exec chown ${user}:${user} {} \\;|sudo find ${dir}/ -exec chown ${user}:${user} {} +|sudo find ${dir}/ -exec chown ${user} {} \\;|sudo find ${dir}/ -exec chown ${user} {} +|sudo find ${dir}/ -exec chown ${user}: {} \\;|sudo find ${dir}/ -exec chown ${user}: {} +|sudo chown -R ${user}:${user} ${dir}/|sudo chown -R ${user} ${dir}/|sudo chown -R ${user}: ${dir}/|sudo chown --recursive ${user}:${user} ${dir}/|sudo chown --recursive ${user} ${dir}/|sudo chown --recursive ${user}: ${dir}/#boss-skip#chal-skip")
   questions+=("Gzip all .${ext} files|find . -name '*.${ext}' -exec gzip {} \\;|find . -name '*.${ext}' -exec gzip {} +|fd -e ${ext} -x gzip {}|fd --extension ${ext} -x gzip {}|fd -e ${ext} -X gzip|fd --extension ${ext} -X gzip")
   questions+=("List all .${ext} files in one ls call|find . -name '*.${ext}' -exec ls -l {} +|fd -e ${ext} -X ls -l|fd --extension ${ext} -X ls -l")
@@ -3302,9 +3335,16 @@ _fnorm() {
   # Re-pair arg-taking flags with their value so sort keeps -d/-f pairs intact
   # (cut -d: -f1 ≡ cut -f1 -d:). Short flags become -dX, long flags become --opt=X.
   local _atf_short=" -d -f -F -t -e -k -c -m -K "
-  # grep's -c/-F take no argument; gluing them to the next word would make normalization
-  # order-dependent (grep -cw ≠ grep -w -c). Keep -e/-f/-m paired (they do take args).
-  case "${parts[0]}" in grep|egrep|fgrep|zgrep|rg) _atf_short=" -d -f -t -e -k -m -K " ;; esac
+  # Per-command: gluing a no-arg flag to the next word makes normalization
+  # order-dependent (grep -cw ≠ grep -w -c; wc -c file ≠ wc file -c) — keep only
+  # the flags that actually take an argument for that command.
+  case "${parts[0]}" in
+    grep|egrep|fgrep|zgrep|rg) _atf_short=" -d -f -t -e -k -m -K " ;;  # -c/-F take no arg
+    wc) _atf_short=" " ;;          # -c/-m/-l/-w all take no arg
+    sort) _atf_short=" -t -k " ;;  # -d/-f/-c/-m/-e take no arg
+    uniq) _atf_short=" -f " ;;     # -c/-d take no arg
+    head|tail) _atf_short=" -c " ;;  # tail -f/-F take no arg; -c (bytes) does
+  esac
   local _atf_long=" --delimiter --field-separator --fields --field --key --max-count --color --sort --reference --filter --hash-type --rules-file --since --until --regexp --file --include --exclude --exclude-dir --after-context --before-context --context --max-depth --maxdepth --mindepth "
   local _rp=("${parts[0]}") _ri=1 _np=${#parts[@]} _ct _nt _is_atf
   while ((_ri < _np)); do
@@ -3622,7 +3662,7 @@ _sflush() {
   # Merge with current disk state to survive concurrent instances: for shared
   # keys, keep whichever has the later timestamp.
   local -A _disk_sc=()
-  local _dk _dv _dt _mt _k
+  local _dk _dv _dt _mt _k _nowf; printf -v _nowf '%(%s)T' -1
   if [[ -f "$DATA/scores" ]]; then
     while IFS='|' read -r _dk _dv; do
       [[ "$_dk" == "#"* || -z "$_dk" ]] && continue
@@ -3633,7 +3673,9 @@ _sflush() {
     if [[ -n "${_sc[$_k]:-}" ]]; then
       _dt="${_disk_sc[$_k]##*|}"; _mt="${_sc[$_k]##*|}"
       if [[ "$_dt" =~ ^[0-9]+$ && "$_mt" =~ ^[0-9]+$ ]]; then
-        if ((_dt > _mt)); then _sc[$_k]="${_disk_sc[$_k]}"
+        # A future disk ts (clock skew) would win every merge forever, silently
+        # shadowing real progress — treat it as invalid and prefer memory.
+        if ((_dt > _mt && _dt <= _nowf)); then _sc[$_k]="${_disk_sc[$_k]}"
         elif ((_dt == _mt)); then
           # Same-second tie between two concurrent instances: strict > kept whoever
           # flushed last, silently downgrading the other's progress. Prefer the higher
@@ -3643,7 +3685,9 @@ _sflush() {
         fi
       fi
     else
-      _sc[$_k]="${_disk_sc[$_k]}"
+      # Skip keys this instance pruned (stale tier-0) — re-adding them from disk
+      # would make the prune a no-op and the scores file grow forever.
+      [[ -n "${_sc_del[$_k]:-}" ]] || _sc[$_k]="${_disk_sc[$_k]}"
     fi
   done
   # Only replace the live file if the whole payload wrote — a failed printf (ENOSPC)
@@ -3672,7 +3716,7 @@ _calc_mastery() {
 }
 
 stats() {
-  local -A sc; [[ -f "$DATA/scores" ]] && while IFS='|' read -r k v; do [[ "$k" == "#"* ]] && continue; sc[$k]=$v; done < "$DATA/scores"
+  local -A sc; [[ -f "$DATA/scores" ]] && while IFS='|' read -r k v; do [[ "$k" == "#"* || -z "$k" ]] && continue; sc[$k]=$v; done < "$DATA/scores"
   printf '%s\n' "${W}${B}${PLAYER_NAME:-anon}${N}"
   printf '%s\n\n' "${D}Stats show unique prompts seen${N}"
   local -A lv_total lv_mastered; _calc_mastery sc
@@ -3748,9 +3792,13 @@ bar() { local f e p=$((qi<TOT?qi:TOT)); printf -v f '%*s' "$p" ''; printf -v e '
 _draw_buf() {
   _DB=$'\e[?25l\r\e[K'
   ((VI_MODE)) && [[ $mode != insert ]] && _DB+="${R}${PROMPT_CHAR}${N}" || _DB+="${W}${PROMPT_CHAR}${N}"
-  _DB+="$input"
-  local _pre="${input:0:cursor}" disp_len=${#input} disp_cur; disp_cur=${#_pre}
-  ((disp_cur < disp_len)) && printf -v _DB '%s\e[%dD' "$_DB" "$((disp_len - disp_cur))"
+  # Window the input to the terminal width: a wrapped line breaks the \r\e[K clear
+  # and the \e[nD cursor math (CUB never crosses rows), garbling narrow terminals.
+  local _w=$((_RL_W - ${#PROMPT_CHAR} - 1)); ((_w < 8)) && _w=8
+  local _off=0; ((cursor > _w - 1)) && _off=$((cursor - _w + 1))
+  local _vis="${input:_off:_w}" disp_cur=$((cursor - _off))
+  _DB+="$_vis"
+  ((disp_cur < ${#_vis})) && printf -v _DB '%s\e[%dD' "$_DB" "$((${#_vis} - disp_cur))"
   _DB+=$'\e[?25h'
 }
 draw() { _draw_buf; printf '%s' "$_DB"; }
@@ -3797,13 +3845,23 @@ _vi_read() {
   # In timed modes (boss/challenge) honor the deadline so a vi operator key
   # (r, f, d, c, y, g) awaiting its next char can't freeze the countdown forever.
   if ((${_rl_deadline:-0})); then
-    local _now
-    while ! IFS= read -rsn1 -t 1 c2; do
+    local _now _vrc
+    while true; do
+      IFS= read -rsn1 -t 1 c2 && break
+      _vrc=$?
+      # rc<=128 = EOF/EIO, not the 1s tick — bail or this loop hot-spins to the deadline
+      ((_vrc <= 128)) && { c2=""; _QUIT=1; return; }
       printf -v _now '%(%s)T' -1
       ((_now >= _rl_deadline)) && { c2=""; return; }
     done
   else
-    IFS= read -rsn1 c2
+    IFS= read -rsn1 c2 || { c2=""; _QUIT=1; return; }
+  fi
+  # Arrow/function key while awaiting the target char: consume the CSI tail, else
+  # its bytes ("[C" etc.) leak into the command stream as normal-mode commands.
+  if [[ "$c2" == $'\x1b' ]]; then
+    local _vk; read -rsn1 -t 0.01 _vk || _vk=""
+    [[ "$_vk" == "[" || "$_vk" == "O" ]] && { _csi_drain; c2=""; }
   fi
 }
 _vi_hist() {
@@ -3816,7 +3874,9 @@ _vi_hist() {
     ((HIST_IDX<${#HIST[@]})) || return 1
     ((++HIST_IDX)); ((HIST_IDX==${#HIST[@]})) && input="$HIST_SAVE" || input="${HIST[$HIST_IDX]}"
   fi
-  cursor=${#input}; _clamp
+  # Clamp is a vi-normal invariant (cursor<=len-1); insert-mode arrow recall must
+  # leave the cursor AFTER the last char or the next typed char lands one short.
+  cursor=${#input}; [[ "$mode" == insert ]] || _clamp
 }
 # Sets _rs/_re (start/end exclusive) for a vi motion. Returns 1 if no range.
 _vi_range() {
@@ -3974,6 +4034,7 @@ _read_line() {
   UNDO_STACK=()
   _vi_reg="" _vi_lastf=""
   local _rl_last_sec=0
+  _COLS; _RL_W=$REPLY  # once per prompt, not per keystroke (tput fallback forks)
   if ((_rl_timeout > 0)); then printf -v _rl_deadline '%(%s)T' -1; ((_rl_deadline += _rl_timeout)); _rl_last_sec=$_rl_deadline; fi
   ((_rl_hist)) && { HIST_IDX=${#HIST[@]}; HIST_SAVE=""; }
   read -t 0.01 -rsn 1000 ||:
@@ -4058,6 +4119,7 @@ _read_line() {
 
 # ═══ SCORING ENGINE ═══
 _sdirty=0
+declare -A _sc_del=()  # keys pruned this session; _sflush must not resurrect them from disk
 _sflush_if_dirty() { ((_sdirty)) && { _sflush; _sdirty=0; }; }
 _MODE_TAG=""
 _sset() { _hash "$1"; local _ts; printf -v _ts '%(%s)T' -1; _sc[$REPLY]="$2|$_MODE_TAG|$_ts"; (( ++_sdirty >= 10 )) && { _sflush; _sdirty=0; }; }
@@ -4065,10 +4127,13 @@ _mode_init() {
   _MODE_TAG=$1
   declare -gA _sc; _sc=()
   [[ -f "$DATA/scores" ]] && while IFS='|' read -r k v; do
-    [[ "$k" == "#"* ]] && continue
+    # -z guard: a blank line makes _sc['']=... a fatal bad-subscript error that
+    # aborts _mode_init mid-load (rest of scores dropped, _sget never defined)
+    [[ "$k" == "#"* || -z "$k" ]] && continue
     _sc[$k]=$v
   done < "$DATA/scores"
-  # Decay stale mastery (once per 24h): tier≥2 + >30d → tier-1, tier==1 + >30d → 0
+  # Decay stale mastery (once per 24h): tier≥2 + >30d → tier-1, tier==1 + >30d → 0,
+  # tier==0 + >30d → pruned (a missing key already reads as tier 0 via _sget)
   local _now _decayed=0; printf -v _now '%(%s)T' -1
   if ((_now - LAST_DECAY >= _DECAY_INTERVAL)); then
     for _dk in "${!_sc[@]}"; do
@@ -4076,11 +4141,17 @@ _mode_init() {
       [[ "$_dt" =~ ^[0-9]+$ ]] || continue  # corrupt tier field: skip, don't crash under set -u
       local _deps="${_dv##*|}"  # last field: epoch or mode_tag
       [[ "$_deps" =~ ^[0-9]{10,}$ ]] || continue  # no timestamp = no decay
+      if ((_deps > _now)); then  # clock-skew guard (mirrors LAST_DECAY): a future ts
+        # never decays and outranks every later real write in the _sflush merge
+        local _mid="${_dv#*|}"; _sc[$_dk]="$_dt|${_mid%|*}|$_now"; _decayed=1; continue
+      fi
       local _age=$((_now - _deps))
       if ((_dt >= 2 && _age > _DECAY_T2)); then
         local _mid="${_dv#*|}"; _sc[$_dk]="$((_dt - 1))|${_mid%|*}|$_now"; _decayed=1
       elif ((_dt == 1 && _age > _DECAY_T1)); then
         local _mid="${_dv#*|}"; _sc[$_dk]="0|${_mid%|*}|$_now"; _decayed=1
+      elif ((_dt == 0 && _age > _DECAY_T1)); then
+        unset '_sc[$_dk]'; _sc_del[$_dk]=1; _decayed=1  # cap file growth: stale forgotten entries go
       fi
     done
     # Flush decayed scores to disk BEFORE persisting LAST_DECAY, so a crash

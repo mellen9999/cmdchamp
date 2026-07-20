@@ -119,7 +119,23 @@ echo "=== check() § delimiter ==="
 _qdelim='§'
 assert_pass "pipe in answer"  "cat file | grep err"  "cat file | grep err§grep err file"
 assert_pass "alt with pipe"   "grep err file"        "cat file | grep err§grep err file"
+assert_fail "|| alt not fragmented" "echo nonpositive" "(( 5 > 0 )) && echo positive§(( 5 > 0 )) && echo positive || echo nonpositive"
+assert_pass "|| alt whole"    "(( 5 > 0 )) && echo positive || echo nonpositive" "(( 5 > 0 )) && echo positive§(( 5 > 0 )) && echo positive || echo nonpositive"
 _qdelim='|'
+
+echo "=== check() no-arg flag re-pairing ==="
+
+# wc -c / sort -f / tail -f take no argument: reordering must match, gluing must not
+assert_pass "wc flag after operand"   "wc notes.txt -c"    "wc -c notes.txt"
+assert_fail "wc glued flag invalid"   "wc -cnotes.txt"     "wc -c notes.txt"
+assert_pass "sort flag after operand" "sort notes.txt -f"  "sort -f notes.txt"
+assert_fail "sort glued flag invalid" "sort -fnotes.txt"   "sort -f notes.txt"
+assert_pass "tail -f after operand"   "tail server.log -f &" "tail -f server.log &"
+assert_fail "tail glued flag invalid" "tail -fserver.log &"  "tail -f server.log &"
+# arg-taking flags still pair across orderings
+assert_pass "cut -d -f still pairs"   "cut -d : -f 1 notes.txt" "cut -d: -f1 notes.txt"
+assert_pass "sort -k still pairs"     "sort -k 2 notes.txt"     "sort -k2 notes.txt"
+assert_pass "tail -c still pairs"     "tail -c10 server.log"    "tail -c 10 server.log"
 
 echo ""
 printf '=== Results: %d/%d passed' "$PASS" "$TOTAL"
