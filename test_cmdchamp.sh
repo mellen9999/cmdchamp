@@ -420,14 +420,16 @@ lc=$(wc -l < "$GEN_DIR/data.csv")
 # ─────────────────────────────────────────────────────────────────────────────
 section "Question Generation (all 30 levels)"
 
+_qgen_bad=0
 for lv in {1..30}; do
   output=$(_qgen "$lv")
   qcount=$(printf '%s\n' "$output" | grep -c '.')
   if ((qcount < 3)); then
     fail "gen_level${lv}" "only $qcount questions (need >=3)"
+    ((++_qgen_bad))
   fi
 done
-ok "all 30 levels generate >=3 questions"
+((_qgen_bad == 0)) && ok "all 30 levels generate >=3 questions"
 
 # Format: every line must have | or §
 bad_format=()
@@ -1005,8 +1007,8 @@ unseen=$(echo "$r" | grep 'unseen=' | sed 's/.*unseen=\([0-9]*\).*/\1/')
 r=$(_run "BOSS_BEATEN=5; ((4 >= BOSS_THRESHOLD)) && { ((BOSS_BEATEN < 6)) && BOSS_BEATEN=6; }; echo \$BOSS_BEATEN")
 [[ "$r" == "6" ]] && ok "BOSS_BEATEN increments 5->6 on win" || fail "boss increment" "$r"
 
-# BOSS_BEATEN doesn't decrement on loss
-r=$(_run "BOSS_BEATEN=5; ((2 >= BOSS_THRESHOLD)) || true; echo \$BOSS_BEATEN")
+# BOSS_BEATEN doesn't decrement on loss (2/5 must stay below BOSS_THRESHOLD)
+r=$(_run "BOSS_BEATEN=5; ((2 >= BOSS_THRESHOLD)) && { ((BOSS_BEATEN < 6)) && BOSS_BEATEN=6; }; echo \$BOSS_BEATEN")
 [[ "$r" == "5" ]] && ok "BOSS_BEATEN stable on loss" || fail "boss loss stable" "$r"
 
 # BOSS_BEATEN clamps to MAX_LEVEL on the real load path (no unbounded growth)
@@ -1133,25 +1135,6 @@ r=$(bash -c "
   _post_root_check 2>&1 || true
 " 2>/dev/null)
 echo "$r" | grep -q 'Locked' && ok "gauntlet locked at BB=29" || fail "gauntlet lock" "$r"
-
-# Difficulty escalation: every 5 correct answers, difficulty++
-r=$(_run '
-  difficulty=1
-  for i in {1..15}; do
-    ((i % 5 == 0 && difficulty <= 30)) && ((++difficulty))
-  done
-  echo $difficulty
-')
-[[ "$r" == "4" ]] && ok "difficulty escalates 1->4 after 15 correct" || fail "gauntlet difficulty" "$r"
-
-# 3 lives tracking
-r=$(_run '
-  lives=3 streak=0
-  # 2 wrongs
-  ((lives--)); ((lives--))
-  echo "lives=$lives"
-')
-echo "$r" | grep -q 'lives=1' && ok "gauntlet lives decrement" || fail "gauntlet lives" "$r"
 
 # Best gauntlet (challenge) tracking — BEST_GAUNTLET is the legacy alias for
 # BEST_CHALLENGE; _load_profile accepts both for backward compat

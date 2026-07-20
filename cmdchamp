@@ -716,8 +716,8 @@ _sandbox_check_state() {
       contains:*:*|!contains:*:*)
         local _neg=0; [[ "$check" == !* ]] && { _neg=1; check="${check:1}"; }
         local rest="${check#contains:}"; local file="${rest%%:*}" pattern="${rest#*:}"
-        if ((_neg)); then grep -qF "$pattern" -- "$SANDBOX_DIR/$file" 2>/dev/null && return 1
-        else grep -qF "$pattern" -- "$SANDBOX_DIR/$file" 2>/dev/null || return 1; fi
+        if ((_neg)); then grep -qFe "$pattern" -- "$SANDBOX_DIR/$file" 2>/dev/null && return 1
+        else grep -qFe "$pattern" -- "$SANDBOX_DIR/$file" 2>/dev/null || return 1; fi  # -e: a pattern starting with - must not parse as grep options
         ;;
       lines:*:*)
         local rest="${check#lines:}"; local file="${rest%%:*}" count="${rest#*:}"
@@ -1062,52 +1062,23 @@ _mp_show() {
 }
 
 declare -A EXP=(
-  [pwd]="print working directory (where you are)"
-  [echo]="print text to stdout" [cat]="concatenate and display file contents" [ls]="list directory contents"
-  [cd]="change directory" [cp]="copy files" [mv]="move/rename files" [rm]="delete files permanently"
-  [mkdir]="create directory" [rmdir]="remove empty directory" [touch]="create file/update timestamp"
-  [which]="find command location" [type]="describe command" [alias]="create shortcut" [unalias]="remove alias"
-  [watch]="repeat command on interval" [ssh-keygen]="generate SSH keys" [ssh-copy-id]="install SSH key on remote"
-  [head]="head -N FILE: first ${Y}N${N} lines (default 10)"
-  [tail]="tail -N FILE: last ${Y}N${N} lines (-f to follow)"
-  [grep]="grep PATTERN FILE: search lines matching pattern"
-  [find]="find PATH -name 'x': locate files by name/size/date"
-  [wc]="word count: -l lines, -w words, -c bytes"
-  [sort]="sort lines alphabetically (-n numeric, -r reverse, -k N by column ${Y}N${N})"
-  [uniq]="filter adjacent duplicates (-c count, -d dupes only — sort -u can't do these)" [cut]="cut -d',' -fN: extract column N (simple columns — awk for logic/math)"
+  [rmdir]="remove empty directory"
+  [which]="find command location" [type]="describe command"
   ['--sort=-%cpu']="sort by CPU% descending (- = descending)"
   ['--sort=-%mem']="sort by memory% descending"
-  [tr]="tr FROM TO: map chars (tr a-z A-Z = lowercase->uppercase)"
-  [diff]="compare files" [tar]="archive tool" [tee]="split output: file AND screen (>> = file only)" [xargs]="build commands from stdin"
-  [chmod]="change permissions" [kill]="send signal to process (default: terminate)" [jobs]="list background jobs" [fg]="foreground job"
-  [bg]="background job" [sleep]="pause N seconds" [make]="build tool" [gcc]="C compiler"
-  [date]="show/set date" [du]="disk usage" [ps]="list processes"
-  [dd]="low-level copy" [strings]="extract text from binary" [base64]="encode/decode base64"
-  [rg]="ripgrep: fast grep (respects .gitignore, recursive by default — grep is POSIX/everywhere)"
-  [fd]="fast find (regex default, respects .gitignore — find is POSIX/everywhere, more powerful predicates)"
-  [eza]="modern ls (git integration, color — ls is POSIX/everywhere)"
+  [make]="build tool" [gcc]="C compiler"
   [bat]="cat with highlighting (use cat for piping, bat for reading)"
   [sd]="simpler sed (saner regex syntax, in-place by default; -F for literal — sed is POSIX/everywhere)" [dust]="visual du (bar chart — du is POSIX/scriptable)"
-  [tree]="directory tree" [sed]="stream editor" [xxd]="hex dump"
-  [md5sum]="MD5 hash (weak)" [sha256sum]="SHA256 hash" [nmap]="port scanner" [hydra]="password cracker"
-  [hashcat]="GPU hash cracker" [john]="John the Ripper" [tshark]="terminal wireshark"
-  [masscan]="fast port scanner" [airmon-ng]="WiFi monitor mode"
-  [airodump-ng]="capture 802.11" [aireplay-ng]="inject packets" [aircrack-ng]="crack WPA/WEP"
-  [nc]="netcat" [ncat]="nmap netcat (supports -e)" [smbclient]="SMB client" [lynis]="security audit" [binwalk]="firmware analysis"
-  [foremost]="file recovery" [fls]="list disk image" [exiftool]="file metadata" [readelf]="ELF info"
-  [r2]="radare2 RE framework" [vol]="memory forensics (volatility3)" [mactime]="filesystem timeline"
+  [md5sum]="MD5 hash (weak)" [sha256sum]="SHA256 hash"
+  [masscan]="fast port scanner"
+  [ncat]="nmap netcat (supports -e)" [smbclient]="SMB client" [lynis]="security audit"
+  [r2]="radare2 RE framework" [mactime]="filesystem timeline"
   [proxychains]="proxy traffic" [procs]="modern ps"
-  [awk]="pattern scanning & processing" [jq]="JSON processor" [curl]="transfer data (HTTP/FTP)"
-  [ssh]="secure shell" [scp]="secure copy (prefer rsync for large/repeat transfers)" [rsync]="incremental transfer (only sends changes — always prefer over scp)"
   [zip2john]="extract hash from zip" [pdf2john]="extract hash from pdf" [rar2john]="extract hash from rar"
-  [openssl]="crypto toolkit" [socat]="multipurpose relay"
-  [ln]="create links" [readlink]="show link target" [pgrep]="find process by name" [pkill]="kill by name"
-  [pidof]="get PID by name" [pstree]="process tree" [ip]="network config" [ss]="socket statistics"
-  [whoami]="print current username" [chgrp]="change group ownership" [file]="identify file type"
-  [chown]="change file owner/group" [stat]="show file metadata" [umask]="set default permissions"
-  [nohup]="run immune to hangups" [disown]="detach job from shell" [basename]="strip directory from path" [dirname]="strip filename from path"
-  [lsof]="list open files" [systemctl]="systemd control" [journalctl]="systemd logs"
-  [wget]="download files (resume, mirror — curl is for APIs)" [unlink]="remove exactly one file/link (safer than rm for single targets)"
+  [socat]="multipurpose relay"
+  [pgrep]="find process by name" [pkill]="kill by name"
+  [pidof]="get PID by name" [pstree]="process tree"
+  [unlink]="remove exactly one file/link (safer than rm for single targets)"
   ['$$']="current shell PID" ['$?']="last exit code" ['$!']="last background PID"
   ['$#']="argument count" ['$@']="all arguments" ['$0']="script name"
   ['!!']="repeat last command" ['!$']="last arg of prev cmd" ['!^']="first arg of prev cmd" ['!*']="all args of prev cmd"
@@ -1140,40 +1111,36 @@ declare -A EXP=(
   [fi]="end if" [for]="loop over items" [while]="loop while true" [until]="loop until true"
   [do]="loop body start" [done]="end loop" [case]="pattern matching" [esac]="end case"
   [function]="define function" [local]="local variable" [return]="function return"
-  [trap]="handle signals" [set]="shell options" [shopt]="bash options"
-  [strace]="trace syscalls" [ltrace]="trace library calls" [watch]="run command repeatedly"
-  [inotifywait]="watch filesystem events" [parallel]="run jobs in parallel" [flock]="file locking"
-  [timeout]="limit command runtime" [chroot]="change root dir" [fsck]="filesystem check"
-  [cryptsetup]="LUKS encryption" [iptables]="IPv4 firewall" [nftables]="netfilter firewall"
-  [shred]="secure file delete" [smartctl]="disk SMART info" [gcore]="dump process memory"
+  [shopt]="bash options"
+  [ltrace]="trace library calls"
+  [parallel]="run jobs in parallel" [flock]="file locking"
+  [nftables]="netfilter firewall"
+  [smartctl]="disk SMART info"
   [coproc]="coprocess (bidirectional pipe)" [mkfifo]="create named pipe" [fuser]="find process using file"
   [renice]="change process priority" [cgcreate]="create cgroup" [cgexec]="run in cgroup"
   [enum4linux]="SMB enumeration"
   [chkrootkit]="rootkit checker" [rkhunter]="rootkit hunter"
-  [bc]="calculator" [rev]="reverse chars per line" [docker]="container runtime" [crontab]="schedule tasks"
-  [tcpdump]="packet capture" [iw]="wireless config"
-  [radare2]="reverse engineering framework (r2)" [volatility]="memory forensics (vol)"
-  [volatility3]="memory forensics (vol)" [vol.py]="memory forensics (legacy)"
-  [vol3]="memory forensics (volatility3)" [vol3.py]="memory forensics (volatility3)"
+  [iw]="wireless config"
+  [radare2]="reverse engineering framework (r2)"
   [photorec]="file recovery (carving)" [scalpel]="file carving tool"
   [egrep]="extended grep (use grep -E)" [hostnamectl]="show/set hostname (systemd)"
   [findmnt]="list mounted filesystems" [printenv]="print environment variables"
   [shasum]="SHA checksum" [sha1sum]="SHA-1 hash"
-  [git]="version control" [clone]="copy repository" [commit]="save changes" [push]="upload to remote"
+  [clone]="copy repository" [commit]="save changes" [push]="upload to remote"
   [pull]="download from remote" [fetch]="download without merge" [merge]="combine branches"
   [rebase]="reapply commits" [stash]="save changes temporarily" [branch]="manage branches"
   [checkout]="switch branch/restore" [switch]="switch branches" [restore]="restore files"
   [reset]="undo commits" [revert]="undo with new commit" [cherry-pick]="apply specific commit"
   [bisect]="binary search for bug" [reflog]="reference logs" [blame]="show line authors"
   [tag]="mark releases" [remote]="manage remotes" [log]="show history"
-  [tmux]="terminal multiplexer" [attach]="connect to session"
+  [attach]="connect to session"
   [detach]="disconnect from session" [new-session]="create session" [kill-session]="destroy session"
   [split-window]="create pane" [select-pane]="switch pane" [resize-pane]="change pane size"
   [send-keys]="type in pane" [capture-pane]="copy pane content" [source-file]="reload config"
-  [getcap]="show capabilities" [setcap]="set capabilities" [whoami]="current user"
-  [id]="user/group IDs" [sudo]="run as root" [su]="switch user" [passwd]="change password"
-  [useradd]="create user" [usermod]="modify user" [chown]="change owner" [chgrp]="change group"
-  [mount]="attach filesystem" [umount]="detach filesystem" [showmount]="list NFS exports"
+  [setcap]="set capabilities" [whoami]="current user"
+  [sudo]="run as root" [su]="switch user" [passwd]="change password"
+  [useradd]="create user" [usermod]="modify user" [chgrp]="change group"
+  [umount]="detach filesystem" [showmount]="list NFS exports"
   [lxc]="LXD container tool" [searchsploit]="exploit database search"
   ['-sV']="nmap version detection" ['-sC']="nmap default scripts" ['-A']="nmap aggressive scan"
   ['-sU']="nmap UDP scan" ['-sn']="nmap ping scan" ['-sT']="nmap TCP connect" ['-Pn']="nmap skip ping"
@@ -1183,15 +1150,14 @@ declare -A EXP=(
   ['NR']="awk line number" ['NF']="awk field count" ['$1']="first field" ['$NF']="last field" ['FS']="field separator"
   ['http-post-form']="POST login (hydra): '/path:user=^USER^&pass=^PASS^:fail_text'" ['http-get']="GET auth (hydra)"
   [paru]="AUR helper (pacman wrapper)" [env]="show/set environment variables"
-  [dmesg]="kernel ring buffer messages" [netstat]="network stats (legacy, use ss)"
   [comm]="compare two sorted files line by line" [python3]="Python 3 interpreter"
   [nft]="nftables firewall CLI" [uname]="system info (-a for all)"
-  [ping]="test network connectivity" [dig]="DNS lookup" [host]="DNS lookup (simple)"
-  [userdel]="delete user account" [hostname]="show/set hostname"
+  [ping]="test network connectivity"
+  [userdel]="delete user account"
   [unshadow]="combine passwd+shadow for cracking" [ldd]="list shared library dependencies"
   [iwlist]="wireless scan (legacy)"
   [mkinitcpio]="generate initramfs (Arch)" [grub-mkconfig]="generate GRUB config"
-  [grub-install]="install GRUB bootloader" [ssh-keygen]="generate SSH key pair"
+  [grub-install]="install GRUB bootloader"
   [gpg]="GNU Privacy Guard (encrypt/sign)" [vim]="text editor"
   [paste]="merge lines of files" [traceroute]="trace packet route"
   [tracepath]="trace path to host (no root)" [nslookup]="DNS query (legacy, use dig)"
@@ -1199,16 +1165,15 @@ declare -A EXP=(
   [lscpu]="CPU architecture info" [top]="live process viewer"
   [htop]="interactive process viewer" [btop]="modern resource monitor"
   [groups]="show user group memberships"
-  [test]="evaluate conditional expression" [export]="set environment variable"
-  [wait]="wait for background process" [exit]="exit shell with status"
-  [disown]="detach job from shell" [exec]="replace shell with command"
+  [export]="set environment variable"
+  [exit]="exit shell with status"
+  [exec]="replace shell with command"
   [unset]="remove variable or function"
   [shuf]="randomize lines" [expand]="convert tabs to spaces"
   [tac]="reverse line order (opposite of cat)" [more]="pager (forward only — use less)"
-  [basename]="extract filename from path" [dirname]="extract directory from path"
   [realpath]="resolve path to absolute" [gzip]="compress file (replaces original)"
   [killall]="kill processes by name" [nm]="list symbols from object files"
-  [objdump]="display object file info" [nl]="number lines" [stat]="display file metadata"
+  [objdump]="display object file info" [nl]="number lines"
 )
 _exp_line() {
   local tok=$1 exp=$2 tcol=$3 _t
@@ -1442,7 +1407,7 @@ gen_level4() {
   _fpick SANDBOX_LOGS; log=$REPLY
   _fpick SANDBOX_TXTS; txt=$REPLY; _fpick SANDBOX_TXTS; txt2=$REPLY
   _fpick SANDBOX_CFGS; cfg=$REPLY; _fpick SANDBOX_CFGS; cfg2=$REPLY
-  n=$((RANDOM % 6 + 3)); n2=$((RANDOM % 5 + 2)); n3=$((RANDOM % 8 + 5))
+  n=$((RANDOM % 6 + 3)); n2=$((RANDOM % 5 + 2))
   local _cat_lc; case "$txt" in notes.txt) _cat_lc=29 ;; todo.txt) _cat_lc=11 ;; *) _cat_lc=1 ;; esac
   questions+=("Display entire ${W}${txt}${C}|cat ${txt}|cat < ${txt}|#output:@${_cat_lc}")
   questions+=("Display ${W}${cfg}${C} with line numbers|cat -n ${cfg}|cat --number ${cfg}|nl -ba ${cfg}|nl --body-numbering=a ${cfg}|#output:~^\\s+1")
@@ -1459,7 +1424,7 @@ gen_level4() {
 # Level 5: Basic Pipes (|)
 gen_level5() {
   local -n questions=${1:-CURRENT_QUESTIONS}; questions=(); eval "local $_QV"; _ctx; local term1
-  n=$((RANDOM % 5 + 3)); n2=$((RANDOM % 4 + 2)); n3=$((RANDOM % 6 + 5))
+  n=$((RANDOM % 5 + 3)); n2=$((RANDOM % 4 + 2))
   _fpick SANDBOX_LOGS; log=$REPLY
   _fpick SANDBOX_TXTS; txt=$REPLY; _fpick SANDBOX_TXTS; txt2=$REPLY
   _fpick SANDBOX_CFGS; cfg=$REPLY; _fpick SANDBOX_CFGS; cfg2=$REPLY
@@ -1666,7 +1631,6 @@ gen_level9() {
 # Level 10: Special Variables ($$, $?, $!)
 gen_level10() {
   local -n questions=${1:-CURRENT_QUESTIONS}; questions=(); eval "local $_QV"; _ctx
-  n=$((RANDOM % 3 + 2)); n2=$((RANDOM % 4 + 3))
   _fpick SANDBOX_SCRIPTS; script=$REPLY; _fpick SANDBOX_LOGS; log=$REPLY; _fpick SANDBOX_TXTS; txt=$REPLY
   _fphrase ERROR WARN INFO; local term=$REPLY
   questions+=("Print the current shell's PID|echo \$\$|echo \${\$}|printf '%d\\n' \$\$")
@@ -1695,7 +1659,7 @@ gen_level10() {
 # Level 11: Job Control (&, jobs, bg, fg)
 gen_level11() {
   local -n questions=${1:-CURRENT_QUESTIONS}; questions=(); eval "local $_QV"; _ctx; local script2 outfile errfile
-  n=$((RANDOM % 90 + 10)); n2=$((RANDOM % 3 + 1)); n3=$((RANDOM % 60 + 30))
+  n=$((RANDOM % 90 + 10)); n2=$((RANDOM % 3 + 1))
   _fpick SANDBOX_SCRIPTS; script=$REPLY; _fpick SANDBOX_SCRIPTS; script2=$REPLY
   _fpick SANDBOX_LOGS; log=$REPLY; _fpick SANDBOX_TXTS; txt=$REPLY
   _fphrase output.log results.txt run.log process.out; outfile=$REPLY
@@ -2524,7 +2488,7 @@ gen_level24() {
   questions+=("DNS lookup for ${W}${host}${C} using ${W}8.8.8.8${C} resolver|dig @8.8.8.8 ${host}|dig ${host} @8.8.8.8")
   questions+=("Reverse DNS lookup for ${W}${ip}${C}|dig -x ${ip}|dig -x ${ip} +short|host ${ip}|nslookup ${ip}")
   questions+=("Show all DNS record types for ${W}${host}${C}|dig ${host} ANY|dig +noall +answer ${host} ANY|dig ANY ${host}")
-  questions+=("Trace DNS delegation chain for ${W}${host}${C}|dig +trace ${host}|dig +trace +nocomments ${host}|delv ${host}|drill ${host}")
+  questions+=("Trace DNS delegation chain for ${W}${host}${C}|dig +trace ${host}|dig +trace +nocomments ${host}|drill -T ${host}")
   questions+=("Listen on TCP port ${W}${port}${C} with ncat (verbose, no-DNS, no-fwd)|ncat -lvnp ${port}|nc -lvnp ${port}|ncat -l -v -n -p ${port}|nc -l -v -n -p ${port}|sudo ncat -lvnp ${port}|sudo nc -lvnp ${port}")
   questions+=("Connect to ${W}${host}:${port}${C} with nc/ncat|nc ${host} ${port}|ncat ${host} ${port}|nc -v ${host} ${port}|ncat -v ${host} ${port}")
   questions+=("TCP port-scan ${W}${ip}${C} on ports 22-443 (-z connect-only)|nc -zv ${ip} 22-443|ncat -zv ${ip} 22-443|nc -z -v ${ip} 22-443|ncat -z -v ${ip} 22-443")
@@ -2535,7 +2499,7 @@ gen_level24() {
   questions+=("Ping ${W}${ip}${C} with count ${W}${n}${C}|ping -c ${n} ${ip}|ping -c${n} ${ip}")
   questions+=("Trace route to ${W}${ip}${C} with ICMP probes|traceroute -I ${ip}|sudo traceroute -I ${ip}|tracepath ${ip}|tracepath -n ${ip}")
   questions+=("MTR report-mode probe to ${W}${ip}${C} (${n} cycles)|mtr -r -c ${n} ${ip}|mtr --report --report-cycles ${n} ${ip}|mtr -rwc ${n} ${ip}|sudo mtr -r -c ${n} ${ip}")
-  questions+=("SSH with agent forwarding to ${W}${user}@${host}${C}|ssh -A ${user}@${host}|ssh -A ${host}")
+  questions+=("SSH with agent forwarding to ${W}${user}@${host}${C}|ssh -A ${user}@${host}")
   questions+=("curl: override DNS for ${W}${host}:${port}${C} -> ${W}${ip}${C}|curl --resolve ${host}:${port}:${ip} https://${host}|curl --resolve ${host}:${port}:${ip} http://${host}")
   questions+=("curl: print HTTP status code only for ${W}${url}${C}|curl -sw '%{http_code}\\n' -o /dev/null ${url}|curl -s -w '%{http_code}\\n' -o /dev/null ${url}|curl -o /dev/null -sw '%{http_code}\\n' ${url}")
 }
@@ -3209,7 +3173,7 @@ generate_level() {
 
   # Mix in weak questions from previous levels (unmastered first)
   if ((level > 1)) && declare -p _sc &>/dev/null 2>&1; then
-    local _weak=() _rest=() _cache_tmp=() _line _qp prev
+    local _weak=() _rest=() _cache_tmp=() _line prev
     for ((prev=1; prev<level; prev++)); do
       if [[ -z "${_LEVEL_CACHE[$prev]:-}" ]]; then
         _cache_tmp=(); "gen_level${prev}" _cache_tmp
@@ -3902,19 +3866,14 @@ _vi_range() {
   return 0
 }
 _del() { # $1=motion  (also used by c via _vi_normal)
-  case "$1" in d|c) _vi_reg="$input"; input="" cursor=0; return;; esac
+  case "$1" in d|c) [[ -n "$input" ]] && _vi_reg="$input"; input="" cursor=0; return;; esac  # -n guard: counted 2dd's second pass must not wipe the register
   _vi_range "$1" || return
   _vi_reg="${input:_rs:_re-_rs}"; input="${input:0:_rs}${input:_re}"; cursor=$_rs; _clamp
 }
 
 # ═══ VI HANDLER ═══
-_yank() { # $1=motion — like _del but only copies to register
-  case "$1" in y) _vi_reg="$input"; return;; esac
-  _vi_range "$1" || return
-  _vi_reg="${input:_rs:_re-_rs}"
-}
 _yankn() { # $1=motion $2=count — accumulate N objects (the range is idempotent, so
-  # repeating _yank would re-copy the same text); cursor is restored afterwards.
+  # a stationary repeat would re-copy the same text); cursor is restored afterwards.
   local _m=$1 _c=$2 _sv=$cursor _acc=""
   case "$_m" in y) _vi_reg="$input"; return;; esac
   _vi_ft=""  # read a find-motion target once, reuse across the counted repeats
@@ -3967,12 +3926,12 @@ _vi_normal() {
     b) for ((_i=0;_i<_n;_i++)); do _wbck; done; draw;;
     e) for ((_i=0;_i<_n;_i++)); do _wend; done; draw;;
     f|F|t|T) _vi_read; _vi_lastf="${c}${c2}"; _vi_fmove "$c" "$c2" "$_n"; draw;;
-    \;) [[ -n "$_vi_lastf" ]] && { local _sv="$_vi_lastf" _fs=0
+    \;) [[ -n "$_vi_lastf" ]] && { local _fs=0
       case "${_vi_lastf:0:1}" in t|T) _fs=1;; esac
-      _vi_fmove "${_vi_lastf:0:1}" "${_vi_lastf:1:1}" "$_n" "$_fs"; _vi_lastf="$_sv"; draw; };;
-    ,) [[ -n "$_vi_lastf" ]] && { local _sv="$_vi_lastf" _rv _fs=0
+      _vi_fmove "${_vi_lastf:0:1}" "${_vi_lastf:1:1}" "$_n" "$_fs"; draw; };;
+    ,) [[ -n "$_vi_lastf" ]] && { local _rv _fs=0
       case "${_vi_lastf:0:1}" in f) _rv=F;; F) _rv=f;; t) _rv=T; _fs=1;; T) _rv=t; _fs=1;; esac
-      _vi_fmove "$_rv" "${_vi_lastf:1:1}" "$_n" "$_fs"; _vi_lastf="$_sv"; draw; };;
+      _vi_fmove "$_rv" "${_vi_lastf:1:1}" "$_n" "$_fs"; draw; };;
     x) _vi_reg=""; for ((_i=0;_i<_n&&${#input}>0&&cursor<${#input};_i++)); do _vi_reg+="${input:cursor:1}"; input="${input:0:cursor}${input:cursor+1}"; done; _clamp; draw;;
     X) _vi_reg=""; for ((_i=0;_i<_n&&cursor>0;_i++)); do _vi_reg="${input:cursor-1:1}$_vi_reg"; input="${input:0:cursor-1}${input:cursor}"; ((cursor--)); done; draw;;
     D) _vi_reg="${input:cursor}"; input="${input:0:cursor}"; ((cursor>0)) && ((cursor--)); draw;;
@@ -5014,13 +4973,13 @@ _selftest() {
   _vi_assert "e end of word"     "foo bar" 0 "e"  "foo bar" 2
   _vi_assert "2w two words"      "aa bb cc dd" 0 "2w"  "aa bb cc dd" 6
   _vi_assert "2b two words back" "aa bb cc dd" 6 "2b"  "aa bb cc dd" 0
-  _vi_assert "fa finds a"        "hello world" 0 "fa"  "hello world" 0
+  _vi_assert "fa no match"       "hello world" 0 "fa"  "hello world" 0
   _vi_assert "fo finds o"        "hello world" 0 "fo"  "hello world" 4
   _vi_assert "Fo finds o back"   "hello world" 6 "Fo"  "hello world" 4
   _vi_assert "to till o"         "hello world" 0 "to"  "hello world" 3
   _vi_assert "To till o back"    "hello world" 6 "To"  "hello world" 5
   _vi_assert "2fo second o"      "foo boo coo" 0 "2fo" "foo boo coo" 2
-  _vi_assert "fx no match"       "hello" 0 "fz"  "hello" 0
+  _vi_assert "fz no match"       "hello" 0 "fz"  "hello" 0
   _vi_assert "x deletes char"     "hello" 1 "x"   "hllo"  1
   _vi_assert "X deletes before"   "hello" 2 "X"   "hllo"  1
   _vi_assert "2x deletes 2"      "abcde" 1 "2x"  "ade"   1
@@ -5057,6 +5016,7 @@ _selftest() {
   _vi_assert "y2w yanks 2 words" "foo bar baz" 0 "y2wP" "foo bar foo bar baz" 7
   _vi_assert "yl yanks char"     "abc" 0 "ylp"  "aabc" 1
   _vi_assert "p on empty clamps" "hello" 2 "ddp" "hello" 4
+  _vi_assert "2dd keeps register" "hello" 2 "2ddp" "hello" 4
 
   # p with a count stops at the 512-char line cap (insert mode and paste do the same)
   input="ab" cursor=1 mode=normal _rep="" _vi_reg="ab" UNDO_STACK=()

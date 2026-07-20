@@ -88,7 +88,7 @@ phase1_syntax() {
         fi
 
         # Check: no literal unreplaced variables (common bug: $var not expanded)
-        if [[ "$_qprompt" =~ \$\{?[a-z_]+\}? ]] && [[ ! "$_qprompt" =~ \\\$ ]] && [[ ! "$_qprompt" =~ '\$' ]]; then
+        if [[ "$_qprompt" =~ \$\{?[a-z_]+\}? ]] && [[ ! "$_qprompt" =~ '\$' ]]; then
           # Could be intentional (teaching variables), check level
           if ((lv < 7 && lv != 4)); then
             # Levels 1-6 (except 4 which uses $term in grep prompts) shouldn't have bare $var in prompts
@@ -505,6 +505,7 @@ phase3_confusable() {
       while IFS= read -r mut; do
         [[ -z "$mut" ]] && continue
         [[ "$mut" == "$ans" ]] && continue  # skip if mutation produced same answer
+        _is_listed "$mut" "$answers" "$_qdelim" && continue  # declared-correct alternate, not a leak
         ((tested++))
 
         # Reset sandbox state
