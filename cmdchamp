@@ -184,7 +184,10 @@ _first_run() {
   _save_profile
   _intro
   _tutorial
-  place
+  local _pt
+  printf '\n    %s\n    %s\n\n' "${U}Placement test${N} ${D}— skip ahead if you already know your way around${N}" "${D}2 questions per level, 30s each, no manpages. Miss one → that's your start.${N}"
+  read -rp "    Take it? [y/N] " _pt
+  [[ "$_pt" == [yY]* ]] && place
 }
 
 _intro() {
