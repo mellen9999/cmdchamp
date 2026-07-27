@@ -219,7 +219,7 @@ _tutorial() {
   printf '%s\e[2J\e[H\n%s' "$_SY" "$_SN"
   cat <<EOF
     ${U}Controls${N}
-    ${C}Tab${N}   Manpage   ${C}Enter${N}  Submit   ${C}Ctrl+d${N}  Quit
+    ${C}Tab${N}   Manpage   ${C}Enter${N}  Submit   ${C}↑ ↓${N}  History   ${C}Ctrl+d${N}  Menu
 
     ${U}Vi Mode${N} ${D}(toggle in Options)${N}
     ${C}Esc${N}   Normal mode        ${C}i a${N}   Insert mode
