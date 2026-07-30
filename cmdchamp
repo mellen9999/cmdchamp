@@ -62,7 +62,7 @@ _strip_ansi() {
   REPLY="$out"
 }
 
-VERSION="1.2.14"
+VERSION="1.2.15"
 SANDBOX_TIMEOUT=5      # Seconds before sandbox command times out
 BOSS_THRESHOLD=4       # Correct answers needed to beat boss (out of BOSS_TOTAL)
 BOSS_TOTAL=5           # Number of questions in boss round
@@ -224,6 +224,10 @@ _tutorial() {
     ${C}Esc${N}   Normal mode        ${C}i a${N}   Insert mode
     ${C}h l${N}   Move cursor        ${C}w b${N}   Word jump
     ${C}d${N}w ${C}c${N}w  Delete/change word  ${C}?${N}     Full vi help
+
+    ${U}Answers${N}
+    ${D}Text tools print to the terminal. Questions that change a file
+    on disk say ${N}${C}(in place)${N}${D}.${N}
 
 EOF
   read -rsp "    Press Enter to continue..."
@@ -898,6 +902,8 @@ BRANCHES=(main master develop feature/auth feature/api fix/login hotfix/security
 _fpick() { local -n _a=$1; ((${#_a[@]})) || { REPLY=""; return 1; }; REPLY="${_a[$((RANDOM % ${#_a[@]}))]}"; }
 _fphrase() { local -a _a=("$@"); REPLY="${_a[$((RANDOM % ${#_a[@]}))]}"; }
 _frnum() { REPLY=$(($1 + RANDOM % ($2 - $1 + 1))); }
+# ordinal suffix for prompt text: 1st 2nd 3rd 4th ... 11th 12th 13th 21st
+_ord() { local _o=th; case $(($1 % 100)) in 11|12|13) ;; *) case $(($1 % 10)) in 1) _o=st;; 2) _o=nd;; 3) _o=rd;; esac;; esac; REPLY="$1$_o"; }
 # Fisher-Yates in-place shuffle via nameref (replaces shuf fork)
 # shellcheck disable=SC2178  # nameref pattern — _a is always an array
 _fshuffle() { local -n _a=$1; local i j t; for ((i=${#_a[@]}-1; i>0; i--)); do j=$((RANDOM % (i+1))); t="${_a[$i]}"; _a[$i]="${_a[$j]}"; _a[$j]="$t"; done; }
@@ -1465,8 +1471,8 @@ gen_level5() {
   questions+=("Sort ${W}${csv}${C} numerically§sort -n ${csv}§sort --numeric-sort ${csv}§cat ${csv} | sort -n§cat ${csv} | sort --numeric-sort")
   questions+=("Sort ${W}${txt2}${C} and remove duplicates§sort ${txt2} | uniq§sort -u ${txt2}§sort --unique ${txt2}§cat ${txt2} | sort | uniq§cat ${txt2} | sort -u§cat ${txt2} | sort --unique")
   questions+=("Sort ${W}${csv}${C} by second column§sort -t, -k2,2 ${csv}§sort --field-separator=, -k2,2 ${csv}§sort -t, --key=2,2 ${csv}§sort --field-separator=, --key=2,2 ${csv}")
-  questions+=("First ${n} ${Y}${term1}${C} matches in ${W}${log}${C}§grep ${term1} ${log} | head -${n}§grep ${term1} ${log} | head -n ${n}§grep ${term1} ${log} | head --lines=${n}§grep ${term1} ${log} | head --lines ${n}§grep -m ${n} ${term1} ${log}§grep --max-count ${n} ${term1} ${log}§grep --max-count=${n} ${term1} ${log}§cat ${log} | grep ${term1} | head -${n}§cat ${log} | grep ${term1} | head -n ${n}§cat ${log} | grep -m ${n} ${term1}§#output:~${term1}")
-  questions+=("Last ${n2} ${Y}${term1}${C} lines in ${W}${log}${C}§grep ${term1} ${log} | tail -${n2}§grep ${term1} ${log} | tail -n ${n2}§grep ${term1} ${log} | tail --lines=${n2}§grep ${term1} ${log} | tail --lines ${n2}§cat ${log} | grep ${term1} | tail -${n2}§cat ${log} | grep ${term1} | tail -n ${n2}§#output:~${term1}")
+  questions+=("First ${n} lines matching ${Y}${term1}${C} in ${W}${log}${C}§grep ${term1} ${log} | head -${n}§grep ${term1} ${log} | head -n ${n}§grep ${term1} ${log} | head --lines=${n}§grep ${term1} ${log} | head --lines ${n}§grep -m ${n} ${term1} ${log}§grep --max-count ${n} ${term1} ${log}§grep --max-count=${n} ${term1} ${log}§cat ${log} | grep ${term1} | head -${n}§cat ${log} | grep ${term1} | head -n ${n}§cat ${log} | grep -m ${n} ${term1}§#output:~${term1}")
+  questions+=("Last ${n2} lines matching ${Y}${term1}${C} in ${W}${log}${C}§grep ${term1} ${log} | tail -${n2}§grep ${term1} ${log} | tail -n ${n2}§grep ${term1} ${log} | tail --lines=${n2}§grep ${term1} ${log} | tail --lines ${n2}§cat ${log} | grep ${term1} | tail -${n2}§cat ${log} | grep ${term1} | tail -n ${n2}§#output:~${term1}")
   questions+=("Count unique lines in ${W}${txt}${C}§sort ${txt} | uniq | wc -l§sort ${txt} | uniq | wc --lines§sort -u ${txt} | wc -l§sort -u ${txt} | wc --lines§sort --unique ${txt} | wc -l§sort --unique ${txt} | wc --lines§cat ${txt} | sort | uniq | wc -l§cat ${txt} | sort -u | wc -l")
   questions+=("Sort ${W}${log}${C} and show first ${n}§sort ${log} | head -${n}§sort ${log} | head -n ${n}§sort ${log} | head --lines=${n}§sort ${log} | head --lines ${n}§cat ${log} | sort | head -${n}§cat ${log} | sort | head -n ${n}")
   questions+=("Show last ${n2} sorted lines of ${W}${cfg}${C}§sort ${cfg} | tail -${n2}§sort ${cfg} | tail -n ${n2}§sort ${cfg} | tail --lines=${n2}§sort ${cfg} | tail --lines ${n2}§cat ${cfg} | sort | tail -${n2}§cat ${cfg} | sort | tail -n ${n2}")
@@ -2034,28 +2040,29 @@ gen_level18() {
   questions+=("Print lines where column 1 > ${thresh} (skip header)|awk -F, 'NR>1 && \$1 > ${thresh}' data.csv")
   questions+=("Print lines where column 4 equals \"${_status}\" in ${W}data.csv${C}|awk -F, '\$4 == \"${_status}\"' data.csv")
   local nth=$((col % 4 + 2))  # 2-5, avoids trivial "every 1st line"
-  questions+=("Print every ${nth}th line (${nth}, $((nth*2)), $((nth*3))...) in ${W}${txt}${C}|awk 'NR % ${nth} == 0' ${txt}|sed -n '0~${nth}p' ${txt}")
+  _ord "$nth"; local nth_o=$REPLY
+  questions+=("Print every ${nth_o} line (${nth}, $((nth*2)), $((nth*3))...) in ${W}${txt}${C}|awk 'NR % ${nth} == 0' ${txt}|sed -n '0~${nth}p' ${txt}")
   questions+=("Print lines ${n} through ${n2} in ${W}${txt}${C}§awk 'NR>=${n} && NR<=${n2}' ${txt}§sed -n '${n},${n2}p' ${txt}§head -n ${n2} ${txt} | tail -n +${n}§head -${n2} ${txt} | tail -n +${n}§awk 'NR==${n},NR==${n2}' ${txt}")
   questions+=("Average of column 1 (skip header)|awk -F, 'NR>1{sum+=\$1; count++} END {print sum/count}' data.csv")
   questions+=("Maximum value in column 1 (skip header)§awk -F, 'NR==2{max=\$1} NR>1 && \$1>max{max=\$1} END{print max}' data.csv§tail -n+2 data.csv | cut -d, -f1 | sort -rn | head -1")
   questions+=("Swap columns 1 and 2 in ${W}${txt}${C} output§awk '{print \$2, \$1}' ${txt}§cat ${txt} | awk '{print \$2, \$1}'")
   questions+=("Print unique values from column ${col} (skip header) in ${W}${csv}${C}§awk -F, 'NR>1 && !seen[\$${col}]++ {print \$${col}}' ${csv}§tail -n+2 ${csv} | cut -d, -f${col} | sort -u")
   questions+=("Count records by column ${col} value in ${W}${csv}${C}§awk -F, 'NR>1{count[\$${col}]++} END {for(k in count) print k, count[k]}' ${csv}§tail -n+2 ${csv} | cut -d, -f${col} | sort | uniq -c")
-  questions+=("Replace spaces with tabs in ${W}${txt}${C}|tr ' ' '\\t' < ${txt}|tr ' ' \$'\\t' < ${txt}|sed 's/ /\\t/g' ${txt}")
+  questions+=("Print ${W}${txt}${C} with spaces as tabs|tr ' ' '\\t' < ${txt}|tr ' ' \$'\\t' < ${txt}|sed 's/ /\\t/g' ${txt}")
   questions+=("Show ${txt} with all digits removed|tr -d '0-9' < ${txt}|tr --delete '0-9' < ${txt}|tr -d '[:digit:]' < ${txt}|tr --delete '[:digit:]' < ${txt}|sed 's/[0-9]//g' ${txt}|sed 's/[[:digit:]]//g' ${txt}")
-  questions+=("Squeeze multiple spaces to single in ${W}${txt}${C}|tr -s ' ' < ${txt}|tr --squeeze-repeats ' ' < ${txt}")
-  questions+=("Convert to lowercase in ${W}${txt}${C}|tr 'A-Z' 'a-z' < ${txt}|tr '[:upper:]' '[:lower:]' < ${txt}|awk '{print tolower(\$0)}' ${txt}|sed 's/.*/\\L&/' ${txt}")
-  questions+=("Convert to uppercase in ${W}${txt}${C}|tr 'a-z' 'A-Z' < ${txt}|tr '[:lower:]' '[:upper:]' < ${txt}|awk '{print toupper(\$0)}' ${txt}|sed 's/.*/\\U&/' ${txt}")
+  questions+=("Print ${W}${txt}${C} with repeated spaces squeezed to one|tr -s ' ' < ${txt}|tr --squeeze-repeats ' ' < ${txt}")
+  questions+=("Print ${W}${txt}${C} lowercased|tr 'A-Z' 'a-z' < ${txt}|tr '[:upper:]' '[:lower:]' < ${txt}|awk '{print tolower(\$0)}' ${txt}|sed 's/.*/\\L&/' ${txt}")
+  questions+=("Print ${W}${txt}${C} uppercased|tr 'a-z' 'A-Z' < ${txt}|tr '[:lower:]' '[:upper:]' < ${txt}|awk '{print toupper(\$0)}' ${txt}|sed 's/.*/\\U&/' ${txt}")
   questions+=("Show ${W}${txt}${C} with all whitespace removed|tr -d '[:space:]' < ${txt}|tr --delete '[:space:]' < ${txt}")
-  questions+=("Replace newlines with spaces in ${W}${txt}${C}|tr '\\n' ' ' < ${txt}|paste -sd' ' ${txt}|paste -s -d' ' ${txt}|paste -sd ' ' ${txt}")
-  questions+=("Convert tabs to spaces in ${W}${txt}${C}|tr '\\t' ' ' < ${txt}|expand ${txt}|expand < ${txt}")
+  questions+=("Print ${W}${txt}${C} with newlines as spaces|tr '\\n' ' ' < ${txt}|paste -sd' ' ${txt}|paste -s -d' ' ${txt}|paste -sd ' ' ${txt}")
+  questions+=("Print ${W}${txt}${C} with tabs as spaces|tr '\\t' ' ' < ${txt}|expand ${txt}|expand < ${txt}")
   questions+=("Top ${n} most common lines in ${log}§sort ${log} | uniq -c | sort -rn | head -${n}§sort ${log} | uniq -c | sort -rn | head -n ${n}§sort ${log} | uniq -c | sort -nr | head -${n}§sort ${log} | uniq -c | sort -nr | head -n ${n}§sort ${log} | uniq --count | sort -rn | head -${n}§sort ${log} | uniq --count | sort -rn | head -n ${n}")
   questions+=("Count unique values in column ${col} in ${W}${csv}${C}§cut -d, -f${col} ${csv} | sort | uniq -c§awk -F, '{print \$${col}}' ${csv} | sort | uniq -c")
   questions+=("Extract and count unique IPs from ${log}§grep -oE '[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+' ${log} | sort | uniq -c | sort -rn§rg -o '[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+' ${log} | sort | uniq -c | sort -rn#chal-skip")
   questions+=("Most common words in ${txt}§tr -s ' ' '\\n' < ${txt} | sort | uniq -c | sort -rn | head§tr -s ' ' '\\n' < ${txt} | sort | uniq -c | sort -nr | head")
   questions+=("Lines appearing in both ${txt} and ${txt2}|comm -12 <(sort ${txt}) <(sort ${txt2})|comm -1 -2 <(sort ${txt}) <(sort ${txt2})|grep -Fxf ${txt} ${txt2}|grep -Fxf ${txt2} ${txt}")
   questions+=("Lines only in ${txt}, not ${txt2}|comm -23 <(sort ${txt}) <(sort ${txt2})|comm -2 -3 <(sort ${txt}) <(sort ${txt2})|grep -Fxvf ${txt2} ${txt}")
-  questions+=("Replace 'old' with 'new' in field 2 of ${W}${csv}${C} (awk gsub)|awk -F, '{gsub(/old/, \"new\", \$2); print}' ${csv}|awk -F, '{gsub(/old/,\"new\",\$2);print}' ${csv}|awk 'BEGIN{FS=OFS=\",\"} {gsub(/old/, \"new\", \$2); print}' ${csv}")
+  questions+=("Print ${W}${csv}${C} with 'old' replaced by 'new' in field 2 (awk gsub)|awk -F, '{gsub(/old/, \"new\", \$2); print}' ${csv}|awk -F, '{gsub(/old/,\"new\",\$2);print}' ${csv}|awk 'BEGIN{FS=OFS=\",\"} {gsub(/old/, \"new\", \$2); print}' ${csv}")
   questions+=("Format ${W}${txt}${C} as aligned table (auto-detect delimiter)|column -t ${txt}|column -t -s\$'\\t' ${txt}|column --table ${txt}")
   questions+=("Extract '.data' from ${W}data/export.json${C} as raw strings (jq -r)|jq -r '.data' data/export.json|jq --raw-output '.data' data/export.json|jq -r .data data/export.json")
 }
@@ -2134,11 +2141,11 @@ gen_level20() {
   questions+=("Negate condition in ${W}${txt}${C}§if ! [[ -f ${txt} ]]; then echo missing; fi§if ! [ -f ${txt} ]; then echo missing; fi§if [ ! -f ${txt} ]; then echo missing; fi§if [[ ! -f ${txt} ]]; then echo missing; fi§if ! test -f ${txt}; then echo missing; fi§[[ ! -f ${txt} ]] && echo missing§[[ -f ${txt} ]] || echo missing§[ -f ${txt} ] || echo missing§test -f ${txt} || echo missing")
   questions+=("Compound AND condition in ${W}${txt}${C}|if [[ -f ${txt} && -r ${txt} ]]; then cat ${txt}; fi|if [ -f ${txt} ] && [ -r ${txt} ]; then cat ${txt}; fi|[[ -f ${txt} && -r ${txt} ]] && cat ${txt}|[ -f ${txt} ] && [ -r ${txt} ] && cat ${txt}|test -f ${txt} && test -r ${txt} && cat ${txt}")
   questions+=("Compound OR condition§if [[ -z \"\$var\" || \"\$var\" == \"default\" ]]; then echo empty; fi§if [ -z \"\$var\" ] || [ \"\$var\" = \"default\" ]; then echo empty; fi§if test -z \"\$var\" || test \"\$var\" = \"default\"; then echo empty; fi")
-  questions+=("Process all .${ext} files in current dir|for f in *.${ext}; do echo \"Processing \$f\"; done|for f in *.${ext}; do echo \"Processing \${f}\"; done")
+  questions+=("Loop over .${ext} files in current dir, echoing ${Y}Processing \$f${C} for each|for f in *.${ext}; do echo \"Processing \$f\"; done|for f in *.${ext}; do echo \"Processing \${f}\"; done")
   questions+=("Rename all .txt to .bak|for f in *.txt; do mv \"\$f\" \"\${f%.txt}.bak\"; done")
   questions+=("Retry curl until success (max ${n} tries)|for i in \$(seq 1 ${n}); do curl -s url && break; sleep 1; done|for i in \$(seq ${n}); do curl -s url && break; sleep 1; done|for ((i=1; i<=${n}; i++)); do curl -s url && break; sleep 1; done")
-  questions+=("Loop over servers and check SSH|for h in srv1 srv2 srv3; do ssh -o ConnectTimeout=2 \$h uptime; done")
-  questions+=("Process numbered files file1 to file${n}|for i in \$(seq 1 ${n}); do cat file\$i; done|for i in \$(seq ${n}); do cat file\$i; done|for ((i=1; i<=${n}; i++)); do cat file\$i; done")
+  questions+=("Loop over hosts ${Y}srv1 srv2 srv3${C}, run ${Y}uptime${C} over ssh (2s connect timeout)|for h in srv1 srv2 srv3; do ssh -o ConnectTimeout=2 \$h uptime; done")
+  questions+=("Loop file1 to file${n}, cat each one|for i in \$(seq 1 ${n}); do cat file\$i; done|for i in \$(seq ${n}); do cat file\$i; done|for ((i=1; i<=${n}; i++)); do cat file\$i; done")
   questions+=("C-style countdown from ${n}|for ((i=${n}; i>0; i--)); do echo \$i; done|for ((i=${n}; i>=1; i--)); do echo \$i; done")
   questions+=("Loop over array elements|for item in \"\${arr[@]}\"; do echo \"\$item\"; done|for item in \"\${arr[@]}\"; do echo \"\${item}\"; done")
   questions+=("Loop over files in ${dir}/, skip dirs|for f in ${dir}/*; do [[ -f \"\$f\" ]] && echo \"\$f\"; done|for f in ${dir}/*; do [ -f \"\$f\" ] && echo \"\$f\"; done|for f in ${dir}/*; do test -f \"\$f\" && echo \"\$f\"; done")
@@ -2292,8 +2299,8 @@ gen_level22() {
   questions+=("Match optional 's' (plurals) in ${W}${log}${C}|grep -E 'errors?' ${log}|rg 'errors?' ${log}|grep -P 'errors?' ${log}")
   questions+=("Match repeated word in ${W}${txt}${C}|grep -P '\\b(\\w+)\\s+\\1\\b' ${txt}|rg -P '\\b(\\w+)\\s+\\1\\b' ${txt}")
   questions+=("Match repeated character in ${W}${txt}${C}|grep -P '(.)\\1' ${txt}|rg -P '(.)\\1' ${txt}|grep '\\(.\\)\\1' ${txt}")
-  questions+=("Capture and replace with sed in ${W}${log}${C}|sed -E 's/(error):\\s*(.*)/\\2 [\\1]/' ${log}|sed -r 's/(error):\\s*(.*)/\\2 [\\1]/' ${log}")
-  questions+=("Swap two words in ${W}${txt}${C}|sed -E 's/(\\w+)\\s+(\\w+)/\\2 \\1/' ${txt}|sed -r 's/(\\w+)\\s+(\\w+)/\\2 \\1/' ${txt}")
+  questions+=("Sed capture groups: print ${W}${log}${C} rewriting ${Y}error: msg${C} as ${Y}msg [error]${C}|sed -E 's/(error):\\s*(.*)/\\2 [\\1]/' ${log}|sed -r 's/(error):\\s*(.*)/\\2 [\\1]/' ${log}")
+  questions+=("Print ${W}${txt}${C} with the first two words of each line swapped|sed -E 's/(\\w+)\\s+(\\w+)/\\2 \\1/' ${txt}|sed -r 's/(\\w+)\\s+(\\w+)/\\2 \\1/' ${txt}")
   questions+=("Print ${W}${txt}${C} without lines matching ${Y}${term}${C}|sed '/${term}/d' ${txt}|grep -v '${term}' ${txt}|rg -v '${term}' ${txt}|awk '!/${term}/' ${txt}")
   questions+=("Print only lines matching ${Y}${term}${C} in ${W}${txt}${C}|sed -n '/${term}/p' ${txt}|grep '${term}' ${txt}|rg '${term}' ${txt}|awk '/${term}/' ${txt}")
   questions+=("Replace ${Y}${old}${C} with ${Y}${new}${C} only on lines matching ${Y}${term}${C} in ${W}${log}${C}|sed '/${term}/s/${old}/${new}/g' ${log}|sed -E '/${term}/s/${old}/${new}/g' ${log}|sed -r '/${term}/s/${old}/${new}/g' ${log}")
@@ -2309,16 +2316,17 @@ gen_level22() {
   questions+=("Print lines where id > ${n2} in ${W}data.csv${C} (skip header)|awk -F, 'NR>1 && \$1 > ${n2}' data.csv|awk -F, '\$1 > ${n2} && NR>1' data.csv")
   questions+=("Print unique values from first column in ${W}${csv}${C}|awk -F, '!seen[\$1]++' ${csv}")
   questions+=("Find min id (skip header) in ${W}data.csv${C}|awk -F, 'NR==2{min=\$1} NR>1 && \$1<min{min=\$1} END{print min}' data.csv")
-  questions+=("Conditional print in ${W}${csv}${C}|awk -F, '\$3==\"active\" {print \$1, \$2}' ${csv}")
-  questions+=("Print with custom separator in ${W}${csv}${C}§awk -F, 'BEGIN{OFS=\"|\"} {print \$1,\$2}' ${csv}§awk -F, -v OFS='|' '{print \$1,\$2}' ${csv}")
+  questions+=("Print columns 1 and 2 of ${W}${csv}${C} where column 3 is ${Y}active${C}|awk -F, '\$3==\"active\" {print \$1, \$2}' ${csv}")
+  questions+=("Print columns 1 and 2 of ${W}${csv}${C} separated by ${Y}|${C} (awk OFS)§awk -F, 'BEGIN{OFS=\"|\"} {print \$1,\$2}' ${csv}§awk -F, -v OFS='|' '{print \$1,\$2}' ${csv}")
   questions+=("String functions: length in ${W}${txt}${C}|awk '{print length(\$0)}' ${txt}|awk '{print length}' ${txt}")
   questions+=("String functions: substr in ${W}${txt}${C}|awk '{print substr(\$0,1,10)}' ${txt}|awk '{print substr(\$0, 1, 10)}' ${txt}")
-  questions+=("Replace '${old}' with '${new}' using awk gsub in ${W}${txt}${C}|awk '{gsub(/${old}/,\"${new}\"); print}' ${txt}|awk '{gsub(/${old}/, \"${new}\"); print}' ${txt}|sed 's/${old}/${new}/g' ${txt}")
+  questions+=("Print ${W}${txt}${C} with '${old}' replaced by '${new}' (awk gsub)|awk '{gsub(/${old}/,\"${new}\"); print}' ${txt}|awk '{gsub(/${old}/, \"${new}\"); print}' ${txt}|sed 's/${old}/${new}/g' ${txt}")
   questions+=("Split on ':' and print first field in ${W}${txt}${C}|awk '{n=split(\$0,a,\":\"); print a[1]}' ${txt}|awk -F: '{print \$1}' ${txt}|cut -d: -f1 ${txt}")
   questions+=("Print from '${term}' to '${term2}' pattern range in ${W}${txt}${C}|awk '/${term}/,/${term2}/' ${txt}|sed -n '/${term}/,/${term2}/p' ${txt}")
   questions+=("Print line numbers in ${W}${txt}${C}|awk '{print NR\": \"\$0}' ${txt}|cat -n ${txt}|cat --number ${txt}|nl ${txt}|grep -n '' ${txt}|rg -n '' ${txt}")
   questions+=("Skip header line in ${W}${csv}${C}|awk 'NR>1' ${csv}|tail -n +2 ${csv}|sed 1d ${csv}")
-  questions+=("Print every ${n}th line in ${W}${txt}${C}|awk 'NR%${n}==0' ${txt}|sed -n '0~${n}p' ${txt}")
+  local nth=$((n % 4 + 2)); _ord "$nth"; local nth_o=$REPLY  # 2-5, avoids trivial "every 1st line"
+  questions+=("Print every ${nth_o} line in ${W}${txt}${C}|awk 'NR%${nth}==0' ${txt}|sed -n '0~${nth}p' ${txt}")
   questions+=("Reverse fields in ${W}${txt}${C}|awk '{for(i=NF;i>0;i--) printf \"%s \",\$i; print \"\"}' ${txt}|awk '{for(i=NF; i>0; i--) printf \"%s \",\$i; print \"\"}' ${txt}")
   questions+=("Complex: extract, sort, count in ${W}${log}${C}§grep -oP '\\d+\\.\\d+\\.\\d+\\.\\d+' ${log} | sort | uniq -c | sort -rn§grep -oE '[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+' ${log} | sort | uniq -c | sort -rn§rg -oP '\\d+\\.\\d+\\.\\d+\\.\\d+' ${log} | sort | uniq -c | sort -rn§rg -o '[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+' ${log} | sort | uniq -c | sort -rn#boss-skip#chal-skip")
   questions+=("Complex: top ${n} by frequency in ${W}${log}${C}§awk '{print \$1}' ${log} | sort | uniq -c | sort -rn | head -${n}§awk '{print \$1}' ${log} | sort | uniq -c | sort -nr | head -${n}§awk '{print \$1}' ${log} | sort | uniq -c | sort -rn | head -n ${n}")
@@ -2749,7 +2757,7 @@ gen_level29() {
   questions+=("Find writable scripts in cron§grep -v '^#' /etc/crontab | awk '{print \$NF}' | xargs ls -la 2>/dev/null§cat /etc/crontab | awk '{print \$NF}' | xargs ls -la 2>/dev/null#boss-skip")
   questions+=("Check current PATH|echo \$PATH|echo \${PATH}|printenv PATH")
   questions+=("Prepend current dir to PATH|export PATH=.:\$PATH|PATH=.:\$PATH")
-  questions+=("Create malicious binary|echo '#!/bin/bash' > /tmp/ls && echo '/bin/bash -p' >> /tmp/ls && chmod +x /tmp/ls|echo '#!/bin/bash' > /tmp/ls; echo '/bin/bash -p' >> /tmp/ls; chmod +x /tmp/ls")
+  questions+=("Plant a PATH-hijack ${Y}/tmp/ls${C} that spawns a ${Y}-p${C} root shell|echo '#!/bin/bash' > /tmp/ls && echo '/bin/bash -p' >> /tmp/ls && chmod +x /tmp/ls|echo '#!/bin/bash' > /tmp/ls; echo '/bin/bash -p' >> /tmp/ls; chmod +x /tmp/ls")
   questions+=("Exploit relative path in SUID|export PATH=/tmp:\$PATH && ./vulnerable_suid")
   questions+=("Check NFS exports on ${ip}|showmount -e ${ip}|cat /etc/exports")
   questions+=("Mount NFS export ${ip}:/share at /mnt|mount -t nfs ${ip}:/share /mnt|sudo mount -t nfs ${ip}:/share /mnt|mount ${ip}:/share /mnt|mount -t nfs ${ip}:/share /mnt/|sudo mount -t nfs ${ip}:/share /mnt/|mount ${ip}:/share /mnt/|sudo mount ${ip}:/share /mnt|sudo mount ${ip}:/share /mnt/")
