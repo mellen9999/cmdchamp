@@ -111,7 +111,7 @@ Multi-step sandbox challenges — state persists between steps. Available from t
 
 ## Placement test
 
-The first time you start a new game, placement runs automatically — 2 questions per level, 30s each, no manpages. Miss one and that's your starting level.
+After the first-run tutorial, you're asked if you want to take the placement test to skip ahead. Accept and it runs 2 questions per level, 30s each, no manpages. Miss one and that's your starting level.
 
 ## Easter eggs
 
