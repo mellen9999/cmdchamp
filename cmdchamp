@@ -1538,7 +1538,7 @@ gen_level7() {
   questions+=("Find ${Y}*.${ext}${C} files, suppress any errors|find . -name '*.${ext}' 2> /dev/null|find . -type f -name '*.${ext}' 2> /dev/null|find -name '*.${ext}' 2> /dev/null|find -type f -name '*.${ext}' 2> /dev/null")
   questions+=("Run ${W}./${script}${C}, discard any errors|./${script} 2> /dev/null|./${script} 2>/dev/null")
   questions+=("Capture ALL output from ${W}./${script}${C} to ${W}${outfile}${C} (stdout and stderr)|./${script} &> ${outfile}|./${script} >& ${outfile}|./${script} > ${outfile} 2>&1|./${script} 1> ${outfile} 2>&1")
-  questions+=("Run ${W}./${script}${C} completely silently — no output at all|./${script} &> /dev/null|./${script} >& /dev/null|./${script} > /dev/null 2>&1|./${script} 1> /dev/null 2>&1")
+  questions+=("Run ${W}./${script}${C} completely silently — no output at all|./${script} &> /dev/null|./${script} >& /dev/null|./${script} > /dev/null 2>&1|./${script} 1> /dev/null 2>&1|./${script} > /dev/null 2> /dev/null|./${script} 1> /dev/null 2> /dev/null")
   # The scripts log exactly one "ERROR:" line to stderr, in caps. `grep -i error` returns
   # that one line (@1); `grep error` (no -i) returns nothing; `grep -v error` returns every
   # line (case-sensitive, so the uppercase ERROR line is NOT excluded) — @1 rejects both.
