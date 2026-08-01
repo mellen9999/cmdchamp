@@ -4,3 +4,4 @@ cmdchamp.bak.*
 
 # Local-only config
 CLAUDE.md
+.worktrees/
