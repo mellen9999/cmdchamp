@@ -3763,7 +3763,7 @@ qdisp() { bar; printf "\n${C}%s${N}\n\n" "$1"; }
 _wrong_feedback() { ((OPT_SOUND)) && printf '\a'; printf '\e[7m'; read -t 0.05 -rsn1 _ ||:; printf '\e[0m'; }
 _wrong_show() { _wrong_feedback
   ((_SANDBOX_REQUIRE_FAIL)) && printf '\n%s\n' "${R}use the exact string from the question${N}"
-  printf '%s  %s %s\n\n' "${R}x${N}" "${D}expected:${N}" "${Y}${ans}${N}"; }
+  printf '%s  %s\n%s%s\n\n' "${R}x${N}" "${D}expected:${N}" "${D}${PROMPT_CHAR}${N}" "${Y}${ans}${N}"; }
 _sc() { [[ -n "$input" ]] && { HIST+=("$input"); HIST_IDX=${#HIST[@]}; HIST_SAVE=""; }; ((_S_ANSWERED++)); ((_S_CORRECT++)); ((_S_STREAK++)); ((_S_STREAK > _S_BEST_STREAK)) && _S_BEST_STREAK=$_S_STREAK; }
 _sw() { ((_S_ANSWERED++)); _S_STREAK=0; _wrong_show; }
 bar() { local f e p=$((qi<TOT?qi:TOT)); printf -v f '%*s' "$p" ''; printf -v e '%*s' "$((TOT-p))" ''; printf "${B}[${G}%s${D}%s${B}]${N}" "${f// /█}" "${e// /░}"; }
@@ -4288,7 +4288,7 @@ run() {
     else
       ((_QUIT)) && break
       ((_S_ANSWERED++)); _S_STREAK=0; _sset "$prompt" "$((_boss_tier>=2?1:_boss_tier))"; _wrong_feedback
-      printf '\n%s  %s %s\n\n' "${R}${B}TIME'S UP${N}" "${D}expected:${N}" "${Y}${ans}${N}"; explain "$ans"
+      printf '\n%s  %s\n%s%s\n\n' "${R}${B}TIME'S UP${N}" "${D}expected:${N}" "${D}${PROMPT_CHAR}${N}" "${Y}${ans}${N}"; explain "$ans"
     fi
     _pause
   done
@@ -5306,7 +5306,7 @@ place() {
         ((_QUIT)) && break 2
       fi
       # Wrong or timed out
-      printf '\n%s  %s %s\n' "${R}${B}✗${N}" "${D}expected:${N}" "${Y}${ans}${N}"
+      printf '\n%s  %s\n%s%s\n' "${R}${B}✗${N}" "${D}expected:${N}" "${D}${PROMPT_CHAR}${N}" "${Y}${ans}${N}"
       _pause; break
     done
     ((qi_ok < 2)) && break
