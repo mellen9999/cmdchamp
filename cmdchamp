@@ -1219,9 +1219,13 @@ explain() {
   _EBUF=""
   printf -v _t '%s\n' "${D}----------------------------------------${N}"; _EBUF+=$_t
   local _etoks; set -f; read -ra _etoks <<< "$1"; set +f
+  # Once each. `grep -q X f && grep X f` names grep twice, and the panel used to
+  # print the whole grep manpage twice with it — two screens of identical text.
+  local _seen=""
   for tok in "${_etoks[@]}"; do
     case "$tok" in '|'|'|&'|'&&'|'||'|';'|'&') _ap=1; continue ;; esac
-    ((_ap)) && [[ "$tok" != *=* ]] && { _canonical_cmd "$tok"; cmds+=("$REPLY"); _ap=0; }
+    ((_ap)) && [[ "$tok" != *=* ]] && { _canonical_cmd "$tok"
+      [[ "$_seen" == *"|$REPLY|"* ]] || { cmds+=("$REPLY"); _seen+="|$REPLY|"; }; _ap=0; }
   done
   local _mc=0 _ml=0
   for tok in "${cmds[@]}"; do
@@ -1233,8 +1237,11 @@ explain() {
     fi
   done
   if ((_mc)); then
+    local _oseen=""
     for tok in "${_etoks[@]}"; do
       case "$tok" in '>'|'>>'|'<'|'<<<'|'2>'|'&>'|'2>&1'|'>&2'|'1>&2'|'|'|'|&'|'&&'|'||'|';'|'&') ;; *) continue ;; esac
+      [[ "$_oseen" == *"|$tok|"* ]] && continue
+      _oseen+="|$tok|"
       exp="${EXP[$tok]:-}"; [[ -z "$exp" ]] && continue
       printf -v _t "%s %s\n" "${Y}${B}${tok}${N}" "${D}- ${exp}${N}"; _EBUF+=$_t
       ((_ml++))
@@ -1245,11 +1252,11 @@ explain() {
     [[ -z "${2:-}" ]] && printf '%s' "$_EBUF"
     return
   fi
-  local _cp=1  # command position: 1=expecting command, 0=in arguments
+  local _cp=1 _tseen=""  # command position: 1=expecting command, 0=in arguments
   for tok in "${_etoks[@]}"; do
     case "$tok" in '|'|'|&'|'&&'|'||'|';'|'&') _cp=1 ;; esac
     exp="${EXP[$tok]:-}"
-    if [[ -n "$exp" ]]; then
+    if [[ -n "$exp" && "$_tseen" != *"|$tok|"* ]]; then
       if ((!_cp)); then
         case "$tok" in
           -*|'>'|'>>'|'<'|'<<<'|'2>'|'&>'|'2>&1'|'>&2'|'1>&2'|'|'|'|&'|'&&'|'||'|';'|'&') ;;
@@ -1264,6 +1271,8 @@ explain() {
         -*) tcol="${C}" ;;
       esac
 
+      _tseen+="|$tok|"   # marked only once it actually prints — a token skipped
+                         # for being in argument position may still be a command later
       _exp_line "$tok" "$exp" "$tcol"
       ((++n))
     fi
