@@ -2,7 +2,7 @@
 # cmdchamp — CLI trainer (single file, no deps beyond bash 4.4+ / bwrap)
 #
 # FILE MAP (search for ═══ SECTION ═══ markers):
-#   INIT .............. bash check, XDG, colors, constants
+#   INIT .............. bash check, XDG, terminal capability probe, glyph tiers, colors, constants
 #   PROFILE ........... load/save, first run, intro, tutorial
 #   BOSSES & LEVELS ... name arrays, scenario metadata
 #   SANDBOX ........... file generators, bwrap exec, state checks
@@ -35,12 +35,111 @@ mkdir -p "$DATA" || { echo "Error: cannot create data dir: $DATA" >&2; exit 1; }
 DATA="$(cd "$DATA" && pwd)" || { echo "Error: data dir unavailable: $DATA" >&2; exit 1; }  # absolute path (bwrap --bind needs it)
 touch "$DATA/scores" 2>/dev/null
 
-if [[ -n ${NO_COLOR+x} || ${TERM:-} == dumb ]]; then
-  R="" G="" Y="" U="" M="" C="" W="" B="" N="" D="" _SY="" _SN=""
+# ── terminal capability detection ──
+# Three render tiers, probed once at startup: unicode → DEC ACS line-drawing → ASCII.
+# A VT220/VT320/VT420 or Wyse is 8-bit (DEC MCS/ISO 8859-1) and monochrome; emitting
+# UTF-8 at one shreds every frame into Latin-1 confetti, and colour carries no signal.
+_CAP_COLOR=0 _CAP_UNI=0 _CAP_ACS=0
+
+_probe_unicode() {
+  # Print one 3-byte glyph and ask the terminal where the cursor landed. A UTF-8
+  # terminal advances 1 column; a legacy one renders 3 bytes and advances 3+.
+  # No response (or no tty) means we cannot know, so assume the safe tier.
+  REPLY=0
+  [[ -n ${CMDCHAMP_UNICODE:-} ]] && { REPLY=1; return; }
+  # A non-UTF-8 locale settles it without asking the terminal.
+  [[ ${LC_ALL:-${LC_CTYPE:-${LANG:-}}} == *[Uu][Tt][Ff]* ]] || return
+  # Piped or redirected: no terminal to ask, so trust the locale rather than
+  # degrading `cmdchamp | less` on a modern box.
+  [[ -t 1 && -t 0 ]] || { REPLY=1; return; }
+  local resp="" col saved
+  saved=$(stty -g 2>/dev/null) || return
+  # This runs long before the session cleanup traps are installed. Without a local trap,
+  # Ctrl+C inside the probe window would leave the user's shell in raw mode.
+  trap 'stty "$saved" 2>/dev/null; exit 130' INT TERM
+  stty -echo -icanon min 0 time 0 2>/dev/null || { trap - INT TERM; return; }
+  printf '\e7\e[999;1H\xe2\x96\x88\e[6n' >/dev/tty 2>/dev/null
+  # Any conformant terminal answers DSR immediately; the timeout only bounds the case
+  # where nothing is listening, and falling through means the safe tier.
+  IFS= read -rs -d 'R' -t 0.3 resp </dev/tty 2>/dev/null
+  printf '\e8\e[K' >/dev/tty 2>/dev/null   # restore cursor, wipe the probe glyph
+  stty "$saved" 2>/dev/null
+  trap - INT TERM
+  [[ $resp == *';'* ]] || return
+  col=${resp##*;}
+  [[ $col == [0-9]* ]] && ((10#$col == 2)) && REPLY=1
+}
+
+if [[ -n ${CMDCHAMP_ASCII:-} ]]; then :                     # explicit override, stay at tier 3
+elif [[ ${TERM:-} == dumb ]]; then :
 else
-  R=$'\e[31m' G=$'\e[32m' Y=$'\e[33m' U=$'\e[1;34m' M=$'\e[35m' C=$'\e[36m' W=$'\e[37m' B=$'\e[1m' N=$'\e[0m' D=$'\e[2m'
-  _SY=$'\e[?2026h' _SN=$'\e[?2026l'
+  _CAP_COLOR=$( { tput colors; } 2>/dev/null ); [[ $_CAP_COLOR == [0-9]* ]] || _CAP_COLOR=0
+  ((_CAP_COLOR >= 8)) && _CAP_COLOR=1 || _CAP_COLOR=0
+  [[ -n $(tput smacs 2>/dev/null) ]] && _CAP_ACS=1
+  _probe_unicode; _CAP_UNI=$REPLY
 fi
+[[ -n ${NO_COLOR+x} ]] && _CAP_COLOR=0
+
+if ((_CAP_COLOR)); then
+  R=$'\e[31m' G=$'\e[32m' Y=$'\e[33m' U=$'\e[1;34m' M=$'\e[35m' C=$'\e[36m' W=$'\e[37m' B=$'\e[1m' N=$'\e[0m' D=$'\e[2m'
+else
+  # Monochrome (green/amber phosphor): colour distinctions must survive as attributes
+  # or the UI loses the channel entirely. Bold/reverse/dim are real VT attributes.
+  R=$'\e[7m' G=$'\e[1m' Y=$'\e[1m' U=$'\e[4m' M=$'\e[7m' C=$'\e[1m' W=$'\e[1m' B=$'\e[1m' N=$'\e[0m' D=$'\e[2m'
+fi
+_IV=$'\e[7m'
+if [[ ${TERM:-} == dumb || -n ${NO_COLOR+x} ]]; then
+  R="" G="" Y="" U="" M="" C="" W="" B="" N="" D="" _IV=""
+fi
+# Synchronised output. Unknown DEC private modes are ignored by VT-series terminals, and
+# it is 8 bytes a frame, so it stays on everywhere except a terminal that echoes escapes.
+if [[ ${TERM:-} == dumb ]]; then _SY="" _SN=""; else _SY=$'\e[?2026h' _SN=$'\e[?2026l'; fi
+
+# ── glyph table ──
+# Every fallback is exactly one display column. The UI does manual column maths, so a
+# 2-char substitute (≤ → "<=") would silently shear every frame that contains one.
+# _A0/_A1 bracket a run of line-drawing characters. Under ACS they are the charset
+# shift pair, so `_rep` emits one shift per run rather than per glyph — on a 19200-baud
+# serial line the difference between those is roughly a second of banner repaint.
+_A0="" _A1=""
+if ((_CAP_UNI)); then
+  _RH=$'═' _RV=$'║' _RTL=$'╔' _RTR=$'╗' _RBL=$'╚' _RBR=$'╝'
+  _RBK=$'█' _RSH=$'░' _RS2=$'▒' _RS3=$'▓' _RUB=$'▀' _RLB=$'▄'
+  _GOK=$'✓' _GNO=$'✗' _GST=$'★' _GTRI=$'▸'
+  _GAR=$'→' _GUP=$'↑' _GDN=$'↓' _GDOT=$'·'
+  _GLE=$'≤' _GGE=$'≥' _GNE=$'≠' _GEQ=$'≡' _GMUL=$'×' _GDASH=$'-'
+elif ((_CAP_ACS)); then
+  _A0=$(tput smacs 2>/dev/null) _A1=$(tput rmacs 2>/dev/null)
+  # DEC Special Graphics has no double-line set, so the frames render single-line.
+  _RH='q' _RV='x' _RTL='l' _RTR='k' _RBL='m' _RBR='j'
+  _RBK='0' _RSH='a' _RS2='a' _RS3='a' _RUB='0' _RLB='0'
+  _GOK='+' _GNO='x' _GST='*' _GTRI='>'
+  _GAR="${_A0}+${_A1}" _GUP="${_A0}-${_A1}" _GDN="${_A0}.${_A1}" _GDOT="${_A0}~${_A1}"
+  _GLE="${_A0}y${_A1}" _GGE="${_A0}z${_A1}" _GNE='#' _GEQ='=' _GMUL='x' _GDASH='-'
+else
+  _RH='-' _RV='|' _RTL='+' _RTR='+' _RBL='+' _RBR='+'
+  _RBK='#' _RSH=':' _RS2=':' _RS3='%' _RUB='^' _RLB='_'
+  _GOK='+' _GNO='x' _GST='*' _GTRI='>'
+  _GAR='>' _GUP='^' _GDN='v' _GDOT='.'
+  _GLE='<' _GGE='>' _GNE='#' _GEQ='=' _GMUL='x' _GDASH='-'
+fi
+_GH="${_A0}${_RH}${_A1}" _GV="${_A0}${_RV}${_A1}"
+_GTL="${_A0}${_RTL}${_A1}" _GTR="${_A0}${_RTR}${_A1}" _GBL="${_A0}${_RBL}${_A1}" _GBR="${_A0}${_RBR}${_A1}"
+_GBK="${_A0}${_RBK}${_A1}" _GSH="${_A0}${_RSH}${_A1}" _GS2="${_A0}${_RS2}${_A1}" _GS3="${_A0}${_RS3}${_A1}"
+_GUB="${_A0}${_RUB}${_A1}" _GLB="${_A0}${_RLB}${_A1}"
+# _rep GLYPH N -> N copies, shifted in and out exactly once.
+_rep() { local _c _s=''; (($2 > 0)) || { REPLY=''; return; }; printf -v _c '%*s' "$2" ''; _s="${_c// /$1}"; REPLY="${_A0}${_s}${_A1}"; }
+_rep "$_RH" 3; _H3=$REPLY          # ═══ section rules
+_rep "$_RH" 2; _H2=$REPLY
+_rep "$_RSH" 70; _SH70=$REPLY      # intro-box frame
+_rep "$_RSH" 66; _SH66=$REPLY
+_rep "$_RSH" 2;  _SH2=$REPLY
+_rep "$_RLB" 7; _FD_T=$REPLY       # floppy-disk art
+_rep "$_RUB" 7; _FD_B=$REPLY
+_rep "$_RBK" 7; _FD_M=$REPLY
+_rep "$_RSH" 3; _FD_S=$REPLY
+_rep "$_RLB" 5; _FD_L=$REPLY
+
 _COLS() { local c=${COLUMNS:-0}; ((c > 0)) || c=$(tput cols 2>/dev/null) || c=80; ((c > 0)) || c=80; REPLY=$c; }
 
 _trim() { REPLY="${1#"${1%%[![:space:]]*}"}"; REPLY="${REPLY%"${REPLY##*[![:space:]]}"}"; }
@@ -56,13 +155,15 @@ _strip_ansi() {
         ((i++))
         while ((i < ${#s})) && [[ ! "${s:i:1}" =~ [a-zA-Z] ]]; do ((i++)); done
         ((i < ${#s})) && ((i++))
+      elif ((i < ${#s})) && [[ "${s:i:1}" == [\(\)] ]]; then
+        ((i += 2))   # charset select (ESC ( 0 / ESC ( B) - zero display width
       fi
     else out+="$ch"; ((i++)); fi
   done
   REPLY="$out"
 }
 
-VERSION="1.2.17"
+VERSION="1.3.0"
 SANDBOX_TIMEOUT=5      # Seconds before sandbox command times out
 BOSS_THRESHOLD=4       # Correct answers needed to beat boss (out of BOSS_TOTAL)
 BOSS_TOTAL=5           # Number of questions in boss round
@@ -71,7 +172,7 @@ MIX_PER_LEVEL=2        # Questions to auto-mix from each previous level
 MAX_LEVEL=30           # Highest level number
 BOSS_TIMER=30          # Seconds per boss question
 _DECAY_T2=2592000     # 30 days: mastered → learning
-_DECAY_T1=2592000     # 30 days: learning → unseen (matches T2 — gentle on returnees)
+_DECAY_T1=2592000     # 30 days: learning → unseen (matches T2 - gentle on returnees)
 _DECAY_INTERVAL=86400  # only run decay once per 24h
 
 # ═══ PROFILE ═══
@@ -122,7 +223,7 @@ _load_profile() {
     elif ((_file_ver != _PROFILE_VER)); then
       [[ -f "$DATA/profile" ]] && cp "$DATA/profile" "$DATA/profile.bak"
       [[ -f "$DATA/scores" ]] && cp "$DATA/scores" "$DATA/scores.bak"
-      printf '%s\n' "Profile version mismatch (got $_file_ver, want $_PROFILE_VER) — reset. Backup in profile.bak/scores.bak" >&2
+      printf '%s\n' "Profile version mismatch (got $_file_ver, want $_PROFILE_VER) - reset. Backup in profile.bak/scores.bak" >&2
       PLAYER_NAME="" BOSS_BEATEN=0 BEST_CHALLENGE=0 DISKS_FOUND="" SC_DONE="" LAST_DECAY=0 PLACED_THROUGH=0
       : > "$DATA/scores"
       rm -f "$DATA"/*.json
@@ -195,18 +296,18 @@ _intro() {
   local spaces; printf -v spaces '%*s' "$pad" ''
   cat <<EOF
 
-    ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
-    ░░                                                                  ░░
-    ░░      The networks are dead. The sky is ash.                      ░░
-    ░░      What remains runs on bone and silicon.                      ░░
-    ░░                                                                  ░░
-    ░░      You are ${W}${B}${PLAYER_NAME}${N}. You have only your shell.${spaces}░░
-    ░░                                                                  ░░
-    ░░      30 daemons guard the descent to ROOT.                       ░░
-    ░░                                                                  ░░
-    ░░      ${D}Know the words, or be forgotten.${N}                            ░░
-    ░░                                                                  ░░
-    ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
+    ${_SH70}
+    ${_SH2}                                                                  ${_SH2}
+    ${_SH2}      The networks are dead. The sky is ash.                      ${_SH2}
+    ${_SH2}      What remains runs on bone and silicon.                      ${_SH2}
+    ${_SH2}                                                                  ${_SH2}
+    ${_SH2}      You are ${W}${B}${PLAYER_NAME}${N}. You have only your shell.${spaces}${_SH2}
+    ${_SH2}                                                                  ${_SH2}
+    ${_SH2}      30 daemons guard the descent to ROOT.                       ${_SH2}
+    ${_SH2}                                                                  ${_SH2}
+    ${_SH2}      ${D}Know the words, or be forgotten.${N}                            ${_SH2}
+    ${_SH2}                                                                  ${_SH2}
+    ${_SH70}
 
 EOF
   [[ "${1:-}" == nopause ]] && return
@@ -218,7 +319,7 @@ _tutorial() {
   printf '%s\e[2J\e[H\n%s' "$_SY" "$_SN"
   cat <<EOF
     ${U}Controls${N}
-    ${C}Tab${N}   Manpage   ${C}Enter${N}  Submit   ${C}↑ ↓${N}  History   ${C}Ctrl+d${N}  Menu
+    ${C}Tab${N}   Manpage   ${C}Enter${N}  Submit   ${C}${_GUP} ${_GDN}${N}  History   ${C}Ctrl+d${N}  Menu
 
     ${U}Vi Mode${N} ${D}(toggle in Options)${N}
     ${C}Esc${N}   Normal mode        ${C}i a${N}   Insert mode
@@ -270,7 +371,7 @@ SC_FLAVOR=(""
   "The logs are screaming. Triage the errors before it gets worse."
   "The config file is a mess. Perform surgery."
   "Bad commit hit main. Rewind, branch, fix, merge."
-  "Rename, replace, archive — 30 files in one sweep."
+  "Rename, replace, archive - 30 files in one sweep."
   "An IP keeps hitting the box. Build the case from the logs.")
 
 _victory() {
@@ -283,7 +384,11 @@ _victory() {
     [[ "$_tier" =~ ^[0-9]+$ ]] && ((10#$_tier >= 2)) && ((++mastered))  # mastered = valid tier >=2; corrupt tiers aren't mastery
   done
   local s
-  cat <<'EOF'
+  # Block-letter art is Unicode-only. ACS "solid block" is a small centred square that
+  # does not tile into a filled cell, so legacy terminals get honest ASCII instead of
+  # art with holes punched through it.
+  if ((_CAP_UNI)); then
+    cat <<'EOF'
 
     ██████╗  ██████╗  ██████╗ ████████╗
     ██╔══██╗██╔═══██╗██╔═══██╗╚══██╔══╝
@@ -293,13 +398,24 @@ _victory() {
     ╚═╝  ╚═╝ ╚═════╝  ╚═════╝    ╚═╝
 
 EOF
+  else
+    cat <<'EOF'
+
+     ____   ___   ___ _____
+    |  _ \ / _ \ / _ \_   _|
+    | |_) | | | | | | || |
+    |  _ <| |_| | |_| || |
+    |_| \_\\___/ \___/ |_|
+
+EOF
+  fi
   printf -v s '%*s' $(( (70 - 20 - ${#PLAYER_NAME}) / 2 )) ''
   printf '%s%s\n\n' "$s" "${G}${B}ACCESS GRANTED: ${W}${PLAYER_NAME}${N}"
   local stat_text pad_len stat_pad
   printf -v stat_text '%s prompts seen. %s mastered.' "$total" "$mastered"
   pad_len=$((56 - ${#stat_text}))
   printf -v stat_pad '%*s' "$pad_len" ''
-  local br="${D}░░${N}" edge="${D}░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░${N}"
+  local br="${D}${_SH2}${N}" edge="${D}${_SH66}${N}"
   printf '\n'
   printf '    %s\n' "$edge"
   printf '    %s                                                              %s\n' "$br" "$br"
@@ -326,7 +442,7 @@ _boss_splash() {
   printf '%s\e[2J\e[H\n\n' "$_SY"
   local s info cols; _COLS; cols=$REPLY
   printf -v s '%*s' $(( (cols - 12) / 2 )) ''
-  printf '%s%s\n\n' "$s" "${M}${B}═══ BOSS ═══${N}"
+  printf '%s%s\n\n' "$s" "${M}${B}${_H3} BOSS ${_H3}${N}"
   printf -v s '%*s' $(( (cols - ${#boss}) / 2 )) ''
   printf '%s%s\n\n' "$s" "${M}${B}${boss}${N}"
   printf -v s '%*s' $(( (cols - ${#flavor} - 2) / 2 )) ''
@@ -345,12 +461,12 @@ _boss_splash() {
 SANDBOX_MODE=1  # ON by default
 SANDBOX_PRISTINE="$DATA/sandbox.pristine"
 SANDBOX_DIR="$DATA/sandbox"
-_SANDBOX_GEN=3  # fixture generation — bump to force a pristine rebuild on existing installs
+_SANDBOX_GEN=3  # fixture generation - bump to force a pristine rebuild on existing installs
 
 _BWRAP_FLAG="$DATA/.bwrap_blocked"
 _bwrap_notice() {
   local _kind=$1 _raw=${2:-}
-  printf '\n%s\n\n' "${Y}${B}Sandbox unavailable — running in text-match mode${N}" >&2
+  printf '\n%s\n\n' "${Y}${B}Sandbox unavailable - running in text-match mode${N}" >&2
   case $_kind in
     missing)
       printf '%s\n' "${C}bubblewrap${N} (bwrap) isn't installed. cmdchamp will still match" >&2
@@ -802,11 +918,11 @@ _disk_found() {
   [[ -n "$DISKS_FOUND" ]] && DISKS_FOUND="$DISKS_FOUND,$name" || DISKS_FOUND="$name"
   _save_profile
   _csv_count "$DISKS_FOUND"; local disk_count=$REPLY
-  printf '\n%s\n' "${Y}${B}▄▄▄▄▄▄▄${N}"
-  printf '%s\n'   "${Y}${B}█ ░░░ █${N}  ${Y}${B}FLOPPY DISK: ${name}${N}"
-  printf '%s\n'   "${Y}${B}█▄▄▄▄▄█${N}  ${D}${_DISK_DESC[$name]:-}${N}"
-  printf '%s\n'   "${Y}${B}███████${N}  ${D}${disk_count}/${_DISK_TOTAL} collected${N}"
-  printf '%s\n\n' "${Y}${B}▀▀▀▀▀▀▀${N}"
+  printf '\n%s\n' "${Y}${B}${_FD_T}${N}"
+  printf '%s\n'   "${Y}${B}${_GBK} ${_FD_S} ${_GBK}${N}  ${Y}${B}FLOPPY DISK: ${name}${N}"
+  printf '%s\n'   "${Y}${B}${_GBK}${_FD_L}${_GBK}${N}  ${D}${_DISK_DESC[$name]:-}${N}"
+  printf '%s\n'   "${Y}${B}${_FD_M}${N}  ${D}${disk_count}/${_DISK_TOTAL} collected${N}"
+  printf '%s\n\n' "${Y}${B}${_FD_B}${N}"
   sleep 5
 }
 _disk_check() {
@@ -961,9 +1077,9 @@ declare -A MANPAGE=(
   [fd]=$'fast find\n  \e[36m-e\e[0m \e[33mEXT\e[0m    file extension         \e[36m-t\e[0m \e[33mTYPE\e[0m   f/d/l/x/e\n  \e[36m-d\e[0m \e[33mN\e[0m      max depth              \e[36m-E\e[0m \e[33mPAT\e[0m    exclude pattern\n  \e[36m-H\e[0m        include hidden         \e[36m-i\e[0m        ignore case\n  \e[36m-S\e[0m \e[33mSIZE\e[0m   by size (+/-N)         \e[36m-l\e[0m        long listing\n  \e[36m-p\e[0m        match full path        \e[36m-g\e[0m        glob pattern\n  \e[36m-x\e[0m \e[33mCMD\e[0m    execute per result\n  \e[36m--changed-within\e[0m \e[33mT\e[0m               \e[36m--changed-before\e[0m \e[33mT\e[0m\n  \e[35mvs find\e[0m   fd is faster, regex by default, skips .gitignore + hidden.\n          find is POSIX (works anywhere), has -exec {} +, -delete, complex logic\n  \e[2mfd pattern    fd -e py    fd -t d    fd -S +10M    fd -x rm {}\e[0m'
   [sort]=$'sort lines of text\n  \e[36m-n\e[0m        numeric                \e[36m-r\e[0m        reverse\n  \e[36m-u\e[0m        unique                 \e[36m-k\e[0m \e[33mN\e[0m      by column \e[33mN\e[0m\n  \e[36m-t\e[0m \e[33mC\e[0m      delimiter              \e[36m-h\e[0m        human numeric\n  \e[36m-f\e[0m        ignore case\n  \e[2msort file.txt    sort -n nums.txt    sort -t, -k2,2 data.csv\e[0m'
   [uniq]=$'filter repeated lines\n  \e[36m-c\e[0m        count occurrences      \e[36m-d\e[0m        only duplicates\n  \e[36m-u\e[0m        only unique            \e[36m-D\e[0m        all duplicates\n  \e[35mvs sort -u\e[0m sort -u just deduplicates. uniq can COUNT (-c), show\n          ONLY dupes (-d), or ONLY unique (-u). that\'s why both exist\n  \e[2msort file | uniq    sort file | uniq -c    sort file | uniq -D\e[0m'
-  [cut]=$'extract columns/fields\n  \e[36m-d\e[33mC\e[0m       delimiter              \e[36m-f\e[33mN\e[0m       field \e[33mN\e[0m\n  \e[36m-c\e[33mN\e[0m       character \e[33mN\e[0m            \e[36m--complement\e[0m invert\n  \e[35mvs awk\e[0m    cut is simpler/faster for grabbing columns.\n          awk is a full language — use it when you need math, conditions, or logic\n  \e[2mcut -d, -f1 data.csv    cut -d: -f1 /etc/passwd    cut -c1-10 file\e[0m'
+  [cut]=$'extract columns/fields\n  \e[36m-d\e[33mC\e[0m       delimiter              \e[36m-f\e[33mN\e[0m       field \e[33mN\e[0m\n  \e[36m-c\e[33mN\e[0m       character \e[33mN\e[0m            \e[36m--complement\e[0m invert\n  \e[35mvs awk\e[0m    cut is simpler/faster for grabbing columns.\n          awk is a full language - use it when you need math, conditions, or logic\n  \e[2mcut -d, -f1 data.csv    cut -d: -f1 /etc/passwd    cut -c1-10 file\e[0m'
   [wc]=$'word, line, byte count\n  \e[36m-l\e[0m        lines                  \e[36m-w\e[0m        words\n  \e[36m-c\e[0m        bytes\n  \e[2mwc -l file.txt    wc -w file.txt    ls | wc -l\e[0m'
-  [tr]=$'translate characters\n  \e[36m-d\e[0m        delete chars           \e[36m-s\e[0m        squeeze consecutive dupes to one\n  \e[32m<\e[0m \e[33mFILE\e[0m   tr reads stdin — redirect from file\n  \e[2mtr a-z A-Z < file    tr -d \'\\n\' < file    tr -s \' \' < file\e[0m'
+  [tr]=$'translate characters\n  \e[36m-d\e[0m        delete chars           \e[36m-s\e[0m        squeeze consecutive dupes to one\n  \e[32m<\e[0m \e[33mFILE\e[0m   tr reads stdin - redirect from file\n  \e[2mtr a-z A-Z < file    tr -d \'\\n\' < file    tr -s \' \' < file\e[0m'
   [sed]=$'stream editor\n  \e[31m\'s/old/new/\'\e[0m    replace first     \e[31m\'s/old/new/g\'\e[0m  replace all\n  \e[36m-i\e[0m            edit in place     \e[31m\'/pat/d\'\e[0m       delete lines\n  \e[36m-n\e[0m            suppress output  \e[36m-e\e[0m            multi commands\n  \e[36m-E\e[0m            extended regex\n  \e[35mvs awk\e[0m        sed is best for search-and-replace and line filtering.\n              awk is best for column-based processing and math\n  \e[2msed \'s/foo/bar/g\' file    sed -i \'/^#/d\' file    sed -n \'5,10p\' file\e[0m'
   [awk]=$'pattern scanning & field processing\n  \e[31m\'{print $1}\'\e[0m   first field       \e[31m\'{print $NF}\'\e[0m  last field\n  \e[36m-F\e[0m\e[2m\',\'\e[0m          delimiter       \e[31mNR\e[0m          line number\n  \e[2mawk \'{print $1}\' file    awk -F, \'{print $2}\' data.csv    awk \'/error/\' log\e[0m'
   [xargs]=$'build commands from stdin\n  \e[36m-I\e[0m \e[32m{}\e[0m     placeholder            \e[36m-0\e[0m        null delim\n  \e[36m-n\e[0m \e[33mN\e[0m      args per command       \e[36m-P\e[0m \e[33mN\e[0m      parallel\n  \e[36m-p\e[0m        confirm each           \e[36m-t\e[0m        trace (show cmd)\n  \e[2mfind . -print0 | xargs -0 rm    cat urls | xargs -P4 -I{} curl {}\e[0m'
@@ -1040,10 +1156,10 @@ declare -A MANPAGE=(
   [ssh-keygen]=$'generate SSH key pairs\n  \e[36m-t\e[0m \e[33mTYPE\e[0m   key type (ed25519, rsa)  \e[36m-b\e[0m \e[33mBITS\e[0m   key size\n  \e[36m-C\e[0m \e[33mTEXT\e[0m   comment\n  \e[35med25519\e[0m   modern, fast, secure (preferred)\n  \e[35mrsa 4096\e[0m  compatible everywhere\n  \e[2mssh-keygen -t ed25519    ssh-keygen -t rsa -b 4096\e[0m'
   [basename]=$'strip directory from path\n  \e[33mSUFFIX\e[0m    also strip suffix\n  \e[2mbasename /var/log/syslog    basename file.tar.gz .tar.gz\e[0m'
   [dirname]=$'strip filename from path\n  \e[2mdirname /var/log/syslog    dirname /home/user/file.txt\e[0m'
-  [dig]=$'DNS lookup\n  \e[36m@SERVER\e[0m   use specific resolver        \e[36m+short\e[0m    answer only\n  \e[36m-x\e[0m \e[33mIP\e[0m     reverse lookup               \e[36m+trace\e[0m    full delegation chain\n  \e[33mTYPE\e[0m      A AAAA MX NS TXT CNAME ANY\n  \e[35mvs nslookup\e[0m dig is the modern tool — more output detail.\n              nslookup is older and interactive-by-default\n  \e[2mdig example.com    dig +short A example.com    dig -x 8.8.8.8    dig @1.1.1.1 example.com MX\e[0m'
+  [dig]=$'DNS lookup\n  \e[36m@SERVER\e[0m   use specific resolver        \e[36m+short\e[0m    answer only\n  \e[36m-x\e[0m \e[33mIP\e[0m     reverse lookup               \e[36m+trace\e[0m    full delegation chain\n  \e[33mTYPE\e[0m      A AAAA MX NS TXT CNAME ANY\n  \e[35mvs nslookup\e[0m dig is the modern tool - more output detail.\n              nslookup is older and interactive-by-default\n  \e[2mdig example.com    dig +short A example.com    dig -x 8.8.8.8    dig @1.1.1.1 example.com MX\e[0m'
   [host]=$'simple DNS lookup\n  \e[2mhost example.com\e[0m'
   [column]=$'format input as table\n  \e[36m-t\e[0m        table mode               \e[36m-s\e[0m \e[33mC\e[0m      input delimiter\n  \e[2mcolumn -t file    column -t -s, file.csv    ls -l | column -t\e[0m'
-  [printf]=$'formatted output\n  \e[33m%s\e[0m string  \e[33m%d\e[0m int  \e[33m%x\e[0m hex  \e[33m%f\e[0m float  \e[33m%(FMT)T\e[0m time\n  \e[36m-v\e[0m \e[33mVAR\e[0m    assign to variable (perf — no subshell)\n  \e[2mprintf \'%s\\n\' hello    printf \'%(%F)T\\n\' -1    printf -v var \'%d\' 42\e[0m'
+  [printf]=$'formatted output\n  \e[33m%s\e[0m string  \e[33m%d\e[0m int  \e[33m%x\e[0m hex  \e[33m%f\e[0m float  \e[33m%(FMT)T\e[0m time\n  \e[36m-v\e[0m \e[33mVAR\e[0m    assign to variable (perf - no subshell)\n  \e[2mprintf \'%s\\n\' hello    printf \'%(%F)T\\n\' -1    printf -v var \'%d\' 42\e[0m'
   [date]=$'show/set date\n  \e[36m+FMT\e[0m      format: %Y year %m month %d day %H hour %M min %S sec\n  \e[36m+%F\e[0m       YYYY-MM-DD\n  \e[2mdate    date +%F    date +%Y-%m-%d\e[0m'
   [strace]=$'trace system calls\n  \e[36m-p\e[0m \e[33mPID\e[0m    attach to running PID    \e[36m-f\e[0m        follow forks\n  \e[2mstrace ls    strace -fp 1234    strace -fp $(pidof prog)\e[0m'
   [timeout]=$'limit command runtime\n  \e[36m--kill-after\e[0m \e[33mT\e[0m  send KILL after T more secs\n  \e[36m-k\e[0m \e[33mT\e[0m    same as --kill-after\n  \e[2mtimeout 5 ./long-cmd    timeout -k 2 10s ./cmd\e[0m'
@@ -1067,8 +1183,34 @@ declare -A MANPAGE=(
   [conntrack]=$'kernel connection tracking\n  \e[36m-L\e[0m        list connections\n  \e[2mconntrack -L    sudo conntrack -L -o timestamp\e[0m'
   [enum4linux-ng]=$'modern SMB/NetBIOS enumerator\n  \e[36m-A\e[0m        full enumeration\n  \e[2menum4linux-ng -A 10.0.0.1\e[0m'
 )
+# The manpage bodies above carry literal SGR codes, authored inline (1600+ of them).
+# They are remapped here — the single point where that data reaches a terminal — so
+# NO_COLOR, dumb terminals and monochrome phosphor all get the correct treatment.
+# Without this the panel emitted raw colour regardless of any of those.
+# Prose in the question/manpage data carries typographic characters (— → ≤ …) that a
+# non-UTF-8 terminal renders as multi-byte confetti. Fold them to width-identical ASCII
+# at the render choke points, so data added later cannot reintroduce the problem.
+_ascii_fold() {
+  local d=$1
+  ((_CAP_UNI)) && { REPLY=$d; return; }
+  [[ $d != *[!$'\x01'-$'\x7f']* ]] && { REPLY=$d; return; }   # fast path: already ASCII
+  d=${d//$'-'/-}; d=${d//$'-'/-}; d=${d//$'→'/$_GAR}; d=${d//$'←'/<}
+  d=${d//$'↑'/$_GUP}; d=${d//$'↓'/$_GDN}; d=${d//$'·'/$_GDOT}; d=${d//$'×'/$_GMUL}
+  d=${d//$'≤'/$_GLE}; d=${d//$'≥'/$_GGE}; d=${d//$'≠'/$_GNE}; d=${d//$'≡'/$_GEQ}
+  d=${d//$'✓'/$_GOK}; d=${d//$'✗'/$_GNO}; d=${d//$'★'/$_GST}; d=${d//$'▸'/$_GTRI}
+  d=${d//$'§'/S}; d=${d//$'…'/...}
+  REPLY=$d
+}
+_mp_recolor() {
+  local d=$1
+  d=${d//$'\e[36m'/$C}; d=${d//$'\e[33m'/$Y}; d=${d//$'\e[32m'/$G}
+  d=${d//$'\e[35m'/$M}; d=${d//$'\e[31m'/$R}; d=${d//$'\e[37m'/$W}
+  d=${d//$'\e[97m'/$W$B}; d=${d//$'\e[91m'/$R$B}
+  d=${d//$'\e[2m'/$D}; d=${d//$'\e[1m'/$B}; d=${d//$'\e[7m'/$_IV}; d=${d//$'\e[0m'/$N}
+  _ascii_fold "$d"
+}
 _mp_show() {
-  local cmd=$1 _t; local data="${MANPAGE[$cmd]}"
+  local cmd=$1 _t; _mp_recolor "${MANPAGE[$cmd]}"; local data="$REPLY"
   printf -v _t "%s %s\n" "${W}${B}${cmd}${N}" "${D}- ${data%%$'\n'*}${N}"; _EBUF+=$_t
   printf -v _t '%s\n' "${data#*$'\n'}"; _EBUF+=$_t
 }
@@ -1080,7 +1222,7 @@ declare -A EXP=(
   ['--sort=-%mem']="sort by memory% descending"
   [make]="build tool" [gcc]="C compiler"
   [bat]="cat with highlighting (use cat for piping, bat for reading)"
-  [sd]="simpler sed (saner regex syntax, in-place by default; -F for literal — sed is POSIX/everywhere)" [dust]="visual du (bar chart — du is POSIX/scriptable)"
+  [sd]="simpler sed (saner regex syntax, in-place by default; -F for literal - sed is POSIX/everywhere)" [dust]="visual du (bar chart - du is POSIX/scriptable)"
   [md5sum]="MD5 hash (weak)" [sha256sum]="SHA256 hash"
   [masscan]="fast port scanner"
   [ncat]="nmap netcat (supports -e)" [smbclient]="SMB client" [lynis]="security audit"
@@ -1094,7 +1236,7 @@ declare -A EXP=(
   ['$$']="current shell PID" ['$?']="last exit code" ['$!']="last background PID"
   ['$#']="argument count" ['$@']="all arguments" ['$0']="script name"
   ['!!']="repeat last command" ['!$']="last arg of prev cmd" ['!^']="first arg of prev cmd" ['!*']="all args of prev cmd"
-  ['>']="write stdout to file (overwrite — output disappears from terminal)" ['>>']="append stdout to file (output disappears from terminal — use tee to see it too)"
+  ['>']="write stdout to file (overwrite - output disappears from terminal)" ['>>']="append stdout to file (output disappears from terminal - use tee to see it too)"
   ['2>']="redirect stderr to file" ['&>']="redirect stdout+stderr to file"
   ['/dev/null']="black hole: discards anything written to it" ['2>&1']="merge stderr into stdout" ['>&2']="send stdout to stderr" ['1>&2']="send stdout to stderr"
   ['<']="input redirect: feed FILE contents into command"
@@ -1182,7 +1324,7 @@ declare -A EXP=(
   [exec]="replace shell with command"
   [unset]="remove variable or function"
   [shuf]="randomize lines" [expand]="convert tabs to spaces"
-  [tac]="reverse line order (opposite of cat)" [more]="pager (forward only — use less)"
+  [tac]="reverse line order (opposite of cat)" [more]="pager (forward only - use less)"
   [realpath]="resolve path to absolute" [gzip]="compress file (replaces original)"
   [killall]="kill processes by name" [nm]="list symbols from object files"
   [objdump]="display object file info" [nl]="number lines"
@@ -1271,7 +1413,7 @@ explain() {
         -*) tcol="${C}" ;;
       esac
 
-      _tseen+="|$tok|"   # marked only once it actually prints — a token skipped
+      _tseen+="|$tok|"   # marked only once it actually prints - a token skipped
                          # for being in argument position may still be a command later
       _exp_line "$tok" "$exp" "$tcol"
       ((++n))
@@ -1495,8 +1637,8 @@ gen_level6() {
   _fpick SANDBOX_CSVS; csv=$REPLY; _fpick SANDBOX_LOGS; log=$REPLY
   local n=$((RANDOM % 6 + 3))
   # Input redirection (<)
-  questions+=("Count lines in ${W}${csv}${C} — just the number, no filename|wc -l < ${csv}|wc --lines < ${csv}")
-  questions+=("Count words in ${W}${txt}${C} — just the number, no filename|wc -w < ${txt}|wc --words < ${txt}")
+  questions+=("Count lines in ${W}${csv}${C} - just the number, no filename|wc -l < ${csv}|wc --lines < ${csv}")
+  questions+=("Count words in ${W}${txt}${C} - just the number, no filename|wc -w < ${txt}|wc --words < ${txt}")
   questions+=("Uppercase contents of ${W}${txt}${C} using tr|tr a-z A-Z < ${txt}|tr '[:lower:]' '[:upper:]' < ${txt}")
   questions+=("Collapse repeated newlines in ${W}${log}${C} using tr|tr -s '\\n' < ${log}|tr --squeeze-repeats '\\n' < ${log}")
   questions+=("Sort ${W}${csv}${C} using input redirection|sort < ${csv}")
@@ -1510,7 +1652,7 @@ gen_level6() {
   # skeleton "< >" matches, but no marker to rescue it) correctly falls through to reject.
   questions+=("Sort ${W}${csv}${C} and save output to ${W}sorted.csv${C}|sort < ${csv} > sorted.csv|sort ${csv} > sorted.csv|sort > sorted.csv < ${csv}")
   questions+=("Show last ${n} lines of ${W}${log}${C} using redirection|tail -${n} < ${log}|tail -n ${n} < ${log}|tail --lines ${n} < ${log}|tail --lines=${n} < ${log}")
-  questions+=("Count bytes in ${W}${txt}${C} — just the number|wc -c < ${txt}|wc --bytes < ${txt}")
+  questions+=("Count bytes in ${W}${txt}${C} - just the number|wc -c < ${txt}|wc --bytes < ${txt}")
   # Here-strings (<<<)
   local word word2
   _fphrase hello world example config backup server admin debug; word=$REPLY
@@ -1547,11 +1689,11 @@ gen_level7() {
   questions+=("Find ${Y}*.${ext}${C} files, suppress any errors|find . -name '*.${ext}' 2> /dev/null|find . -type f -name '*.${ext}' 2> /dev/null|find -name '*.${ext}' 2> /dev/null|find -type f -name '*.${ext}' 2> /dev/null")
   questions+=("Run ${W}./${script}${C}, discard any errors|./${script} 2> /dev/null|./${script} 2>/dev/null")
   questions+=("Capture ALL output from ${W}./${script}${C} to ${W}${outfile}${C} (stdout and stderr)|./${script} &> ${outfile}|./${script} >& ${outfile}|./${script} > ${outfile} 2>&1|./${script} 1> ${outfile} 2>&1")
-  questions+=("Run ${W}./${script}${C} completely silently — no output at all|./${script} &> /dev/null|./${script} >& /dev/null|./${script} > /dev/null 2>&1|./${script} 1> /dev/null 2>&1|./${script} > /dev/null 2> /dev/null|./${script} 1> /dev/null 2> /dev/null")
+  questions+=("Run ${W}./${script}${C} completely silently - no output at all|./${script} &> /dev/null|./${script} >& /dev/null|./${script} > /dev/null 2>&1|./${script} 1> /dev/null 2>&1|./${script} > /dev/null 2> /dev/null|./${script} 1> /dev/null 2> /dev/null")
   # The scripts log exactly one "ERROR:" line to stderr, in caps. `grep -i error` returns
   # that one line (@1); `grep error` (no -i) returns nothing; `grep -v error` returns every
   # line (case-sensitive, so the uppercase ERROR line is NOT excluded) — @1 rejects both.
-  questions+=("Run ${W}./${script}${C}, search ALL output for 'error' — any case§./${script} 2>&1 | grep -i error§./${script} |& grep -i error§./${script} 2>&1 | grep --ignore-case error§./${script} |& grep --ignore-case error§~^\\./[^ ]+ 2>&1 \\| grep (-i|--ignore-case) error$§~^\\./[^ ]+ \\|& grep (-i|--ignore-case) error$§#output:@1")
+  questions+=("Run ${W}./${script}${C}, search ALL output for 'error' - any case§./${script} 2>&1 | grep -i error§./${script} |& grep -i error§./${script} 2>&1 | grep --ignore-case error§./${script} |& grep --ignore-case error§~^\\./[^ ]+ 2>&1 \\| grep (-i|--ignore-case) error$§~^\\./[^ ]+ \\|& grep (-i|--ignore-case) error$§#output:@1")
   questions+=("Run ${W}./${script2}${C}, pipe all output to ${Y}less${C}§./${script2} 2>&1 | less§./${script2} |& less§#text:")
   questions+=("Run ${W}./${script}${C}, count total lines (stdout+stderr)§./${script} 2>&1 | wc -l§./${script} 2>&1 | wc --lines§./${script} |& wc -l§./${script} |& wc --lines")
   questions+=("List files in detail, save to ${W}${outfile}${C}, errors to ${W}${errfile}${C}|ls -la > ${outfile} 2> ${errfile}|ls -al > ${outfile} 2> ${errfile}|ls -l > ${outfile} 2> ${errfile}|ls -la 2> ${errfile} > ${outfile}|ls -al 2> ${errfile} > ${outfile}|ls -l 2> ${errfile} > ${outfile}|ls -la 1> ${outfile} 2> ${errfile}|ls -al 1> ${outfile} 2> ${errfile}|ls -l 1> ${outfile} 2> ${errfile}")
@@ -1577,7 +1719,7 @@ gen_level8() {
   questions+=("Create ${W}${dir}${C} and cd into it, only if mkdir succeeds|mkdir ${dir} && cd ${dir}|mkdir -p ${dir} && cd ${dir}|mkdir --parents ${dir} && cd ${dir}|mkdir ${dir} && cd ${dir}/|mkdir -p ${dir} && cd ${dir}/|mkdir --parents ${dir} && cd ${dir}/")
   questions+=("Create ${W}${dir}${C}, or echo '${msg}' if it fails§mkdir ${dir} || echo '${msg}'§mkdir -p ${dir} || echo '${msg}'§mkdir --parents ${dir} || echo '${msg}'")
   questions+=("Try cd to ${W}${dir}${C}, create it if that fails§cd ${dir} || mkdir ${dir}§cd ${dir} || mkdir -p ${dir}§cd ${dir} || mkdir --parents ${dir}§cd ${dir}/ || mkdir ${dir}§cd ${dir}/ || mkdir -p ${dir}§cd ${dir}/ || mkdir --parents ${dir}")
-  questions+=("If ${W}${txt}${C} exists, display it — one line|test -f ${txt} && cat ${txt}|[[ -f ${txt} ]] && cat ${txt}|[ -f ${txt} ] && cat ${txt}|if test -f ${txt}; then cat ${txt}; fi|if [[ -f ${txt} ]]; then cat ${txt}; fi|if [ -f ${txt} ]; then cat ${txt}; fi")
+  questions+=("If ${W}${txt}${C} exists, display it - one line|test -f ${txt} && cat ${txt}|[[ -f ${txt} ]] && cat ${txt}|[ -f ${txt} ] && cat ${txt}|if test -f ${txt}; then cat ${txt}; fi|if [[ -f ${txt} ]]; then cat ${txt}; fi|if [ -f ${txt} ]; then cat ${txt}; fi")
   questions+=("If ${W}${log}${C} exists, show first ${n} lines|test -f ${log} && head -${n} ${log}|test -f ${log} && head -n ${n} ${log}|[[ -f ${log} ]] && head -${n} ${log}|[[ -f ${log} ]] && head -n ${n} ${log}|[ -f ${log} ] && head -${n} ${log}|[ -f ${log} ] && head -n ${n} ${log}")
   questions+=("If ${W}${txt}${C} exists cat it, else echo '${msg}'§test -f ${txt} && cat ${txt} || echo '${msg}'§[[ -f ${txt} ]] && cat ${txt} || echo '${msg}'§[ -f ${txt} ] && cat ${txt} || echo '${msg}'")
   # grep already prints matches and exits nonzero when there are none, so the
@@ -2199,7 +2341,7 @@ gen_level20() {
   # § delimiter: the third alternate contains '||' which a |-split would fragment
   questions+=("Branch on arithmetic test: if ${n} > 0 echo positive§(( ${n} > 0 )) && echo positive§(( ${n} > 0 )) && echo positive || echo nonpositive")
   questions+=("Default value if var unset|echo \"\${var:-default}\"|: \"\${var:=default}\" && echo \"\$var\"")
-  questions+=("Loop over script positional args (for x; do — implicit \$@)|for arg; do echo \"\$arg\"; done|for arg in \"\$@\"; do echo \"\$arg\"; done")
+  questions+=("Loop over script positional args (for x; do - implicit \$@)|for arg; do echo \"\$arg\"; done|for arg in \"\$@\"; do echo \"\$arg\"; done")
   questions+=("Loop ${W}1..${n}${C} via brace expansion (no seq subshell)|for i in {1..${n}}; do echo \$i; done|for i in {1..${n}}; do echo \"\$i\"; done")
   questions+=("Break out of TWO nested loops (over *.${ext} then *.${ext2}) at once via depth arg|for f in *.${ext}; do for g in *.${ext2}; do [[ \"\$g\" == \"\$f\" ]] && break 2; done; done")
   questions+=("Regex match in [[ ]], capture into \${BASH_REMATCH[@]}|[[ \"\$var\" =~ ^([0-9]+)\$ ]] && echo \"\${BASH_REMATCH[1]}\"|[[ \$var =~ ^([0-9]+)\$ ]] && echo \"\${BASH_REMATCH[1]}\"")
@@ -2781,7 +2923,7 @@ gen_level29() {
   questions+=("Check pkexec version (CVE-2021-4034 PwnKit, fixed in 0.120)|pkexec --version|pkexec -V")
   questions+=("Trigger Polkit CVE-2021-3560 dbus race (RHEL8/Ubuntu 20.04)§dbus-send --system --dest=org.freedesktop.Accounts --type=method_call --print-reply /org/freedesktop/Accounts org.freedesktop.Accounts.CreateUser string:hacker string:'' int32:1 & sleep 0.005s; kill \$!§bash cve-2021-3560.sh#boss-skip#chal-skip")
   questions+=("Check sudo for Baron Samedit (CVE-2021-3156, fixed in 1.9.5p2)§sudoedit -s '\\\\\\\\' \$(python3 -c 'print(\"A\"*1000)') 2>&1 | grep -qi 'usage' && echo patched || echo vulnerable§sudo --version§sudo -V#boss-skip")
-  questions+=("Check kernel for Dirty Pipe (CVE-2022-0847, vuln: 5.8 ≤ ver < 5.16.11 / 5.15.25 / 5.10.102)§uname -r§hostnamectl | grep -i kernel§cat /proc/version")
+  questions+=("Check kernel for Dirty Pipe (CVE-2022-0847, vuln: 5.8 ${_GLE} ver < 5.16.11 / 5.15.25 / 5.10.102)§uname -r§hostnamectl | grep -i kernel§cat /proc/version")
   questions+=("List all cron dirs manually|ls -la /etc/cron.d/ /etc/cron.daily/ /etc/cron.hourly/ /etc/cron.weekly/ /etc/cron.monthly/|ls -la /etc/cron.* /etc/crontab")
   questions+=("Stabilize a dumb reverse shell to a full TTY§python3 -c 'import pty;pty.spawn(\"/bin/bash\")' && export TERM=xterm && stty raw -echo; fg§python3 -c 'import pty;pty.spawn(\"/bin/bash\")'§python -c 'import pty;pty.spawn(\"/bin/bash\")'§script -qc /bin/bash /dev/null#boss-skip#chal-skip")
   questions+=("Triage linpeas output for high-confidence (95-99%) findings§./linpeas.sh | grep -E '\\[95%|\\[97%|\\[99%'§bash linpeas.sh | grep -iE '95%|99%|CVE-[0-9]'§linpeas.sh 2>/dev/null | grep -E '\\[95\\]|\\[97\\]|\\[99\\]'#boss-skip")
@@ -3149,7 +3291,7 @@ _sc_steps_10() {
   cat <<'STEPS'
 Count .py files under legacy/§find legacy -name '*.py' | wc -l§find legacy -type f -name '*.py' | wc -l§find legacy/ -name '*.py' | wc -l§find legacy -name '*.py' -type f | wc -l§find legacy -iname '*.py' | wc -l§ls legacy/*.py | wc -l§fd -e py . legacy | wc -l#output:6
 Replace 'old_func' with 'new_func' in every .py file under legacy/§find legacy -name '*.py' -exec sed -i 's/old_func/new_func/g' {} +§find legacy -name '*.py' -exec sed -i 's/old_func/new_func/g' {} \;§find legacy -type f -name '*.py' -exec sed -i 's/old_func/new_func/g' {} +§find legacy -type f -name '*.py' -exec sed -i 's/old_func/new_func/g' {} \;§find legacy -iname '*.py' -exec sed -i 's/old_func/new_func/g' {} +§fd -e py . legacy -x sed -i 's/old_func/new_func/g' {}§grep -rl old_func legacy | xargs sed -i 's/old_func/new_func/g'§grep -rl old_func legacy/ | xargs sed -i 's/old_func/new_func/g'#state:!contains:legacy/mod1.py:old_func,contains:legacy/mod1.py:new_func
-Count 'new_func' lines in legacy/ — the rename should have landed in all 5 modules§grep -r new_func legacy | wc -l§grep -r new_func legacy/ | wc -l§grep -r new_func legacy | wc --lines§rg new_func legacy | wc -l§rg new_func legacy/ | wc -l#output:5
+Count 'new_func' lines in legacy/ - the rename should have landed in all 5 modules§grep -r new_func legacy | wc -l§grep -r new_func legacy/ | wc -l§grep -r new_func legacy | wc --lines§rg new_func legacy | wc -l§rg new_func legacy/ | wc -l#output:5
 Make every .py under legacy/ executable§find legacy -name '*.py' -exec chmod +x {} +§find legacy -name '*.py' -exec chmod +x {} \;§find legacy -type f -name '*.py' -exec chmod +x {} +§find legacy -type f -name '*.py' -exec chmod +x {} \;§find legacy -iname '*.py' -exec chmod +x {} +§chmod +x legacy/*.py§fd -e py . legacy -x chmod +x {}#state:perm:legacy/mod1.py:x
 Tar legacy/ into archive/legacy.tar.gz (gzip-compressed)§tar czf archive/legacy.tar.gz legacy§tar czf archive/legacy.tar.gz legacy/§tar -czf archive/legacy.tar.gz legacy§tar -czf archive/legacy.tar.gz legacy/§tar cvzf archive/legacy.tar.gz legacy§tar -cvzf archive/legacy.tar.gz legacy#state:exists:archive/legacy.tar.gz
 Verify the archive lists 6 .py files§tar tzf archive/legacy.tar.gz | grep -c '\.py$'§tar -tzf archive/legacy.tar.gz | grep -c '\.py$'§tar tf archive/legacy.tar.gz | grep -c '\.py$'§tar tvzf archive/legacy.tar.gz | grep -c '\.py$'§tar -tvzf archive/legacy.tar.gz | grep -c '\.py$'#output:6
@@ -3549,7 +3691,7 @@ _skel_ok() {
     lit=1
     _opskel "$b"; [[ "$REPLY" == "$uskel" ]] && return 0
   done
-  ((lit)) || return 0   # nothing literal to compare against — don't block the sandbox
+  ((lit)) || return 0   # nothing literal to compare against - don't block the sandbox
   return 1
 }
 
@@ -3717,15 +3859,15 @@ stats() {
     local boss_mark=""
     if ((lv <= BOSS_BEATEN)); then
       ((lv <= PLACED_THROUGH)) && boss_mark="${C}p${N}" || boss_mark="${G}+${N}"
-    else boss_mark="${D}·${N}"; fi
+    else boss_mark="${D}${_GDOT}${N}"; fi
     if ((lt > 0)); then
       local pct=$((lm * 100 / lt)) filled=$((lm * BAR_W / lt)); local empty=$((BAR_W - filled))
-      local bar_f bar_e; printf -v bar_f '%*s' "$filled" ''; printf -v bar_e '%*s' "$empty" ''
+      local bar_f bar_e; _rep "$_RBK" "$filled"; bar_f=$REPLY; _rep "$_RSH" "$empty"; bar_e=$REPLY
       local col sym
-      if ((pct >= 80)); then col=$G; sym="✓"
+      if ((pct >= 80)); then col=$G; sym="$_GOK"
       elif ((pct >= 40)); then col=$Y; sym="~"
       else col=$R; sym="x"; fi
-      printf "  %s ${U}%2d${N} %-22s ${col}%s${D}%s${N} ${col}%s${N} %3d%% (%d/%d)\n" "$boss_mark" "$lv" "${LEVEL_NAMES[$lv]:-}" "${bar_f// /█}" "${bar_e// /░}" "$sym" "$pct" "$lm" "$lt"
+      printf "  %s ${U}%2d${N} %-22s ${col}%s${D}%s${N} ${col}%s${N} %3d%% (%d/%d)\n" "$boss_mark" "$lv" "${LEVEL_NAMES[$lv]:-}" "$bar_f" "$bar_e" "$sym" "$pct" "$lm" "$lt"
     else
       printf "  %s ${U}%2d${N} %-22s ${D}%*s${N}\n" "$boss_mark" "$lv" "${LEVEL_NAMES[$lv]:-}" "$BAR_W" "no data"
     fi
@@ -3739,7 +3881,7 @@ stats() {
     if ((BEST_CHALLENGE > 0)); then
       printf '  %s %s\n' "${U}Challenge:${N}" "${Y}${BEST_CHALLENGE}${N}"
     else
-      printf '  %s\n' "${D}no records yet — beat challenge to set one${N}"
+      printf '  %s\n' "${D}no records yet - beat challenge to set one${N}"
     fi
   fi
 }
@@ -3771,14 +3913,37 @@ hdr() {
   local fire=""; ((streak>=FIRE_STREAK)) && fire="  ${Y}${B}* ON FIRE${N}"
   printf '\e[H%s\e[K\n%s\e[K\n%s\e[K\n' "${W}${B}${PLAYER_NAME:-anon}${N}${fire}" "${U}Level $1${N}: ${LEVEL_NAMES[$1]:-}" "${U}[$2/$3]${N}  ${C}Tab${N}${D}=manpage${N}"
 }
-qdisp() { bar; printf "\n${C}%s${N}\n\n" "$1"; }
+# Word-wrap to the real screen width. 80-column terminals hard-wrap mid-word otherwise,
+# and ~1.5% of the prompt pool is longer than that. Wrapping here rather than shortening
+# the questions keeps it correct for any width and for prompts added later.
+# Width is measured with the escapes stripped — prompts carry inline colour.
+_wrap() {
+  local w=$2 out="" line="" vis=0 word wl
+  local -a words; read -ra words <<< "$1"
+  for word in "${words[@]}"; do
+    _strip_ansi "$word"; wl=${#REPLY}
+    if ((vis == 0)); then line=$word; vis=$wl
+    elif ((vis + 1 + wl <= w)); then line+=" $word"; ((vis += 1 + wl))
+    else out+="$line"$'\n'; line=$word; vis=$wl; fi
+  done
+  REPLY="$out$line"
+}
+_QD_KEY="" _QD_VAL=""   # redraws repeat the same prompt; wrap it once
+qdisp() {
+  bar
+  local _c; _COLS; _c=$REPLY; ((_c > 20)) || _c=80
+  if [[ "$1|$_c" != "$_QD_KEY" ]]; then
+    _ascii_fold "$1"; _wrap "$REPLY" "$_c"; _QD_VAL=$REPLY; _QD_KEY="$1|$_c"
+  fi
+  printf "\n${C}%s${N}\n\n" "$_QD_VAL"
+}
 _wrong_feedback() { ((OPT_SOUND)) && printf '\a'; printf '\e[7m'; read -t 0.05 -rsn1 _ ||:; printf '\e[0m'; }
 _wrong_show() { _wrong_feedback
   ((_SANDBOX_REQUIRE_FAIL)) && printf '\n%s\n' "${R}use the exact string from the question${N}"
   printf '%s  %s\n%s%s\n\n' "${R}x${N}" "${D}expected:${N}" "${D}${PROMPT_CHAR}${N}" "${Y}${ans}${N}"; }
 _sc() { [[ -n "$input" ]] && { HIST+=("$input"); HIST_IDX=${#HIST[@]}; HIST_SAVE=""; }; ((_S_ANSWERED++)); ((_S_CORRECT++)); ((_S_STREAK++)); ((_S_STREAK > _S_BEST_STREAK)) && _S_BEST_STREAK=$_S_STREAK; }
 _sw() { ((_S_ANSWERED++)); _S_STREAK=0; _wrong_show; }
-bar() { local f e p=$((qi<TOT?qi:TOT)); printf -v f '%*s' "$p" ''; printf -v e '%*s' "$((TOT-p))" ''; printf "${B}[${G}%s${D}%s${B}]${N}" "${f// /█}" "${e// /░}"; }
+bar() { local f e p=$((qi<TOT?qi:TOT)); _rep "$_RBK" "$p"; f=$REPLY; _rep "$_RSH" "$((TOT-p))"; e=$REPLY; printf "${B}[${G}%s${D}%s${B}]${N}" "$f" "$e"; }
 _draw_buf() {
   _DB=$'\e[?25l\r\e[K'
   ((VI_MODE)) && [[ $mode != insert ]] && _DB+="${R}${PROMPT_CHAR}${N}" || _DB+="${W}${PROMPT_CHAR}${N}"
@@ -3898,7 +4063,7 @@ _del() { # $1=motion  (also used by c via _vi_normal)
 }
 
 # ═══ VI HANDLER ═══
-_yankn() { # $1=motion $2=count — accumulate N objects (the range is idempotent, so
+_yankn() { # $1=motion $2=count - accumulate N objects (the range is idempotent, so
   # a stationary repeat would re-copy the same text); cursor is restored afterwards.
   local _m=$1 _c=$2 _sv=$cursor _acc=""
   case "$_m" in y) _vi_reg="$input"; return;; esac
@@ -4217,12 +4382,12 @@ run() {
         fi
         ((++streak)); _sset "$prompt" "$_new_tier"
         ((streak == FIRE_STREAK)) && {
-          printf '\n%s%s* * *  ON FIRE — keep the streak going  * * *%s\n' "$Y" "$B" "$N"
+          printf '\n%s%s* * *  ON FIRE - keep the streak going  * * *%s\n' "$Y" "$B" "$N"
           read -t 0.6 -rsn1 _ ||:
         }
         _pause; ((++qi)); QI=$qi; save; break
       elif ((_SANDBOX_REQUIRE_FAIL == 2)); then
-        printf '\n%s\n' "${Y}right command — use the exact string from the question${N}"
+        printf '\n%s\n' "${Y}right command - use the exact string from the question${N}"
         sleep 1; printf '\e[2J'; _REDRAW_HDR; continue
       else
         [[ -n "$input" ]] && { HIST+=("$input"); HIST_IDX=${#HIST[@]}; HIST_SAVE=""; }
@@ -4275,14 +4440,14 @@ run() {
 
   local _bt=$((BOSS_TIMER + lv / 3))  # scale: 30s@L1 → 40s@L30
   for ((bi=0; bi<${#boss_q[@]}; bi++)); do
-    _preq_reset  # boss answers run in the sandbox too — a destructive one must not leak into the next question
+    _preq_reset  # boss answers run in the sandbox too - a destructive one must not leak into the next question
     _qparse "${boss_q[$bi]}"; local prompt=$_qprompt ans=$_qans
     [[ -z "$prompt" ]] && { ((boss_total--)); ((boss_total > 0 && _boss_thresh > boss_total)) && _boss_thresh=$boss_total; continue; }
     _sget "$prompt"; local _boss_tier=$REPLY
     _REDRAW_HDR() {
       local _t=$_bt
       if ((${_rl_deadline:-0})); then _rl_rem; _t=$REPLY; fi
-      printf '%s\e[H%s  %s\e[K\n\e[K\n%s\e[K\n\e[K\n%s' "$_SY" "${M}${B}═══ BOSS ${U}$((bi+1))/${boss_total}${M} ═══${N}" "${W}${_t}s${N}" "${C}${prompt}${N}" "$_SN"
+      printf '%s\e[H%s  %s\e[K\n\e[K\n%s\e[K\n\e[K\n%s' "$_SY" "${M}${B}${_H3} BOSS ${U}$((bi+1))/${boss_total}${M} ${_H3}${N}" "${W}${_t}s${N}" "${C}${prompt}${N}" "$_SN"
     }
     printf '\e[2J'; _REDRAW_HDR
     if _read_line 0 0 "$_bt"; then
@@ -4315,7 +4480,7 @@ run() {
   local boss="${BOSS_NAMES[$lv]}"
   if ((boss_total > 0 && boss_correct >= _boss_thresh)); then
     ((boss_correct == boss_total)) && _disk_check flawless
-    printf '%s\n' "${G}${B}══ ${M}${B}${boss}${G} DEFEATED ══${N}"
+    printf '%s\n' "${G}${B}${_H2} ${M}${B}${boss}${G} DEFEATED ${_H2}${N}"
     printf '%s\n' "${G}${boss_correct}/${boss_total}${N} correct!"
     printf '%s\n\n' "${W}Cleared: ${G}${LEVEL_NAMES[$lv]}${N}"
     if ((BOSS_BEATEN < lv)); then
@@ -4323,7 +4488,7 @@ run() {
       # Notify about newly unlocked scenarios
       local _si
       for ((_si=1; _si<=SC_TOTAL; _si++)); do
-        ((SC_UNLOCK[_si] == lv)) && printf '%s\n' "${G}★ Scenario unlocked: ${SC_NAMES[$_si]}${N}"
+        ((SC_UNLOCK[_si] == lv)) && printf '%s\n' "${G}${_GST} Scenario unlocked: ${SC_NAMES[$_si]}${N}"
       done
     fi
     printf '%s' "$_SN"
@@ -4338,7 +4503,7 @@ run() {
       _sflush_if_dirty; return 1
     fi
   else
-    printf '%s\n' "${R}${B}══ ${M}${B}${boss}${R} PREVAILS ══${N}"
+    printf '%s\n' "${R}${B}${_H2} ${M}${B}${boss}${R} PREVAILS ${_H2}${N}"
     printf '%s\n\n' "${R}${boss_correct}/${boss_total}${N} - need $_boss_thresh to pass"
     printf '%s\n' "${B}r${N} ${D}retry boss${N}    ${B}p${N} ${D}practice level${N}    ${B}q${N} ${D}back to menu${N}"
     printf '%s' "$_SN"
@@ -4359,7 +4524,7 @@ _run_loop() {
 
 _post_root_check() {
   if ((BOSS_BEATEN < MAX_LEVEL)); then
-    printf '%s\n' "${R}Locked${N} — beat all 30 bosses to unlock this mode."
+    printf '%s\n' "${R}Locked${N} - beat all 30 bosses to unlock this mode."
     exit 1
   fi
 }
@@ -4405,7 +4570,7 @@ _pick_q() {
 challenge() {
   _post_root_check
   _session_init
-  printf '%s\e[2J\e[H%s\n%s\n' "$_SY" "${M}${B}═══ CHALLENGE ═══${N}" "${D}All levels. 20s. No manpages. One miss and you're done.${N}"
+  printf '%s\e[2J\e[H%s\n%s\n' "$_SY" "${M}${B}${_H3} CHALLENGE ${_H3}${N}" "${D}All levels. 20s. No manpages. One miss and you're done.${N}"
   ((BEST_CHALLENGE > 0)) && printf '%s\n' "${D}Best: ${Y}${BEST_CHALLENGE}${N}"
   printf '%s\n' "$_SN"; read -rsp "${D}Press Enter to start...${N}"; echo
 
@@ -4447,7 +4612,7 @@ challenge() {
   ((score > BEST_CHALLENGE)) && { BEST_CHALLENGE=$score; _save_profile; }
   if ((_QUIT)); then return; fi
   printf '%s\e[2J\e[H' "$_SY"
-  printf '%s\n\n' "${R}${B}═══ GAME OVER ═══${N}"
+  printf '%s\n\n' "${R}${B}${_H3} GAME OVER ${_H3}${N}"
   printf 'Score: %s\n' "${B}${score}${N}"
   if ((score > prev_best)); then
     printf '%s\n' "${G}${B}NEW BEST!${N} (was ${prev_best})"
@@ -4456,7 +4621,7 @@ challenge() {
   fi
   printf '%s' "$_SN"
   echo
-  _pause  # the menu's next draw clears the screen — hold the score until a keypress
+  _pause  # the menu's next draw clears the screen - hold the score until a keypress
 }
 
 
@@ -4475,7 +4640,7 @@ _sel() {
       local _buf; printf -v _buf '%s%s\e[H%s\e[K\n\e[K\n' "$_SY" "$_clr" "$title"
       local i; for ((i=0;i<n;i++)); do
         if [[ "${it[$i]:0:1}" == $'\x01' ]]; then printf -v _buf '%s    %s%s%s\e[K\n' "$_buf" "$D" "${it[$i]:1}" "$N"
-        elif ((i==c)); then printf -v _buf '%s  %s  %s  ▸%s\e[K\n' "$_buf" "$R" "${it[$i]}" "$N"
+        elif ((i==c)); then printf -v _buf '%s  %s  %s  %s%s\e[K\n' "$_buf" "$R" "${it[$i]}" "$_GTRI" "$N"
         else printf -v _buf '%s    %s%s%s\e[K\n' "$_buf" "$W" "${it[$i]}" "$N"; fi
       done
       printf '%s\e[J%s' "$_buf" "$_SN"
@@ -4513,15 +4678,15 @@ _sel() {
 
 
 _sc_sel() {
-  local _SEL_CUR=0  # shadow the main menu's cursor — its index must not preselect a scenario
+  local _SEL_CUR=0  # shadow the main menu's cursor - its index must not preselect a scenario
   local -a it=()
   for ((i=1;i<=SC_TOTAL;i++)); do
     local req=${SC_UNLOCK[$i]:-$MAX_LEVEL}
     if ((BOSS_BEATEN<req)); then it+=($'\x01'"${SC_NAMES[$i]} (beat L${req})")
-    elif _sc_is_done "$i"; then it+=("${G}✓${N} ${SC_NAMES[$i]}")
+    elif _sc_is_done "$i"; then it+=("${G}${_GOK}${N} ${SC_NAMES[$i]}")
     else it+=("${SC_NAMES[$i]}"); fi
   done
-  _SEL_BACK=1; _sel "${M}${B}═══ SCENARIOS ═══${N}" "${it[@]}" || return
+  _SEL_BACK=1; _sel "${M}${B}${_H3} SCENARIOS ${_H3}${N}" "${it[@]}" || return
   scenario "$((REPLY+1))"
 }
 
@@ -4534,7 +4699,7 @@ _options_menu() {
     _opt_tag OPT_VI;    it+=("Vi Mode          $REPLY")
     _opt_tag OPT_SOUND;  it+=("Sound            $REPLY")
     _opt_tag OPT_ALTS;   it+=("Show Alternates  $REPLY")
-    _SEL_BACK=1; _SEL_CUR=$_c; _sel "${U}═══ OPTIONS ═══${N}" "${it[@]}" || break
+    _SEL_BACK=1; _SEL_CUR=$_c; _sel "${U}${_H3} OPTIONS ${_H3}${N}" "${it[@]}" || break
     _c=$REPLY
     case "$REPLY" in
       0) ((OPT_VI=!OPT_VI)); _apply_opts;;
@@ -4551,10 +4716,10 @@ _main_menu() {
     load
     # build tagline — center under 71-char banner
     local _tl_text _tl_w _tl_pad _tagline
-    if ((BOSS_BEATEN >= MAX_LEVEL)); then _tl_text="${G}░▒▓█${N} ${W}${B}ALL BOSSES DEFEATED${N} ${G}█▓▒░${N}" _tl_w=29
-    elif ((BOSS_BEATEN >= 20)); then _tl_text="${Y}░▒▓█${N} ${W}NEARING ROOT${N} ${Y}█▓▒░${N}" _tl_w=22
-    elif ((BOSS_BEATEN >= 10)); then _tl_text="${D}░▒▓█${N} ${W}GOING DEEPER${N} ${D}█▓▒░${N}" _tl_w=22
-    else _tl_text="${D}░▒▓█ MASTER THE COMMAND LINE █▓▒░${N}" _tl_w=33; fi
+    if ((BOSS_BEATEN >= MAX_LEVEL)); then _tl_text="${G}${_GSH}${_GS2}${_GS3}${_GBK}${N} ${W}${B}ALL BOSSES DEFEATED${N} ${G}${_GBK}${_GS3}${_GS2}${_GSH}${N}" _tl_w=29
+    elif ((BOSS_BEATEN >= 20)); then _tl_text="${Y}${_GSH}${_GS2}${_GS3}${_GBK}${N} ${W}NEARING ROOT${N} ${Y}${_GBK}${_GS3}${_GS2}${_GSH}${N}" _tl_w=22
+    elif ((BOSS_BEATEN >= 10)); then _tl_text="${D}${_GSH}${_GS2}${_GS3}${_GBK}${N} ${W}GOING DEEPER${N} ${D}${_GBK}${_GS3}${_GS2}${_GSH}${N}" _tl_w=22
+    else _tl_text="${D}${_GSH}${_GS2}${_GS3}${_GBK} MASTER THE COMMAND LINE ${_GBK}${_GS3}${_GS2}${_GSH}${N}" _tl_w=33; fi
     printf -v _tl_pad '%*s' $(( (71 - _tl_w) / 2 )) ''
     _tagline="${_tl_pad}${_tl_text}"
     local _n=1
@@ -4576,14 +4741,24 @@ _main_menu() {
     it+=("$((_n++)) Options"); act+=(opts)
     it+=("$((_n++)) Quit"); act+=(quit)
     local _banner
-    printf -v _banner '%s\n%s\n%s\n%s\n%s\n%s\n\n%s' \
-      "   ${W}${B}██████╗███╗   ███╗██████╗  ██████╗██╗  ██╗ █████╗ ███╗   ███╗██████╗${N}" \
-      "  ${W}${B}██╔════╝████╗ ████║██╔══██╗██╔════╝██║  ██║██╔══██╗████╗ ████║██╔══██╗${N}" \
-      "  ${W}${B}██║     ██╔████╔██║██║  ██║██║     ███████║███████║██╔████╔██║██████╔╝${N}" \
-      "  ${W}${B}██║     ██║╚██╔╝██║██║  ██║██║     ██╔══██║██╔══██║██║╚██╔╝██║██╔═══╝${N}" \
-      "  ${W}${B}╚██████╗██║ ╚═╝ ██║██████╔╝╚██████╗██║  ██║██║  ██║██║ ╚═╝ ██║██║${N}" \
-      "   ${W}${B}╚═════╝╚═╝     ╚═╝╚═════╝  ╚═════╝╚═╝  ╚═╝╚═╝  ╚═╝╚═╝     ╚═╝╚═╝${N}" \
-      "${_tagline}"
+    if ((_CAP_UNI)); then
+      printf -v _banner '%s\n%s\n%s\n%s\n%s\n%s\n\n%s' \
+        "   ${W}${B}██████╗███╗   ███╗██████╗  ██████╗██╗  ██╗ █████╗ ███╗   ███╗██████╗${N}" \
+        "  ${W}${B}██╔════╝████╗ ████║██╔══██╗██╔════╝██║  ██║██╔══██╗████╗ ████║██╔══██╗${N}" \
+        "  ${W}${B}██║     ██╔████╔██║██║  ██║██║     ███████║███████║██╔████╔██║██████╔╝${N}" \
+        "  ${W}${B}██║     ██║╚██╔╝██║██║  ██║██║     ██╔══██║██╔══██║██║╚██╔╝██║██╔═══╝${N}" \
+        "  ${W}${B}╚██████╗██║ ╚═╝ ██║██████╔╝╚██████╗██║  ██║██║  ██║██║ ╚═╝ ██║██║${N}" \
+        "   ${W}${B}╚═════╝╚═╝     ╚═╝╚═════╝  ╚═════╝╚═╝  ╚═╝╚═╝  ╚═╝╚═╝     ╚═╝╚═╝${N}" \
+        "${_tagline}"
+    else
+      printf -v _banner '%s\n%s\n%s\n%s\n%s\n\n%s' \
+        "  ${W}${B} ____ __  __ ____   ____ _   _    _    __  __ ____${N}" \
+        "  ${W}${B}/ ___|  \\/  |  _ \\ / ___| | | |  / \\  |  \\/  |  _ \\\\${N}" \
+        "  ${W}${B}| |   | |\\/| | | | | |   | |_| | / _ \\ | |\\/| | |_) |${N}" \
+        "  ${W}${B}| |___| |  | | |_| | |___|  _  |/ ___ \\| |  | |  __/${N}" \
+        "  ${W}${B} \\____|_|  |_|____/ \\____|_| |_/_/   \\_\\_|  |_|_|${N}" \
+        "${_tagline}"
+    fi
     _SEL_BACK=0; _sel "$_banner" "${it[@]}" || { _CLEANING=1; exit 0; }
     _SEL_CUR=$REPLY
     _QUIT=0
@@ -4649,7 +4824,7 @@ scenario() {
   ((sc_id < 1 || sc_id > SC_TOTAL)) && { printf '%s\n' "${R}Scenario ${sc_id} does not exist.${N}"; return 1; }
   local _sc_req=${SC_UNLOCK[$sc_id]:-$MAX_LEVEL}
   if ((BOSS_BEATEN < _sc_req)); then
-    printf '%s\n' "${R}Locked${N} — beat the ${U}Level ${_sc_req}${N} boss (${M}${B}${LEVEL_NAMES[$_sc_req]}${N}) first."
+    printf '%s\n' "${R}Locked${N} - beat the ${U}Level ${_sc_req}${N} boss (${M}${B}${LEVEL_NAMES[$_sc_req]}${N}) first."
     return 1
   fi
   if ! ((SANDBOX_MODE)); then
@@ -4661,7 +4836,7 @@ scenario() {
   # Fresh sandbox + apply broken state — abort loudly on failure rather than
   # letting text-match fallback fake a completable scenario over broken state
   if ! _sandbox_reset || ! "_sc_setup_${sc_id}" "$SANDBOX_DIR"; then
-    printf '%s\n' "${R}scenario setup failed${N} ${D}— check required tools (e.g. git) are installed${N}"
+    printf '%s\n' "${R}scenario setup failed${N} ${D}- check required tools (e.g. git) are installed${N}"
     return 1
   fi
 
@@ -4672,9 +4847,9 @@ scenario() {
 
   # Splash screen
   printf '%s\e[2J\e[H' "$_SY"
-  printf '%s\n' "${M}${B}═══ ${SC_NAMES[$sc_id]} ═══${N}"
+  printf '%s\n' "${M}${B}${_H3} ${SC_NAMES[$sc_id]} ${_H3}${N}"
   printf '%s\n' "${D}${SC_FLAVOR[$sc_id]}${N}"
-  printf '%s\n\n' "${U}${total} steps${N} ${D}— sandbox state persists between steps${N}"
+  printf '%s\n\n' "${U}${total} steps${N} ${D}- sandbox state persists between steps${N}"
   printf '%s' "$_SN"
   read -rsp "${D}Press Enter to start...${N}"; echo
 
@@ -4702,7 +4877,7 @@ scenario() {
         _pause
         break
       elif ((_SANDBOX_REQUIRE_FAIL == 2)); then
-        printf '\n%s\n' "${Y}right command — use the exact string from the question${N}"
+        printf '\n%s\n' "${Y}right command - use the exact string from the question${N}"
         sleep 1; printf '\e[2J'; _REDRAW_HDR; continue
       else
         [[ -n "$input" ]] && { HIST+=("$input"); HIST_IDX=${#HIST[@]}; HIST_SAVE=""; }
@@ -4719,14 +4894,14 @@ scenario() {
   if ((_QUIT)); then _sflush_if_dirty; return; fi
   # Completion
   printf '%s\e[2J\e[H' "$_SY"
-  printf '%s\n' "${G}${B}═══ SCENARIO COMPLETE ═══${N}"
+  printf '%s\n' "${G}${B}${_H3} SCENARIO COMPLETE ${_H3}${N}"
   printf '%s\n' "${M}${B}${SC_NAMES[$sc_id]}${N}"
   printf '%s\n' "${G}${correct}/${total}${N} steps"
   printf '%s' "$_SN"
   _sc_mark_done "$sc_id"
   _disk_check completionist
   _sflush_if_dirty
-  _pause  # the menu's next draw clears the screen — hold the completion screen
+  _pause  # the menu's next draw clears the screen - hold the completion screen
   echo
 }
 
@@ -5283,14 +5458,14 @@ _selftest() {
   done
   if ((_poolfail)); then ((_fail++)); else ((_pass++)); fi
 
-  printf '\n%s%s✓ %d passed%s, ' "$B" "$G" "$_pass" "$N"
-  ((_fail)) && printf '%s%s✗ %d failed%s\n' "$B" "$R" "$_fail" "$N" || printf '%s✓ 0 failed%s\n' "$D" "$N"
+  printf '\n%s%s%s %d passed%s, ' "$B" "$G" "$_GOK" "$_pass" "$N"
+  ((_fail)) && printf '%s%s%s %d failed%s\n' "$B" "$R" "$_GNO" "$_fail" "$N" || printf '%s%s 0 failed%s\n' "$D" "$_GOK" "$N"
   return $((_fail > 0))
 }
 
 # ═══ PLACEMENT ═══
 place() {
-  printf '%s\e[2J\e[H%s\n%s\n%s\n\n%s' "$_SY" "${M}${B}═══ PLACEMENT TEST ═══${N}" "${D}2 questions per level, 30s each, no manpages${N}" "${D}Miss one → that's your starting level${N}" "$_SN"
+  printf '%s\e[2J\e[H%s\n%s\n%s\n\n%s' "$_SY" "${M}${B}${_H3} PLACEMENT TEST ${_H3}${N}" "${D}2 questions per level, 30s each, no manpages${N}" "${D}Miss one → that's your starting level${N}" "$_SN"
   read -rsp "${D}Press Enter to start...${N}"; echo
 
   _session_init
@@ -5318,7 +5493,7 @@ place() {
         ((_QUIT)) && break 2
       fi
       # Wrong or timed out
-      printf '\n%s  %s\n%s%s\n' "${R}${B}✗${N}" "${D}expected:${N}" "${D}${PROMPT_CHAR}${N}" "${Y}${ans}${N}"
+      printf '\n%s  %s\n%s%s\n' "${R}${B}${_GNO}${N}" "${D}expected:${N}" "${D}${PROMPT_CHAR}${N}" "${Y}${ans}${N}"
       _pause; break
     done
     ((qi_ok < 2)) && break
@@ -5336,16 +5511,16 @@ place() {
   ((placed > PLACED_THROUGH)) && PLACED_THROUGH=$placed
   _save_profile
   LVL=$((placed >= MAX_LEVEL ? MAX_LEVEL : placed + 1)); QI=0; save
-  printf '%s\e[2J\e[H%s\n' "$_SY" "${G}${B}═══ PLACEMENT COMPLETE ═══${N}"
+  printf '%s\e[2J\e[H%s\n' "$_SY" "${G}${B}${_H3} PLACEMENT COMPLETE ${_H3}${N}"
   if ((placed == 0)); then
     printf '%s\n' "Starting from ${U}Level 1${N}"
   elif ((placed >= MAX_LEVEL)); then
-    printf '%s\n' "${G}${B}Perfect!${N} All levels cleared — scenarios + post-ROOT modes unlocked"
+    printf '%s\n' "${G}${B}Perfect!${N} All levels cleared - scenarios + post-ROOT modes unlocked"
   else
     printf '%s\n' "Placed at ${U}Level $((placed + 1))${N}"
     local _si
     for ((_si=1; _si<=SC_TOTAL; _si++)); do
-      ((placed >= SC_UNLOCK[_si])) && printf '%s\n' "${G}★ Scenario unlocked: ${SC_NAMES[$_si]}${N}"
+      ((placed >= SC_UNLOCK[_si])) && printf '%s\n' "${G}${_GST} Scenario unlocked: ${SC_NAMES[$_si]}${N}"
     done
   fi
   printf '%s' "$_SN"
@@ -5374,35 +5549,35 @@ case "${1:-}" in
     _preview() {
     PLAYER_NAME="${PLAYER_NAME:-preview}" BOSS_BEATEN=30
 
-    printf '%s\n' "${B}═══ INTRO SCREEN ═══${N}"
+    printf '%s\n' "${B}${_H3} INTRO SCREEN ${_H3}${N}"
     _intro nopause
 
-    printf '\n%s\n' "${B}═══ LEVELS & BOSSES ═══${N}"
+    printf '\n%s\n' "${B}${_H3} LEVELS & BOSSES ${_H3}${N}"
     for ((lv=1; lv<=MAX_LEVEL; lv++)); do
       printf '\n  %s %2d: %-22s  %sBoss: %-16s%s  %s\n' "${U}Level${N}" "$lv" "${LEVEL_NAMES[$lv]:-}" "${M}" "${BOSS_NAMES[$lv]:-}" "${N}" "${D}\"${BOSS_FLAVOR[$lv]:-}\"${N}"
       local _pq=(); "gen_level$lv" _pq
       for ((_si=0; _si<3 && _si<${#_pq[@]}; _si++)); do
         _qparse "${_pq[$_si]}"
-        printf '    %s → %s\n' "${D}$_qprompt${N}" "${G}$_qans${N}"
+        printf '    %s %s %s\n' "${D}$_qprompt${N}" "$_GAR" "${G}$_qans${N}"
       done
     done
 
-    printf '\n\n%s\n' "${B}═══ BOSS SPLASH (sample: Level 15) ═══${N}"
+    printf '\n\n%s\n' "${B}${_H3} BOSS SPLASH (sample: Level 15) ${_H3}${N}"
     local _sboss="${BOSS_NAMES[15]}" _sflavor="${BOSS_FLAVOR[15]}"
     local s; printf -v s '%*s' $(( (80 - 12) / 2 )) ''
-    printf '\n%s%s\n\n' "$s" "${M}${B}═══ BOSS ═══${N}"
+    printf '\n%s%s\n\n' "$s" "${M}${B}${_H3} BOSS ${_H3}${N}"
     printf -v s '%*s' $(( (80 - ${#_sboss}) / 2 )) ''
     printf '%s%s\n\n' "$s" "${M}${B}${_sboss}${N}"
     printf -v s '%*s' $(( (80 - ${#_sflavor} - 2) / 2 )) ''
     printf '%s%s\n' "$s" "${D}\"${_sflavor}\"${N}"
 
-    printf '\n\n%s\n' "${B}═══ SCENARIOS ═══${N}"
+    printf '\n\n%s\n' "${B}${_H3} SCENARIOS ${_H3}${N}"
     for ((si=1; si<=SC_TOTAL; si++)); do
       printf '\n  %s %d: %-22s  %s(unlocks at boss %d)%s\n' "${M}${B}Scenario${N}" "$si" "${SC_NAMES[$si]:-}" "${D}" "${SC_UNLOCK[$si]:-0}" "${N}"
       printf '    %s\n' "${D}${SC_FLAVOR[$si]:-}${N}"
     done
 
-    printf '\n\n%s\n' "${B}═══ VICTORY SCREEN ═══${N}"
+    printf '\n\n%s\n' "${B}${_H3} VICTORY SCREEN ${_H3}${N}"
     _victory nopause
     }; _preview;;
   h|help|-h|--help)
@@ -5415,7 +5590,7 @@ Usage: cmdchamp [--no-sandbox] [command]
 Run with no arguments for the game menu.
 
 Options:
-  --no-sandbox  Disable sandbox (text-match only — answers checked
+  --no-sandbox  Disable sandbox (text-match only - answers checked
                 without actually executing them)
 
 Commands:
@@ -5432,7 +5607,7 @@ Environment:
 Requirements:
   - bash 4.4+
   - awk
-  - bwrap (bubblewrap) — for sandboxed answer execution; without it,
+  - bwrap (bubblewrap) - for sandboxed answer execution; without it,
     answers are checked by text match only.
 
 Data files (under \$XDG_DATA_HOME/cmdchamp):
@@ -5443,13 +5618,13 @@ Data files (under \$XDG_DATA_HOME/cmdchamp):
 
 Tips:
   - Press Tab during a question to see the relevant manpage.
-  - ↑/↓ (or k/j in vi normal mode) recall input history.
+  - ${_GUP}/${_GDN} (or k/j in vi normal mode) recall input history.
   - Vi mode (Options menu): Esc → normal, i/a → insert, h/l/w/b move,
     dw/cw delete/change word.
   - Beat the boss of each level to unlock the next. Boss runs without
     manpages.
   - Some levels (network, hashcrack, forensics, privesc) run their
-    answers via text-match only — the tools or contexts can't run in
+    answers via text-match only - the tools or contexts can't run in
     bwrap. Type the command precisely.
 EOF
     ;;

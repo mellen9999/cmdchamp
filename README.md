@@ -33,13 +33,15 @@ git clone https://github.com/mellen9999/cmdchamp.git
 cd cmdchamp && make install
 ```
 
-**Requires:** bash 4.3+, coreutils, awk
+**Requires:** bash 4.4+, coreutils, awk
 
-**macOS:** Ships with bash 3.2 — install bash 4.3+ first: `brew install bash`
+**macOS:** Ships with bash 3.2 — install bash 4.4+ first: `brew install bash`
 
 **Optional:** [bubblewrap](https://github.com/containers/bubblewrap) (`bwrap`) for sandbox mode (Linux only) — most desktop distros include it. Without it, answers are text-matched only
 
 **Accessibility:** Honors `NO_COLOR` and `TERM=dumb`. Layout adapts to `COLUMNS` / `tput cols`. Mastery bars carry both color and a `✓` / `~` / `x` symbol — readable without color.
+
+**Terminals:** Runs on real serial terminals, not just emulators. cmdchamp probes what the terminal can actually display and picks one of three render tiers — unicode, DEC ACS line-drawing, or pure ASCII — so frames stay intact on a VT100/VT220/VT320/VT420 or Wyse. On a monochrome screen, color distinctions are re-encoded as bold/reverse. Force a tier with `CMDCHAMP_ASCII=1` or `CMDCHAMP_UNICODE=1`. `./test_terminals.sh` verifies it.
 
 ## Usage
 

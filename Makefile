@@ -8,4 +8,9 @@ install:
 uninstall:
 	rm -f $(DESTDIR)$(BINDIR)/cmdchamp
 
-.PHONY: install uninstall
+test:
+	./cmdchamp test
+	./test_cmdchamp.sh
+	./test_terminals.sh
+
+.PHONY: install uninstall test
