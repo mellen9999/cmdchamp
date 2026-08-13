@@ -370,8 +370,8 @@ SC_FLAVOR=(""
   "The deploy pipeline is broken. Find the problems and fix them."
   "The logs are screaming. Triage the errors before it gets worse."
   "The config file is a mess. Perform surgery."
-  "Bad commit hit main. Rewind, branch, fix, merge."
-  "Rename, replace, archive - 30 files in one sweep."
+  "Bad commit hit main. Rewind, branch, fix, tag."
+  "Rename, replace, archive - a legacy tree in one sweep."
   "An IP keeps hitting the box. Build the case from the logs.")
 
 _victory() {
@@ -2303,7 +2303,7 @@ gen_level20() {
   questions+=("C-style countdown from ${n}|for ((i=${n}; i>0; i--)); do echo \$i; done|for ((i=${n}; i>=1; i--)); do echo \$i; done")
   questions+=("Loop over array elements|for item in \"\${arr[@]}\"; do echo \"\$item\"; done|for item in \"\${arr[@]}\"; do echo \"\${item}\"; done")
   questions+=("Loop over files in ${dir}/, skip dirs|for f in ${dir}/*; do [[ -f \"\$f\" ]] && echo \"\$f\"; done|for f in ${dir}/*; do [ -f \"\$f\" ] && echo \"\$f\"; done|for f in ${dir}/*; do test -f \"\$f\" && echo \"\$f\"; done")
-  questions+=("While loop basic|while [[ condition ]]; do cmd; done|while [ condition ]; do cmd; done|while test condition; do cmd; done")
+  questions+=("Basic while loop|while [[ condition ]]; do cmd; done|while [ condition ]; do cmd; done|while test condition; do cmd; done")
   questions+=("While read lines from ${W}${txt}${C}|while IFS= read -r line; do echo \"\$line\"; done < ${txt}|while read -r line; do echo \"\$line\"; done < ${txt}")
   questions+=("While loop with counter from 0 to ${n}|i=0; while ((i < ${n})); do echo \$i; ((i++)); done|i=0; while [[ \$i -lt ${n} ]]; do echo \$i; ((i++)); done|i=0; while [ \$i -lt ${n} ]; do echo \$i; ((i++)); done")
   questions+=("Infinite loop with break|while true; do cmd; [[ cond ]] && break; done|while true; do cmd; [ cond ] && break; done|while true; do cmd; test cond && break; done|while :; do cmd; [[ cond ]] && break; done|while :; do cmd; [ cond ] && break; done|while :; do cmd; test cond && break; done|for ((;;)); do cmd; [[ cond ]] && break; done")
@@ -2899,7 +2899,7 @@ gen_level29() {
   questions+=("Find private SSH keys system-wide (id_rsa/ed25519/ecdsa/*.pem)|find / -name 'id_rsa*' -o -name 'id_ed25519*' -o -name 'id_ecdsa*' -o -name '*.pem' 2>/dev/null|find / -name 'id_rsa*' -o -name '*.pem' 2>/dev/null|find / -name 'id_rsa' -o -name 'id_ed25519' -o -name 'id_ecdsa' 2>/dev/null|find / -name 'id_rsa*' 2>/dev/null|fd -H -g 'id_rsa*' /|fd --hidden -g 'id_rsa*' /|fd -H 'id_rsa' /|fd --hidden 'id_rsa' /")
   questions+=("SUID find shell escape|find . -exec /bin/sh -p \\; -quit|find . -exec /bin/bash -p \\; -quit|find . -exec /bin/sh -p \\;|find . -exec /bin/bash -p \\;|find . -exec sh -p \\; -quit|find . -exec bash -p \\; -quit|find . -exec sh -p \\;|find . -exec bash -p \\;")
   questions+=("SUID vim shell escape|vim -c ':!/bin/sh -p'|vim -c ':!/bin/bash -p'|vi -c ':!/bin/sh -p'|vi -c ':!/bin/bash -p'|vim -c ':!sh -p'|vim -c ':!bash -p'|vi -c ':!sh -p'|vi -c ':!bash -p'|vim -c ':py3 import os; os.execl(\"/bin/sh\", \"sh\", \"-p\")'|vim -c ':py3 import os; os.execl(\"/bin/bash\", \"bash\", \"-p\")'")
-  questions+=("SUID python3 shell|python3 -c 'import os; os.execl(\"/bin/sh\", \"sh\", \"-p\")'|python3 -c 'import os; os.execl(\"/bin/bash\", \"bash\", \"-p\")'|python3 -c 'import pty; pty.spawn(\"/bin/sh\")'|python3 -c 'import pty; pty.spawn(\"/bin/bash\")'|python3 -c 'import os;os.system(\"/bin/sh -p\")'|python3 -c 'import os;os.system(\"/bin/bash -p\")'|python -c 'import pty; pty.spawn(\"/bin/sh\")'|python -c 'import pty; pty.spawn(\"/bin/bash\")'")
+  questions+=("SUID python3 shell escape|python3 -c 'import os; os.execl(\"/bin/sh\", \"sh\", \"-p\")'|python3 -c 'import os; os.execl(\"/bin/bash\", \"bash\", \"-p\")'|python3 -c 'import pty; pty.spawn(\"/bin/sh\")'|python3 -c 'import pty; pty.spawn(\"/bin/bash\")'|python3 -c 'import os;os.system(\"/bin/sh -p\")'|python3 -c 'import os;os.system(\"/bin/bash -p\")'|python -c 'import pty; pty.spawn(\"/bin/sh\")'|python -c 'import pty; pty.spawn(\"/bin/bash\")'")
   questions+=("Sudo env privesc|sudo env /bin/sh|sudo env /bin/bash|sudo env sh|sudo env bash|sudo /usr/bin/env /bin/sh|sudo /usr/bin/env /bin/bash")
   questions+=("Check kernel exploits (searchsploit, strip arch suffix)§searchsploit linux kernel \$(uname -r | cut -d- -f1)§searchsploit linux kernel | grep \$(uname -r | cut -d- -f1)#boss-skip")
   questions+=("Docker socket check|ls -la /var/run/docker.sock|ls -l /var/run/docker.sock")
@@ -3176,7 +3176,7 @@ _sc_steps_6() {
 Check permissions on deploy.sh§ls -l deploy.sh§ls -la deploy.sh§ls -ld deploy.sh§ls -lh deploy.sh§stat deploy.sh#output:~-rw-r--r--
 Make deploy.sh executable§chmod +x deploy.sh§chmod 755 deploy.sh§chmod u+x deploy.sh§chmod a+x deploy.sh§chmod 0755 deploy.sh§chmod 775 deploy.sh§chmod 0775 deploy.sh§chmod ugo+x deploy.sh#state:perm:deploy.sh:x
 Create VERSION file with "1.0"§echo 1.0 > VERSION§echo '1.0' > VERSION§echo "1.0" > VERSION§printf '1.0\n' > VERSION§printf "1.0\n" > VERSION§printf '%s\n' 1.0 > VERSION#state:contains:VERSION:1.0,lines:VERSION:1
-Backup config.ini before editing§cp config.ini config.ini.bak§cp -p config.ini config.ini.bak§cp -- config.ini config.ini.bak§cp -a config.ini config.ini.bak#state:exists:config.ini.bak,exists:config.ini
+Back up config.ini before editing§cp config.ini config.ini.bak§cp -p config.ini config.ini.bak§cp -- config.ini config.ini.bak§cp -a config.ini config.ini.bak#state:exists:config.ini.bak,exists:config.ini
 Fix the host in config.ini to localhost§sed -i 's/host=CHANGEME/host=localhost/' config.ini§sed -i 's/host=CHANGEME/host=localhost/g' config.ini§sed -i 's/CHANGEME/localhost/' config.ini§sed -i 's/CHANGEME/localhost/g' config.ini§sed -i -e 's/host=CHANGEME/host=localhost/' config.ini§sed -i -e 's/host=CHANGEME/host=localhost/g' config.ini§sed -i -e 's/CHANGEME/localhost/' config.ini§sed -i -e 's/CHANGEME/localhost/g' config.ini§sed --in-place 's/host=CHANGEME/host=localhost/' config.ini§sed --in-place 's/CHANGEME/localhost/' config.ini#state:contains:config.ini:host=localhost,!contains:config.ini:CHANGEME
 Fix the port in config.ini to 8080§sed -i 's/port=0/port=8080/' config.ini§sed -i 's/port=0/port=8080/g' config.ini§sed -i '/port/s/0/8080/' config.ini§sed -i -e 's/port=0/port=8080/' config.ini§sed -i -e 's/port=0/port=8080/g' config.ini§sed -i '/port/s/0/8080/g' config.ini§sed -i -e '/port/s/0/8080/' config.ini§sed -i -e '/port/s/0/8080/g' config.ini§sed --in-place 's/port=0/port=8080/' config.ini§sed --in-place 's/port=0/port=8080/g' config.ini#state:contains:config.ini:port=8080,!contains:config.ini:port=0
 Run the deploy script§./deploy.sh§bash deploy.sh§sh deploy.sh§source deploy.sh§. deploy.sh§. ./deploy.sh§source ./deploy.sh#output:~Deploy complete
@@ -3264,10 +3264,10 @@ _sc_setup_9() {
 }
 _sc_steps_9() {
   cat <<'STEPS'
-Show the last 3 commits one-line§git log --oneline -3§git log --oneline -n 3§git --no-pager log --oneline -3§git --no-pager log --oneline -n 3§git log -3 --oneline#output:~BAD
+Show the last 3 commits, one line each§git log --oneline -3§git log --oneline -n 3§git --no-pager log --oneline -3§git --no-pager log --oneline -n 3§git log -3 --oneline#output:~BAD
 Show what HEAD~1 (the bad commit) changed§git show HEAD~1§git show -p HEAD~1§git --no-pager show HEAD~1§git --no-pager show -p HEAD~1§git log -p -1 HEAD~1#output:~feature_a
 Create and switch to a 'fix' branch§git switch -c fix§git switch --create fix§git checkout -b fix#state:contains:.git/HEAD:fix
-Revert the bad commit (HEAD~1) without editor§git revert --no-edit HEAD~1§git revert HEAD~1 --no-edit§git revert -n HEAD~1 && git commit -m Revert§git revert --no-commit HEAD~1 && git commit -m Revert#state:contains:features.conf:feature_a=on,!contains:features.conf:feature_a=off
+Revert the bad commit (HEAD~1) without opening an editor§git revert --no-edit HEAD~1§git revert HEAD~1 --no-edit§git revert -n HEAD~1 && git commit -m Revert§git revert --no-commit HEAD~1 && git commit -m Revert#state:contains:features.conf:feature_a=on,!contains:features.conf:feature_a=off
 Verify features.conf has feature_a=on§grep ^feature_a features.conf | head -1§grep -E '^feature_a' features.conf§head -1 features.conf§awk 'NR==1' features.conf§sed -n '1p' features.conf§awk '/^feature_a/' features.conf | head -1#output:~feature_a=on
 Tag this commit as v1.1§git tag v1.1§git tag -a v1.1 -m fix-release§git tag --annotate v1.1 --message fix-release#state:exists:.git/refs/tags/v1.1
 STEPS
