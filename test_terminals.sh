@@ -116,6 +116,73 @@ PROBE
 n=$(env -u LANG -u LC_ALL TERM=vt320 bash "$wrapsrc" 2>/dev/null | tail -1)
 [[ $n == 0 ]] && ok "_wrap: no wrapped line exceeds its width" || bad "_wrap: $n over-width lines" "prompts will hard-wrap mid-word"
 
+# ── 4c. the WHOLE prompt corpus renders clean on a VT ──
+# 4b proves the wrapper; this proves the content. Every one of the ~1266 level and
+# scenario prompts is pushed through the real _ascii_fold → _wrap pipeline (via the
+# promptdump dev command) under TERM=vt320, then checked for the two things that shear
+# a legacy frame: an 8-bit byte, or a wrapped line past 80 columns. A prompt that
+# hard-codes a raw → or ≤ instead of the _G* glyph var, or that runs long, fails here.
+echo
+dump=$(env -u LANG -u LC_ALL -u LC_CTYPE TERM=vt320 CMDCHAMP_DEV=1 ./cmdchamp promptdump 2>/dev/null)
+if [[ -z $dump ]]; then
+  bad "prompt corpus: promptdump produced nothing" "dev command missing or errored"
+else
+  hi=$(printf '%s' "$dump" | LC_ALL=C grep -c $'[\x80-\xff]')
+  ((hi == 0)) && ok "prompt corpus: every prompt is 7-bit on vt320" \
+    || { detail="$hi wrapped lines carry bytes >0x7f"
+         ((VERBOSE)) && detail+=$'\n    '$(printf '%s' "$dump" | LC_ALL=C grep -n $'[\x80-\xff]' | head -3 | cut -c1-90)
+         bad "prompt corpus: 8-bit bytes leak" "$detail"; }
+  over=$(printf '%s\n' "$dump" \
+    | sed $'s/\e\[[0-9;]*[a-zA-Z]//g; s/\e[()][A-B0]//g' \
+    | awk '/ / && length > 80 {c++} END {print c+0}')   # unbreakable single words can't wrap
+  ((over == 0)) && ok "prompt corpus: every wrapped prompt fits 80 columns" \
+    || bad "prompt corpus: $over wrapped lines exceed 80 columns" "these hard-wrap and shear the frame"
+fi
+
+# ── 4d. the WHOLE manpage corpus renders clean on a VT ──
+# Tab pops a manpage panel. It's the densest screen and, unlike prompts, it does NOT
+# wrap — the column alignment can't survive reflow — so every body must fit 80 as
+# authored. Only `grep` was ever checked before; this renders all ~130 bodies through
+# the real _mp_show path under vt320 and asserts 7-bit + inside 80 columns.
+echo
+mpdump=$(env -u LANG -u LC_ALL -u LC_CTYPE TERM=vt320 CMDCHAMP_DEV=1 ./cmdchamp mpdump 2>/dev/null)
+if [[ -z $mpdump ]]; then
+  bad "manpage corpus: mpdump produced nothing" "dev command missing or errored"
+else
+  hi=$(printf '%s' "$mpdump" | LC_ALL=C grep -c $'[\x80-\xff]')
+  ((hi == 0)) && ok "manpage corpus: every body is 7-bit on vt320" \
+    || bad "manpage corpus: 8-bit bytes leak" "$hi panel lines carry bytes >0x7f"
+  over=$(printf '%s\n' "$mpdump" \
+    | sed $'s/\e\[[0-9;]*[a-zA-Z]//g; s/\e[()][A-B0]//g' \
+    | awk 'length > 80 {c++} END {print c+0}')
+  ((over == 0)) && ok "manpage corpus: every body fits 80 columns" \
+    || { detail="$over panel lines exceed 80 columns — Tab shears the frame"
+         ((VERBOSE)) && detail+=$'\n    '$(printf '%s\n' "$mpdump" | sed $'s/\e\[[0-9;]*[a-zA-Z]//g' | awk 'length>80{print length": "$0}' | head -5 | cut -c1-90)
+         bad "manpage corpus: $over lines over 80" "$detail"; }
+fi
+
+# ── 4e. the real Tab panel renders clean for every answer ──
+# §4d checks raw manpage bodies; this drives explain() with every level and scenario
+# answer — the exact panel a player sees on Tab — so it also covers EXP lines and
+# escape legends and any body+EXP combination. An over-long EXP (e.g. a redirection
+# hint) that shears a common question fails here.
+echo
+paneldump=$(env -u LANG -u LC_ALL -u LC_CTYPE TERM=vt320 CMDCHAMP_DEV=1 ./cmdchamp paneldump 2>/dev/null)
+if [[ -z $paneldump ]]; then
+  bad "Tab panel: paneldump produced nothing" "dev command missing or errored"
+else
+  hi=$(printf '%s' "$paneldump" | LC_ALL=C grep -c $'[\x80-\xff]')
+  ((hi == 0)) && ok "Tab panel: every rendered panel is 7-bit on vt320" \
+    || bad "Tab panel: 8-bit bytes leak" "$hi panel lines carry bytes >0x7f"
+  over=$(printf '%s\n' "$paneldump" \
+    | sed $'s/\e\[[0-9;]*[a-zA-Z]//g; s/\e[()][A-B0]//g' \
+    | awk 'length > 80 {c++} END {print c+0}')
+  ((over == 0)) && ok "Tab panel: every rendered panel fits 80 columns" \
+    || { detail="$over panel lines exceed 80 columns — Tab shears the frame"
+         ((VERBOSE)) && detail+=$'\n    '$(printf '%s\n' "$paneldump" | sed $'s/\e\[[0-9;]*[a-zA-Z]//g' | awk 'length>80{print length": "$0}' | sort -u | head -5 | cut -c1-90)
+         bad "Tab panel: $over lines over 80" "$detail"; }
+fi
+
 # ── 5. ASCII fallbacks stay one column wide ──
 # The UI does manual column arithmetic. A 2-char substitute silently shears every frame
 # it appears in, which is far worse than a wrong-looking glyph.
