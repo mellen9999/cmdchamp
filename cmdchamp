@@ -39,7 +39,7 @@ touch "$DATA/scores" 2>/dev/null
 # Three render tiers, probed once at startup: unicode → DEC ACS line-drawing → ASCII.
 # A VT220/VT320/VT420 or Wyse is 8-bit (DEC MCS/ISO 8859-1) and monochrome; emitting
 # UTF-8 at one shreds every frame into Latin-1 confetti, and colour carries no signal.
-_CAP_COLOR=0 _CAP_UNI=0 _CAP_ACS=0
+_CAP_COLOR=0 _CAP_COLORS=0 _CAP_UNI=0 _CAP_ACS=0
 
 _probe_unicode() {
   # Print one 3-byte glyph and ask the terminal where the cursor landed. A UTF-8
@@ -73,15 +73,20 @@ _probe_unicode() {
 if [[ -n ${CMDCHAMP_ASCII:-} ]]; then :                     # explicit override, stay at tier 3
 elif [[ ${TERM:-} == dumb ]]; then :
 else
-  _CAP_COLOR=$( { tput colors; } 2>/dev/null ); [[ $_CAP_COLOR == [0-9]* ]] || _CAP_COLOR=0
-  ((_CAP_COLOR >= 8)) && _CAP_COLOR=1 || _CAP_COLOR=0
+  _CAP_COLORS=$( { tput colors; } 2>/dev/null ); [[ $_CAP_COLORS == [0-9]* ]] || _CAP_COLORS=0
+  ((_CAP_COLORS >= 8)) && _CAP_COLOR=1 || _CAP_COLOR=0
   [[ -n $(tput smacs 2>/dev/null) ]] && _CAP_ACS=1
   _probe_unicode; _CAP_UNI=$REPLY
 fi
 [[ -n ${NO_COLOR+x} ]] && _CAP_COLOR=0
 
 if ((_CAP_COLOR)); then
-  R=$'\e[31m' G=$'\e[32m' Y=$'\e[33m' U=$'\e[1;34m' M=$'\e[35m' C=$'\e[36m' W=$'\e[37m' B=$'\e[1m' N=$'\e[0m' D=$'\e[2m'
+  R=$'\e[31m' G=$'\e[32m' Y=$'\e[33m' U=$'\e[1;34m' M=$'\e[35m' C=$'\e[36m' W=$'\e[37m' B=$'\e[1m' N=$'\e[0m'
+  # Dim must name a colour. A bare \e[2m keeps the terminal's *default* foreground,
+  # which on most schemes is brighter than the \e[37m used for live text — disabled
+  # menu rows then read as the loudest thing on screen. 90 is a real grey; on an
+  # 8-colour terminal there is no grey, so fall back to faint white.
+  ((_CAP_COLORS >= 16)) && D=$'\e[90m' || D=$'\e[2;37m'
 else
   # Monochrome (green/amber phosphor): colour distinctions must survive as attributes
   # or the UI loses the channel entirely. Bold/reverse/dim are real VT attributes.
@@ -4642,7 +4647,12 @@ challenge() {
 
 # ═══ MENU ═══
 # Generic j/k selector. Args: title item1 item2 ...
-# Items prefixed with $'\x01' are disabled (dimmed, skipped).
+# Items prefixed with $'\x01' are disabled (skipped by the cursor).
+# All three row states own the same 4-column gutter, so the rows stay aligned:
+#   disabled  "  x " (dim)   selectable  "    "   cursor  "  " + text + "  >"
+# Disabled rows carry the marker as well as the dim colour on purpose — grey-vs-white
+# is the first thing to vanish on a dim phone screen or a washed-out palette, and a
+# glyph survives every tier, every colour scheme and NO_COLOR.
 # Sets REPLY to selected index (0-based). Returns 1 on quit.
 _sel() {
   local title=$1; shift; local -a it=("$@") n=$# c=${_SEL_CUR:-0} k; _SEL_CUR=0
@@ -4654,7 +4664,7 @@ _sel() {
       local _clr=""; ((_first)) && { _clr=$'\e[2J'; _first=0; }
       local _buf; printf -v _buf '%s%s\e[H%s\e[K\n\e[K\n' "$_SY" "$_clr" "$title"
       local i; for ((i=0;i<n;i++)); do
-        if [[ "${it[$i]:0:1}" == $'\x01' ]]; then printf -v _buf '%s    %s%s%s\e[K\n' "$_buf" "$D" "${it[$i]:1}" "$N"
+        if [[ "${it[$i]:0:1}" == $'\x01' ]]; then printf -v _buf '%s  %s%s %s%s\e[K\n' "$_buf" "$D" "$_GNO" "${it[$i]:1}" "$N"
         elif ((i==c)); then printf -v _buf '%s  %s  %s  %s%s\e[K\n' "$_buf" "$R" "${it[$i]}" "$_GTRI" "$N"
         else printf -v _buf '%s    %s%s%s\e[K\n' "$_buf" "$W" "${it[$i]}" "$N"; fi
       done
