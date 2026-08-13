@@ -474,11 +474,21 @@ _bwrap_notice() {
   printf '\n%s\n\n' "${Y}${B}Sandbox unavailable - running in text-match mode${N}" >&2
   case $_kind in
     missing)
-      printf '%s\n' "${C}bubblewrap${N} (bwrap) isn't installed. cmdchamp will still match" >&2
-      printf '%s\n\n' "answers as text, just without isolated execution." >&2
-      printf '%s\n' "${C}Install:${N}" >&2
-      printf '  %s    %s\n'   "${G}paru -S bubblewrap${N}"        "${D}# Arch / CachyOS${N}" >&2
-      printf '  %s    %s\n\n' "${G}sudo apt install bubblewrap${N}" "${D}# Debian / Ubuntu${N}" >&2
+      # Android has no bubblewrap in any repo and could not run it anyway — the
+      # sandbox needs unprivileged user namespaces and the kernel does not grant
+      # them. Printing `paru -S bubblewrap` on a phone sends the reader chasing a
+      # package that cannot exist, so say so plainly instead.
+      if [[ ${OSTYPE:-} == *android* ]]; then
+        printf '%s\n' "The sandbox needs unprivileged user namespaces, which Android does" >&2
+        printf '%s\n\n' "not grant. cmdchamp will still match answers as text." >&2
+        printf '%s\n\n' "${D}Nothing to install - text-match is the ceiling on this device.${N}" >&2
+      else
+        printf '%s\n' "${C}bubblewrap${N} (bwrap) isn't installed. cmdchamp will still match" >&2
+        printf '%s\n\n' "answers as text, just without isolated execution." >&2
+        printf '%s\n' "${C}Install:${N}" >&2
+        printf '  %s    %s\n'   "${G}paru -S bubblewrap${N}"        "${D}# Arch / CachyOS${N}" >&2
+        printf '  %s    %s\n\n' "${G}sudo apt install bubblewrap${N}" "${D}# Debian / Ubuntu${N}" >&2
+      fi
       ;;
     blocked)
       printf '%s\n' "Your kernel disallows unprivileged user namespaces, which the sandbox" >&2
