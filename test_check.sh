@@ -23,6 +23,8 @@ _extract() {
     p { print; for(i=1;i<=length($0);i++){c=substr($0,i,1); if(c=="{")d++; if(c=="}")d--}; if(d==0&&NR>1)exit }
   ' "$SRC"
 }
+# _fnorm folds long options via this table; without it the subscript is read as arithmetic
+eval "$(awk '/^declare -gA _LOPT=\(/,/^_LOPT_OK=1/' "$SRC")"
 eval "$(_extract _trim)"
 eval "$(_extract _fnorm)"
 eval "$(_extract _qparse)"
@@ -61,7 +63,7 @@ echo "=== _fnorm tests ==="
 
 _fnorm "grep -ri pattern file";  assert_eq "flag split+sort"  "$REPLY" "grep -i -r pattern file"
 _fnorm "ls -la /tmp";            assert_eq "split -la"        "$REPLY" "ls -a -l /tmp"
-_fnorm "ls --all -l";            assert_eq "long flag order"  "$REPLY" "ls --all -l"
+_fnorm "ls --all -l";            assert_eq "long flag folds"  "$REPLY" "ls -a -l"
 _fnorm "";                       assert_eq "empty input"      "$REPLY" ""
 _fnorm "cat file";               assert_eq "no flags"         "$REPLY" "cat file"
 
@@ -136,6 +138,21 @@ assert_fail "tail glued flag invalid" "tail -fserver.log &"  "tail -f server.log
 assert_pass "cut -d -f still pairs"   "cut -d : -f 1 notes.txt" "cut -d: -f1 notes.txt"
 assert_pass "sort -k still pairs"     "sort -k 2 notes.txt"     "sort -k2 notes.txt"
 assert_pass "tail -c still pairs"     "tail -c10 server.log"    "tail -c 10 server.log"
+
+echo "=== check() long option folding ==="
+
+# A learner who spells a flag out is graded like one who types the letter
+assert_pass "grep long flag"      "grep --ignore-case pat file"  "grep -i pat file"
+assert_pass "grep long+arg"       "grep --max-count=2 pat file"  "grep -m2 pat file"
+assert_pass "mkdir long flag"     "mkdir --parents a/b"          "mkdir -p a/b"
+assert_pass "wc long flag"        "wc --lines notes.txt"         "wc -l notes.txt"
+assert_pass "chmod long -R"       "chmod --recursive a+r dir"    "chmod -R a+r dir"
+assert_pass "sudo + long flag"    "sudo chown --recursive me d"  "sudo chown -R me d"
+assert_pass "tar long spelling"   "tar --extract --gzip --file=a.tgz" "tar xzf a.tgz"
+assert_pass "cp -R equals -r"     "cp -R src dst"                "cp -r src dst"
+# folding must not invent equivalences across commands or flags
+assert_fail "wrong letter kept"   "grep --invert-match pat file" "grep -i pat file"
+assert_fail "unmapped stays put"  "ls --author"                  "ls -a"
 
 echo ""
 printf '=== Results: %d/%d passed' "$PASS" "$TOTAL"

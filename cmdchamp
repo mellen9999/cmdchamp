@@ -1921,9 +1921,9 @@ gen_level12() {
   questions+=("Check ${W}${txt}${C} exists or exit with error§[[ -f ${txt} ]] || { echo 'not found' >&2; exit 1; }§[ -f ${txt} ] || { echo 'not found' >&2; exit 1; }§test -f ${txt} || { echo 'not found' >&2; exit 1; }§[[ -f ${txt} ]] || { echo \"not found\" >&2; exit 1; }§[ -f ${txt} ] || { echo \"not found\" >&2; exit 1; }§test -f ${txt} || { echo \"not found\" >&2; exit 1; }§[[ -e ${txt} ]] || { echo 'not found' >&2; exit 1; }§[ -e ${txt} ] || { echo 'not found' >&2; exit 1; }§test -e ${txt} || { echo 'not found' >&2; exit 1; }§[[ -e ${txt} ]] || { echo \"not found\" >&2; exit 1; }§[ -e ${txt} ] || { echo \"not found\" >&2; exit 1; }§test -e ${txt} || { echo \"not found\" >&2; exit 1; }")
   questions+=("If ${W}${txt}${C} line count (in ${Y}\$lines${C}) > ${n2}, show first ${n3} lines§lines=\$(wc -l < ${txt}); [[ \$lines -gt ${n2} ]] && head -${n3} ${txt}§lines=\$(wc -l < ${txt}); [[ \$lines -gt ${n2} ]] && head -n ${n3} ${txt}§lines=\$(wc -l < ${txt}); (( lines > ${n2} )) && head -${n3} ${txt}§lines=\$(wc -l < ${txt}); (( lines > ${n2} )) && head -n ${n3} ${txt}§lines=\$(wc -l < ${txt}); [ \$lines -gt ${n2} ] && head -${n3} ${txt}§lines=\$(wc -l < ${txt}); [ \$lines -gt ${n2} ] && head -n ${n3} ${txt}§lines=\$(wc -l < ${txt}); test \$lines -gt ${n2} && head -${n3} ${txt}§lines=\$(wc -l < ${txt}); test \$lines -gt ${n2} && head -n ${n3} ${txt}")
   questions+=("Test if ${W}${txt}${C} has more than ${n2} words§[[ \$(wc -w < ${txt}) -gt ${n2} ]]§[[ \$(wc --words < ${txt}) -gt ${n2} ]]§(( \$(wc -w < ${txt}) > ${n2} ))§(( \$(wc --words < ${txt}) > ${n2} ))§[ \$(wc -w < ${txt}) -gt ${n2} ]§[ \$(wc --words < ${txt}) -gt ${n2} ]§test \$(wc -w < ${txt}) -gt ${n2}§test \$(wc --words < ${txt}) -gt ${n2}")
-  questions+=("Test if ${W}${txt}${C} exists AND is readable|[[ -f ${txt} && -r ${txt} ]]|[[ -f ${txt} ]] && [[ -r ${txt} ]]|[ -f ${txt} ] && [ -r ${txt} ]|test -f ${txt} && test -r ${txt}")
+  questions+=("Test if ${W}${txt}${C} exists AND is readable|[[ -f ${txt} && -r ${txt} ]]|[[ -f ${txt} ]] && [[ -r ${txt} ]]|[ -f ${txt} ] && [ -r ${txt} ]|test -f ${txt} && test -r ${txt}|[[ -e ${txt} && -r ${txt} ]]|[[ -e ${txt} ]] && [[ -r ${txt} ]]|[ -e ${txt} ] && [ -r ${txt} ]|test -e ${txt} && test -r ${txt}")
   questions+=("Test if ${W}${txt}${C} OR ${W}${cfg}${C} exists§[[ -f ${txt} || -f ${cfg} ]]§[[ -f ${txt} ]] || [[ -f ${cfg} ]]§[ -f ${txt} ] || [ -f ${cfg} ]§test -f ${txt} || test -f ${cfg}§[[ -e ${txt} || -e ${cfg} ]]§[[ -e ${txt} ]] || [[ -e ${cfg} ]]§[ -e ${txt} ] || [ -e ${cfg} ]§test -e ${txt} || test -e ${cfg}")
-  questions+=("Test if ${W}${txt}${C} does NOT exist|[[ ! -f ${txt} ]]|test ! -f ${txt}|[ ! -f ${txt} ]|! [[ -f ${txt} ]]|! [ -f ${txt} ]|! test -f ${txt}")
+  questions+=("Test if ${W}${txt}${C} does NOT exist|[[ ! -f ${txt} ]]|test ! -f ${txt}|[ ! -f ${txt} ]|! [[ -f ${txt} ]]|! [ -f ${txt} ]|! test -f ${txt}|[[ ! -e ${txt} ]]|test ! -e ${txt}|[ ! -e ${txt} ]|! [[ -e ${txt} ]]|! [ -e ${txt} ]|! test -e ${txt}")
   questions+=("Test if ${W}${txt}${C} is newer than ${W}${cfg}${C}|[[ ${txt} -nt ${cfg} ]]|[ ${txt} -nt ${cfg} ]|test ${txt} -nt ${cfg}")
 }
 
@@ -2250,7 +2250,7 @@ gen_level19() {
   questions+=("Get parent directory from \$fullpath|echo \${fullpath%/*}|dirname \$fullpath")
   questions+=("Get filename from /var/log/${log}|basename /var/log/${log}")
   questions+=("Get directory from /var/log/${log}|dirname /var/log/${log}")
-  questions+=("Strip .log extension from ${log} using basename|basename ${log} .log")
+  questions+=("Strip .log extension from ${log} using basename|basename ${log} .log|basename -s .log ${log}|basename --suffix=.log ${log}")
   questions+=("Get extension from ${cfg} (stored in \$file)|echo \${file##*.}|printf '%s\\n' \${file##*.}|printf '%s\\n' \"\${file##*.}\"")
   questions+=("Remove extension from ${log} (stored in \$file)|echo \${file%.*}|printf '%s\\n' \${file%.*}|printf '%s\\n' \"\${file%.*}\"")
   questions+=("Create backup of ${W}${cfg}${C} with .bak extension|cp ${cfg}{,.bak}|cp ${cfg} ${cfg}.bak")
@@ -2650,7 +2650,7 @@ gen_level24() {
   questions+=("Send 'Authorization: Bearer token123' header to ${url}/api|curl -H 'Authorization: Bearer token123' ${url}/api|curl --header 'Authorization: Bearer token123' ${url}/api")
   questions+=("Silent fetch of ${url} (no progress)|curl -s ${url}|curl --silent ${url}")
   questions+=("Download ${url}/file.tar.gz with original name|curl -O ${url}/file.tar.gz|curl --remote-name ${url}/file.tar.gz|wget ${url}/file.tar.gz|curl -LO ${url}/file.tar.gz")
-  questions+=("Connect to ${W}${user}@${host}${C} via SSH|ssh ${user}@${host}")
+  questions+=("Connect to ${W}${user}@${host}${C} via SSH|ssh ${user}@${host}|ssh -l ${user} ${host}")
   questions+=("SSH to ${W}${user}@${host}${C} on port ${port}|ssh -p ${port} ${user}@${host}|ssh -p${port} ${user}@${host}|ssh ${user}@${host} -p ${port}|ssh ${user}@${host} -p${port}")
   questions+=("Generate SSH key pair|ssh-keygen|ssh-keygen -t ed25519|ssh-keygen -t rsa|ssh-keygen -t rsa -b 4096|ssh-keygen -t ed25519 -C ''|ssh-keygen -t ed25519 -C \"\"")
   questions+=("Copy SSH key to ${W}${user}@${host}${C}|ssh-copy-id ${user}@${host}|ssh-copy-id -i ~/.ssh/id_ed25519.pub ${user}@${host}|ssh-copy-id -i ~/.ssh/id_rsa.pub ${user}@${host}")
@@ -3386,6 +3386,86 @@ generate_level() {
 }
 
 # ═══ ANSWER CHECK ═══
+# Long GNU options are the same flag as their short letter, so a learner who types
+# --ignore-case is graded exactly like one who types -i. The letter is per-command
+# (--recursive is -r for grep, -R for chmod), so the table is keyed "cmd:--long".
+# Derived from each tool's own --help; only flags this game actually teaches are listed.
+declare -gA _LOPT=(
+  [apt:--yes]=y
+  [apt-get:--yes]=y
+  [base64:--decode]=d
+  [binwalk:--entropy]=E [binwalk:--extract]=e
+  [cat:--number]=n
+  [chmod:--recursive]=R
+  [chown:--recursive]=R
+  [column:--table]=t
+  [cp:--archive]=a [cp:--interactive]=i [cp:--no-clobber]=n [cp:--recursive]=r
+  [curl:--data]=d [curl:--header]=H [curl:--include]=i [curl:--output]=o [curl:--remote-name]=O [curl:--show-headers]=i [curl:--silent]=s
+  [cut:--characters]=c [cut:--delimiter]=d [cut:--fields]=f
+  [df:--human-readable]=h
+  [diff:--unified]=u
+  [dmesg:--ctime]=T [dmesg:--follow]=w
+  [dnf:--yes]=y
+  [du:--human-readable]=h [du:--max-depth]=d [du:--summarize]=s
+  [eza:--header]=h [eza:--level]=L [eza:--long]=l [eza:--only-dirs]=D [eza:--recurse]=R [eza:--reverse]=r [eza:--sort]=s [eza:--tree]=T
+  [fd:--exclude]=E [fd:--exec]=x [fd:--exec-batch]=X [fd:--extension]=e [fd:--full-path]=p [fd:--glob]=g [fd:--hidden]=H [fd:--ignore-case]=i [fd:--list-details]=l [fd:--max-depth]=d [fd:--size]=S [fd:--type]=t
+  [free:--human]=h
+  [getfattr:--dump]=d [getfattr:--match]=m
+  [gpg:--symmetric]=c
+  [grep:--after-context]=A [grep:--before-context]=B [grep:--context]=C [grep:--count]=c [grep:--dereference-recursive]=R [grep:--extended-regexp]=E [grep:--file]=f [grep:--files-with-matches]=l [grep:--files-without-match]=L [grep:--fixed-strings]=F [grep:--ignore-case]=i [grep:--invert-match]=v [grep:--line-number]=n [grep:--line-regexp]=x [grep:--max-count]=m [grep:--no-filename]=h [grep:--null-data]=z [grep:--only-matching]=o [grep:--perl-regexp]=P [grep:--quiet]=q [grep:--recursive]=r [grep:--regexp]=e [grep:--silent]=q [grep:--text]=a [grep:--word-regexp]=w
+  [hashcat:--attack-mode]=a [hashcat:--backend-info]=I [hashcat:--hash-type]=m [hashcat:--optimized-kernel-enable]=O [hashcat:--rules-file]=r [hashcat:--workload-profile]=w
+  [head:--bytes]=c [head:--lines]=n
+  [id:--groups]=G [id:--name]=n [id:--user]=u
+  [inotifywait:--event]=e [inotifywait:--monitor]=m [inotifywait:--recursive]=r
+  [journalctl:--boot]=b [journalctl:--dmesg]=k [journalctl:--follow]=f [journalctl:--lines]=n [journalctl:--output]=o [journalctl:--priority]=p [journalctl:--since]=S [journalctl:--unit]=u
+  [jq:--compact-output]=c [jq:--raw-input]=R [jq:--raw-output]=r [jq:--slurp]=s
+  [kill:--signal]=s [kill:--table]=L
+  [ln:--symbolic]=s
+  [ls:--all]=a [ls:--directory]=d [ls:--human-readable]=h [ls:--recursive]=R
+  [md5sum:--check]=c
+  [mkdir:--parents]=p
+  [mount:--options]=o [mount:--types]=t
+  [mv:--interactive]=i [mv:--no-clobber]=n
+  [nl:--body-numbering]=b
+  [objdump:--disassemble]=d [objdump:--disassembler-options]=M [objdump:--file-headers]=f [objdump:--private-headers]=p [objdump:--syms]=t
+  [od:--address-radix]=A [od:--format]=t
+  [passwd:--lock]=l
+  [paste:--delimiters]=d [paste:--serial]=s
+  [pgrep:--exact]=x [pgrep:--full]=f [pgrep:--list-full]=a [pgrep:--list-name]=l [pgrep:--newest]=n [pgrep:--pgroup]=g
+  [pkill:--full]=f
+  [readelf:--all]=a [readelf:--dynamic]=d [readelf:--file-header]=h [readelf:--syms]=s
+  [readlink:--canonicalize]=f [readlink:--canonicalize-existing]=e
+  [realpath:--canonicalize-existing]=e
+  [renice:--pid]=p
+  [rg:--after-context]=A [rg:--before-context]=B [rg:--context]=C [rg:--count]=c [rg:--files-with-matches]=l [rg:--fixed-strings]=F [rg:--glob]=g [rg:--ignore-case]=i [rg:--invert-match]=v [rg:--line-number]=n [rg:--line-regexp]=x [rg:--max-count]=m [rg:--only-matching]=o [rg:--pcre2]=P [rg:--quiet]=q [rg:--text]=a [rg:--threads]=j [rg:--type]=t [rg:--unrestricted]=u [rg:--word-regexp]=w
+  [rm:--dir]=d [rm:--force]=f [rm:--recursive]=R
+  [sed:--expression]=e [sed:--in-place]=i [sed:--quiet]=n [sed:--regexp-extended]=E [sed:--silent]=n
+  [sha256sum:--check]=c
+  [shred:--force]=f [shred:--iterations]=n [shred:--verbose]=v [shred:--zero]=z
+  [smartctl:--all]=a [smartctl:--health]=H
+  [sort:--field-separator]=t [sort:--human-numeric-sort]=h [sort:--ignore-case]=f [sort:--key]=k [sort:--numeric-sort]=n [sort:--reverse]=r [sort:--unique]=u
+  [ss:--all]=a [ss:--listening]=l [ss:--numeric]=n [ss:--processes]=p [ss:--tcp]=t [ss:--udp]=u
+  [stat:--format]=c
+  [strings:--encoding]=e
+  [systemctl:--quiet]=q [systemctl:--type]=t
+  [tail:--follow]=f [tail:--lines]=n
+  [tar:--create]=c [tar:--directory]=C [tar:--extract]=x [tar:--file]=f [tar:--gzip]=z [tar:--list]=t [tar:--verbose]=v
+  [tee:--append]=a
+  [timeout:--kill-after]=k
+  [tr:--delete]=d [tr:--squeeze-repeats]=s
+  [uname:--all]=a [uname:--kernel-release]=r [uname:--nodename]=n
+  [uniq:--count]=c [uniq:--repeated]=d [uniq:--unique]=u
+  [uptime:--pretty]=p
+  [useradd:--create-home]=m
+  [userdel:--remove]=r
+  [usermod:--append]=a [usermod:--groups]=G [usermod:--lock]=L
+  [watch:--differences]=d [watch:--interval]=n [watch:--no-title]=t [watch:--precise]=p
+  [wc:--bytes]=c [wc:--lines]=l [wc:--words]=w
+  [wget:--continue]=c [wget:--convert-links]=k [wget:--mirror]=m [wget:--output-document]=O
+  [xargs:--arg-file]=a [xargs:--delimiter]=d [xargs:--interactive]=p [xargs:--max-args]=n [xargs:--max-procs]=P [xargs:--no-run-if-empty]=r [xargs:--verbose]=t
+  [yum:--yes]=y
+)
+_LOPT_OK=1  # sourcing only the functions (test harnesses) leaves the table behind
 _fnorm() {
   [[ -z "$1" ]] && { REPLY=""; return; }
   # Byte-order collation so flag sorting (and tar-char sorting) is identical in every
@@ -3486,18 +3566,39 @@ _fnorm() {
     else _sf+=("$_sp"); fi
   done
   parts=("${_sf[@]}")
+  # Effective command: a privilege wrapper doesn't change how the real command's flags
+  # are shaped, so sudo/doas are transparent here. "sudo --version" is sudo's own flag,
+  # not a wrapped command, so only step over the wrapper when a bare word follows.
+  local _cmd="${parts[0]}"
+  [[ ("$_cmd" == sudo || "$_cmd" == doas) && -n "${parts[1]:-}" && "${parts[1]}" != -* ]] && _cmd="${parts[1]}"
+  # tar's classic bare option cluster (tar xzf a.tgz) is the same thing as -xzf; give it
+  # the dash so both spellings — and the --extract --gzip --file spelling below — land on
+  # one normalized form.
+  local _ti=1; [[ "$_cmd" != "${parts[0]}" ]] && _ti=2
+  [[ "$_cmd" == tar && "${parts[$_ti]:-}" =~ ^[a-zA-Z]+$ ]] && parts[$_ti]="-${parts[$_ti]}"
+  # Fold long options onto their short letter (see _LOPT). Runs before the re-pairing
+  # below so --max-count=3 and -m 3 end up as the same token.
+  local _lp _ls
+  if ((${_LOPT_OK:-0})); then
+    for _lp in "${!parts[@]}"; do
+      [[ "${parts[$_lp]}" == --?* ]] || continue
+      _ls="${_LOPT[$_cmd:${parts[$_lp]}]:-}"
+      [[ -n "$_ls" ]] && parts[$_lp]="-$_ls"
+    done
+  fi
   # Re-pair arg-taking flags with their value so sort keeps -d/-f pairs intact
   # (cut -d: -f1 ≡ cut -f1 -d:). Short flags become -dX, long flags become --opt=X.
   local _atf_short=" -d -f -F -t -e -k -c -m -K "
   # Per-command: gluing a no-arg flag to the next word makes normalization
   # order-dependent (grep -cw ≠ grep -w -c; wc -c file ≠ wc file -c) — keep only
   # the flags that actually take an argument for that command.
-  case "${parts[0]}" in
+  case "$_cmd" in
     grep|egrep|fgrep|zgrep|rg) _atf_short=" -d -f -t -e -k -m -K " ;;  # -c/-F take no arg
     wc) _atf_short=" " ;;          # -c/-m/-l/-w all take no arg
     sort) _atf_short=" -t -k " ;;  # -d/-f/-c/-m/-e take no arg
     uniq) _atf_short=" -f " ;;     # -c/-d take no arg
     head|tail) _atf_short=" -c " ;;  # tail -f/-F take no arg; -c (bytes) does
+    tar) _atf_short=" -C -b -T " ;;  # -f binds by position in xzf, so leave it unpaired
   esac
   local _atf_long=" --delimiter --field-separator --fields --field --key --max-count --color --sort --reference --filter --hash-type --rules-file --since --until --regexp --file --include --exclude --exclude-dir --after-context --before-context --context --max-depth --maxdepth --mindepth "
   local _rp=("${parts[0]}") _ri=1 _np=${#parts[@]} _ct _nt _is_atf
@@ -3543,16 +3644,16 @@ _fnorm() {
   for _ai in "${!args[@]}"; do
     [[ "${args[$_ai]}" == ./* ]] && args[$_ai]="${args[$_ai]#./}"
   done
-  # Normalize tar: sort bundled option chars (xzf == fxz == zxf)
-  if [[ "$REPLY" == tar && ${#args[@]} -gt 0 && "${args[0]}" =~ ^[a-zA-Z]+$ ]]; then
-    local _tca=() _ti _tj _tt _tr=""
-    for ((_ti=0; _ti<${#args[0]}; _ti++)); do _tca+=("${args[0]:_ti:1}"); done
-    for ((_ti=1; _ti<${#_tca[@]}; _ti++)); do
-      _tt="${_tca[$_ti]}"
-      for ((_tj=_ti; _tj>0; _tj--)); do [[ "${_tca[$((_tj-1))]}" > "$_tt" ]] || break; _tca[$_tj]="${_tca[$((_tj-1))]}"; done
-      _tca[$_tj]="$_tt"
+  # Two spellings of one flag: cp/rm treat -R and -r as identical, and sed -r is the
+  # older name for -E. Done after bundles are split so -Rf folds too.
+  if [[ "$_cmd" == cp || "$_cmd" == rm || "$_cmd" == sed ]]; then
+    local _fi
+    for _fi in "${!flags[@]}"; do
+      case "$_cmd:${flags[$_fi]}" in
+        cp:-R|rm:-R) flags[$_fi]="-r" ;;
+        sed:-r) flags[$_fi]="-E" ;;
+      esac
     done
-    for _ti in "${_tca[@]}"; do _tr+="$_ti"; done; args[0]="$_tr"
   fi
   local i j tmp
   for ((i=1; i<${#flags[@]}; i++)); do
@@ -3785,7 +3886,7 @@ save() {
   exec {fd}>&-
 }
 # ═══ SCORING & UI ═══
-declare -A _HASH_CACHE=()
+declare -gA _HASH_CACHE=()
 _hash() {
   local key="$1"
   if [[ -n "${_HASH_CACHE[$key]:-}" ]]; then REPLY="${_HASH_CACHE[$key]}"; return; fi
@@ -4971,7 +5072,7 @@ _selftest() {
     $'head -N\thead -5 file\thead -n 5 file'
     $'tail -N\ttail -20 log\ttail -n 20 log'
     $'head --lines\thead --lines file\thead -n file'
-    $'long=val\tsort --field-separator=,\tsort --field-separator=,'
+    $'long=val\tsort --field-separator=,\tsort -t,'
     $'-n5 split\thead -n5 f\thead -n 5 f'
     $'-t, split\tsort -t, file\tsort -t, file'
     $'-F: split\tawk -F: prog file\tawk -F: prog file'
@@ -4988,13 +5089,13 @@ _selftest() {
     $'append redirect\techo hi >>out\techo hi >> out'
     $'multi args\tcp a b c\tcp a b c'
     $'tail +N\ttail -n +5 file\ttail -n +5 file'
-    $'tar bundle sort\ttar xzf a.tar.gz\ttar fxz a.tar.gz'
-    $'tar bundle sort2\ttar czf a.tar.gz dir\ttar cfz a.tar.gz dir'
+    $'tar bundle sort\ttar xzf a.tar.gz\ttar -f -x -z a.tar.gz'
+    $'tar bundle sort2\ttar czf a.tar.gz dir\ttar -c -f -z a.tar.gz dir'
     $'cut pair order A\tcut -d: -f1 /etc/passwd\tcut -d: -f1 /etc/passwd'
     $'cut pair order B\tcut -f1 -d: /etc/passwd\tcut -d: -f1 /etc/passwd'
     $'cut pair spaced\tcut -d : -f 1 /etc/passwd\tcut -d: -f1 /etc/passwd'
-    $'cut long pair\tcut --delimiter=, --fields=1 f\tcut --delimiter=, --fields=1 f'
-    $'cut long pair reorder\tcut --fields=1 --delimiter=, f\tcut --delimiter=, --fields=1 f'
+    $'cut long pair\tcut --delimiter=, --fields=1 f\tcut -d, -f1 f'
+    $'cut long pair reorder\tcut --fields=1 --delimiter=, f\tcut -d, -f1 f'
     # Statement separators: each segment normalizes on its own, so a flag can never hoist
     # across a boundary, and && / || / ; stay distinct from one another.
     $'&& keeps flags in segment\tgrep x f > t && mv -v t f\tgrep x f > t && mv -v t f'

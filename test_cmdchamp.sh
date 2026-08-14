@@ -90,13 +90,37 @@ r=$(run_norm "grep -rn TODO .")
 r=$(run_norm "ls -rla")
 [[ "$r" == "ls -a -l -r" ]] && ok "norm -rla -> -a -l -r" || fail "norm -rla" "got '$r'"
 
-# Long flags preserved
+# Long flags fold onto their short letter (per-command _LOPT table)
 r=$(run_norm "sort --reverse file")
-[[ "$r" == "sort --reverse file" ]] && ok "norm preserves long flags" || fail "norm long" "got '$r'"
+[[ "$r" == "sort -r file" ]] && ok "norm folds long flag to short" || fail "norm long" "got '$r'"
 
 # Long + short mixed — _fnorm sorts flags in byte order (LC_ALL=C), locale-independent
 r=$(run_norm "sort --reverse -n file")
-[[ "$r" == "sort --reverse -n file" ]] && ok "norm mixed long+short" || fail "norm mixed" "got '$r'"
+[[ "$r" == "sort -n -r file" ]] && ok "norm mixed long+short" || fail "norm mixed" "got '$r'"
+
+# Same long name, different letter per command
+r=$(run_norm "chmod --recursive a+r dir")
+[[ "$r" == "chmod -R a+r dir" ]] && ok "norm --recursive -> -R (chmod)" || fail "norm chmod long" "got '$r'"
+r=$(run_norm "grep --recursive TODO .")
+[[ "$r" == "grep -r TODO ." ]] && ok "norm --recursive -> -r (grep)" || fail "norm grep long" "got '$r'"
+
+# Unknown long flag stays untouched
+r=$(run_norm "ls --author file")
+[[ "$r" == "ls --author file" ]] && ok "norm leaves unmapped long flag" || fail "norm unmapped" "got '$r'"
+
+# tar: bare cluster, dashed cluster and long spelling all agree
+a=$(run_norm "tar xzf a.tgz"); b=$(run_norm "tar -xzf a.tgz"); c=$(run_norm "tar --extract --gzip --file=a.tgz")
+[[ "$a" == "$b" && "$b" == "$c" ]] && ok "norm tar spellings agree" || fail "norm tar" "got '$a' / '$b' / '$c'"
+
+# sudo is transparent for flag shaping
+r=$(run_norm "sudo chown --recursive me dir")
+[[ "$r" == "sudo -R chown me dir" ]] && ok "norm long flag under sudo" || fail "norm sudo long" "got '$r'"
+
+# -R and -r are one flag in cp/rm; sed -r is -E
+r=$(run_norm "cp -R a b")
+[[ "$r" == "cp -r a b" ]] && ok "norm cp -R -> -r" || fail "norm cp -R" "got '$r'"
+r=$(run_norm "sed -r 's/a/b/' f")
+[[ "$r" == "sed -E s/a/b/ f" ]] && ok "norm sed -r -> -E" || fail "norm sed -r" "got '$r'"
 
 # Flags with values
 r=$(run_norm "head --lines=5 file")
