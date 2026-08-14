@@ -1787,10 +1787,10 @@ gen_level9() {
   questions+=("Store last line of ${W}${log}${C} in ${var}|${var}=\$(tail -1 ${log})|${var}=\$(tail -n 1 ${log})|${var}=\$(tail --lines=1 ${log})|${var}=\$(tail --lines 1 ${log})|${var}=\"\$(tail -1 ${log})\"|${var}=\"\$(tail -n 1 ${log})\"|${var}=\"\$(tail --lines=1 ${log})\"|${var}=\"\$(tail --lines 1 ${log})\"|${var}=\`tail -1 ${log}\`|${var}=\"\`tail -1 ${log}\`\"")
   questions+=("Show 'Lines:' with line count of ${W}${txt}${C}§echo \"Lines: \$(wc -l < ${txt})\"§echo \"Lines: \$(wc --lines < ${txt})\"§echo \"Lines: \`wc -l < ${txt}\`\"§echo \"Lines: \`wc --lines < ${txt}\`\"")
   questions+=("Store count of ${Y}${term}${C} matches in ${W}${log}${C} in ${var2}§${var2}=\$(grep -c ${term} ${log})§${var2}=\$(grep --count ${term} ${log})§${var2}=\"\$(grep -c ${term} ${log})\"§${var2}=\"\$(grep --count ${term} ${log})\"")
-  questions+=("Store first ${Y}${term}${C} line from ${W}${log}${C}§${var}=\$(grep ${term} ${log} | head -1)§${var}=\$(grep ${term} ${log} | head -n 1)§${var}=\$(grep -m 1 ${term} ${log})§${var}=\$(grep --max-count 1 ${term} ${log})§${var}=\$(grep --max-count=1 ${term} ${log})§${var}=\"\$(grep ${term} ${log} | head -1)\"§${var}=\"\$(grep ${term} ${log} | head -n 1)\"§${var}=\"\$(grep -m 1 ${term} ${log})\"§${var}=\"\$(grep --max-count 1 ${term} ${log})\"§${var}=\"\$(grep --max-count=1 ${term} ${log})\"")
+  questions+=("Store first ${Y}${term}${C} line from ${W}${log}${C} in ${Y}${var}${C}§${var}=\$(grep ${term} ${log} | head -1)§${var}=\$(grep ${term} ${log} | head -n 1)§${var}=\$(grep -m 1 ${term} ${log})§${var}=\$(grep --max-count 1 ${term} ${log})§${var}=\$(grep --max-count=1 ${term} ${log})§${var}=\"\$(grep ${term} ${log} | head -1)\"§${var}=\"\$(grep ${term} ${log} | head -n 1)\"§${var}=\"\$(grep -m 1 ${term} ${log})\"§${var}=\"\$(grep --max-count 1 ${term} ${log})\"§${var}=\"\$(grep --max-count=1 ${term} ${log})\"")
   questions+=("Count unique lines in ${W}${txt}${C} and store in ${Y}${var2}${C}§${var2}=\$(sort ${txt} | uniq | wc -l)§${var2}=\$(sort ${txt} | uniq | wc --lines)§${var2}=\$(sort -u ${txt} | wc -l)§${var2}=\$(sort -u ${txt} | wc --lines)§${var2}=\$(sort --unique ${txt} | wc -l)§${var2}=\$(sort --unique ${txt} | wc --lines)§${var2}=\"\$(sort ${txt} | uniq | wc -l)\"§${var2}=\"\$(sort ${txt} | uniq | wc --lines)\"§${var2}=\"\$(sort -u ${txt} | wc -l)\"§${var2}=\"\$(sort -u ${txt} | wc --lines)\"§${var2}=\"\$(sort --unique ${txt} | wc -l)\"§${var2}=\"\$(sort --unique ${txt} | wc --lines)\"")
   questions+=("Backup ${W}${txt}${C} with date suffix|cp ${txt} ${txt}.\$(date +%Y%m%d)|cp ${txt} ${txt}.\`date +%Y%m%d\`|cp ${txt} ${txt}.\$(date +%Y-%m-%d)|cp ${txt} ${txt}.\$(date +%F)|cp ${txt} ${txt}.\`date +%Y-%m-%d\`|cp ${txt} ${txt}.\`date +%F\`")
-  questions+=("Create dir named with today's date|mkdir \$(date +%Y-%m-%d)|mkdir -p \$(date +%Y-%m-%d)|mkdir --parents \$(date +%Y-%m-%d)|mkdir \$(date +%F)|mkdir -p \$(date +%F)|mkdir --parents \$(date +%F)|mkdir \`date +%Y-%m-%d\`|mkdir -p \`date +%Y-%m-%d\`|mkdir --parents \`date +%Y-%m-%d\`|mkdir \`date +%F\`|mkdir -p \`date +%F\`|mkdir --parents \`date +%F\`")
+  questions+=("Create dir named with today's date|mkdir \$(date +%Y-%m-%d)|mkdir -p \$(date +%Y-%m-%d)|mkdir --parents \$(date +%Y-%m-%d)|mkdir \$(date +%F)|mkdir -p \$(date +%F)|mkdir --parents \$(date +%F)|mkdir \`date +%Y-%m-%d\`|mkdir -p \`date +%Y-%m-%d\`|mkdir --parents \`date +%Y-%m-%d\`|mkdir \`date +%F\`|mkdir -p \`date +%F\`|mkdir --parents \`date +%F\`|mkdir \$(date +%Y%m%d)|mkdir -p \$(date +%Y%m%d)|mkdir --parents \$(date +%Y%m%d)|mkdir \`date +%Y%m%d\`|mkdir -p \`date +%Y%m%d\`|mkdir --parents \`date +%Y%m%d\`")
   questions+=("Save ${Y}${term}${C} matches from ${W}${log}${C} to ${W}matches.txt${C}, echo \"Found: N\"§grep ${term} ${log} > matches.txt && echo \"Found: \$(wc -l < matches.txt)\"§grep ${term} ${log} > matches.txt && echo \"Found: \$(wc --lines < matches.txt)\"")
   questions+=("If ${W}${txt}${C} exists store its line count in ${Y}${var2}${C}, else store 0§${var2}=\$(test -f ${txt} && wc -l < ${txt} || echo 0)§${var2}=\$([[ -f ${txt} ]] && wc -l < ${txt} || echo 0)§${var2}=\$([ -f ${txt} ] && wc -l < ${txt} || echo 0)§${var2}=\"\$(test -f ${txt} && wc -l < ${txt} || echo 0)\"§${var2}=\"\$([[ -f ${txt} ]] && wc -l < ${txt} || echo 0)\"§${var2}=\"\$([ -f ${txt} ] && wc -l < ${txt} || echo 0)\"§${var2}=\$(test -e ${txt} && wc -l < ${txt} || echo 0)§${var2}=\$([[ -e ${txt} ]] && wc -l < ${txt} || echo 0)§${var2}=\$([ -e ${txt} ] && wc -l < ${txt} || echo 0)§${var2}=\"\$(test -e ${txt} && wc -l < ${txt} || echo 0)\"§${var2}=\"\$([[ -e ${txt} ]] && wc -l < ${txt} || echo 0)\"§${var2}=\"\$([ -e ${txt} ] && wc -l < ${txt} || echo 0)\"")
   questions+=("Store hostname in ${Y}${var}${C}, then echo \"Host: \$${var}\" if set§${var}=\$(hostname) && echo \"Host: \$${var}\"§${var}=\$HOSTNAME && echo \"Host: \$${var}\"§${var}=\"\$(hostname)\" && echo \"Host: \$${var}\"§${var}=\${HOSTNAME} && echo \"Host: \$${var}\"")
@@ -1798,8 +1798,8 @@ gen_level9() {
   questions+=("Echo 'User is' followed by username|echo \"User is \$(whoami)\"|echo \"User is \$USER\"|echo \"User is \${USER}\"|echo \"User is \`whoami\`\"")
   questions+=("Print hostname and current directory§echo \"Host: \$(hostname), Dir: \$(pwd)\"§echo \"Host: \$HOSTNAME, Dir: \$(pwd)\"§echo \"Host: \$(hostname), Dir: \$PWD\"§echo \"Host: \$HOSTNAME, Dir: \$PWD\"§echo \"Host: \${HOSTNAME}, Dir: \$(pwd)\"§echo \"Host: \${HOSTNAME}, Dir: \${PWD}\"§echo \"Host: \$(hostname), Dir: \${PWD}\"§echo \"Host: \${HOSTNAME}, Dir: \$PWD\"§echo \"Host: \`hostname\`, Dir: \`pwd\`\"§echo \"Host: \`hostname\`, Dir: \$PWD\"§echo \"Host: \`hostname\`, Dir: \${PWD}\"")
   questions+=("Show file info: name, lines, words in ${W}${txt}${C}§echo \"${txt}: \$(wc -l < ${txt}) lines, \$(wc -w < ${txt}) words\"§echo \"${txt}: \$(wc --lines < ${txt}) lines, \$(wc --words < ${txt}) words\"§echo \"${txt}: \`wc -l < ${txt}\` lines, \`wc -w < ${txt}\` words\"")
-  questions+=("Store sorted unique lines from ${W}${txt}${C} in variable§${var}=\$(sort -u ${txt})§${var}=\$(sort --unique ${txt})§${var}=\$(sort ${txt} | uniq)§${var}=\"\$(sort -u ${txt})\"§${var}=\"\$(sort --unique ${txt})\"§${var}=\"\$(sort ${txt} | uniq)\"")
-  questions+=("Store first ${n} lines of ${W}${log}${C}|${var}=\$(head -${n} ${log})|${var}=\$(head -n ${n} ${log})|${var}=\"\$(head -${n} ${log})\"|${var}=\"\$(head -n ${n} ${log})\"")
+  questions+=("Store sorted unique lines from ${W}${txt}${C} in ${Y}${var}${C}§${var}=\$(sort -u ${txt})§${var}=\$(sort --unique ${txt})§${var}=\$(sort ${txt} | uniq)§${var}=\"\$(sort -u ${txt})\"§${var}=\"\$(sort --unique ${txt})\"§${var}=\"\$(sort ${txt} | uniq)\"")
+  questions+=("Store first ${n} lines of ${W}${log}${C} in ${Y}${var}${C}|${var}=\$(head -${n} ${log})|${var}=\$(head -n ${n} ${log})|${var}=\"\$(head -${n} ${log})\"|${var}=\"\$(head -n ${n} ${log})\"")
   questions+=("Echo path: /home/\$USER|echo \"/home/\$USER\"|echo /home/\$USER|echo \"/home/\${USER}\"|echo /home/\${USER}")
   questions+=("Export ${var} for child processes|export ${var}|export ${var}=${val}|export ${var}='${val}'|export ${var}=\"${val}\"")
   questions+=("Set ${var2} to '${val2}' and export in one command|export ${var2}='${val2}'|export ${var2}=\"${val2}\"|export ${var2}=${val2}")
@@ -2277,18 +2277,18 @@ gen_level19() {
   questions+=("Error if \$var is unset|echo \${var:?error message}")
   questions+=("Use 'alt' if \$var IS set|echo \${var:+alt}")
   questions+=("Declare indexed array|declare -a arr|arr=()|declare -a arr=()")
-  questions+=("Create array with values|arr=(one two three)")
+  questions+=("Create array ${Y}arr${C} with values ${W}one two three${C}|arr=(one two three)")
   questions+=("Access first element|echo \${arr[0]}")
   questions+=("Access last element|echo \${arr[-1]}")
   questions+=("Get all array elements|echo \${arr[@]}|echo \${arr[*]}|echo \"\${arr[@]}\"|echo \"\${arr[*]}\"")
   questions+=("Get array length|echo \${#arr[@]}|echo \${#arr[*]}")
   questions+=("Get array indices|echo \${!arr[@]}|echo \${!arr[*]}")
-  questions+=("Append to array|arr+=(four)")
+  questions+=("Append ${W}four${C} to array ${Y}arr${C}|arr+=(four)")
   questions+=("Delete array element at index 1|unset 'arr[1]'|unset arr[1]|unset \"arr[1]\"")
   questions+=("Slice array: elements 1-3|echo \${arr[@]:1:3}")
   questions+=("Declare associative array|declare -A map")
-  questions+=("Set associative array value|map[key]=value")
-  questions+=("Create associative array inline|declare -A map=([k1]=v1 [k2]=v2)")
+  questions+=("Set ${Y}map${C} entry ${W}key${C} to ${W}value${C}|map[key]=value")
+  questions+=("Create associative array ${Y}map${C} inline with ${W}k1=v1 k2=v2${C}|declare -A map=([k1]=v1 [k2]=v2)")
   questions+=("Get associative array value|echo \${map[key]}")
   questions+=("Get all keys of associative array|echo \${!map[@]}|echo \${!map[*]}")
   questions+=("Get all values of associative array|echo \${map[@]}|echo \${map[*]}")
@@ -2298,8 +2298,8 @@ gen_level19() {
   questions+=("Join array with comma|(IFS=','; echo \"\${arr[*]}\")|( IFS=','; echo \"\${arr[*]}\" )|(IFS=,; echo \"\${arr[*]}\")")
   questions+=("Read ${W}${txt}${C} lines into array|mapfile -t arr < ${txt}|readarray -t arr < ${txt}")
   questions+=("Read command output into array|mapfile -t arr < <(ls)|readarray -t arr < <(ls)")
-  questions+=("Copy array|arr2=(\"\${arr[@]}\")")
-  questions+=("Merge two arrays|merged=(\"\${arr1[@]}\" \"\${arr2[@]}\")")
+  questions+=("Copy array ${Y}arr${C} into ${Y}arr2${C}|arr2=(\"\${arr[@]}\")")
+  questions+=("Merge ${Y}arr1${C} and ${Y}arr2${C} into ${Y}merged${C}|merged=(\"\${arr1[@]}\" \"\${arr2[@]}\")")
   questions+=("Indirect expansion: print value of variable whose NAME is stored in \$ref|echo \"\${!ref}\"|printf '%s\\n' \"\${!ref}\"")
   questions+=("Shell-quote \$var safely for eval re-use (\${var@Q})|echo \"\${var@Q}\"|printf '%q\\n' \"\$var\"")
   questions+=("Assign printf output to \$var WITHOUT subshell (perf-critical)|printf -v var '%s' \"value\"|printf -v var '%s\\n' \"value\"")
@@ -2327,7 +2327,7 @@ gen_level20() {
   questions+=("Loop over files in ${dir}/, skip dirs|for f in ${dir}/*; do [[ -f \"\$f\" ]] && echo \"\$f\"; done|for f in ${dir}/*; do [ -f \"\$f\" ] && echo \"\$f\"; done|for f in ${dir}/*; do test -f \"\$f\" && echo \"\$f\"; done")
   questions+=("Basic while loop|while [[ condition ]]; do cmd; done|while [ condition ]; do cmd; done|while test condition; do cmd; done")
   questions+=("While read lines from ${W}${txt}${C}|while IFS= read -r line; do echo \"\$line\"; done < ${txt}|while read -r line; do echo \"\$line\"; done < ${txt}")
-  questions+=("While loop with counter from 0 to ${n}|i=0; while ((i < ${n})); do echo \$i; ((i++)); done|i=0; while [[ \$i -lt ${n} ]]; do echo \$i; ((i++)); done|i=0; while [ \$i -lt ${n} ]; do echo \$i; ((i++)); done")
+  questions+=("While loop, counter ${Y}i${C} from 0 to ${n}|i=0; while ((i < ${n})); do echo \$i; ((i++)); done|i=0; while [[ \$i -lt ${n} ]]; do echo \$i; ((i++)); done|i=0; while [ \$i -lt ${n} ]; do echo \$i; ((i++)); done")
   questions+=("Infinite loop with break|while true; do cmd; [[ cond ]] && break; done|while true; do cmd; [ cond ] && break; done|while true; do cmd; test cond && break; done|while :; do cmd; [[ cond ]] && break; done|while :; do cmd; [ cond ] && break; done|while :; do cmd; test cond && break; done|for ((;;)); do cmd; [[ cond ]] && break; done")
   questions+=("While with continue, read from ${W}${txt}${C}|while read -r line; do [[ -z \"\$line\" ]] && continue; echo \"\$line\"; done < ${txt}|while read -r line; do [ -z \"\$line\" ] && continue; echo \"\$line\"; done < ${txt}|while read -r line; do test -z \"\$line\" && continue; echo \"\$line\"; done < ${txt}")
   questions+=("Read command output line by line§while IFS= read -r line; do echo \"\$line\"; done < <(ls -la)§ls -la | while IFS= read -r line; do echo \"\$line\"; done")
@@ -2442,8 +2442,8 @@ gen_level21() {
   questions+=("Find logs modified today under /var/log containing '${term}'§find /var/log -mtime 0 -type f -exec grep -l ${term} {} \\;§find /var/log -mtime 0 -type f -exec grep -l ${term} {} +§fd --changed-within 1d -t f . /var/log -x grep -l ${term}§fd --changed-within 1d -t f . /var/log -x rg -l ${term}")
   questions+=("Copy each .${ext} to backup_FILE.${ext} using xargs -I{}§ls *.${ext} | xargs -I{} cp {} backup_{}§printf '%s\\n' *.${ext} | xargs -I{} cp {} backup_{}§find . -maxdepth 1 -name '*.${ext}' -printf '%f\\n' | xargs -I{} cp {} backup_{}")
   questions+=("Rename .txt to .md (perl-rename or util-linux rename)|rename 's/\\.txt$/.md/' *.txt|rename .txt .md *.txt")
-  questions+=("Run ${script} every 6 hours|0 */6 * * * /usr/local/bin/${script}")
-  questions+=("Run ${script} weekdays only at 9am|0 9 * * 1-5 /usr/local/bin/${script}|0 9 * * mon-fri /usr/local/bin/${script}|0 9 * * MON-FRI /usr/local/bin/${script}")
+  questions+=("Cron: run ${W}${cron_path}${C} every 6 hours|0 */6 * * * /usr/local/bin/${script}")
+  questions+=("Cron: run ${W}${cron_path}${C} weekdays only at 9am|0 9 * * 1-5 /usr/local/bin/${script}|0 9 * * mon-fri /usr/local/bin/${script}|0 9 * * MON-FRI /usr/local/bin/${script}")
   questions+=("Skip xargs run if input is empty (-r / --no-run-if-empty)|xargs -r rm < filelist.txt|xargs --no-run-if-empty rm < filelist.txt")
   questions+=("Run ${proc} with 10-second timeout, kill -9 5s after if hung|timeout --kill-after=5 10s ${proc}|timeout -k 5 10s ${proc}|timeout -k 5s 10s ${proc}|timeout --kill-after=5s 10s ${proc}")
   questions+=("Wait for ANY background job to finish (bash 4.3+ wait -n)|cmd1 & cmd2 & wait -n|{ cmd1 & cmd2 & wait -n; }|cmd1 & cmd2 & wait -n; echo done")
@@ -2514,13 +2514,16 @@ gen_level22() {
   questions+=("Named capture group with PCRE (extract IP from ${W}${log}${C})§grep -oP '(?<ip>\\d+\\.\\d+\\.\\d+\\.\\d+)' ${log}§rg -oP '(?<ip>\\d+\\.\\d+\\.\\d+\\.\\d+)' ${log}§grep -oP '(?P<ip>\\d+\\.\\d+\\.\\d+\\.\\d+)' ${log}")
   questions+=("Multi-line: match '${term}' followed by '${term2}' across lines in ${W}${txt}${C}|pcregrep -M '${term}\\n.*${term2}' ${txt}|grep -Pzo '(?s)${term}.*?${term2}' ${txt}")
   questions+=("Atomic group / possessive quantifier (PCRE) in ${W}${log}${C}|grep -oP '\\d++' ${log}|grep -oP '(?>\\d+)' ${log}")
-  questions+=("PCRE non-capturing group: match 'foo' or 'bar' in ${W}${log}${C} without saving in \\\\1|grep -oP '(?:foo|bar)' ${log}|rg -oP '(?:foo|bar)' ${log}")
+  questions+=("PCRE non-capturing group: match 'foo' or 'bar' in ${W}${log}${C} without saving in \\\\1§grep -oP '(?:foo|bar)' ${log}§rg -oP '(?:foo|bar)' ${log}")
   questions+=("Bash =~ regex match capturing into \${BASH_REMATCH[@]} (extract first integer)|[[ \"\$line\" =~ ([0-9]+) ]] && echo \"\${BASH_REMATCH[1]}\"|[[ \$line =~ ([0-9]+) ]] && echo \"\${BASH_REMATCH[1]}\"")
 }
 
 # Level 23: Git
 gen_level23() {
   local -n questions=${1:-CURRENT_QUESTIONS}; questions=(); eval "local $_QV"; _ctx
+  # Questions that compare against main need a branch that isn't main, or they read
+  # "diff between main and 'main'" and the answer is a no-op.
+  local sbranch=$branch; [[ $sbranch == main || $sbranch == master ]] && sbranch=feature/auth
   questions+=("Initialize new git repo|git init|git init .")
   questions+=("Clone repo from URL§~^git clone (https?://|git@)\\S+$")
   questions+=("Clone repo to specific dir§~^git clone (https?://|git@)\\S+ \\S+$")
@@ -2555,9 +2558,9 @@ gen_level23() {
   questions+=("Show last ${n} commits|git log -${n}|git log -n ${n}|git log --max-count=${n}|git log --max-count ${n}")
   questions+=("Show diff of unstaged changes|git diff")
   questions+=("Show diff of staged changes|git diff --staged|git diff --cached")
-  questions+=("Show diff between main and '${branch}'|git diff main..${branch}|git diff main ${branch}|git diff main...${branch}|git diff ${branch}..main|git diff ${branch} main|git diff ${branch}...main")
+  questions+=("Show diff between main and '${sbranch}'|git diff main..${sbranch}|git diff main ${sbranch}|git diff main...${sbranch}|git diff ${sbranch}..main|git diff ${sbranch} main|git diff ${sbranch}...main")
   questions+=("Show who changed each line in ${W}${txt}${C}|git blame ${txt}|git annotate ${txt}")
-  questions+=("Search commits for '${term}'|git log -S '${term}'|git log -S \"${term}\"|git log -S ${term}|git log --all -S '${term}'|git log --all -S \"${term}\"|git log --all -S ${term}")
+  questions+=("Search commit contents (pickaxe) for '${term}'|git log -S '${term}'|git log -S \"${term}\"|git log -S ${term}|git log --all -S '${term}'|git log --all -S \"${term}\"|git log --all -S ${term}")
   questions+=("Show ${W}${txt}${C} as it was at HEAD~${n}|git show HEAD~${n}:${txt}")
   questions+=("Unstage file '${txt}'|git restore --staged ${txt}|git restore -S ${txt}|git reset HEAD ${txt}|git reset ${txt}")
   questions+=("Discard changes to file '${txt}'|git restore ${txt}|git restore -- ${txt}|git checkout -- ${txt}|git checkout ${txt}")
@@ -2601,7 +2604,7 @@ gen_level23() {
   questions+=("Search commit messages for '${term}'|git log --grep=${term}|git log --grep ${term}|git log --grep='${term}'")
   questions+=("Create signed annotated tag|~^git tag -s v[0-9].* -m .+\$#boss-skip")
   questions+=("Force-push '${branch}' safely with --force-with-lease + --force-if-includes (git 2.30+)|git push --force-with-lease --force-if-includes origin ${branch}|git push --force-if-includes --force-with-lease origin ${branch}")
-  questions+=("Rebase onto main or '${branch}' or HEAD~${n}, updating dependent refs (git 2.38+, stacked-branch workflow)|git rebase --update-refs main|git rebase --update-refs ${branch}|git rebase -i --update-refs HEAD~${n}|git rebase --update-refs -i HEAD~${n}")
+  questions+=("Rebase onto main or '${sbranch}' or HEAD~${n}, updating dependent refs (git 2.38+, stacked-branch workflow)|git rebase --update-refs main|git rebase --update-refs ${sbranch}|git rebase -i --update-refs HEAD~${n}|git rebase --update-refs -i HEAD~${n}")
   questions+=("Mark commit as fixup of HEAD~${n}|git commit --fixup=HEAD~${n}|git commit --fixup HEAD~${n}")
   questions+=("Autosquash interactive rebase from HEAD~${n}|git rebase -i --autosquash HEAD~${n}|git rebase --autosquash -i HEAD~${n}|git rebase --autosquash HEAD~${n}")
   questions+=("Search commits whose diff matches regex '${term}' (-G)|git log -G '${term}'|git log -G \"${term}\"|git log -G ${term}")
@@ -5538,6 +5541,26 @@ _selftest() {
     for _di_s in "${_di_arr[@]}"; do
       if [[ "$_di_s" != *§* && "$_di_s" == *" | "* ]]; then
         ((_di_viol++)); printf '  FAIL: L%d uses | delimiter with a shell pipe: %s\n' "$_lv" "${_di_s:0:70}"
+        continue
+      fi
+      # An unspaced pipe inside quotes splits just as badly — grep -oP '(?:foo|bar)'
+      # became two half-answers. Walk the answer region (prose apostrophes in the
+      # prompt would poison the quote state) and reject any | seen inside quotes.
+      if [[ "$_di_s" != *§* && "$_di_s" == *[\'\"]* && "$_di_s" == *\|* ]]; then
+        local _di_a="${_di_s#*|}" _di_i _di_c _di_sq=0 _di_dq=0 _di_open=-1
+        for ((_di_i=0; _di_i<${#_di_a}; _di_i++)); do
+          _di_c="${_di_a:_di_i:1}"
+          case "$_di_c" in
+            "'") ((_di_dq)) || { _di_sq=$((!_di_sq)); _di_open=$_di_i; } ;;
+            '"') ((_di_sq)) || { _di_dq=$((!_di_dq)); _di_open=$_di_i; } ;;
+            # A quote that opens right before the | is a literal (tmux binds Ctrl+b ");
+            # only a quote with content behind it means the answer was split apart.
+            '|') if (( (_di_sq || _di_dq) && _di_i > _di_open + 1 )); then
+                   ((_di_viol++)); printf '  FAIL: L%d has a quoted | under the | delimiter: %s\n' "$_lv" "${_di_s:0:70}"
+                   break
+                 fi ;;
+          esac
+        done
       fi
     done
   done
