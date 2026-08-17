@@ -1,0 +1,15 @@
+# keep the full default ruleset; this file only carves out a teaching placeholder.
+[extend]
+useDefault = true
+
+# cmdchamp is a CLI trainer, so its question bank contains commands that look
+# exactly like the real thing — that is the point of the exercise. `token123` is
+# a literal typed into a curl lesson, not a credential to anything.
+#
+# deliberately matched on the secret itself and anchored, NOT on the file path:
+# gitleaks ORs `paths` with `regexes`, so a path-scoped entry here would have
+# whitelisted all 5800 lines of the question bank and let a genuine key through.
+# anchored to the exact string, this exempts that one placeholder and nothing else.
+[[allowlists]]
+description = "curl lesson placeholder in the question bank"
+regexes = ['''^token123$''']
