@@ -163,6 +163,14 @@ phase2_positive() {
   for lv in {1..30} chains; do
     local tested=0 passed=0 failed=0 skipped=0
     local -a raw=()
+    # The gauntlet derives #output against a randomised tree and grades against that SAME tree
+    # (in-game, SANDBOX_DIR is pointed at it). Mirror that here or derive!=grade for chains.
+    local _ch_save_sd="" _ch_tree=""
+    if [[ "$lv" == chains ]] && ((SANDBOX_MODE)); then
+      if _ch_tree=$(mktemp -d) && _gen_gauntlet_files "$_ch_tree" 2>/dev/null; then
+        _GAUNTLET_DIR=$_ch_tree; _ch_save_sd=$SANDBOX_DIR; SANDBOX_DIR=$_ch_tree
+      fi
+    fi
     _gen "$lv" raw || continue
 
     for line in "${raw[@]}"; do
@@ -177,8 +185,10 @@ phase2_positive() {
 
       ((tested++))
 
-      # Reset sandbox before each test
-      ((SANDBOX_MODE)) && _sandbox_reset
+      # Reset sandbox before each test. Chains are read-only and share ONE tree for the whole
+      # level — resetting to pristine would clobber the randomised fixtures their #outputs
+      # were derived from.
+      [[ "$lv" != chains ]] && ((SANDBOX_MODE)) && _sandbox_reset
 
       # Execute the canonical correct answer
       local ans="$_qans"
@@ -222,6 +232,10 @@ phase2_positive() {
         _fail "L${lv}: answer '${ans:0:60}' fails own validator [${reason}] for: ${_qprompt:0:50}"
       fi
     done
+
+    if [[ "$lv" == chains && -n "$_ch_tree" ]]; then
+      SANDBOX_DIR=$_ch_save_sd; _GAUNTLET_DIR=""; rm -rf "$_ch_tree"
+    fi
 
     if ((tested > 0 || failed > 0)); then
       local _lname; [[ "$lv" == chains ]] && _lname="the gauntlet" || _lname="${LEVEL_NAMES[$lv]}"

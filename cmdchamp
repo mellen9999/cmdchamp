@@ -497,6 +497,8 @@ SANDBOX_PRISTINE="$DATA/sandbox.pristine"
 SANDBOX_DIR="$DATA/sandbox"
 _SANDBOX_GEN=5  # fixture generation - bump to force a pristine rebuild on existing installs
 _GEN_CHAINS_TMP=""  # live gen_chains temp dir, reaped by _cleanup if a signal interrupts it
+_GAUNTLET_DIR=""    # when set, the gauntlet owns a randomised fixture tree it also grades against
+_GAUNTLET_PRISTINE="" # the gauntlet tree's own pristine, so a reset restores THOSE fixtures
 
 _BWRAP_FLAG="$DATA/.bwrap_blocked"
 _bwrap_notice() {
@@ -747,6 +749,107 @@ _gen_sandbox_files() {
     'blob: c2VjcmV0Omh1bnRlcjI=' >> "$dir/samples/target.bin"
 }
 
+# Randomised fixture overlay for the GAUNTLET only. Builds the full standard tree, then
+# overwrites the chain-queried deterministic fixtures (config.ini, settings.yaml,
+# data/export.json, notes.txt, todo.txt, traffic.log) with seeded-random variants — so the
+# daily/challenge gauntlet is fresh every run instead of the same fixed answers forever.
+# gen_chains DERIVES each #output against this exact tree and the gauntlet GRADES against the
+# same tree (SANDBOX_DIR is pointed here for the run), so derive==grade by construction and
+# any correct pipeline passes. For the daily this runs AFTER RANDOM is seeded, so it is
+# byte-identical across machines. A chain whose randomised fixture makes it degenerate
+# (empty/tied/multiline output) is skipped by _chq — never mis-graded, the pool just shrinks.
+# shellcheck disable=SC2034  # locals consumed via _fpick nameref
+_gen_gauntlet_files() {
+  local dir="$1"
+  _gen_sandbox_files "$dir" || return 1
+
+  # ── config.ini (random values, fixed [section] structure) ──
+  local _cport _dport _work _to _ttl _dbu _dbn _bk
+  _fpick PORTS; _cport=$REPLY; _fpick PORTS; _dport=$REPLY
+  _frnum 2 16; _work=$REPLY; _frnum 10 90; _to=$REPLY; _frnum 1 12; _ttl=$((REPLY*300))
+  _fpick USERNAMES; _dbu=$REPLY; _fpick JSON_KEYS; _dbn="${REPLY}db"
+  local _backends=(redis memcached hazelcast varnish keydb dragonfly); _fpick _backends; _bk=$REPLY
+  printf '%s\n' '[server]' 'host = 0.0.0.0' "port = $_cport" "workers = $_work" "timeout = $_to" '' \
+    '[database]' 'type = postgresql' 'host = localhost' "port = $_dport" "name = $_dbn" "user = $_dbu" '' \
+    '[logging]' 'level = info' 'file = /var/log/app.log' 'rotate = daily' '' \
+    '[cache]' 'enabled = true' "ttl = $_ttl" "backend = $_bk" > "$dir/config.ini"
+
+  # ── settings.yaml (random ports/hosts + random true/false split, ≥1 of each) ──
+  local _sport _rport _rhost _f1 _f2 _f3
+  _fpick PORTS; _sport=$REPLY; _fpick PORTS; _rport=$REPLY; _fpick REMOTE_HOSTS; _rhost="${REPLY}.local"
+  # keep at least one true and one false so the true/false chains never degenerate
+  _f1=true; ((RANDOM&1)) && _f2=true || _f2=false; _f3=false
+  printf '%s\n' 'server:' '  host: 0.0.0.0' "  port: $_sport" "  workers: $_work" '  ssl:' \
+    '    enabled: false' '    cert: /etc/ssl/cert.pem' '' 'database:' '  primary:' \
+    '    host: localhost' "    port: $_sport" '    name: appdb' '  replica:' \
+    "    host: $_rhost" "    port: $_rport" '' 'logging:' '  level: info' '  outputs:' \
+    '    - stdout' '    - file:/var/log/app.log' '' 'features:' "  cache: $_f1" \
+    "  metrics: $_f2" "  debug: $_f3" > "$dir/settings.yaml"
+
+  # ── data/export.json (random distinct names, statuses w/ ≥1 active, distinct counts) ──
+  local _names=(Alpha Bravo Charlie Delta Echo Foxtrot Golf Hotel India Juliet Kilo Lima Mike November) _statuses=(active pending inactive)
+  _fshuffle _names
+  local _nitems; _frnum 4 6; _nitems=$REPLY
+  local _counts=() _ci; for ((_ci=0; _ci<40; _ci++)); do _counts+=("$((_ci*7 + RANDOM%7 + 1))"); done; _fshuffle _counts
+  { printf '%s\n' '{' '  "version": "1.0.0",' '  "data": ['
+    local _r; for ((_r=0; _r<_nitems; _r++)); do
+      local _st; if ((_r==0)); then _st=active; else _fpick _statuses; _st=$REPLY; fi
+      local _comma=,; ((_r==_nitems-1)) && _comma=
+      printf '    {"id": %d, "name": "Item %s", "status": "%s", "count": %d}%s\n' \
+        "$((_r+1))" "${_names[$_r]}" "$_st" "${_counts[$_r]}" "$_comma"
+    done
+    printf '%s\n' '  ],' '  "metadata": {' "    \"total\": $_nitems," '    "generated": "2024-01-15"' '  }' '}'
+  } > "$dir/data/export.json"
+
+  # ── notes.txt (random # of numbered items / TODO lines / bullets, all # -free) ──
+  local _acts=("Update documentation" "Fix authentication bug" "Deploy to staging" "Review security patches" "Rotate API credentials" "Patch the CVE" "Benchmark the cache" "Audit the IAM roles") _fshuffle _acts
+  local _todos=("Schedule follow-up meeting" "Review pull requests" "Update dependencies" "Triage the backlog" "Renew the TLS cert" "Drain node2") _fshuffle _todos
+  local _na _nt; _frnum 3 6; _na=$REPLY; _frnum 2 4; _nt=$REPLY
+  { printf '%s\n' 'Meeting Notes - Project Review' '==============================' '' 'Attendees: Alice, Bob, Charlie' '' 'Action Items:'
+    local _i; for ((_i=0; _i<_na; _i++)); do printf '%d. %s\n' "$((_i+1))" "${_acts[$_i]}"; done
+    printf '%s\n' '' 'Discussion Points:' '- Performance improvements needed' '- New feature requests from users' '- Timeline for next release' ''
+    for ((_i=0; _i<_nt; _i++)); do printf 'TODO: %s\n' "${_todos[$_i]}"; done
+    printf '%s\n' '' 'Notes:' 'The deployment went smoothly.'
+  } > "$dir/notes.txt"
+
+  # ── todo.txt (random checked/unchecked split, # -free item text) ──
+  local _tasks=("Review the deploy plan" "Update API docs" "Fix login timeout" "Refactor user service" "Add unit tests" "Setup CI pipeline" "Migrate the database" "Tune the query planner" "Wire up metrics" "Rotate the secrets") _fshuffle _tasks
+  local _ndone _ntodo; _frnum 2 4; _ndone=$REPLY; _frnum 3 5; _ntodo=$REPLY
+  { printf '%s\n' 'Task List' '========='  ''
+    local _i; for ((_i=0; _i<_ndone; _i++)); do printf '[x] %s\n' "${_tasks[$_i]}"; done
+    for ((_i=_ndone; _i<_ndone+_ntodo; _i++)); do printf '[ ] %s\n' "${_tasks[$_i]}"; done
+  } > "$dir/todo.txt"
+
+  # ── traffic.log (random access log w/ one clear busiest IP + a lone 404 + some 5xx) ──
+  local _tips=("${IPS[@]}"); _fshuffle _tips
+  local _ip0=${_tips[0]} _ip1=${_tips[1]} _ip2=${_tips[2]} _ip3=${_tips[3]}
+  local _w0 _w1; _frnum 6 9; _w0=$REPLY; _frnum 4 5; _w1=$REPLY  # w0 > w1 > 3 > 2, distinct → busiest + 2nd unambiguous
+  local _bag=() _k
+  for ((_k=0; _k<_w0; _k++)); do _bag+=("$_ip0"); done
+  for ((_k=0; _k<_w1; _k++)); do _bag+=("$_ip1"); done
+  for ((_k=0; _k<3;   _k++)); do _bag+=("$_ip2"); done
+  for ((_k=0; _k<2;   _k++)); do _bag+=("$_ip3"); done
+  _fshuffle _bag
+  local _tmeth=(GET GET GET GET POST PUT DELETE) _tpath=(/ / /api /login /admin /static/app.js /search /health)
+  # fixed base epoch (NOT wall-clock) so the seeded daily traffic.log is byte-identical across
+  # machines and times of day — not just answer-identical.
+  local _n=${#_bag[@]} _now=1767225600
+  # exactly one 404 (keeps the '404 IP' chain alive) and two 500s (keeps '5xx IPs' alive)
+  local _i404=$((RANDOM%_n)) _i500a _i500b; _i500a=$(( (_i404+1)%_n )); _i500b=$(( (_i404+3)%_n ))
+  { local _i; for ((_i=0; _i<_n; _i++)); do
+      local _m _pa _co _sz _ts
+      _fpick _tmeth; _m=$REPLY
+      if ((RANDOM%2==0)); then _pa=${_tpath[0]}; else _fpick _tpath; _pa=$REPLY; fi  # weight '/' so a top URL exists
+      if   ((_i==_i404)); then _co=404
+      elif ((_i==_i500a || _i==_i500b)); then _co=500
+      else local _cs=(200 200 200 200 301 403); _fpick _cs; _co=$REPLY; fi
+      _sz=$((RANDOM%4000+64))
+      printf -v _ts '%(%d/%b/%Y:%H:%M:%S +0000)T' "$((_now - (_n - _i)*7))"
+      printf '%s - - [%s] "%s %s HTTP/1.1" %s %d\n' "${_bag[$_i]}" "$_ts" "$_m" "$_pa" "$_co" "$_sz"
+    done
+  } > "$dir/traffic.log"
+}
+
 _sandbox_init() {
   ((SANDBOX_MODE)) || return 0
   _check_bwrap || return 1
@@ -969,6 +1072,7 @@ _cleanup() {
   [[ -n "$_stty_saved" ]] && stty "$_stty_saved" 2>/dev/null
   ((_interactive)) && printf '\e[?25h\e[?2004l'  # restore cursor + disable bracketed paste
   [[ -n "${_GEN_CHAINS_TMP:-}" ]] && rm -rf "$_GEN_CHAINS_TMP" 2>/dev/null  # reap a gen_chains temp caught mid-build by a signal
+  [[ -n "${_GAUNTLET_PRISTINE:-}" ]] && rm -rf "$_GAUNTLET_PRISTINE" 2>/dev/null  # reap the gauntlet's own pristine on a signal
   ((_CLEANING)) && return; _CLEANING=1
   ((_interactive)) || return 0
   rm -rf "$DATA/sandbox.snap" "$DATA/sandbox.snap.perms" 2>/dev/null
@@ -3447,13 +3551,20 @@ gen_level30() {
 # (panel teaches every command/flag). Reached only from challenge().
 gen_chains() {
   local -n questions=${1:-CURRENT_QUESTIONS}; questions=()
-  local _t; _t=$(mktemp -d "${TMPDIR:-/tmp}/cmdchamp.XXXXXX" 2>/dev/null) || return
-  # Track the temp globally so _cleanup reaps it if a SIGINT lands during the ~24
-  # derive-evals below (the global INT trap runs _cleanup and never returns here). The
-  # normal path clears it after the explicit rm at the end. (A RETURN trap can't be used
-  # here — bash RETURN traps aren't function-scoped and would fire on the caller too.)
-  _GEN_CHAINS_TMP=$_t
-  _gen_sandbox_files "$_t" 2>/dev/null
+  # The gauntlet builds ONE randomised tree, points SANDBOX_DIR at it, and calls us to derive
+  # #output against that same tree — so derive==grade by construction. When _GAUNTLET_DIR is
+  # set we use (never delete) the caller's tree; otherwise (audit/tests) we build+reap our own
+  # randomised temp, which is still self-consistent (the answer we run is the answer graded).
+  local _t _own=0
+  if [[ -n "${_GAUNTLET_DIR:-}" ]]; then
+    _t=$_GAUNTLET_DIR
+  else
+    _t=$(mktemp -d "${TMPDIR:-/tmp}/cmdchamp.XXXXXX" 2>/dev/null) || return
+    # Track the temp globally so _cleanup reaps it if a SIGINT lands during the derive-evals
+    # below (the global INT trap runs _cleanup and never returns here). Cleared after the rm.
+    _GEN_CHAINS_TMP=$_t; _own=1
+    _gen_gauntlet_files "$_t" 2>/dev/null
+  fi
   # Run a candidate answer against the fixture copy under the sandbox's C locale and
   # capture its stdout — so #output is DERIVED from the answer, never hand-typed. The
   # in-game sandbox runs the same answer over identical deterministic fixtures, so the
@@ -3642,7 +3753,7 @@ gen_chains() {
   _chq "How many shell scripts (*.sh) are in the top level" \
        "find . -maxdepth 1 -name '*.sh' | wc -l" .sh
 
-  rm -rf "$_t"; _GEN_CHAINS_TMP=""
+  ((_own)) && { rm -rf "$_t"; _GEN_CHAINS_TMP=""; }
 }
 
 # ═══ SCENARIOS ═══
@@ -5430,9 +5541,36 @@ _pick_q() {
 _gauntlet_loop() {
   local _hdr=$1 score=0 _rec=""
   _GT_ERR=0 _GT_SCORE=0 _GT_REC=""
+  # Fresh RANDOMISED fixture tree for THIS gauntlet, and grade against the exact tree
+  # gen_chains derives from (SANDBOX_DIR points here) — so answers stay fresh every run
+  # instead of the same fixed values forever. Seeded by the caller (daily) beforehand →
+  # byte-identical across machines; unseeded (challenge) → different each run.
+  local _save_sd=$SANDBOX_DIR _save_pr=$SANDBOX_PRISTINE
+  _gauntlet_cleanup() {
+    SANDBOX_DIR=$_save_sd; SANDBOX_PRISTINE=$_save_pr
+    [[ -n "$_GAUNTLET_DIR" ]] && rm -rf "$_GAUNTLET_DIR"
+    [[ -n "$_GAUNTLET_PRISTINE" ]] && rm -rf "$_GAUNTLET_PRISTINE"
+    _GAUNTLET_DIR="" _GAUNTLET_PRISTINE="" _GEN_CHAINS_TMP=""
+  }
+  if ((SANDBOX_MODE)); then
+    _GAUNTLET_DIR=$(mktemp -d "${TMPDIR:-/tmp}/cmdchamp.XXXXXX" 2>/dev/null) || { _GT_ERR=1; return 1; }
+    _GEN_CHAINS_TMP=$_GAUNTLET_DIR  # reap on signal
+    if ! _gen_gauntlet_files "$_GAUNTLET_DIR" 2>/dev/null; then _gauntlet_cleanup; _GT_ERR=1; return 1; fi
+    # Own pristine so a destructive-but-correct answer resets to THESE randomised fixtures
+    # (not the deterministic ones), keeping every later chain graded against the right tree.
+    if _GAUNTLET_PRISTINE=$(mktemp -d "${TMPDIR:-/tmp}/cmdchamp.XXXXXX" 2>/dev/null) && cp -a "$_GAUNTLET_DIR/." "$_GAUNTLET_PRISTINE/" 2>/dev/null; then
+      SANDBOX_PRISTINE=$_GAUNTLET_PRISTINE
+    else
+      _GAUNTLET_PRISTINE=""
+    fi
+    SANDBOX_DIR=$_GAUNTLET_DIR
+  fi
+  # A prior gauntlet in this process cached chains derived from a now-deleted tree — drop it
+  # so the pool rebuilds against the tree we just made.
+  unset '_LEVEL_CACHE_N[chains]' '_LEVEL_CACHE[chains]' '_LEVEL_CHAL[chains]' '_LAST_PICK[chains]'
   # Build the pool once up front. If it can't be built (no /tmp, missing coreutils),
   # bail — `|| continue` in the loop would spin at 100% CPU with no way to read or quit.
-  _pick_q chains challenge || { _GT_ERR=1; return 1; }
+  _pick_q chains challenge || { _gauntlet_cleanup; _GT_ERR=1; return 1; }
   while true; do
     _pick_q chains challenge || break; local prompt=$_qprompt ans=$_qans
     _REDRAW_HDR() {
@@ -5456,6 +5594,7 @@ _gauntlet_loop() {
     if ! ((_ok)); then _sw; _rec+="x"; _pause; break; fi
   done
   _sflush_if_dirty
+  _gauntlet_cleanup
   _GT_SCORE=$score _GT_REC=$_rec
   return 0
 }
