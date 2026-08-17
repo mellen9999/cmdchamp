@@ -183,8 +183,8 @@ _DECAY_INTERVAL=86400  # only run decay once per 24h
 
 # ═══ PROFILE ═══
 PLAYER_NAME="" BOSS_BEATEN=0 BEST_CHALLENGE=0 DISKS_FOUND="" SC_DONE=""
-OPT_VI=1 OPT_SOUND=1 OPT_ALTS=1
-_PROFILE_VER=6  # bump this when profile format changes; old profiles get reset
+OPT_VI=1 OPT_ALTS=1
+_PROFILE_VER=7  # bump this when profile format changes; old profiles get reset
 LAST_DECAY=0  # epoch of last decay check (persisted in profile)
 PLACED_THROUGH=0  # highest level passed via placement test
 # Daily gauntlet: last-played date (YYYYMMDD), current + best streak, best score + when
@@ -203,7 +203,6 @@ _load_profile() {
         SC_DONE) SC_DONE="$val";;
         LAST_DECAY) LAST_DECAY="$val";;
         OPT_VI) OPT_VI="$val";;
-        OPT_SOUND) OPT_SOUND="$val";;
         OPT_ALTS) OPT_ALTS="$val";;
         PLACED_THROUGH) PLACED_THROUGH="$val";;
         LAST_DAILY) LAST_DAILY="$val";;
@@ -223,7 +222,6 @@ _load_profile() {
     [[ "$BEST_CHALLENGE" =~ ^[0-9]+$ ]] || BEST_CHALLENGE=0
     [[ "$LAST_DECAY" =~ ^[0-9]+$ ]] || LAST_DECAY=0
     [[ "$OPT_VI" =~ ^[01]$ ]] || OPT_VI=1
-    [[ "$OPT_SOUND" =~ ^[01]$ ]] || OPT_SOUND=1
     [[ "$OPT_ALTS" =~ ^[01]$ ]] || OPT_ALTS=1
     [[ "$PLACED_THROUGH" =~ ^[0-9]+$ ]] || PLACED_THROUGH=0
     ((PLACED_THROUGH > MAX_LEVEL)) && PLACED_THROUGH=$MAX_LEVEL
@@ -256,8 +254,8 @@ _load_profile() {
 
 # Raw write, no merge — only for paths that must overwrite disk (version reset).
 _write_profile() {
-  printf 'PLAYER_NAME=%s\nBOSS_BEATEN=%d\nBEST_CHALLENGE=%d\nDISKS_FOUND=%s\nSC_DONE=%s\nLAST_DECAY=%d\nOPT_VI=%d\nOPT_SOUND=%d\nOPT_ALTS=%d\nPLACED_THROUGH=%d\nLAST_DAILY=%s\nDAILY_STREAK=%d\nDAILY_MAXSTREAK=%d\nDAILY_BEST=%d\nDAILY_BEST_DATE=%s\nPROFILE_VER=%d\n' \
-    "$PLAYER_NAME" "$BOSS_BEATEN" "$BEST_CHALLENGE" "$DISKS_FOUND" "$SC_DONE" "$LAST_DECAY" "$OPT_VI" "$OPT_SOUND" "$OPT_ALTS" "$PLACED_THROUGH" "$LAST_DAILY" "$DAILY_STREAK" "$DAILY_MAXSTREAK" "$DAILY_BEST" "$DAILY_BEST_DATE" "$_PROFILE_VER" > "$DATA/profile.tmp" \
+  printf 'PLAYER_NAME=%s\nBOSS_BEATEN=%d\nBEST_CHALLENGE=%d\nDISKS_FOUND=%s\nSC_DONE=%s\nLAST_DECAY=%d\nOPT_VI=%d\nOPT_ALTS=%d\nPLACED_THROUGH=%d\nLAST_DAILY=%s\nDAILY_STREAK=%d\nDAILY_MAXSTREAK=%d\nDAILY_BEST=%d\nDAILY_BEST_DATE=%s\nPROFILE_VER=%d\n' \
+    "$PLAYER_NAME" "$BOSS_BEATEN" "$BEST_CHALLENGE" "$DISKS_FOUND" "$SC_DONE" "$LAST_DECAY" "$OPT_VI" "$OPT_ALTS" "$PLACED_THROUGH" "$LAST_DAILY" "$DAILY_STREAK" "$DAILY_MAXSTREAK" "$DAILY_BEST" "$DAILY_BEST_DATE" "$_PROFILE_VER" > "$DATA/profile.tmp" \
     && mv "$DATA/profile.tmp" "$DATA/profile" \
     || rm -f "$DATA/profile.tmp"  # never let a partial write replace a good profile
 }
@@ -4598,7 +4596,7 @@ qdisp() {
   fi
   printf "\n${C}%s${N}\n\n" "$_QD_VAL"
 }
-_wrong_feedback() { ((OPT_SOUND)) && printf '\a'; printf '\e[7m'; read -t 0.05 -rsn1 _ ||:; printf '\e[0m'; }
+_wrong_feedback() { printf '\e[7m'; read -t 0.05 -rsn1 _ ||:; printf '\e[0m'; }  # portable visual flash (no terminal bell — inaudible on most terminals)
 _wrong_show() { _wrong_feedback
   ((_SANDBOX_REQUIRE_FAIL)) && printf '\n%s\n' "${R}use the exact string from the question${N}"
   # Wrap the revealed answer: levels 26-30 hold commands past 80 chars, and an
@@ -5548,12 +5546,17 @@ play() {
     # (stdin /dev/null, --new-session), so they fail "failed tty get" etc. Detect that AFTER
     # running (so batch forms like `top -bn1` still work) and point at a one-shot form.
     _trim "$input"; local _c0=${REPLY%%[[:space:]]*}; _c0=${_c0##*/}
-    case " top htop atop iotop btop bashtop watch vi vim nvim nano emacs joe view tmux screen byobu " in
-      *" $_c0 "*)
-        if [[ "$_last" == *"failed tty get"* || "$_last" == *"Inappropriate ioctl"* || "$_last" == *"terminal"* || "$_last" == *"not a tty"* ]]; then
-          _last="${Y}${_c0}${N} ${D}needs a terminal — the playground has none. try a one-shot form: ${C}top -bn1${D}, ${C}ps aux${D}, ${C}free -h${D}, or ${C}cat${D} in place of a pager.${N}"
-        fi;;
-    esac
+    # Full-screen programs need a terminal the sandbox deliberately lacks (stdin /dev/null,
+    # --new-session), so they fail "failed tty get" etc. Detect that AFTER running (batch
+    # forms like `top -bn1` still work) and point at the right surface instead.
+    case " vi vim nvim nano emacs joe view " in
+      *" $_c0 "*) if [[ "$_last" == *"failed tty get"* || "$_last" == *"Inappropriate ioctl"* || "$_last" == *"terminal"* || "$_last" == *"not a tty"* || "$_last" == *"command not found"* ]]; then
+          _last="${Y}${_c0}${N} ${D}can't open here — but cmdchamp's own answer line IS a vi editor: press ${C}Esc${D} for normal mode, ${C}?${D} for every binding. the playground runs non-interactive commands.${N}"
+        fi;; esac
+    case " top htop atop iotop btop bashtop watch tmux screen byobu " in
+      *" $_c0 "*) if [[ "$_last" == *"failed tty get"* || "$_last" == *"Inappropriate ioctl"* || "$_last" == *"terminal"* || "$_last" == *"not a tty"* ]]; then
+          _last="${Y}${_c0}${N} ${D}needs a terminal the playground has none of. try a one-shot form: ${C}top -bn1${D}, ${C}ps aux${D}, or ${C}free -h${D}.${N}"
+        fi;; esac
     [[ -z "$_last" ]] && _last="${D}(no output)${N}"
   done
   _sandbox_reset  # leave the shared sandbox clean for the game
@@ -5638,14 +5641,12 @@ _options_menu() {
   while true; do
     local -a it=()
     _opt_tag OPT_VI;    it+=("Vi Mode          $REPLY")
-    _opt_tag OPT_SOUND;  it+=("Sound            $REPLY")
     _opt_tag OPT_ALTS;   it+=("Show Alternates  $REPLY")
     _SEL_BACK=1; _SEL_CUR=$_c; _sel "${U}${_H3} OPTIONS ${_H3}${N}" "${it[@]}" || break
     _c=$REPLY
     case "$REPLY" in
       0) ((OPT_VI=!OPT_VI)); _apply_opts;;
-      1) ((OPT_SOUND=!OPT_SOUND));;
-      2) ((OPT_ALTS=!OPT_ALTS));;
+      1) ((OPT_ALTS=!OPT_ALTS));;
     esac
     _save_profile
   done
@@ -6339,10 +6340,10 @@ _selftest() {
   # OPT_* are saved as 0 on purpose: _load_profile defaults an invalid value to 1, so
   # 0 proves the value was actually read back rather than falling back.
   PLAYER_NAME="testplayer" BOSS_BEATEN=15 BEST_CHALLENGE=42 DISKS_FOUND="vimquit,konami" SC_DONE="1,2,3" LAST_DECAY=12345 PLACED_THROUGH=5
-  OPT_VI=0 OPT_SOUND=0 OPT_ALTS=0
+  OPT_VI=0 OPT_ALTS=0
   _save_profile
   PLAYER_NAME="" BOSS_BEATEN=0 BEST_CHALLENGE=0 DISKS_FOUND="" SC_DONE="" LAST_DECAY=0 PLACED_THROUGH=0
-  OPT_VI=1 OPT_SOUND=1 OPT_ALTS=1
+  OPT_VI=1 OPT_ALTS=1
   _load_profile
   _assert "profile name"       "$PLAYER_NAME"  "testplayer"
   _assert "profile boss"       "$BOSS_BEATEN"  "15"
@@ -6352,7 +6353,6 @@ _selftest() {
   _assert "profile last_decay" "$LAST_DECAY"   "12345"
   _assert "profile placed"     "$PLACED_THROUGH" "5"
   _assert "profile opt_vi"     "$OPT_VI"       "0"
-  _assert "profile opt_sound"  "$OPT_SOUND"    "0"
   _assert "profile opt_alts"   "$OPT_ALTS"     "0"
   DATA="$_save_data"
   rm -rf "$_test_data"

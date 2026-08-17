@@ -521,7 +521,7 @@ r=$(_run "
   echo \"name=\$PLAYER_NAME ver=\$_PROFILE_VER beaten=\$BOSS_BEATEN best_chal=\$BEST_CHALLENGE\"
 ")
 echo "$r" | grep -q 'name=TestPlayer' && ok "profile stores name" || fail "profile name" "$r"
-echo "$r" | grep -q 'ver=6' && ok "profile ver=6" || fail "profile ver" "$r"
+echo "$r" | grep -q 'ver=7' && ok "profile ver=7" || fail "profile ver" "$r"
 echo "$r" | grep -q 'beaten=0' && ok "new BOSS_BEATEN=0" || fail "profile beaten" "$r"
 
 # Profile version mismatch resets state. v0/v1 are pre-PROFILE_VER schemas;
@@ -574,7 +574,7 @@ r=$(bash -c "
   _load_profile
   echo \"ver=\$_PROFILE_VER scores=\$(wc -c < \"\$DATA/scores\")\"
 " 2>/dev/null)
-echo "$r" | grep -q 'ver=6' && ok "v1->v6: ver bumped" || fail "v1->v2 ver" "$r"
+echo "$r" | grep -q 'ver=7' && ok "v1->v7: ver bumped" || fail "v1->v2 ver" "$r"
 echo "$r" | grep -q 'scores=0' && ok "v1->v2: scores cleared" || fail "v1->v2 scores" "$r"
 
 # Save/load round-trip
@@ -1084,13 +1084,12 @@ r=$(_run "BOSS_BEATEN=30; MAX_LEVEL=30; ((BOSS_BEATEN >= MAX_LEVEL)) && echo OPE
 r=$(bash -c "
   source '$SOURCE_FILE' 2>/dev/null
   DATA='$TDIR/data_chal_bad'; mkdir -p \"\$DATA\"; touch \"\$DATA/scores\"
-  printf 'PLAYER_NAME=x\nBOSS_BEATEN=5\nBEST_CHALLENGE=oops\nOPT_VI=999\nOPT_SOUND=abc\nOPT_ALTS=-1\nPLACED_THROUGH=notanumber\nPROFILE_VER=5\n' > \"\$DATA/profile\"
+  printf 'PLAYER_NAME=x\nBOSS_BEATEN=5\nBEST_CHALLENGE=oops\nOPT_VI=999\nOPT_ALTS=-1\nPLACED_THROUGH=notanumber\nPROFILE_VER=5\n' > \"\$DATA/profile\"
   _load_profile
-  echo \"bc=\$BEST_CHALLENGE vi=\$OPT_VI snd=\$OPT_SOUND alt=\$OPT_ALTS pt=\$PLACED_THROUGH\"
+  echo \"bc=\$BEST_CHALLENGE vi=\$OPT_VI alt=\$OPT_ALTS pt=\$PLACED_THROUGH\"
 " 2>/dev/null)
 echo "$r" | grep -q 'bc=0' && ok "BEST_CHALLENGE garbage→0" || fail "bc validate" "$r"
 echo "$r" | grep -q 'vi=1' && ok "OPT_VI garbage→1" || fail "vi validate" "$r"
-echo "$r" | grep -q 'snd=1' && ok "OPT_SOUND garbage→1" || fail "snd validate" "$r"
 echo "$r" | grep -q 'alt=1' && ok "OPT_ALTS garbage→1" || fail "alt validate" "$r"
 echo "$r" | grep -q 'pt=0' && ok "PLACED_THROUGH garbage→0" || fail "pt validate" "$r"
 
@@ -1293,7 +1292,7 @@ echo "$r" | grep -q 'bc=7' && ok "profile BEST_CHALLENGE round-trip" || fail "pr
 echo "$r" | grep -q 'disks=sudorm,rtfm' && ok "profile DISKS_FOUND round-trip" || fail "prof disks" "$r"
 echo "$r" | grep -q 'sc=1,3' && ok "profile SC_DONE round-trip" || fail "prof sc" "$r"
 echo "$r" | grep -q 'pt=12' && ok "profile PLACED_THROUGH round-trip" || fail "prof pt" "$r"
-echo "$r" | grep -q 'ver=6' && ok "profile ver=6 stable" || fail "prof ver" "$r"
+echo "$r" | grep -q 'ver=7' && ok "profile ver=7 stable" || fail "prof ver" "$r"
 
 # Session save/load with scores
 r=$(bash -c "
@@ -1314,7 +1313,7 @@ r=$(bash -c "
   _load_profile
   echo \"ver=\$_PROFILE_VER eggs=\${EGGS_FOUND:-empty} sc=\${SC_DONE:-empty}\"
 " 2>/dev/null)
-echo "$r" | grep -q 'ver=6' && ok "v2->v6: ver bumped" || fail "v2->v3 ver" "$r"
+echo "$r" | grep -q 'ver=7' && ok "v2->v7: ver bumped" || fail "v2->v3 ver" "$r"
 echo "$r" | grep -q 'eggs=empty' && ok "v2->v3: eggs initialized" || fail "v2->v3 eggs" "$r"
 echo "$r" | grep -q 'sc=empty' && ok "v2->v3: sc initialized" || fail "v2->v3 sc" "$r"
 
