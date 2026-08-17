@@ -8,6 +8,6 @@ pkgbase = cmdchamp
 	depends = bash>=4.4
 	optdepends = bubblewrap: sandbox mode for real command execution
 	source = cmdchamp-1.4.0.tar.gz::https://github.com/mellen9999/cmdchamp/archive/v1.4.0.tar.gz
-	sha256sums = f457f2efcd31e9029d80d6733bdf55884e0eaa2577630dc3211eef2e47949623
+	sha256sums = 00403f587b3b9c50d8decb5cda9847db55bb1974099919ec73a44135f19c7d72
 
 pkgname = cmdchamp
