@@ -169,7 +169,7 @@ _strip_ansi() {
   REPLY="$out"
 }
 
-VERSION="1.5.0"
+VERSION="1.5.1"
 SANDBOX_TIMEOUT=5      # Seconds before sandbox command times out
 BOSS_THRESHOLD=4       # Correct answers needed to beat boss (out of BOSS_TOTAL)
 BOSS_TOTAL=5           # Number of questions in boss round
@@ -834,6 +834,10 @@ _sandbox_exec() {
     --die-with-parent
     --new-session
     --dev /dev
+    # Fresh /proc for the sandbox's own PID namespace (--unshare-all unshares pid), so
+    # ps/top/free and /proc reads work instead of erroring "mount -t proc proc /proc".
+    # Shows only the sandbox's processes — no host PID/cmdline leak.
+    --proc /proc
     --size $((64*1024*1024)) --tmpfs /tmp
   )
   [[ -e /lib ]] && bwrap_args+=(--ro-bind /lib /lib)
@@ -2948,12 +2952,12 @@ gen_level24() {
   questions+=("Pretty print JSON file§jq '.' data/export.json§jq . data/export.json§python3 -m json.tool data/export.json§jq '.' < data/export.json§jq . < data/export.json§cat data/export.json | jq '.'§cat data/export.json | jq .")
   questions+=("Extract '${key}' array from JSON§jq '.${key}' data/export.json§jq '.${key}' < data/export.json§cat data/export.json | jq '.${key}'")
   questions+=("Extract first item from '${key}' array§jq '.${key}[0]' data/export.json§jq '.${key}[0]' < data/export.json§cat data/export.json | jq '.${key}[0]'")
-  questions+=("Extract 'name' field from each item in '${key}' array§jq '.${key}[] | .name' data/export.json§jq '.${key}[] | .name' < data/export.json§jq '.${key}[].name' data/export.json#output:@4")
-  questions+=("Filter items in '${key}' where status is 'active'§jq '.${key}[] | select(.status == \"active\")' data/export.json§jq '.${key}[] | select(.status==\"active\")' data/export.json§jq '[.${key}[] | select(.status == \"active\")]' data/export.json#output:~Item Three")
-  questions+=("Count items in '${key}' array§jq '.${key} | length' data/export.json§jq '.${key} | length' < data/export.json§jq '.${key}|length' data/export.json#output:4")
-  questions+=("Get keys of JSON object§jq 'keys' data/export.json§jq 'keys' < data/export.json§jq '. | keys' data/export.json#output:~metadata")
+  questions+=("Extract 'name' field from each item in '${key}' array§jq '.${key}[] | .name' data/export.json§jq '.${key}[] | .name' < data/export.json§jq '.${key}[].name' data/export.json#require:export.json#output:@4")
+  questions+=("Filter items in '${key}' where status is 'active'§jq '.${key}[] | select(.status == \"active\")' data/export.json§jq '.${key}[] | select(.status==\"active\")' data/export.json§jq '[.${key}[] | select(.status == \"active\")]' data/export.json#require:export.json#output:~Item Three")
+  questions+=("Count items in '${key}' array§jq '.${key} | length' data/export.json§jq '.${key} | length' < data/export.json§jq '.${key}|length' data/export.json#require:export.json#output:4")
+  questions+=("Get keys of JSON object§jq 'keys' data/export.json§jq 'keys' < data/export.json§jq '. | keys' data/export.json#require:export.json#output:~metadata")
   questions+=("Compact JSON (remove whitespace)|jq -c '.' data/export.json|jq --compact-output '.' data/export.json")
-  questions+=("Raw string output (no quotes) for '.${key}[0].name'§jq -r '.${key}[0].name' data/export.json§jq --raw-output '.${key}[0].name' data/export.json#output:Item One")
+  questions+=("Raw string output (no quotes) for '.${key}[0].name'§jq -r '.${key}[0].name' data/export.json§jq --raw-output '.${key}[0].name' data/export.json#require:export.json#output:Item One")
   questions+=("Create new {name, id} object from each '${key}' item§jq '.${key}[] | {name: .name, id: .id}' data/export.json§jq '.${key}[] | {name: .name, id: .id}' < data/export.json§cat data/export.json | jq '.${key}[] | {name: .name, id: .id}'")
   questions+=("Fetch ${W}${url}${C}/api and extract '${key}' array with ${Y}jq${C}§curl -s ${url}/api | jq '.${key}'§curl --silent ${url}/api | jq '.${key}'§curl -sL ${url}/api | jq '.${key}'§curl -Ls ${url}/api | jq '.${key}'§wget -qO- ${url}/api | jq '.${key}'")
   questions+=("GET request to ${W}${url}${C}|curl ${url}|curl -s ${url}|wget -qO- ${url}")
@@ -3163,12 +3167,12 @@ gen_level28() {
   # the tool is installed, text-match fallback otherwise. Planted tokens are collision-free
   # (flag{}, .evil.test, sk_live_) so a grep yields exactly the planted value; ELF-structure
   # answers grade on universal, arch-agnostic output via regex.
-  questions+=("Pull the ${Y}flag{...}${C} string out of ${W}samples/target.bin${C}§strings samples/target.bin | grep -oE 'flag\\{[^}]+\\}'§strings -a samples/target.bin | grep -oE 'flag\\{[^}]+\\}'§strings samples/target.bin | grep -oP 'flag\\{[^}]+\\}'#output:flag{str1ngs_pull_the_truth}")
-  questions+=("Find the exfil domain (the ${W}.evil.test${C} host) in ${W}samples/target.bin${C}§strings samples/target.bin | grep -oE '[a-z0-9.]+\\.evil\\.test'§strings -a samples/target.bin | grep -oE '[a-z0-9.]+\\.evil\\.test'§strings samples/target.bin | grep -oP '[a-z0-9.]+\\.evil\\.test'#output:c2.evil.test")
-  questions+=("Find the exfil email address in ${W}samples/target.bin${C}§strings samples/target.bin | grep -oE '[a-z]+@evil\\.test'§strings -a samples/target.bin | grep -oE '[a-z]+@evil\\.test'§strings samples/target.bin | grep -oP '[a-z]+@evil\\.test'#output:operator@evil.test")
-  questions+=("Recover the leaked API key (${W}sk_live_...${C}) from ${W}samples/target.bin${C}§strings samples/target.bin | grep -oE 'sk_live_[0-9a-f]+'§strings -a samples/target.bin | grep -oE 'sk_live_[0-9a-f]+'§strings samples/target.bin | grep -oP 'sk_live_[0-9a-f]+'#output:sk_live_deadbeefcafe1234")
-  questions+=("Confirm ${W}samples/target.bin${C} is an ELF (its magic bytes)§hexdump -C samples/target.bin | head -1§xxd samples/target.bin | head -1§readelf -h samples/target.bin§file samples/target.bin#output:~(7f ?45 ?4c ?46|ELF)")
-  questions+=("Show the ELF class (32/64-bit) of ${W}samples/target.bin${C}|readelf -h samples/target.bin|objdump -f samples/target.bin|readelf --file-header samples/target.bin#output:~(ELF64|ELF32|elf64|elf32)")
+  questions+=("Pull the ${Y}flag{...}${C} string out of ${W}samples/target.bin${C}§strings samples/target.bin | grep -oE 'flag\\{[^}]+\\}'§strings -a samples/target.bin | grep -oE 'flag\\{[^}]+\\}'§strings samples/target.bin | grep -oP 'flag\\{[^}]+\\}'#require:target.bin#output:flag{str1ngs_pull_the_truth}")
+  questions+=("Find the exfil domain (the ${W}.evil.test${C} host) in ${W}samples/target.bin${C}§strings samples/target.bin | grep -oE '[a-z0-9.]+\\.evil\\.test'§strings -a samples/target.bin | grep -oE '[a-z0-9.]+\\.evil\\.test'§strings samples/target.bin | grep -oP '[a-z0-9.]+\\.evil\\.test'#require:target.bin#output:c2.evil.test")
+  questions+=("Find the exfil email address in ${W}samples/target.bin${C}§strings samples/target.bin | grep -oE '[a-z]+@evil\\.test'§strings -a samples/target.bin | grep -oE '[a-z]+@evil\\.test'§strings samples/target.bin | grep -oP '[a-z]+@evil\\.test'#require:target.bin#output:operator@evil.test")
+  questions+=("Recover the leaked API key (${W}sk_live_...${C}) from ${W}samples/target.bin${C}§strings samples/target.bin | grep -oE 'sk_live_[0-9a-f]+'§strings -a samples/target.bin | grep -oE 'sk_live_[0-9a-f]+'§strings samples/target.bin | grep -oP 'sk_live_[0-9a-f]+'#require:target.bin#output:sk_live_deadbeefcafe1234")
+  questions+=("Confirm ${W}samples/target.bin${C} is an ELF (its magic bytes)§hexdump -C samples/target.bin | head -1§xxd samples/target.bin | head -1§readelf -h samples/target.bin§file samples/target.bin#require:target.bin#output:~(7f ?45 ?4c ?46|ELF)")
+  questions+=("Show the ELF class (32/64-bit) of ${W}samples/target.bin${C}|readelf -h samples/target.bin|objdump -f samples/target.bin|readelf --file-header samples/target.bin#require:target.bin#output:~(ELF64|ELF32|elf64|elf32)")
   questions+=("Extract ASCII strings from ${W}${bin}${C}|strings ${bin}|strings -a ${bin}|strings --all ${bin}")
   questions+=("Extract strings minimum 10 chars in ${W}${bin}${C}|strings -n 10 ${bin}|strings --bytes=10 ${bin}|strings --bytes 10 ${bin}")
   questions+=("Extract Unicode strings (Windows binaries) in ${W}${bin}${C}|strings -e l ${bin}|strings --encoding=l ${bin}|strings --encoding l ${bin}")
