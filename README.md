@@ -57,7 +57,7 @@ cmdchamp version        # Print version
 cmdchamp help           # Show help
 ```
 
-The menu holds continue, new game, scenarios, challenge, daily, practice, playground, stats, and options. Number hotkeys jump straight to an item; `j`/`k` or arrows move; Enter selects.
+The menu holds continue, new game, scenarios, challenge, daily, practice, playground, stats, and options. Game modes take number hotkeys, the tail rows take letters (`s` stats, `o` options, `q` quit); `j`/`k` or arrows move; Enter selects.
 
 **Daily** (post-ROOT) is a date-seeded gauntlet run — everyone gets the same chains that day, one scored attempt, a consecutive-day streak, and a copyable score you can share. **Practice** drills any reached level (shown with its mastery %) with hints and no timer, without touching your main progress. **Playground** is a safe sandbox REPL — type any command against real files, see the output, Tab explains what you typed. Nothing to break.
 

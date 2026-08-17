@@ -169,7 +169,7 @@ _strip_ansi() {
   REPLY="$out"
 }
 
-VERSION="1.4.0"
+VERSION="1.4.1"
 SANDBOX_TIMEOUT=5      # Seconds before sandbox command times out
 BOSS_THRESHOLD=4       # Correct answers needed to beat boss (out of BOSS_TOTAL)
 BOSS_TOTAL=5           # Number of questions in boss round
@@ -5583,10 +5583,13 @@ _main_menu() {
     else it+=($'\x01'"$((_n++)) Practice"); act+=(x); fi
     if ((SANDBOX_MODE)); then it+=("$((_n++)) Playground"); act+=(play)
     else it+=($'\x01'"$((_n++)) Playground (needs sandbox)"); act+=(x); fi
-    if [[ -n "$PLAYER_NAME" ]]; then it+=("$((_n++)) Stats"); act+=(stats)
-    else it+=($'\x01'"$((_n++)) Stats"); act+=(x); fi
-    it+=("$((_n++)) Options"); act+=(opts)
-    it+=("$((_n++)) Quit"); act+=(quit)
+    # The tail rows are not game modes, so they take mnemonic letters instead of
+    # continuing the numbering. Keeps every row a single keypress - a "10" hotkey
+    # can't work in a read -rsn1 menu - and separates play from meta at a glance.
+    if [[ -n "$PLAYER_NAME" ]]; then it+=("s Stats"); act+=(stats)
+    else it+=($'\x01'"s Stats"); act+=(x); fi
+    it+=("o Options"); act+=(opts)
+    it+=("q Quit"); act+=(quit)
     local _banner
     if ((_CAP_UNI)); then
       printf -v _banner '%s\n%s\n%s\n%s\n%s\n%s\n\n%s' \
