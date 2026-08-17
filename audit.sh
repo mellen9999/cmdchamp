@@ -810,6 +810,59 @@ phase8_panel_coverage() {
 }
 
 # ═══════════════════════════════════════════════════════════════════
+# PHASE 9: MANPAGE CARD GRID
+# Every card is hand-spaced, so a one-space slip is invisible in the diff and
+# obvious on screen — a right column that sits one off makes the whole panel
+# look broken. The grid is: flag at col 2, its text at col 12, second flag at
+# col 35, its text at col 45. Rows that cannot reach a column (a long flag, or
+# left text that runs past col 33) are free-form and exempt — the rule only
+# binds a row that had the room and missed it.
+# ═══════════════════════════════════════════════════════════════════
+_grid_cols() {                    # _COLS=(gapstart:tokenstart ...), leading indent excluded
+  local s=$1; local len=${#s} i=2 j
+  _COLS=()
+  while ((i < len)); do
+    if [[ ${s:i:2} == '  ' ]]; then
+      j=$i; while ((j < len)) && [[ ${s:j:1} == ' ' ]]; do ((j++)); done
+      ((j < len)) && _COLS+=("$i:$j")
+      i=$j
+    else ((i++)); fi
+  done
+}
+
+phase9_manpage_grid() {
+  printf '\n%s\n' "═══ PHASE 9: Manpage Card Grid ═══"
+  local cmd row line c gs tok ags atok k rows=0 before=$FAIL
+  local -a _COLS
+  for cmd in "${!MANPAGE[@]}"; do
+    while IFS= read -r row; do
+      _strip_ansi "$row"; line=$REPLY
+      [[ $line == '  '[!' ']* ]] || continue          # option rows are indented two spaces
+      _grid_cols "$line"
+      ((${#_COLS[@]})) || continue
+      [[ ${_COLS[0]#*:} == 12 ]] || continue          # left text off col 12: a long flag, free-form
+      [[ ${line:12:1} == '-' ]] && continue           # col 12 is itself a flag: a compact flag list
+      gs=""; for ((k=1; k<${#_COLS[@]}; k++)); do
+        tok=${_COLS[k]#*:}
+        [[ ${line:tok:1} == '-' ]] && { gs=${_COLS[k]%:*}; break; }
+      done
+      [[ -n $gs ]] || continue                        # single-column row
+      ((rows++))
+      if ((gs <= 33)) && ((tok != 35)); then
+        _fail "manpage $cmd: right column at $tok, expected 35 — |$line|"; else _ok
+      fi
+      ((tok == 35)) || continue
+      ((k+1 < ${#_COLS[@]})) || continue
+      ags=${_COLS[k+1]%:*}; atok=${_COLS[k+1]#*:}
+      if ((ags <= 43)) && ((atok != 45)); then
+        _fail "manpage $cmd: right text at $atok, expected 45 — |$line|"; else _ok
+      fi
+    done <<< "${MANPAGE[$cmd]}"
+  done
+  printf '  grid rows checked: %d   misaligned: %d\n' "$rows" "$((FAIL - before))"
+}
+
+# ═══════════════════════════════════════════════════════════════════
 # PHASE 7: SCENARIO WRONG-ANSWER REJECTION
 # Similar-but-wrong answers for scenario steps should be rejected
 # ═══════════════════════════════════════════════════════════════════
@@ -915,6 +968,7 @@ main() {
   phase6_scenarios
   phase7_scenario_negatives
   phase8_panel_coverage
+  phase9_manpage_grid
 
   printf '\n%s\n' "═══════════════════════════════════════════"
   printf '  TOTAL: %d tests  PASS: %d  FAIL: %d  WARN: %d\n' "$TOTAL" "$PASS" "$FAIL" "$WARN"
