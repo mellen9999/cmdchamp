@@ -184,9 +184,11 @@ _DECAY_INTERVAL=86400  # only run decay once per 24h
 # ═══ PROFILE ═══
 PLAYER_NAME="" BOSS_BEATEN=0 BEST_CHALLENGE=0 DISKS_FOUND="" SC_DONE=""
 OPT_VI=1 OPT_SOUND=1 OPT_ALTS=1
-_PROFILE_VER=5  # bump this when profile format changes; old profiles get reset
+_PROFILE_VER=6  # bump this when profile format changes; old profiles get reset
 LAST_DECAY=0  # epoch of last decay check (persisted in profile)
 PLACED_THROUGH=0  # highest level passed via placement test
+# Daily gauntlet: last-played date (YYYYMMDD), current + best streak, best score + when
+LAST_DAILY="" DAILY_STREAK=0 DAILY_MAXSTREAK=0 DAILY_BEST=0 DAILY_BEST_DATE=""
 
 _load_profile() {
   if [[ -f "$DATA/profile" ]]; then
@@ -204,6 +206,11 @@ _load_profile() {
         OPT_SOUND) OPT_SOUND="$val";;
         OPT_ALTS) OPT_ALTS="$val";;
         PLACED_THROUGH) PLACED_THROUGH="$val";;
+        LAST_DAILY) LAST_DAILY="$val";;
+        DAILY_STREAK) DAILY_STREAK="$val";;
+        DAILY_MAXSTREAK) DAILY_MAXSTREAK="$val";;
+        DAILY_BEST) DAILY_BEST="$val";;
+        DAILY_BEST_DATE) DAILY_BEST_DATE="$val";;
         PROFILE_VER) _file_ver="$val";;
       esac
     done < "$DATA/profile"
@@ -220,6 +227,11 @@ _load_profile() {
     [[ "$OPT_ALTS" =~ ^[01]$ ]] || OPT_ALTS=1
     [[ "$PLACED_THROUGH" =~ ^[0-9]+$ ]] || PLACED_THROUGH=0
     ((PLACED_THROUGH > MAX_LEVEL)) && PLACED_THROUGH=$MAX_LEVEL
+    [[ "$LAST_DAILY" =~ ^[0-9]{8}$ ]] || LAST_DAILY=""
+    [[ "$DAILY_STREAK" =~ ^[0-9]+$ ]] || DAILY_STREAK=0
+    [[ "$DAILY_MAXSTREAK" =~ ^[0-9]+$ ]] || DAILY_MAXSTREAK=0
+    [[ "$DAILY_BEST" =~ ^[0-9]+$ ]] || DAILY_BEST=0
+    [[ "$DAILY_BEST_DATE" =~ ^[0-9-]{0,10}$ ]] || DAILY_BEST_DATE=""
     local _now_l; printf -v _now_l '%(%s)T' -1
     ((LAST_DECAY > _now_l)) && LAST_DECAY=0  # clock-skew guard: future timestamps would block decay forever
     if ((_file_ver >= 2 && _file_ver < _PROFILE_VER)); then
@@ -231,6 +243,7 @@ _load_profile() {
       [[ -f "$DATA/scores" ]] && cp "$DATA/scores" "$DATA/scores.bak"
       printf '%s\n' "Profile version mismatch (got $_file_ver, want $_PROFILE_VER) - reset. Backup in profile.bak/scores.bak" >&2
       PLAYER_NAME="" BOSS_BEATEN=0 BEST_CHALLENGE=0 DISKS_FOUND="" SC_DONE="" LAST_DECAY=0 PLACED_THROUGH=0
+      LAST_DAILY="" DAILY_STREAK=0 DAILY_MAXSTREAK=0 DAILY_BEST=0 DAILY_BEST_DATE=""
       : > "$DATA/scores"
       rm -f "$DATA"/*.json
       # Persist the reset NOW so a quit-before-save can't re-enter this path and
@@ -243,8 +256,8 @@ _load_profile() {
 
 # Raw write, no merge — only for paths that must overwrite disk (version reset).
 _write_profile() {
-  printf 'PLAYER_NAME=%s\nBOSS_BEATEN=%d\nBEST_CHALLENGE=%d\nDISKS_FOUND=%s\nSC_DONE=%s\nLAST_DECAY=%d\nOPT_VI=%d\nOPT_SOUND=%d\nOPT_ALTS=%d\nPLACED_THROUGH=%d\nPROFILE_VER=%d\n' \
-    "$PLAYER_NAME" "$BOSS_BEATEN" "$BEST_CHALLENGE" "$DISKS_FOUND" "$SC_DONE" "$LAST_DECAY" "$OPT_VI" "$OPT_SOUND" "$OPT_ALTS" "$PLACED_THROUGH" "$_PROFILE_VER" > "$DATA/profile.tmp" \
+  printf 'PLAYER_NAME=%s\nBOSS_BEATEN=%d\nBEST_CHALLENGE=%d\nDISKS_FOUND=%s\nSC_DONE=%s\nLAST_DECAY=%d\nOPT_VI=%d\nOPT_SOUND=%d\nOPT_ALTS=%d\nPLACED_THROUGH=%d\nLAST_DAILY=%s\nDAILY_STREAK=%d\nDAILY_MAXSTREAK=%d\nDAILY_BEST=%d\nDAILY_BEST_DATE=%s\nPROFILE_VER=%d\n' \
+    "$PLAYER_NAME" "$BOSS_BEATEN" "$BEST_CHALLENGE" "$DISKS_FOUND" "$SC_DONE" "$LAST_DECAY" "$OPT_VI" "$OPT_SOUND" "$OPT_ALTS" "$PLACED_THROUGH" "$LAST_DAILY" "$DAILY_STREAK" "$DAILY_MAXSTREAK" "$DAILY_BEST" "$DAILY_BEST_DATE" "$_PROFILE_VER" > "$DATA/profile.tmp" \
     && mv "$DATA/profile.tmp" "$DATA/profile" \
     || rm -f "$DATA/profile.tmp"  # never let a partial write replace a good profile
 }
@@ -269,6 +282,8 @@ _save_profile() {
         BOSS_BEATEN)    [[ "$val" =~ ^[0-9]+$ ]] && ((val <= MAX_LEVEL && val > BOSS_BEATEN)) && BOSS_BEATEN=$val;;
         PLACED_THROUGH) [[ "$val" =~ ^[0-9]+$ ]] && ((val <= MAX_LEVEL && val > PLACED_THROUGH)) && PLACED_THROUGH=$val;;
         BEST_CHALLENGE) [[ "$val" =~ ^[0-9]+$ ]] && ((val > BEST_CHALLENGE)) && BEST_CHALLENGE=$val;;
+        DAILY_BEST)     [[ "$val" =~ ^[0-9]+$ ]] && ((val > DAILY_BEST)) && DAILY_BEST=$val;;
+        DAILY_MAXSTREAK) [[ "$val" =~ ^[0-9]+$ ]] && ((val > DAILY_MAXSTREAK)) && DAILY_MAXSTREAK=$val;;
         DISKS_FOUND)    [[ -n "$val" ]] && _csv_merge DISKS_FOUND "$val";;
         SC_DONE)        [[ -n "$val" ]] && _csv_merge SC_DONE "$val";;
       esac
@@ -3456,7 +3471,7 @@ gen_chains() {
        "awk '{s+=\$10}END{print s}' traffic.log" traffic.log
   _chq "traffic.log: the most common HTTP status code" \
        "awk '{print \$9}' traffic.log | sort | uniq -c | sort -rn | head -1 | awk '{print \$2}'" traffic.log
-  local _code; _code=$(printf '%s\n' 200 404 500 | shuf -n1 2>/dev/null) || _code=200
+  local _codes=(200 404 500); local _code=${_codes[RANDOM%3]}  # RANDOM (not shuf) so a seeded run is reproducible
   _chq "traffic.log: how many requests returned status $_code" \
        "awk '\$9==$_code' traffic.log | wc -l" traffic.log
   rm -rf "$_t"; _GEN_CHAINS_TMP=""
@@ -4415,6 +4430,13 @@ stats() {
     else
       printf '  %s\n' "${D}no records yet - beat challenge to set one${N}"
     fi
+    # Daily: current streak as a dot row (capped at 14), best score, longest streak.
+    if ((DAILY_BEST > 0 || DAILY_STREAK > 0)); then
+      local _dots="" _di _dcap=$((DAILY_STREAK > 14 ? 14 : DAILY_STREAK))
+      for ((_di=0; _di<_dcap; _di++)); do _dots+="$_GDOT"; done
+      printf '  %s %s %s  %s %s  %s %s\n' "${U}Daily:${N}" "${G}${_dots}${N}" "${G}${DAILY_STREAK}${N}" \
+        "${D}best${N}" "${Y}${DAILY_BEST}${N}" "${D}longest${N}" "${Y}${DAILY_MAXSTREAK}${N}"
+    fi
   fi
 }
 
@@ -5185,6 +5207,46 @@ _pick_q() {
   _qparse "${_LEVEL_ITEMS[$1:$_idx]}"
 }
 
+# Shared gauntlet runner for challenge() and daily(). Runs the sudden-death chain loop
+# and reports back via globals: _GT_SCORE (correct count), _GT_REC (a +/x row for the
+# share line), _GT_ERR=1 if the pool couldn't be built. $1 is the header label.
+# The caller owns intro/outro, records, and (for daily) the RANDOM seed set beforehand.
+_gauntlet_loop() {
+  local _hdr=$1 score=0 _rec=""
+  _GT_ERR=0 _GT_SCORE=0 _GT_REC=""
+  # Build the pool once up front. If it can't be built (no /tmp, missing coreutils),
+  # bail — `|| continue` in the loop would spin at 100% CPU with no way to read or quit.
+  _pick_q chains challenge || { _GT_ERR=1; return 1; }
+  while true; do
+    _pick_q chains challenge || break; local prompt=$_qprompt ans=$_qans
+    _REDRAW_HDR() {
+      local _t=30
+      if ((${_rl_deadline:-0})); then _rl_rem; _t=$REPLY; fi
+      printf '%s\e[H%s  %s  %s\e[K\n\e[K\n%s\e[K\n\e[K\n%s' "$_SY" "${M}${B}${_hdr}${N}" "${U}Score: ${score}${N}" "${W}${_t}s${N}" "${C}${prompt}${N}" "$_SN"
+    }
+    printf '\e[2J'; _REDRAW_HDR
+    _preq_reset
+    local _ok=0
+    if _read_line 0 0 30; then
+      ((_QUIT)) && break
+      if check "$input" "$_qanswers"; then
+        _sc; ((++score)); _rec+="+"; _ok=1
+        printf '%s\n' "${G}${B}+${N}"
+        _pause; continue
+      fi
+    else
+      ((_QUIT)) && break
+    fi
+    if ! ((_ok)); then _sw; _rec+="x"; _pause; break; fi
+  done
+  _sflush_if_dirty
+  _GT_SCORE=$score _GT_REC=$_rec
+  return 0
+}
+
+# Render the +/x record as a copyable block row: █ per correct, ░ for the miss.
+_gt_bar() { local _r=$1 _o="" _i _c; for ((_i=0; _i<${#_r}; _i++)); do _c=${_r:_i:1}; [[ $_c == + ]] && _o+="$_RBK" || _o+="$_RSH"; done; REPLY="$_o"; }
+
 challenge() {
   _post_root_check
   _session_init
@@ -5192,47 +5254,12 @@ challenge() {
   ((BEST_CHALLENGE > 0)) && printf '%s\n' "${D}Best: ${Y}${BEST_CHALLENGE}${N}"
   printf '%s\n' "$_SN"; read -rsp "${D}Press Enter to start...${N}"; echo
 
-  local score=0
   _mode_init g
-
-  # Build the pool once up front. If it can't be built (no /tmp, missing coreutils),
-  # bail with a message instead of `|| continue` in the loop — that would spin at 100%
-  # CPU with no way to read input or quit.
-  if ! _pick_q chains challenge; then
+  if ! _gauntlet_loop CHALLENGE; then
     printf '%s\n%s' "${R}Gauntlet unavailable${N} ${D}- the sandbox couldn't be prepared (check /tmp and coreutils).${N}" "$_SN"
     _pause; return
   fi
-
-  while true; do
-    # Every prompt is a multi-command chain from the gauntlet pool — insane from the
-    # first question, 30s, one life. High score is the record.
-    _pick_q chains challenge || break; local prompt=$_qprompt ans=$_qans
-
-    _REDRAW_HDR() {
-      local _t=30
-      if ((${_rl_deadline:-0})); then _rl_rem; _t=$REPLY; fi
-      printf '%s\e[H%s  %s  %s\e[K\n\e[K\n%s\e[K\n\e[K\n%s' "$_SY" "${M}${B}CHALLENGE${N}" "${U}Score: ${score}${N}" "${W}${_t}s${N}" "${C}${prompt}${N}" "$_SN"
-    }
-    printf '\e[2J'; _REDRAW_HDR
-
-    _preq_reset
-    local _ok=0
-    if _read_line 0 0 30; then
-      ((_QUIT)) && break
-      if check "$input" "$_qanswers"; then
-        _sc; ((++score)); _ok=1
-        printf '%s\n' "${G}${B}+${N}"
-        _pause; continue
-      fi
-    else
-      ((_QUIT)) && break
-    fi
-    if ! ((_ok)); then
-      _sw; _pause; break
-    fi
-  done
-
-  _sflush_if_dirty
+  local score=$_GT_SCORE
   # Record the best before the quit check — the answers were earned either way, and
   # quitting can't inflate the score (the unanswered question just doesn't count).
   local prev_best=$BEST_CHALLENGE
@@ -5249,6 +5276,59 @@ challenge() {
   printf '%s' "$_SN"
   echo
   _pause  # the menu's next draw clears the screen - hold the score until a keypress
+}
+
+# Daily gauntlet: a date-seeded run everyone gets the same, one scored attempt per day,
+# a streak, and a copyable share line. `daily YYYY-MM-DD` or `daily <seed>` replays any
+# run for a head-to-head race (those don't touch the streak/best).
+daily() {
+  _post_root_check
+  local _seed _label _today _isreal=0
+  printf -v _today '%(%Y%m%d)T' -1
+  if [[ -n "${1:-}" ]]; then
+    if [[ "$1" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]]; then _seed=${1//-/}; _label=$1
+    else _seed=$1; _label="seed $1"; fi
+  else
+    _seed=$_today; printf -v _label '%(%Y-%m-%d)T' -1; _isreal=1
+  fi
+  _session_init
+  if ((_isreal)) && [[ "$LAST_DAILY" == "$_today" ]]; then
+    printf '%s\e[2J\e[H%s\n\n' "$_SY" "${M}${B}${_H3} DAILY ${_H3}${N}"
+    printf '%s\n' "${D}Already played ${W}${_label}${D}. Come back tomorrow.${N}"
+    printf '%s %s   %s %s\n' "${U}Streak:${N}" "${G}${DAILY_STREAK}${N}" "${U}Best:${N}" "${Y}${DAILY_BEST}${N}"
+    printf '%s' "$_SN"; echo; _pause; return
+  fi
+  printf '%s\e[2J\e[H%s\n%s\n' "$_SY" "${M}${B}${_H3} DAILY ${_H3} ${W}${_label}${N}" "${D}Everyone gets this exact run today. One life. 30s each.${N}"
+  ((DAILY_STREAK > 0)) && printf '%s\n' "${D}Streak: ${G}${DAILY_STREAK}${D}   Best: ${Y}${DAILY_BEST}${N}"
+  printf '%s\n' "$_SN"; read -rsp "${D}Press Enter to start...${N}"; echo
+
+  _mode_init g
+  RANDOM=$((10#$_seed % 32768))  # seed AFTER setup so the whole run is reproducible
+  if ! _gauntlet_loop "DAILY ${_label}"; then
+    printf '%s\n%s' "${R}Gauntlet unavailable${N} ${D}- the sandbox couldn't be prepared.${N}" "$_SN"
+    _pause; return
+  fi
+  local score=$_GT_SCORE
+  if ((_QUIT)); then return; fi
+  # Update streak/best only for the real, unplayed daily (not a --seed replay).
+  local _newbest=0
+  if ((_isreal)); then
+    local _yest; printf -v _yest '%(%Y%m%d)T' "$(( $(printf '%(%s)T' -1) - 86400 ))"
+    if [[ "$LAST_DAILY" == "$_yest" ]]; then ((DAILY_STREAK++)); else DAILY_STREAK=1; fi
+    ((DAILY_STREAK > DAILY_MAXSTREAK)) && DAILY_MAXSTREAK=$DAILY_STREAK
+    LAST_DAILY=$_today
+    ((score > DAILY_BEST)) && { DAILY_BEST=$score; DAILY_BEST_DATE=$_label; _newbest=1; }
+    _save_profile
+  fi
+  printf '%s\e[2J\e[H' "$_SY"
+  printf '%s\n\n' "${M}${B}${_H3} DAILY COMPLETE ${_H3}${N}"
+  printf 'Score: %s\n' "${B}${score}${N}"
+  ((_newbest)) && printf '%s\n' "${G}${B}NEW DAILY BEST!${N}"
+  ((_isreal)) && printf '%s %s   %s %s\n' "${U}Streak:${N}" "${G}${DAILY_STREAK}${N}" "${U}Best:${N}" "${Y}${DAILY_BEST}${N}"
+  _gt_bar "$_GT_REC"
+  printf '\n%s\n' "${D}share:${N}"
+  printf '  cmdchamp daily %s  score %s  %s\n' "$_label" "$score" "$REPLY"
+  printf '%s' "$_SN"; echo; _pause
 }
 
 
@@ -5365,8 +5445,11 @@ _main_menu() {
     else it+=($'\x01'"$((_n++)) Scenarios"); act+=(x); fi
     if ((BOSS_BEATEN>=MAX_LEVEL)); then
       it+=("$((_n++)) Challenge"); act+=(challenge)
+      local _dtag=""; [[ "$LAST_DAILY" == "$(printf '%(%Y%m%d)T' -1)" ]] && _dtag="  ${G}${_GOK}${N}"
+      it+=("$((_n++)) Daily${_dtag}"); act+=(daily)
     else
       it+=($'\x01'"$((_n++)) Challenge"); act+=(x)
+      it+=($'\x01'"$((_n++)) Daily"); act+=(x)
     fi
     if [[ -n "$PLAYER_NAME" ]]; then it+=("$((_n++)) Stats"); act+=(stats)
     else it+=($'\x01'"$((_n++)) Stats"); act+=(x); fi
@@ -5396,15 +5479,17 @@ _main_menu() {
     _QUIT=0
     case "${act[$REPLY]}" in
       cont) _run_loop;;
+      daily) daily;;
       new) if [[ -n "$PLAYER_NAME" ]] && { ((LVL>1||QI>0||BOSS_BEATEN>0||PLACED_THROUGH>0)) || [[ -s "$DATA/scores" ]]; }; then
           printf '\n'; read -rp "  ${R}Reset all progress? [y/N]${N} " yn
           [[ "$yn" =~ ^[Yy] ]] || continue
         fi
-        rm -f "$DATA"/*.json "$DATA/scores" "$DATA/scores.lock" "$DATA/profile"; rm -rf "$DATA/sandbox" "$DATA/sandbox.pristine" 2>/dev/null
+        rm -f "$DATA"/*.json "$DATA/scores" "$DATA/profile"; rm -rf "$DATA/sandbox" "$DATA/sandbox.pristine" 2>/dev/null
         # Reset position too: load() keeps the current globals when session.json is gone,
         # so an abandoned placement (Ctrl+D) would drop the fresh profile into the old level.
         LVL=1 QI=0
-        PLAYER_NAME="" BOSS_BEATEN=0 BEST_CHALLENGE=0 DISKS_FOUND="" SC_DONE="" PLACED_THROUGH=0 LAST_DECAY=0; _load_profile; load
+        PLAYER_NAME="" BOSS_BEATEN=0 BEST_CHALLENGE=0 DISKS_FOUND="" SC_DONE="" PLACED_THROUGH=0 LAST_DECAY=0
+        LAST_DAILY="" DAILY_STREAK=0 DAILY_MAXSTREAK=0 DAILY_BEST=0 DAILY_BEST_DATE=""; _load_profile; load
         _first_run; _run_loop;;
       sc) _sc_sel;;
       challenge) challenge;;
@@ -6104,6 +6189,12 @@ _selftest() {
   unset "_LEVEL_CACHE_N[chains]" "_LEVEL_CHAL[chains]"
   _pick_q chains challenge
   _assert "pick_q draws a chain" "$([[ -n "$_qprompt" ]] && echo 1 || echo 0)" "1"
+  # Daily determinism: the same seed must produce the same run for everyone.
+  _daily_seq() { RANDOM=$1; unset '_LEVEL_CACHE_N[chains]' '_LEVEL_CHAL[chains]' '_LAST_PICK[chains]'
+    local _s="" _i; for ((_i=0;_i<12;_i++)); do _pick_q chains challenge; _s+="$_qans"$'\x1e'; done; REPLY=$_s; }
+  _daily_seq 20260101; local _d1=$REPLY; _daily_seq 20260101; local _d2=$REPLY; _daily_seq 20261231; local _d3=$REPLY
+  _assert "daily seed is deterministic"  "$([[ "$_d1" == "$_d2" ]] && echo 1 || echo 0)" "1"
+  _assert "different seed differs"       "$([[ "$_d1" != "$_d3" ]] && echo 1 || echo 0)" "1"
 
   printf '%s\n' "${B}=== boss filter ===${N}"
   local _bf_total=0 _bf_boss_tagged=0
@@ -6385,6 +6476,7 @@ Tips:
 EOF
     ;;
   v|version|-v|--version) printf '%s\n' "$VERSION";;
+  daily) _tty; _load_profile; _apply_opts; ((SANDBOX_MODE)) && _check_bwrap; daily "${2:-}";;
   "") _tty; _load_profile; _apply_opts; ((SANDBOX_MODE)) && _check_bwrap; _main_menu;;
-  *) echo "Usage: cmdchamp [--no-sandbox] [reset|test|version|help]"; echo "Run with no arguments for the game menu."; exit 1;;
+  *) echo "Usage: cmdchamp [--no-sandbox] [reset|test|version|help|daily]"; echo "Run with no arguments for the game menu."; exit 1;;
 esac

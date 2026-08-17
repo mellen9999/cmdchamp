@@ -517,7 +517,7 @@ r=$(_run "
   echo \"name=\$PLAYER_NAME ver=\$_PROFILE_VER beaten=\$BOSS_BEATEN best_chal=\$BEST_CHALLENGE\"
 ")
 echo "$r" | grep -q 'name=TestPlayer' && ok "profile stores name" || fail "profile name" "$r"
-echo "$r" | grep -q 'ver=5' && ok "profile ver=5" || fail "profile ver" "$r"
+echo "$r" | grep -q 'ver=6' && ok "profile ver=6" || fail "profile ver" "$r"
 echo "$r" | grep -q 'beaten=0' && ok "new BOSS_BEATEN=0" || fail "profile beaten" "$r"
 
 # Profile version mismatch resets state. v0/v1 are pre-PROFILE_VER schemas;
@@ -570,7 +570,7 @@ r=$(bash -c "
   _load_profile
   echo \"ver=\$_PROFILE_VER scores=\$(wc -c < \"\$DATA/scores\")\"
 " 2>/dev/null)
-echo "$r" | grep -q 'ver=5' && ok "v1->v5: ver bumped" || fail "v1->v2 ver" "$r"
+echo "$r" | grep -q 'ver=6' && ok "v1->v6: ver bumped" || fail "v1->v2 ver" "$r"
 echo "$r" | grep -q 'scores=0' && ok "v1->v2: scores cleared" || fail "v1->v2 scores" "$r"
 
 # Save/load round-trip
@@ -1289,7 +1289,7 @@ echo "$r" | grep -q 'bc=7' && ok "profile BEST_CHALLENGE round-trip" || fail "pr
 echo "$r" | grep -q 'disks=sudorm,rtfm' && ok "profile DISKS_FOUND round-trip" || fail "prof disks" "$r"
 echo "$r" | grep -q 'sc=1,3' && ok "profile SC_DONE round-trip" || fail "prof sc" "$r"
 echo "$r" | grep -q 'pt=12' && ok "profile PLACED_THROUGH round-trip" || fail "prof pt" "$r"
-echo "$r" | grep -q 'ver=5' && ok "profile ver=5 stable" || fail "prof ver" "$r"
+echo "$r" | grep -q 'ver=6' && ok "profile ver=6 stable" || fail "prof ver" "$r"
 
 # Session save/load with scores
 r=$(bash -c "
@@ -1310,7 +1310,7 @@ r=$(bash -c "
   _load_profile
   echo \"ver=\$_PROFILE_VER eggs=\${EGGS_FOUND:-empty} sc=\${SC_DONE:-empty}\"
 " 2>/dev/null)
-echo "$r" | grep -q 'ver=5' && ok "v2->v5: ver bumped" || fail "v2->v3 ver" "$r"
+echo "$r" | grep -q 'ver=6' && ok "v2->v6: ver bumped" || fail "v2->v3 ver" "$r"
 echo "$r" | grep -q 'eggs=empty' && ok "v2->v3: eggs initialized" || fail "v2->v3 eggs" "$r"
 echo "$r" | grep -q 'sc=empty' && ok "v2->v3: sc initialized" || fail "v2->v3 sc" "$r"
 
