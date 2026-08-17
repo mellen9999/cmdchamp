@@ -404,6 +404,7 @@ _victory() {
     local _tier="${sc[$k]%%|*}"
     [[ "$_tier" =~ ^[0-9]+$ ]] && ((10#$_tier >= 2)) && ((++mastered))  # mastered = valid tier >=2; corrupt tiers aren't mastery
   done
+  local _cdate; printf -v _cdate '%(%Y-%m-%d)T' -1
   local s
   # Block-letter art is Unicode-only. ACS "solid block" is a small centred square that
   # does not tile into a filled cell, so legacy terminals get honest ASCII instead of
@@ -449,6 +450,18 @@ EOF
   printf '    %s                      %sYou are ROOT.%s                           %s\n' "$br" "${B}" "${N}" "$br"
   printf '    %s                                                              %s\n' "$br" "$br"
   printf '    %s\n' "$edge"
+  echo
+  # The kill list — every boss of the descent, named. Victory means all 30 fell.
+  printf '    %s\n' "${U}${B}BOSSES DEFEATED${N}"
+  local _bi _bc=0
+  for ((_bi=1; _bi<=MAX_LEVEL; _bi++)); do
+    ((_bc % 3 == 0)) && printf '    '
+    printf '%s %-17s' "${G}${_GOK}${N}" "${BOSS_NAMES[$_bi]}"
+    ((++_bc % 3 == 0)) && echo
+  done
+  ((_bc % 3)) && echo
+  # The stamp — a plain, copyable certification line.
+  printf '\n    %s   %s - %s mastered - %s\n' "${W}${B}CMDCHAMP CERTIFIED${N}" "${W}${PLAYER_NAME}${N}" "${G}${mastered}${N}" "${W}${_cdate}${N}"
   echo
   printf '%s' "$_SN"
   [[ "${1:-}" == nopause ]] && return
