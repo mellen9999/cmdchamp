@@ -5543,7 +5543,18 @@ play() {
     # it never sets _SANDBOX_DESTRUCTIVE — without this a stray rm would persist and leak
     # into normal play. Stateless is also the safest promise for a "nothing to break" REPL.
     _sandbox_reset
-    _last=$(_sandbox_exec "$input" 5 2>&1 | head -n 12); [[ -z "$_last" ]] && _last="${D}(no output)${N}"
+    _last=$(_sandbox_exec "$input" 5 2>&1 | head -n 12)
+    # Full-screen/interactive TUIs can't draw here: the sandbox has no controlling terminal
+    # (stdin /dev/null, --new-session), so they fail "failed tty get" etc. Detect that AFTER
+    # running (so batch forms like `top -bn1` still work) and point at a one-shot form.
+    _trim "$input"; local _c0=${REPLY%%[[:space:]]*}; _c0=${_c0##*/}
+    case " top htop atop iotop btop bashtop watch vi vim nvim nano emacs joe view tmux screen byobu " in
+      *" $_c0 "*)
+        if [[ "$_last" == *"failed tty get"* || "$_last" == *"Inappropriate ioctl"* || "$_last" == *"terminal"* || "$_last" == *"not a tty"* ]]; then
+          _last="${Y}${_c0}${N} ${D}needs a terminal — the playground has none. try a one-shot form: ${C}top -bn1${D}, ${C}ps aux${D}, ${C}free -h${D}, or ${C}cat${D} in place of a pager.${N}"
+        fi;;
+    esac
+    [[ -z "$_last" ]] && _last="${D}(no output)${N}"
   done
   _sandbox_reset  # leave the shared sandbox clean for the game
   _PLAY_EXPLAIN=0
