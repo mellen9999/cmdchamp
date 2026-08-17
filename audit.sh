@@ -38,10 +38,11 @@ _bootstrap() {
   _load_profile
 }
 
-# Fill an array with a level's questions (gen_level* writes via nameref, not stdout)
+# Fill an array with a level's questions (gen_level* writes via nameref, not stdout).
+# "chains" selects the gauntlet chain pool (gen_chains), mirroring _pick_q in the game.
 _gen() {
   local -n _gq=$2; _gq=()
-  gen_level"$1" _gq 2>/dev/null
+  if [[ "$1" == chains ]]; then gen_chains _gq 2>/dev/null; else gen_level"$1" _gq 2>/dev/null; fi
 }
 
 _bootstrap
@@ -70,7 +71,7 @@ _warn() {
 phase1_syntax() {
   printf '\n%s\n' "═══ PHASE 1: Question Syntax Validation ═══"
 
-  for lv in {1..30}; do
+  for lv in {1..30} chains; do
     local count=0 errors=0
 
     # Generate 3 times to catch randomization issues
@@ -143,7 +144,8 @@ phase1_syntax() {
     done
 
     ((errors == 0)) && _ok
-    printf '  L%02d %-22s %4d questions, %d errors\n' "$lv" "${LEVEL_NAMES[$lv]}" "$count" "$errors"
+    local _lname; [[ "$lv" == chains ]] && _lname="the gauntlet" || _lname="${LEVEL_NAMES[$lv]}"
+    printf '  L%-6s %-22s %4d questions, %d errors\n' "$lv" "$_lname" "$count" "$errors"
   done
 }
 
@@ -158,7 +160,7 @@ phase2_positive() {
   fi
   ((SANDBOX_MODE)) && _sandbox_init
 
-  for lv in {1..30}; do
+  for lv in {1..30} chains; do
     local tested=0 passed=0 failed=0 skipped=0
     local -a raw=()
     _gen "$lv" raw || continue
@@ -222,8 +224,9 @@ phase2_positive() {
     done
 
     if ((tested > 0 || failed > 0)); then
-      printf '  L%02d %-22s tested:%d pass:%d fail:%d skip:%d\n' \
-        "$lv" "${LEVEL_NAMES[$lv]}" "$tested" "$passed" "$failed" "$skipped"
+      local _lname; [[ "$lv" == chains ]] && _lname="the gauntlet" || _lname="${LEVEL_NAMES[$lv]}"
+      printf '  L%-6s %-22s tested:%d pass:%d fail:%d skip:%d\n' \
+        "$lv" "$_lname" "$tested" "$passed" "$failed" "$skipped"
     fi
   done
 }
@@ -774,6 +777,12 @@ phase8_panel_coverage() {
         _qparse "$line"; ((checked++)); _panel_check "$_qans" "$_qprompt" "L$lv"
         _ok
       done
+    done
+    pq=(); _gen chains pq            # the gauntlet chain pool
+    for line in "${pq[@]}"; do
+      [[ -z $line ]] && continue
+      _qparse "$line"; ((checked++)); _panel_check "$_qans" "$_qprompt" "CHAIN"
+      _ok
     done
   done
   for ((si=1; si<=SC_TOTAL; si++)); do

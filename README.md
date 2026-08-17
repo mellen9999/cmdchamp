@@ -6,9 +6,9 @@ Bash CLI trainer — 30 levels from `ls` to privilege escalation.
 
 Every question asks you to type a real command — get instant feedback, move on. Many run against real files in the sandbox, and all accept multiple valid syntaxes (`sort -u` or `sort | uniq`). Tab toggles the manpage when you need a reference, and the order is randomized each run so you can't memorize it. Mastery tracks what you know: get a question right twice to master it, miss it and it demotes so it comes back sooner. A 5-answer streak triggers fire mode — a banner that runs until you miss.
 
-Each level ends with a boss round — no manpages, 30s timer, 4/5 to pass. Fail and you can retry the boss immediately or go back to practice. Beat all 30 and challenge mode unlocks: every level, 20s timer, no manpages, one miss and you're done. First run includes a short tutorial and a placement test that lets you skip levels you already know.
+Each level ends with a boss round — no manpages, 30s timer, 4/5 to pass. Fail and you can retry the boss immediately or go back to practice. Beat all 30 and **challenge mode** unlocks — the endgame gauntlet: insane multi-command chains that compose the tools from across the whole game into one pipeline. 30s each, one life, no manpages, your best score is the record. Every chain is graded on its real output in the sandbox, so *any* correct pipeline passes — and the questions are freshly parameterized each run (delimiter, sort direction, aggregate, transform), so it never plays the same twice. First run includes a short tutorial and a placement test that lets you skip levels you already know.
 
-With [bubblewrap](https://github.com/containers/bubblewrap), commands run in a real sandboxed filesystem. Without it, answers are text-matched. Search levels (16-17) accept both `rg`/`fd` and `grep`/`find` syntax. Vi line editing built in.
+With [bubblewrap](https://github.com/containers/bubblewrap), commands run in a real sandboxed filesystem and are graded on their actual output. Without it — and for the network/root/pentest tools of levels 24-30, which can't safely run — answers are text-matched instead. Search levels (16-17) accept both `rg`/`fd` and `grep`/`find` syntax. Vi line editing built in.
 
 ## Install
 
