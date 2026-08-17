@@ -820,6 +820,13 @@ _gen_gauntlet_files() {
     for ((_i=_ndone; _i<_ndone+_ntodo; _i++)); do printf '[ ] %s\n' "${_tasks[$_i]}"; done
   } > "$dir/todo.txt"
 
+  # ── src/utils.py (random distinct function names + count, freshens the *.py chains) ──
+  local _fns=(helper process transform validate compute parse format encode decode filter reduce aggregate normalize sanitize dispatch resolve) _fshuffle _fns
+  local _nfn; _frnum 2 4; _nfn=$REPLY
+  { printf '%s\n' '"""Utility functions."""' ''
+    local _i; for ((_i=0; _i<_nfn; _i++)); do printf 'def %s(x):\n    return x * %d\n\n' "${_fns[$_i]}" "$((_i+2))"; done
+  } > "$dir/src/utils.py"
+
   # ── traffic.log (random access log w/ one clear busiest IP + a lone 404 + some 5xx) ──
   local _tips=("${IPS[@]}"); _fshuffle _tips
   local _ip0=${_tips[0]} _ip1=${_tips[1]} _ip2=${_tips[2]} _ip3=${_tips[3]}
