@@ -17,8 +17,14 @@ trap 'rm -rf "$XDG_DATA_HOME"' EXIT
 # Extract everything before the main case statement
 # This gives us all function defs, variable pools, constants
 _bootstrap() {
-  # Source everything up to the CLI entrypoint (same approach as test_cmdchamp.sh)
+  # Source everything up to the CLI entrypoint (same approach as test_cmdchamp.sh).
+  # -g on the top-level arrays: this eval runs inside a function, where a bare
+  # `declare -A MANPAGE=(...)` makes MANPAGE local and it disappears the moment
+  # _bootstrap returns. Without it MANPAGE/EXP are not arrays by the time a phase
+  # looks at them, and `${MANPAGE[$cmd]:-}` silently becomes an arithmetic
+  # subscript — "pwd: unbound variable" instead of a manpage.
   eval "$(sed -e 's/^_tty().*/\_tty() { :; }/' \
+              -e 's/^declare -\([aA]\) /declare -g\1 /' \
               -e '/^# ═══ CLI ENTRYPOINT ═══/,$d' \
               "$CMDCHAMP")"
 
@@ -690,6 +696,97 @@ phase6_scenarios() {
 }
 
 # ═══════════════════════════════════════════════════════════════════
+# PHASE 8: TAB PANEL COVERAGE
+# The Tab panel is the only reference a player gets, and every question is
+# meant to be solvable the first time it is seen. So for every canonical
+# answer: each command it runs must have a page, and each flag it passes must
+# appear on the page the panel actually renders. A flag that only lives in the
+# real system manpage is a question the player cannot answer, only guess.
+# ═══════════════════════════════════════════════════════════════════
+_PANEL_PLACEHOLDER=' cmd cmd1 cmd2 cmd3 c1 c2 cond condition true false '
+_PANEL_KW=' if elif while until then do else { ! ( for select case in done fi esac } ) '
+_PANEL_WRAP=' sudo doas time nohup env stdbuf setsid nice ionice xargs timeout watch '
+
+_panel_check() {
+  local ans=$1 prompt=$2 label=$3
+  local -a toks; set -f; read -ra toks <<< "$ans"; set +f
+  ((${#toks[@]})) || return 0
+  local rx=0; [[ $ans == '~'* ]] && rx=1   # a regex answer: only its command names are literal
+  _EBUF=""; explain "$ans" q; _strip_ansi "$_EBUF"; local panel=$REPLY
+  _strip_ansi "$prompt"; local pr=$REPLY
+  local cp=1 lst=0 qz=0 t tt q body c ok
+  local defined=" "                                  # `die() {...}; die x` defines its own command
+  for t in "${toks[@]}"; do [[ $t == *'()' ]] && defined+="${t%'()'} "; done
+
+  for t in "${toks[@]}"; do
+    tt=$t; while [[ $tt == *';' && $tt != '\;' ]]; do tt=${tt%;}; done
+    q=${t//[^\'\"]}                                  # inside a quoted string nothing is
+    ((${#q} % 2)) && qz=$((1 - qz))                  # a command and no word is a flag
+    ((qz)) && continue
+    ((${#q})) && continue
+    case "$tt" in for|select|case) lst=1; cp=0; continue ;; do) lst=0; cp=1; continue ;; esac
+    ((lst)) && continue                              # the list between `for` and `do` is data
+    case "$tt" in
+      '|'|'|&'|'&&'|'||'|'&'|''|-exec|-execdir|-ok|-okdir) cp=1; continue ;;
+      '<'*|'>'*|'&>'*|'2>'*|'1>'*|'\;') cp=0; continue ;;
+    esac
+    [[ $_PANEL_KW == *" $tt "* ]] && { cp=1; continue; }
+    [[ -n "$tt" && "$pr" == *"$tt"* ]] && { cp=0; continue; }   # the prompt already spells it out
+    if ((cp)); then
+      case "$tt" in -*|[0-9]*|'{}'|*=*|./*|/*|*[\(\)\{\}\$\[\]\*\;\|]*) continue ;; esac
+      cp=0; [[ $_PANEL_WRAP == *" $tt "* ]] && cp=1
+      [[ $_PANEL_PLACEHOLDER == *" $tt "* || $defined == *" $tt "* ]] && continue
+      [[ $tt == *.* || $tt == */* ]] && continue
+      tt=${tt#\~}; tt=${tt#^}
+      _canonical_cmd "$tt"
+      [[ -n "${MANPAGE[$REPLY]:-}" || -n "${EXP[$REPLY]:-}" ]] && continue
+      _fail "$label: no manpage or explanation for '$tt' — panel teaches nothing ($ans)"
+      continue
+    fi
+    ((rx)) && continue
+    case "$tt" in *[\(\)\{\}\$\[\]\|]*) continue ;; esac
+    case "$tt" in
+      --*) [[ "$panel" == *"${tt%%=*}"* ]] || _fail "$label: ${tt%%=*} not on the panel ($ans)" ;;
+      -[0-9]*) ;;                                    # a count or a size, not a flag
+      -[!-]*)
+        [[ "$panel" == *"$tt"* ]] && continue
+        body=${tt#-}; ok=1
+        if [[ "$body" =~ ^[a-zA-Z]+$ ]]; then        # -tlnp: every letter must be documented
+          for ((c=0; c<${#body}; c++)); do [[ "$panel" == *"-${body:c:1}"* ]] || ok=0; done
+        elif [[ "$body" =~ ^[a-zA-Z] ]]; then ok=0   # -f2 / -k4,4rn: flag with its value glued on
+          [[ "$panel" == *"-${body:0:1}"* ]] && ok=1
+        else ok=0; fi
+        ((ok)) || _fail "$label: $tt not on the panel ($ans)" ;;
+    esac
+  done
+  return 0
+}
+
+phase8_panel_coverage() {
+  printf '\n%s\n' "═══ PHASE 8: Tab Panel Coverage ═══"
+  local lv si round before=$FAIL checked=0
+  local -a pq=()
+  for round in 1 2 3; do
+    for ((lv=1; lv<=MAX_LEVEL; lv++)); do
+      pq=(); _gen "$lv" pq
+      for line in "${pq[@]}"; do
+        [[ -z $line ]] && continue
+        _qparse "$line"; ((checked++)); _panel_check "$_qans" "$_qprompt" "L$lv"
+        _ok
+      done
+    done
+  done
+  for ((si=1; si<=SC_TOTAL; si++)); do
+    while IFS= read -r line; do
+      [[ -z $line ]] && continue
+      _qparse "$line"; ((checked++)); _panel_check "$_qans" "$_qprompt" "SC$si"
+      _ok
+    done < <("_sc_steps_$si" 2>/dev/null)
+  done
+  printf '  panels checked: %d   gaps: %d\n' "$checked" "$((FAIL - before))"
+}
+
+# ═══════════════════════════════════════════════════════════════════
 # PHASE 7: SCENARIO WRONG-ANSWER REJECTION
 # Similar-but-wrong answers for scenario steps should be rejected
 # ═══════════════════════════════════════════════════════════════════
@@ -779,7 +876,7 @@ phase7_scenario_negatives() {
 main() {
   printf '%s\n' "╔══════════════════════════════════════════╗"
   printf '%s\n' "║   CmdChamp Omega Audit                   ║"
-  printf '%s\n' "║   30 levels × 7 phases                   ║"
+  printf '%s\n' "║   30 levels × 8 phases                   ║"
   printf '%s\n' "╚══════════════════════════════════════════╝"
 
   if ! ((SANDBOX_MODE)); then
@@ -794,6 +891,7 @@ main() {
   phase5_crosscheck
   phase6_scenarios
   phase7_scenario_negatives
+  phase8_panel_coverage
 
   printf '\n%s\n' "═══════════════════════════════════════════"
   printf '  TOTAL: %d tests  PASS: %d  FAIL: %d  WARN: %d\n' "$TOTAL" "$PASS" "$FAIL" "$WARN"
