@@ -468,6 +468,7 @@ SANDBOX_MODE=1  # ON by default
 SANDBOX_PRISTINE="$DATA/sandbox.pristine"
 SANDBOX_DIR="$DATA/sandbox"
 _SANDBOX_GEN=4  # fixture generation - bump to force a pristine rebuild on existing installs
+_GEN_CHAINS_TMP=""  # live gen_chains temp dir, reaped by _cleanup if a signal interrupts it
 
 _BWRAP_FLAG="$DATA/.bwrap_blocked"
 _bwrap_notice() {
@@ -776,6 +777,7 @@ _sandbox_exec() {
     --setenv USER sandbox
     --setenv SHELL /bin/bash
     --setenv LANG "${LANG:-C.UTF-8}"
+    --setenv LC_ALL C
     --setenv TERM "${TERM:-xterm-256color}"
     --ro-bind /usr /usr
     --ro-bind /bin /bin
@@ -800,7 +802,9 @@ _sandbox_exec() {
   # ulimit -u caps processes inside the sandbox so a fork bomb can't pin a core
   # for the full timeout window. 256 is far above anything a real lesson needs.
   # ulimit -f caps file size (64MB) so dd/yes into /sandbox can't fill the real disk in the timeout window
-  timeout "$timeout_sec" bwrap "${bwrap_args[@]}" /bin/bash -c 'ulimit -u 256 2>/dev/null; ulimit -f 65536 2>/dev/null; eval "$1"' -- "$cmd"; _rc=$?
+  # stdin from /dev/null: an answer like bare `cat`/`head` must not read the terminal
+  # and eat the player's keystrokes for the whole timeout window.
+  timeout "$timeout_sec" bwrap "${bwrap_args[@]}" /bin/bash -c 'ulimit -u 256 2>/dev/null; ulimit -f 65536 2>/dev/null; eval "$1"' -- "$cmd" </dev/null; _rc=$?
   ((_rc >= 125)) && printf '%s\n' "${R}sandbox error (exit ${_rc})${N}" >&2
   return "$_rc"
 }
@@ -917,6 +921,7 @@ _cleanup() {
   _sflush_if_dirty 2>/dev/null
   [[ -n "$_stty_saved" ]] && stty "$_stty_saved" 2>/dev/null
   ((_interactive)) && printf '\e[?25h\e[?2004l'  # restore cursor + disable bracketed paste
+  [[ -n "${_GEN_CHAINS_TMP:-}" ]] && rm -rf "$_GEN_CHAINS_TMP" 2>/dev/null  # reap a gen_chains temp caught mid-build by a signal
   ((_CLEANING)) && return; _CLEANING=1
   ((_interactive)) || return 0
   rm -rf "$DATA/sandbox.snap" "$DATA/sandbox.snap.perms" 2>/dev/null
@@ -3337,7 +3342,12 @@ gen_level30() {
 # (panel teaches every command/flag). Reached only from challenge().
 gen_chains() {
   local -n questions=${1:-CURRENT_QUESTIONS}; questions=()
-  local _t; _t=$(mktemp -d 2>/dev/null) || return
+  local _t; _t=$(mktemp -d "${TMPDIR:-/tmp}/cmdchamp.XXXXXX" 2>/dev/null) || return
+  # Track the temp globally so _cleanup reaps it if a SIGINT lands during the ~24
+  # derive-evals below (the global INT trap runs _cleanup and never returns here). The
+  # normal path clears it after the explicit rm at the end. (A RETURN trap can't be used
+  # here — bash RETURN traps aren't function-scoped and would fire on the caller too.)
+  _GEN_CHAINS_TMP=$_t
   _gen_sandbox_files "$_t" 2>/dev/null
   # Run a candidate answer against the fixture copy under the sandbox's C locale and
   # capture its stdout — so #output is DERIVED from the answer, never hand-typed. The
@@ -3449,8 +3459,7 @@ gen_chains() {
   local _code; _code=$(printf '%s\n' 200 404 500 | shuf -n1 2>/dev/null) || _code=200
   _chq "traffic.log: how many requests returned status $_code" \
        "awk '\$9==$_code' traffic.log | wc -l" traffic.log
-
-  rm -rf "$_t"
+  rm -rf "$_t"; _GEN_CHAINS_TMP=""
 }
 
 # ═══ SCENARIOS ═══
@@ -4275,8 +4284,10 @@ load() {
 }
 save() {
   local fd; exec {fd}>"$DATA/session.lock"; flock -x "$fd"
-  printf '{"level":%d,"qi":%d}\n' "$LVL" "$QI" > "$DATA/session.json.tmp"
-  mv "$DATA/session.json.tmp" "$DATA/session.json"
+  # Guard the promote on write success (matches _sflush/_write_profile): on ENOSPC the
+  # printf leaves a truncated tmp, and an unconditional mv would clobber the good file.
+  { printf '{"level":%d,"qi":%d}\n' "$LVL" "$QI" > "$DATA/session.json.tmp"; } \
+    && mv "$DATA/session.json.tmp" "$DATA/session.json" || rm -f "$DATA/session.json.tmp"
   exec {fd}>&-
 }
 # ═══ SCORING & UI ═══
@@ -4452,7 +4463,10 @@ _wrap() {
 _QD_KEY="" _QD_VAL=""   # redraws repeat the same prompt; wrap it once
 qdisp() {
   bar
-  local _c; _COLS; _c=$REPLY; ((_c > 20)) || _c=80
+  # Trust the real width down to a tiny floor — a narrow terminal must wrap to ITS
+  # width, not jump up to 80 (which hard-wraps and shears every line). 80 is only the
+  # fallback when _COLS couldn't detect at all (it returns 80 in that case anyway).
+  local _c; _COLS; _c=$REPLY; ((_c > 4)) || _c=80
   if [[ "$1|$_c" != "$_QD_KEY" ]]; then
     _ascii_fold "$1"; _wrap "$REPLY" "$_c"; _QD_VAL=$REPLY; _QD_KEY="$1|$_c"
   fi
@@ -4504,9 +4518,24 @@ _paste_start() {
 # Read a paste body (past \e[200~) up to \e[201~. Flatten newlines/tabs to spaces —
 # this is a single-line command field. -t guards against a truncated/missing end marker.
 _paste_read() {
-  local _buf="" _ch _x
+  local _buf="" _ch _x _seq
   while IFS= read -rsn1 -t 2 _ch; do
-    [[ "$_ch" == $'\e' ]] && { read -rsn1 -t 0.05 _x; [[ "$_x" == "[" ]] && _csi_drain; break; }
+    if [[ "$_ch" == $'\e' ]]; then
+      # An ESC in the body is EITHER the \e[201~ end marker OR an escape sequence that
+      # was inside the pasted text (e.g. an ANSI colour code). Only the end marker stops
+      # the paste; any other sequence is dropped and the body keeps flowing. The old code
+      # broke on the first ESC, so a paste containing one leaked its tail into the
+      # keystroke loop — where vi-normal executed it as edit commands.
+      read -rsn1 -t 0.05 _x
+      if [[ "$_x" == "[" ]]; then
+        _seq=""
+        while read -rsn1 -t 0.05 _x; do
+          _seq+="$_x"; [[ "$_x" == [A-Za-z~] ]] && break   # CSI final byte
+        done
+        [[ "$_seq" == "201~" ]] && break   # end of paste
+      fi
+      continue   # non-terminator escape: drop it, keep reading the body
+    fi
     # read returns empty on a newline (its line delimiter); treat that + CR/tab as a space
     # so a multi-line paste flattens to one line without merging adjacent tokens.
     [[ -z "$_ch" || "$_ch" == $'\r' || "$_ch" == $'\t' ]] && _ch=" "
@@ -4728,7 +4757,17 @@ _read_line() {
   input="" cursor=0 mode="insert" _rep="" _man_open=0
   UNDO_STACK=()
   _vi_reg="" _vi_lastf=""
-  local _rl_last_sec=0
+  local _rl_last_sec=0 _rl_resized=0
+  # Resize handling: SIGWINCH sets a flag (async-safe minimal), acted on at the loop
+  # top — recompute width, drop the wrap cache, full redraw. Without this the width is
+  # cached once per prompt (below) and a mid-question resize shears the frame. The
+  # RETURN trap removes the WINCH handler on every exit path so it can't fire between
+  # questions (where an interrupted menu read would misbehave).
+  # WINCH = resize; CONT = resumed after Ctrl-Z (SIGTSTP keeps its default: suspend).
+  # Both just flag a repaint, handled at the loop top. The interrupted read returns
+  # rc>128 and loops instead of being mistaken for EOF (see the read handlers below).
+  trap '_rl_resized=1' WINCH CONT
+  trap 'trap - WINCH CONT' RETURN
   _COLS; _RL_W=$REPLY  # once per prompt, not per keystroke (tput fallback forks)
   if ((_rl_timeout > 0)); then printf -v _rl_deadline '%(%s)T' -1; ((_rl_deadline += _rl_timeout)); _rl_last_sec=$_rl_deadline; fi
   ((_rl_hist)) && { HIST_IDX=${#HIST[@]}; HIST_SAVE=""; }
@@ -4736,6 +4775,10 @@ _read_line() {
   printf '\e[?2004h'  # enable bracketed paste; _cleanup disables it on every exit
   draw
   while true; do
+    if ((_rl_resized)); then  # SIGWINCH since last iteration: re-wrap to the new width
+      _rl_resized=0; _COLS; _RL_W=$REPLY; _QD_KEY=""
+      printf '\e[2J'; _REDRAW_HDR; draw
+    fi
     if ((_rl_deadline)); then
       local _now; printf -v _now '%(%s)T' -1; local _rem=$((_rl_deadline - _now))
       ((_rem <= 0)) && { printf '\e[?25h'; input=""; return 1; }
@@ -4748,7 +4791,12 @@ _read_line() {
         _rl_last_sec=$_now; _rl_tick; continue
       }
     else
-      IFS= read -rsn1 c || { printf '\e[?25h'; _QUIT=1; input=""; return 2; }  # EOF (e.g. stdin closed): quit, don't spin
+      IFS= read -rsn1 c || { _rc=$?
+        # rc<=128 = real EOF/stdin closed → quit. rc>128 = a trapped signal (e.g.
+        # SIGWINCH) interrupted the read → loop back so the resize check redraws.
+        ((_rc <= 128)) && { printf '\e[?25h'; _QUIT=1; input=""; return 2; }
+        continue
+      }
     fi
     if [[ "$c" == $'\t' ]]; then
       if ((_rl_hints)); then
@@ -5147,10 +5195,18 @@ challenge() {
   local score=0
   _mode_init g
 
+  # Build the pool once up front. If it can't be built (no /tmp, missing coreutils),
+  # bail with a message instead of `|| continue` in the loop — that would spin at 100%
+  # CPU with no way to read input or quit.
+  if ! _pick_q chains challenge; then
+    printf '%s\n%s' "${R}Gauntlet unavailable${N} ${D}- the sandbox couldn't be prepared (check /tmp and coreutils).${N}" "$_SN"
+    _pause; return
+  fi
+
   while true; do
     # Every prompt is a multi-command chain from the gauntlet pool — insane from the
     # first question, 30s, one life. High score is the record.
-    _pick_q chains challenge || continue; local prompt=$_qprompt ans=$_qans
+    _pick_q chains challenge || break; local prompt=$_qprompt ans=$_qans
 
     _REDRAW_HDR() {
       local _t=30
@@ -6168,7 +6224,14 @@ case "${1:-}" in
       read -rp "wipe all cmdchamp progress? [y/N] " _yn
       [[ "$_yn" =~ ^[Yy]$ ]] || { echo "cancelled"; exit 0; }
     fi
-    rm -f "$DATA"/*.json "$DATA/scores" "$DATA/scores.lock" "$DATA/profile" "$DATA/.bwrap_blocked"; rm -rf "$DATA/sandbox" "$DATA/sandbox.pristine" 2>/dev/null; echo "reset";;
+    # Hold the writers' locks so a concurrent instance can't resurrect scores/profile
+    # between our rm and its mv. Keep the .lock files themselves — unlinking one drops
+    # the inode a concurrent holder still has open, silently breaking flock exclusion.
+    exec {_rfd1}>"$DATA/scores.lock" 2>/dev/null && flock -x "$_rfd1" 2>/dev/null
+    exec {_rfd2}>"$DATA/profile.lock" 2>/dev/null && flock -x "$_rfd2" 2>/dev/null
+    rm -f "$DATA"/*.json "$DATA/scores" "$DATA/profile" "$DATA/.bwrap_blocked"; rm -rf "$DATA/sandbox" "$DATA/sandbox.pristine" 2>/dev/null
+    [[ -n "${_rfd1:-}" ]] && exec {_rfd1}>&-; [[ -n "${_rfd2:-}" ]] && exec {_rfd2}>&-
+    echo "reset";;
   promptdump)
     # Dev-only: emit every prompt (levels + scenarios) through the real render pipeline
     # (_ascii_fold → _wrap at 80 cols), one wrapped line per output line. This is the
