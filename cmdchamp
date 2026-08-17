@@ -4838,7 +4838,9 @@ _read_line() {
         ((_man_open)) && _man_open=0 || _man_open=1
         _draw_buf
         if ((_man_open)); then
-          explain "$ans" buf
+          # Playground explains what YOU typed; the game explains the question's answer.
+          local _exp_src=$ans; ((${_PLAY_EXPLAIN:-0})) && _exp_src=$input
+          explain "$_exp_src" buf
           _LINES   # 9 = the header block and prompt already above the cursor
           if ((_EXP_LINES + 9 >= REPLY)); then _man_open=0; _man_full
           else printf '%s\e[?25l\n\e[J%s\e[%dA\r%s%s' "$_SY" "$_EBUF" "$((_EXP_LINES + 1))" "$_DB" "$_SN"; fi
@@ -5404,6 +5406,40 @@ _practice_menu() {
   done
 }
 
+# Free-play playground: a safe bubblewrap REPL over the sandbox fixtures. Type any
+# command, see its real output; Tab explains what YOU typed (not a question's answer).
+# Destructive commands only touch the throwaway sandbox and are reset between runs.
+play() {
+  if ! ((SANDBOX_MODE)) || ! _check_bwrap; then
+    printf '%s\e[2J\e[H%s\n\n%s\n%s' "$_SY" "${M}${B}${_H3} PLAYGROUND ${_H3}${N}" \
+      "${Y}The playground needs bubblewrap${N} ${D}- it runs your commands in a real sandbox.${N}" "$_SN"
+    _pause; return
+  fi
+  _session_init; _mode_init play
+  _PLAY_EXPLAIN=1
+  local _last="${D}(type a command and press Enter)${N}"
+  while true; do
+    _REDRAW_HDR() {
+      printf '%s\e[H%s   %s\e[K\n\e[K\n' "$_SY" "${M}${B}PLAYGROUND${N}" "${D}${C}Tab${D} explains your command   ${C}q${D} quits${N}"
+      printf '%s\e[K\n%s\e[K\n\e[K\n' "${D}files: config.ini settings.yaml notes.txt todo.txt data/export.json *.py *.sh server.log${N}" "${D}--- output (each command runs on fresh files) ---${N}"
+      printf '%s\e[K\n' "$_last"
+      printf '\e[K\n%s\e[K\n%s' "${D}--- your command ---${N}" "$_SN"
+    }
+    printf '\e[2J'; _REDRAW_HDR
+    _read_line 1 1
+    ((_QUIT)) && break
+    [[ -z "$input" ]] && continue
+    case "$input" in q|quit|exit) break;; esac
+    # Reset to pristine before EACH command: play bypasses check()/_sandbox_validate, so
+    # it never sets _SANDBOX_DESTRUCTIVE — without this a stray rm would persist and leak
+    # into normal play. Stateless is also the safest promise for a "nothing to break" REPL.
+    _sandbox_reset
+    _last=$(_sandbox_exec "$input" 5 2>&1 | head -n 12); [[ -z "$_last" ]] && _last="${D}(no output)${N}"
+  done
+  _sandbox_reset  # leave the shared sandbox clean for the game
+  _PLAY_EXPLAIN=0
+}
+
 
 # ═══ MENU ═══
 # Generic j/k selector. Args: title item1 item2 ...
@@ -5526,6 +5562,8 @@ _main_menu() {
     fi
     if [[ -n "$PLAYER_NAME" ]]; then it+=("$((_n++)) Practice"); act+=(practice)
     else it+=($'\x01'"$((_n++)) Practice"); act+=(x); fi
+    if ((SANDBOX_MODE)); then it+=("$((_n++)) Playground"); act+=(play)
+    else it+=($'\x01'"$((_n++)) Playground (needs sandbox)"); act+=(x); fi
     if [[ -n "$PLAYER_NAME" ]]; then it+=("$((_n++)) Stats"); act+=(stats)
     else it+=($'\x01'"$((_n++)) Stats"); act+=(x); fi
     it+=("$((_n++)) Options"); act+=(opts)
@@ -5556,6 +5594,7 @@ _main_menu() {
       cont) _run_loop;;
       daily) daily;;
       practice) _practice_menu;;
+      play) play;;
       new) if [[ -n "$PLAYER_NAME" ]] && { ((LVL>1||QI>0||BOSS_BEATEN>0||PLACED_THROUGH>0)) || [[ -s "$DATA/scores" ]]; }; then
           printf '\n'; read -rp "  ${R}Reset all progress? [y/N]${N} " yn
           [[ "$yn" =~ ^[Yy] ]] || continue
@@ -6553,6 +6592,7 @@ EOF
     ;;
   v|version|-v|--version) printf '%s\n' "$VERSION";;
   daily) _tty; _load_profile; _apply_opts; ((SANDBOX_MODE)) && _check_bwrap; daily "${2:-}";;
+  play) _tty; _load_profile; _apply_opts; ((SANDBOX_MODE)) && _check_bwrap; play;;
   "") _tty; _load_profile; _apply_opts; ((SANDBOX_MODE)) && _check_bwrap; _main_menu;;
   *) echo "Usage: cmdchamp [--no-sandbox] [reset|test|version|help|daily]"; echo "Run with no arguments for the game menu."; exit 1;;
 esac
