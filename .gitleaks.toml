@@ -13,3 +13,11 @@ useDefault = true
 [[allowlists]]
 description = "curl lesson placeholder in the question bank"
 regexes = ['''^token123$''']
+
+# The L28 forensics sample (samples/target.bin) carries a fake "leaked API key" the
+# player learns to grep out. It matches the stripe-access-token shape on purpose — that
+# is the lesson. Anchored to the exact placeholder, so it exempts this one string and
+# nothing else (same discipline as token123 above: never path-scoped).
+[[allowlists]]
+description = "fake leaked API key in the forensics sample fixture"
+regexes = ['''^sk_live_deadbeefcafe1234$''']

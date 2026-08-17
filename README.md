@@ -8,7 +8,7 @@ Every question asks you to type a real command — get instant feedback, move on
 
 Each level ends with a boss round — no manpages, 30s timer, 4/5 to pass. Fail and you can retry the boss immediately or go back to practice. Beat all 30 and **challenge mode** unlocks — the endgame gauntlet: insane multi-command chains that compose the tools from across the whole game into one pipeline. 30s each, one life, no manpages, your best score is the record. Every chain is graded on its real output in the sandbox, so *any* correct pipeline passes — and the questions are freshly parameterized each run (delimiter, sort direction, aggregate, transform), so it never plays the same twice. First run includes a short tutorial and a placement test that lets you skip levels you already know.
 
-With [bubblewrap](https://github.com/containers/bubblewrap), commands run in a real sandboxed filesystem and are graded on their actual output. Without it — and for the network/root/pentest tools of levels 24-30, which can't safely run — answers are text-matched instead. Search levels (16-17) accept both `rg`/`fd` and `grep`/`find` syntax. Vi line editing built in.
+With [bubblewrap](https://github.com/containers/bubblewrap), commands run in a real sandboxed filesystem and are graded on their actual output. This now reaches the forensics tier too: level 28 hands you a real sample binary (`samples/target.bin`) and grades whether you actually pulled the flag, the exfil domain, and the leaked API key out of it — same for the `jq` questions on real JSON. The endgame gauntlet composes those extractions into timed chains. Only the tools that genuinely can't run in a sandbox — live network/wifi/nmap and large memory/disk forensics — stay text-matched. Search levels (16-17) accept both `rg`/`fd` and `grep`/`find` syntax. Vi line editing built in.
 
 ## Install
 
@@ -115,6 +115,10 @@ Multi-step sandbox challenges — state persists between steps. Available from t
 | 9 | Git Rescue | L23 boss | 6 |
 | 10 | Batch Refactor | L21 boss | 6 |
 | 11 | Forensic Sweep | L22 boss | 6 |
+| 12 | Wildcard Backup | L29 boss | 4 |
+| 13 | PATH Hijack | L29 boss | 4 |
+
+Scenarios 12–13 are exploit boxes: you plant a real tar-checkpoint injection / PATH hijack and are graded on the artifact it produces (a file appears, a secret gets exfiltrated). The exploit's *effect* runs for real in the sandbox; the privilege boundary is simulated — nothing runs as real root.
 
 ## Placement test
 

