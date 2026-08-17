@@ -5331,6 +5331,66 @@ daily() {
   printf '%s' "$_SN"; echo; _pause
 }
 
+# Practice a single level on demand: hints + manpages on, no timer, no boss, and it
+# never touches the main LVL/QI/session position. Questions are ordered weak-first
+# (unmastered before mastered) so a drill spends its time where you're shaky. Tiers
+# update exactly as in normal play, so drilling a level raises its mastery %.
+drill() {
+  local lv=$1 qi TOT streak=0 correct=0
+  _mode_init "$lv"
+  generate_level "$lv"
+  local -a _w=() _m=() _dq=(); local q
+  for q in "${CURRENT_QUESTIONS[@]}"; do _qparse "$q"; _sget "$_qprompt"; ((REPLY < 2)) && _w+=("$q") || _m+=("$q"); done
+  ((${#_w[@]})) && _fshuffle _w; ((${#_m[@]})) && _fshuffle _m
+  _dq=("${_w[@]}" "${_m[@]}"); TOT=${#_dq[@]}; ((TOT)) || return
+  for ((qi=0; qi<TOT; qi++)); do
+    _preq_reset
+    _qparse "${_dq[$qi]}"; local prompt=$_qprompt ans=$_qans
+    _sget "$prompt"; local _rt=$REPLY
+    _REDRAW_HDR() { printf '%s' "$_SY"; hdr "$lv" "$((qi+1))" "$TOT"; qdisp "$prompt"; printf '\e[J%s' "$_SN"; }
+    printf '\e[2J'; _REDRAW_HDR
+    while true; do
+      _read_line 1 1
+      ((_QUIT)) && { _sflush_if_dirty; return; }
+      [[ -z "$input" ]] && { draw; continue; }
+      if check "$input" "$_qanswers"; then
+        _sc; _show_alts "$input" "$_qanswers" "$_qdelim"
+        ((_rt < 2)) && _sset "$prompt" $((_rt + 1))
+        ((++correct)); printf '\n%s\n' "${G}${B}+${N}"; _pause; break
+      else
+        ((_S_ANSWERED++)); _S_STREAK=0; _wrong_show; explain "$ans"
+        _rt=$((_rt > 0 ? _rt - 1 : 0)); _sset "$prompt" "$_rt"; _pause
+      fi
+      printf '\e[2J'; _REDRAW_HDR
+    done
+  done
+  _sflush_if_dirty
+  printf '%s\e[2J\e[H%s\n\n' "$_SY" "${G}${B}${_H3} DRILL DONE ${_H3}${N}"
+  printf '%s %s  %s/%s\n' "${U}${LEVEL_NAMES[$lv]}:${N}" "${W}cleared${N}" "${G}${correct}${N}" "$TOT"
+  printf '%s' "$_SN"; echo; _pause
+}
+
+# Practice picker: every reached level with its live mastery %, so you steer to weak
+# areas. Reached = up to the next-unbeaten level (BOSS_BEATEN+1).
+_practice_menu() {
+  local _maxlv=$((BOSS_BEATEN + 1)); ((_maxlv > MAX_LEVEL)) && _maxlv=MAX_LEVEL
+  _session_init
+  while true; do
+    local -A lv_total=() lv_mastered=() sc=()
+    [[ -f "$DATA/scores" ]] && while IFS='|' read -r k v; do [[ "$k" == "#"* || -z "$k" ]] && continue; sc[$k]=$v; done < "$DATA/scores"
+    _calc_mastery sc
+    local -a it=(); local lv _row
+    for ((lv=1; lv<=_maxlv; lv++)); do
+      local lt=${lv_total[$lv]:-0} lm=${lv_mastered[$lv]:-0} pct=0 _pc=$D
+      ((lt > 0)) && { pct=$((lm * 100 / lt)); _pc=$R; ((pct >= 40)) && _pc=$Y; ((pct >= 80)) && _pc=$G; }
+      printf -v _row '%d %-20s %s%3d%%%s' "$lv" "${LEVEL_NAMES[$lv]}" "$_pc" "$pct" "$N"
+      it+=("$_row")
+    done
+    _SEL_BACK=1; _sel "${U}${_H3} PRACTICE ${_H3}${N}" "${it[@]}" || return
+    drill "$((REPLY + 1))"
+  done
+}
+
 
 # ═══ MENU ═══
 # Generic j/k selector. Args: title item1 item2 ...
@@ -5451,6 +5511,8 @@ _main_menu() {
       it+=($'\x01'"$((_n++)) Challenge"); act+=(x)
       it+=($'\x01'"$((_n++)) Daily"); act+=(x)
     fi
+    if [[ -n "$PLAYER_NAME" ]]; then it+=("$((_n++)) Practice"); act+=(practice)
+    else it+=($'\x01'"$((_n++)) Practice"); act+=(x); fi
     if [[ -n "$PLAYER_NAME" ]]; then it+=("$((_n++)) Stats"); act+=(stats)
     else it+=($'\x01'"$((_n++)) Stats"); act+=(x); fi
     it+=("$((_n++)) Options"); act+=(opts)
@@ -5480,6 +5542,7 @@ _main_menu() {
     case "${act[$REPLY]}" in
       cont) _run_loop;;
       daily) daily;;
+      practice) _practice_menu;;
       new) if [[ -n "$PLAYER_NAME" ]] && { ((LVL>1||QI>0||BOSS_BEATEN>0||PLACED_THROUGH>0)) || [[ -s "$DATA/scores" ]]; }; then
           printf '\n'; read -rp "  ${R}Reset all progress? [y/N]${N} " yn
           [[ "$yn" =~ ^[Yy] ]] || continue
