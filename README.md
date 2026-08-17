@@ -47,6 +47,9 @@ cd cmdchamp && make install
 
 ```bash
 cmdchamp                # Launch the game menu
+cmdchamp daily          # Play today's daily gauntlet (same run for everyone)
+cmdchamp daily 2026-02-16   # Replay a specific day's run (race a friend)
+cmdchamp play           # Free-play sandbox: type any command, see it run
 cmdchamp --no-sandbox   # Disable sandbox (text-match only)
 cmdchamp reset          # Clear all progress
 cmdchamp test           # Run self-tests
@@ -54,7 +57,9 @@ cmdchamp version        # Print version
 cmdchamp help           # Show help
 ```
 
-The menu holds continue, new game, scenarios, challenge mode, stats, and options. Hotkeys 1–7 jump straight to an item; `j`/`k` or arrows move; Enter selects.
+The menu holds continue, new game, scenarios, challenge, daily, practice, playground, stats, and options. Number hotkeys jump straight to an item; `j`/`k` or arrows move; Enter selects.
+
+**Daily** (post-ROOT) is a date-seeded gauntlet run — everyone gets the same chains that day, one scored attempt, a consecutive-day streak, and a copyable score you can share. **Practice** drills any reached level (shown with its mastery %) with hints and no timer, without touching your main progress. **Playground** is a safe sandbox REPL — type any command against real files, see the output, Tab explains what you typed. Nothing to break.
 
 ## Levels
 

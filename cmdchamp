@@ -4839,7 +4839,10 @@ _read_line() {
         _draw_buf
         if ((_man_open)); then
           # Playground explains what YOU typed; the game explains the question's answer.
-          local _exp_src=$ans; ((${_PLAY_EXPLAIN:-0})) && _exp_src=$input
+          # (Read $ans only off the game path — in the playground it isn't set, and set -u
+          # would abort the whole read loop.)
+          local _exp_src
+          if ((${_PLAY_EXPLAIN:-0})); then _exp_src=$input; else _exp_src=$ans; fi
           explain "$_exp_src" buf
           _LINES   # 9 = the header block and prompt already above the cursor
           if ((_EXP_LINES + 9 >= REPLY)); then _man_open=0; _man_full
@@ -6556,6 +6559,8 @@ Options:
                 without actually executing them)
 
 Commands:
+  daily [DATE]  Today's date-seeded gauntlet (post-ROOT); DATE replays a run
+  play          Free-play sandbox: type any command and see it run
   r|reset       Reset all progress (also removes sandbox cache)
   test          Run self-tests (no game state touched)
   v|version     Print version
@@ -6594,5 +6599,5 @@ EOF
   daily) _tty; _load_profile; _apply_opts; ((SANDBOX_MODE)) && _check_bwrap; daily "${2:-}";;
   play) _tty; _load_profile; _apply_opts; ((SANDBOX_MODE)) && _check_bwrap; play;;
   "") _tty; _load_profile; _apply_opts; ((SANDBOX_MODE)) && _check_bwrap; _main_menu;;
-  *) echo "Usage: cmdchamp [--no-sandbox] [reset|test|version|help|daily]"; echo "Run with no arguments for the game menu."; exit 1;;
+  *) echo "Usage: cmdchamp [--no-sandbox] [reset|test|version|help|daily|play]"; echo "Run with no arguments for the game menu."; exit 1;;
 esac
