@@ -731,6 +731,39 @@ _panel_check() {
   local rx=0; [[ $ans == '~'* ]] && rx=1   # a regex answer: only its command names are literal
   _EBUF=""; explain "$ans" q; _strip_ansi "$_EBUF"; local panel=$REPLY
   _strip_ansi "$prompt"; local pr=$REPLY
+
+  # Shell syntax is not a command and carries no flags, so both loops below skip
+  # it — this is the only thing standing between a player and an answer like
+  # `total=$(sort f | wc -l)` with nothing on the panel but sort's page.
+  # Detected here independently of _syn_legend, so a hole in either one shows up.
+  local bare="" qz2=0 dq2=0 ch ci
+  for ((ci=0; ci<${#ans}; ci++)); do ch=${ans:ci:1}   # keep only what the shell expands:
+    if ((qz2)); then [[ $ch == "'" ]] && qz2=0; continue; fi   # '...' is literal, "..."
+    [[ $ch == '\' ]] && { ((ci++)); continue; }                # expands, \$ does not, and
+    case "$ch" in '"') dq2=$((1 - dq2)); continue ;;           # an apostrophe inside "..."
+      "'") ((dq2)) || qz2=1; continue ;; esac                  # opens nothing
+    bare+=$ch
+  done
+  [[ $bare == *'$(('* ]] && { [[ "$panel" == *'$((expr))'* ]] || _fail "$label: \$(( not on the panel ($ans)"; }
+  local rest=${bare//'$(('/}                       # so a bare $(( is not read as $(
+  [[ $rest == *'$('*  ]] && { [[ "$panel" == *'$(cmd)'* ]] || _fail "$label: \$( not on the panel ($ans)"; }
+  [[ $bare == *'<('*  ]] && { [[ "$panel" == *'<(cmd)'* ]] || _fail "$label: <( not on the panel ($ans)"; }
+  [[ $bare == *'>('*  ]] && { [[ "$panel" == *'>(cmd)'* ]] || _fail "$label: >( not on the panel ($ans)"; }
+  [[ $bare == *'`'*   ]] && { [[ "$panel" == *'`cmd`'* ]] || _fail "$label: backtick not on the panel ($ans)"; }
+  [[ $bare == *'${'*  ]] && { [[ "$panel" == *'${'* ]]    || _fail "$label: \${ not on the panel ($ans)"; }
+  local a_cp=1 a_t; local -a a_toks
+  set -f; read -ra a_toks <<< "$bare"; set +f
+  for a_t in "${a_toks[@]}"; do
+    case "$a_t" in '|'|'|&'|'&&'|'||'|';'|'&'|export|declare|local|readonly|typeset|env) a_cp=1; continue ;; esac
+    if ((a_cp)) && [[ $a_t == [A-Za-z_]*=* && ${a_t%%=*} =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]; then
+      case ${a_t#*=} in
+        '('*) [[ "$panel" == *'arr=(a b c)'* ]] || _fail "$label: array assignment not on the panel ($ans)" ;;
+        *)    [[ "$panel" == *'var=value'* ]]   || _fail "$label: assignment not on the panel ($ans)" ;;
+      esac
+      continue
+    fi
+    a_cp=0
+  done
   local cp=1 lst=0 qz=0 t tt q body c ok
   local defined=" "                                  # `die() {...}; die x` defines its own command
   for t in "${toks[@]}"; do [[ $t == *'()' ]] && defined+="${t%'()'} "; done

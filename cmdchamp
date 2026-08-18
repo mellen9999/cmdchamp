@@ -392,7 +392,7 @@ SC_FLAVOR=(""
   "Bad commit hit main. Rewind, branch, fix, tag."
   "Rename, replace, archive - a legacy tree in one sweep."
   "An IP keeps hitting the box. Build the case from the logs."
-  "A backup job archives a writable dir with tar *. Turn that into code execution."
+  "A backup job tars a writable dir with tar *. Turn that into code execution."
   "A job calls a command by bare name. Own its PATH and read the secret.")
 
 _victory() {
@@ -1576,9 +1576,14 @@ _ascii_fold() {
   local d=$1
   ((_CAP_UNI)) && { REPLY=$d; return; }
   [[ $d != *[!$'\x01'-$'\x7f']* ]] && { REPLY=$d; return; }   # fast path: already ASCII
-  d=${d//$'-'/-}; d=${d//$'-'/-}; d=${d//$'→'/$_GAR}; d=${d//$'←'/<}
+  # em/en dash as raw bytes, not literals and not $'\u2014': as literals an editor once
+  # flattened both to a plain "-", leaving two no-op substitutions and a dead fold that
+  # shipped; and \u escapes expand to their own escape text outside a UTF-8 locale —
+  # which is the locale a legacy VT runs in, so they would die exactly where they matter.
+  d=${d//$'\xe2\x80\x94'/$_GDASH}; d=${d//$'\xe2\x80\x93'/$_GDASH}
+  d=${d//$'→'/$_GAR}; d=${d//$'←'/<}
   d=${d//$'↑'/$_GUP}; d=${d//$'↓'/$_GDN}; d=${d//$'·'/$_GDOT}; d=${d//$'×'/$_GMUL}
-  d=${d//$'≤'/$_GLE}; d=${d//$'≥'/$_GGE}; d=${d//$'≠'/$_GNE}; d=${d//$'≡'/$_GEQ}
+  d=${d//$'≤'/$_GLE}; d=${d//$'≥'/$_GGE}; d=${d//$'≠'/$_GNE}; d=${d//$'≡'/$_GEQ}; d=${d//$'≈'/'~'}
   d=${d//$'✓'/$_GOK}; d=${d//$'✗'/$_GNO}; d=${d//$'★'/$_GST}; d=${d//$'▸'/$_GTRI}
   d=${d//$'§'/S}; d=${d//$'…'/...}
   REPLY=$d
@@ -1617,6 +1622,13 @@ declare -A EXP=(
   [unlink]="remove exactly one file/link (safer than rm for single targets)"
   ['$$']="current shell PID" ['$?']="last exit code" ['$!']="last background PID"
   ['$#']="argument count" ['$@']="all arguments" ['$0']="script name"
+  ['$USER']="the login name of the current user" ['$HOME']="the current user's home directory"
+  ['$PWD']="the current directory" ['$OLDPWD']="the previous directory (cd - goes back to it)"
+  ['$HOSTNAME']="this machine's hostname" ['$SHELL']="the login shell, not necessarily the running one"
+  ['$PATH']="the colon-separated list of dirs a bare command name is searched in"
+  ['$RANDOM']="a fresh random integer 0-32767 on every read"
+  ['$LINENO']="the line number being executed" ['$OPTARG']="the value getopts read for the current flag"
+  ['$IFS']="the characters the shell splits words on (space, tab, newline)"
   ['!!']="repeat last command" ['!$']="last arg of prev cmd" ['!^']="first arg of prev cmd" ['!*']="all args of prev cmd"
   ['>']="write stdout to file (overwrite; output leaves the terminal)" ['>>']="append stdout to file (output leaves the terminal; use tee)"
   ['2>']="redirect stderr to file" ['&>']="redirect stdout+stderr to file"
@@ -1636,13 +1648,8 @@ declare -A EXP=(
   ['&&']="run next only if previous succeeds" ['||']="run next only if previous fails"
   ['&']="run in background (returns immediately)"
   ['a-z']="character range: all lowercase letters" ['A-Z']="character range: all uppercase letters" ['0-9']="character range: all digits"
-  ['${#var}']="string length" ['${var:-}']="default if unset" ['${var:=}']="set if unset"
-  ['${var:?}']="error if unset" ['${var:+}']="alt if set" ['${var#}']="remove prefix (short)"
-  ['${var##}']="remove prefix (long)" ['${var%}']="remove suffix (short)" ['${var%%}']="remove suffix (long)"
-  ['${var/}']="replace first" ['${var//}']="replace all" ['${var:n}']="substring from n"
-  ['${var:n:m}']="substring: offset n, length m" ['${var,,}']="lowercase" ['${var^^}']="uppercase"
+  # ${...} forms are rendered by _pe_key from the real expansion, not looked up here.
   [declare]="declare variable type" [mapfile]="read lines into array (same as readarray)" [readarray]="read lines into array (same as mapfile)"
-  ['${arr[@]}']="all array elements" ['${#arr[@]}']="array length" ['${!arr[@]}']="array indices"
   [if]="conditional execution" [then]="if body start" [else]="if alternative" [elif]="else if"
   [fi]="end if" [for]="loop over items" [while]="loop while true" [until]="loop until true"
   [do]="loop body start" [done]="end loop" [case]="pattern matching" [esac]="end case"
@@ -1750,6 +1757,130 @@ _esc_legend() {
   [[ "$_a" == *'\r'* ]] && _leg+="${Y}\\r${D}=return  "
   if [[ -n "$_leg" ]]; then local _t; printf -v _t '  %s\n' "${D}${_leg%  }${N}"; _EBUF+=$_t; REPLY=1; else REPLY=0; fi
 }
+# ── SHELL SYNTAX ────────────────────────────────────────────────────
+# No manpage covers `total=$(sort f | wc -l)` or `${var:-default}`, so an answer
+# built out of them used to render as the tools' pages and nothing else — the
+# whole of level 9 was "type it and hope". Keys print the placeholder names
+# var/cmd/pat on purpose: the panel teaches the FORM without handing back the
+# answer's own variable and value (Tab is a hint, not a spoiler).
+# Dynamic scope: appends to the caller's _EBUF, dedupes via _seen, counts in _n.
+_syn_add() {
+  [[ "$_seen" == *"|$1|"* ]] && return
+  _seen+="|$1|"; local _t
+  printf -v _t '%s %s\n' "${Y}${B}${1}${N}" "${D}- ${2}${N}"; _EBUF+=$_t; ((_n++))
+}
+
+# Classify the inside of a ${...}. The operator is whatever follows the parameter
+# name, so the name (and any [subscript]) is consumed first — matching on the
+# operator characters alone mislabels ${path##*/} as a replacement, because its
+# PATTERN contains a slash.
+_pe_key() {
+  local _in=$1 _rest _i=0 _c _sub=0
+  _PEK="" _PEG=""
+  case $_in in
+    '#'*) case ${_in#\#} in
+        *'[@]'|*'[*]') _PEK='${#arr[@]}' _PEG='how many elements the array has';;
+        *)             _PEK='${#var}'    _PEG='length of the value, in characters';;
+      esac; return;;
+    '!'*) case ${_in#!} in
+        *'[@]'|*'[*]') _PEK='${!arr[@]}' _PEG='the array indices, not the values';;
+        *)             _PEK='${!var}'    _PEG='indirect: the value of the variable var names';;
+      esac; return;;
+    '@'|'*') _PEK='${@}' _PEG='every argument the script was called with'; return;;
+  esac
+  while ((_i < ${#_in})); do _c=${_in:_i:1}; [[ $_c == [A-Za-z0-9_] ]] || break; ((_i++)); done
+  _rest=${_in:_i}
+  if [[ $_rest == '['* ]]; then
+    case ${_rest%%]*} in '[@'|'[*') _sub=2;; *) _sub=1;; esac
+    _rest=${_rest#*]}
+  fi
+  case "$_rest" in
+    '')    case $_sub in
+             2) _PEK='${arr[@]}'   _PEG='every element of the array';;
+             1) _PEK='${arr[key]}' _PEG='one element, by index or key';;
+             *) _PEK='${var}'      _PEG='the value of var - braces keep it apart from text';;
+           esac;;
+    ':-'*) _PEK='${var:-word}'     _PEG='use word if var is unset or empty';;
+    ':='*) _PEK='${var:=word}'     _PEG='use word AND assign it to var if unset or empty';;
+    ':?'*) _PEK='${var:?word}'     _PEG='abort with word on stderr if var is unset or empty';;
+    ':+'*) _PEK='${var:+word}'     _PEG='use word only if var IS set';;
+    '##'*) _PEK='${var##pat}'      _PEG='strip the longest prefix matching pat';;
+    '#'*)  _PEK='${var#pat}'       _PEG='strip the shortest prefix matching pat';;
+    '%%'*) _PEK='${var%%pat}'      _PEG='strip the longest suffix matching pat';;
+    '%'*)  _PEK='${var%pat}'       _PEG='strip the shortest suffix matching pat';;
+    '/#'*) _PEK='${var/#pat/new}'  _PEG='replace pat with new, only at the start';;
+    '/%'*) _PEK='${var/%pat/new}'  _PEG='replace pat with new, only at the end';;
+    '//'*) _PEK='${var//pat/new}'  _PEG='replace every match of pat with new';;
+    '/'*)  _PEK='${var/pat/new}'   _PEG='replace the first match of pat with new';;
+    ',,'*) _PEK='${var,,}'         _PEG='the value lowercased';;
+    ','*)  _PEK='${var,}'          _PEG='first character lowercased';;
+    '^^'*) _PEK='${var^^}'         _PEG='the value uppercased';;
+    '^'*)  _PEK='${var^}'          _PEG='first character uppercased';;
+    '@'*)  _PEK='${var@Q}'         _PEG='the value re-quoted so the shell can read it back';;
+    ':'*)  case ${_rest#:} in
+             *:*) _PEK='${var:off:len}' _PEG='substring: len characters starting at off (0-based)';;
+             *)   _PEK='${var:off}'     _PEG='substring: everything from off onward (0-based)';;
+           esac;;
+  esac
+}
+
+# Name every expansion an answer relies on. Single-quoted spans are skipped: the
+# shell does not expand them, and awk's own $1/$NF live in there.
+_syn_legend() {
+  local _s=$1 _L=${#1} _i=0 _n=0 _seen="" _q=0 _c _c2 _c3 _j _d _nm _cp=1
+  local -a _st; set -f; read -ra _st <<< "$_s"; set +f
+  for _c in "${_st[@]}"; do
+    case "$_c" in
+      '|'|'|&'|'&&'|'||'|';'|'&') _cp=1; continue;;
+      export|declare|local|readonly|typeset|env) _cp=1; continue;;
+    esac
+    if ((_cp)) && [[ $_c == [A-Za-z_]*=* && ${_c%%=*} =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]; then
+      case ${_c#*=} in
+        '('*) _syn_add 'arr=(a b c)' 'array assignment - elements separated by spaces';;
+        *)    _syn_add 'var=value'   'assign a variable - no spaces around the =';;
+      esac
+      continue                       # `IFS= read` — an assignment keeps the command slot
+    fi
+    _cp=0
+  done
+  local _dq=0
+  while ((_i < _L)); do
+    _c=${_s:_i:1}
+    if ((_q)); then [[ $_c == "'" ]] && _q=0; ((_i++)); continue; fi
+    [[ $_c == '\' ]] && { _i=$((_i+2)); continue; }   # \$ and \" are literal, not syntax
+    case "$_c" in
+      '"') _dq=$((1 - _dq)); ((_i++)); continue;;
+      "'") ((_dq)) || _q=1; ((_i++)); continue;;   # an apostrophe inside "..." quotes nothing
+      '`') _syn_add '`cmd`' 'command substitution, older form - $(cmd) is the one to use'; ((_i++)); continue;;
+    esac
+    _c3=${_s:_i:3}; _c2=${_s:_i:2}
+    if [[ $_c3 == '$((' ]]; then
+      _syn_add '$((expr))' 'arithmetic: the value of expr, e.g. $((n+1))'; _i=$((_i+3))
+    elif [[ $_c2 == '$(' ]]; then
+      _syn_add '$(cmd)' 'command substitution: run cmd, put its output right here'; _i=$((_i+2))
+    elif [[ $_c2 == '<(' ]]; then
+      _syn_add '<(cmd)' 'process substitution: cmd output handed over as a file'; _i=$((_i+2))
+    elif [[ $_c2 == '>(' ]]; then
+      _syn_add '>(cmd)' 'process substitution: a file that feeds into cmd'; _i=$((_i+2))
+    elif [[ $_c2 == '${' ]]; then
+      _j=$((_i+2)); _d=1
+      while ((_j < _L)); do
+        case ${_s:_j:1} in '{') ((_d++));; '}') ((--_d == 0)) && break;; esac
+        ((_j++))
+      done
+      _pe_key "${_s:_i+2:_j-_i-2}"
+      [[ -n $_PEK ]] && _syn_add "$_PEK" "$_PEG"
+      _i=$((_j+1))
+    elif [[ $_c == '$' && ${_s:_i+1:1} == [A-Za-z_] ]]; then
+      _j=$((_i+1)); while ((_j < _L)) && [[ ${_s:_j:1} == [A-Za-z0-9_] ]]; do ((_j++)); done
+      _nm=${_s:_i:_j-_i}
+      [[ -n ${EXP[$_nm]:-} ]] && _syn_add "$_nm" "${EXP[$_nm]}"
+      _i=$_j
+    else ((_i++)); fi
+  done
+  REPLY=$_n
+}
+
 _canonical_cmd() {
   case "$1" in
     vol3|vol3.py|vol.py|volatility3|volatility) REPLY=vol;;
@@ -1867,6 +1998,7 @@ explain() {
       printf -v _t "%s %s\n" "${Y}${B}${tok}${N}" "${D}- ${exp}${N}"; _EBUF+=$_t
       ((_ml++))
     done
+    _syn_legend "$1"; ((_ml += REPLY))
     _esc_legend "$1"; ((_ml += REPLY))
     printf -v _t '%s\n' "${D}----------------------------------------${N}"; _EBUF+=$_t
     _EXP_LINES=$((_ml + 2))
@@ -1899,6 +2031,7 @@ explain() {
     fi
     case "$tok" in '|'|'|&'|'&&'|'||'|';'|'&'|'>'|'>>'|'<'|'<<<'|'2>'|'&>'|'2>&1') ;; *) _cp=0 ;; esac
   done
+  _syn_legend "$1"; ((n += REPLY))
   if ((n == 0)); then
     # No token had a manpage or explanation (unknown tool, or a regex-only answer): fall
     # back to echoing the answer. Wrap it — long level-26-30 commands and regex patterns
@@ -5779,12 +5912,18 @@ play() {
   fi
   _session_init; _mode_init play
   _PLAY_EXPLAIN=1
-  local _last="${D}(type a command and press Enter)${N}"
+  # Open on a real listing instead of a hand-kept file list: the fixture tree gets
+  # new files, a hardcoded line does not (the old one had drifted eight files out
+  # of date and overflowed 80 columns), and it shows on arrival that what you type
+  # really runs. TABSIZE=0 makes ls pad its columns with spaces, not tabs.
+  _COLS; local _last
+  _last="${D}\$ ls${N}"$'\n'"$(_sandbox_exec "TABSIZE=0 ls -CF -w $((REPLY > 20 ? REPLY - 1 : 79))" 5 2>&1 | head -n 8)"
   while true; do
     _REDRAW_HDR() {
-      printf '%s\e[H%s   %s\e[K\n\e[K\n' "$_SY" "${M}${B}PLAYGROUND${N}" "${D}${C}Tab${D} explains your command   ${C}q${D} quits${N}"
-      printf '%s\e[K\n%s\e[K\n\e[K\n' "${D}files: config.ini settings.yaml notes.txt todo.txt data/export.json *.py *.sh server.log${N}" "${D}--- output (each command runs on fresh files) ---${N}"
-      printf '%s\e[K\n' "$_last"
+      printf '%s\e[H%s   %s\e[K\n' "$_SY" "${M}${B}PLAYGROUND${N}" "${D}type a command, watch it run for real - nothing to break${N}"
+      printf '%s\e[K\n\e[K\n' "${D}${C}Tab${D} explains your command   ${C}${_GUP}${_GDN}${D} history   ${C}q${D} quits${N}"
+      printf '%s\e[K\n' "${D}--- output (every command starts from the same fresh files) ---${N}"
+      printf '\e[K\n%s\e[K\n' "$_last"
       printf '\e[K\n%s\e[K\n%s' "${D}--- your command ---${N}" "$_SN"
     }
     printf '\e[2J'; _REDRAW_HDR
@@ -5813,6 +5952,8 @@ play() {
           _last="${Y}${_c0}${N} ${D}needs a terminal the playground has none of. try a one-shot form: ${C}top -bn1${D}, ${C}ps aux${D}, or ${C}free -h${D}.${N}"
         fi;; esac
     [[ -z "$_last" ]] && _last="${D}(no output)${N}"
+    _last="${D}\$ ${input}${N}"$'\n'"$_last"   # the prompt line is cleared on Enter - keep
+                                              # the command visible above what it printed
   done
   _sandbox_reset  # leave the shared sandbox clean for the game
   _PLAY_EXPLAIN=0
@@ -5941,7 +6082,8 @@ _main_menu() {
     fi
     if [[ -n "$PLAYER_NAME" ]]; then it+=("$((_n++)) Practice"); act+=(practice)
     else it+=($'\x01'"$((_n++)) Practice"); act+=(x); fi
-    if ((SANDBOX_MODE)); then it+=("$((_n++)) Playground"); act+=(play)
+    # The one row whose name does not say what it is — every other mode is its own label.
+    if ((SANDBOX_MODE)); then it+=("$((_n++)) Playground  ${D}any command, real files, nothing graded${N}"); act+=(play)
     else it+=($'\x01'"$((_n++)) Playground (needs sandbox)"); act+=(x); fi
     # Stats/Options continue the numbering (every row is a digit hotkey; the list is
     # capped at 9 rows so a single read -rsn1 keypress always works). Quit is not a row —
