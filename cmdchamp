@@ -5412,6 +5412,7 @@ _quit() {
 
 input="" cursor=0 mode="insert" _rep=""
 declare -a UNDO_STACK=()  # Multi-level undo
+VI_VIS=-1                 # visual-mode anchor index; -1 = not selecting
 hdr() {
   local fire=""; ((streak>=FIRE_STREAK)) && fire="  ${Y}${B}* ON FIRE${N}"
   printf '\e[H%s\e[K\n%s\e[K\n%s\e[K\n' "${W}${B}${PLAYER_NAME:-anon}${N}${fire}" "${U}Level $1${N}: ${LEVEL_NAMES[$1]:-}" "${U}[$2/$3]${N}  ${C}Tab${N}${D}=manpage${N}"
@@ -5461,9 +5462,23 @@ _draw_buf() {
   # and the \e[nD cursor math (CUB never crosses rows), garbling narrow terminals.
   local _w=$((_RL_W - ${#PROMPT_CHAR} - 1)); ((_w < 8)) && _w=8
   local _off=0; ((cursor > _w - 1)) && _off=$((cursor - _w + 1))
-  local _vis="${input:_off:_w}" disp_cur=$((cursor - _off))
+  local _vis="${input:_off:_w}" disp_cur=$((cursor - _off)) _vlen
+  _vlen=${#_vis}
+  # Visual selection, highlighted in place. The window is sliced first, so a selection
+  # that runs off either edge is clipped to what is on screen. On a terminal with no
+  # attributes at all (dumb/NO_COLOR, where _IV is empty) the span still tracks — the
+  # cursor marks the moving end — it just isn't painted.
+  if ((VI_VIS >= 0)) && [[ -n "$_IV" ]]; then
+    local _ha=$((VI_VIS<cursor?VI_VIS:cursor)) _hb=$((VI_VIS<cursor?cursor:VI_VIS))
+    ((_ha < _off)) && _ha=$_off
+    ((_hb > _off + _vlen - 1)) && _hb=$((_off + _vlen - 1))
+    if ((_hb >= _ha)); then
+      local _da=$((_ha - _off)) _db=$((_hb - _off))
+      _vis="${_vis:0:_da}${_IV}${_vis:_da:_db-_da+1}${N}${_vis:_db+1}"
+    fi
+  fi
   _DB+="$_vis"
-  ((disp_cur < ${#_vis})) && printf -v _DB '%s\e[%dD' "$_DB" "$((${#_vis} - disp_cur))"
+  ((disp_cur < _vlen)) && printf -v _DB '%s\e[%dD' "$_DB" "$((_vlen - disp_cur))"
   _DB+=$'\e[?25h'
 }
 draw() { _draw_buf; printf '%s' "$_DB"; }
@@ -5623,17 +5638,64 @@ _vi_opcount() {
   _ic=${_ic:-1}; ((${#_ic} > 3 || _ic > 512)) && _ic=512
   REPLY=$(( $1 * _ic )); ((REPLY > 512)) && REPLY=512
 }
+# Visual mode. The buffer is one line, so charwise select is the whole story: v anchors
+# at the cursor, any motion extends the span, one operator acts on it. V takes the line
+# (vim's linewise and blockwise have nothing to hold on a single line). Returns 0 when
+# the key was a visual command and 1 to let the motion table handle it — which is how
+# every existing motion extends a selection without being listed here.
+_vi_visual() {
+  local _a _b _sel _i _ch _o=""
+  case "$c" in
+    v)   VI_VIS=-1; draw; return 0;;                                     # v again: cancel
+    V)   VI_VIS=0; cursor=$((${#input}>0?${#input}-1:0)); draw; return 0;;
+    o)   _a=$VI_VIS; VI_VIS=$cursor; cursor=$_a; draw; return 0;;        # swap ends
+    d|x|c|s|y|Y|\~|r|p|P) ;;
+    *)   return 1;;
+  esac
+  if ((VI_VIS < cursor)); then _a=$VI_VIS _b=$cursor; else _a=$cursor _b=$VI_VIS; fi
+  ((_b >= ${#input})) && _b=$((${#input}>0?${#input}-1:0))
+  ((_a > _b)) && _a=$_b
+  _sel="${input:_a:_b-_a+1}"
+  UNDO_STACK+=("$cursor:$input")
+  case "$c" in
+    y|Y) _vi_reg="$_sel"; cursor=$_a;;
+    d|x) _vi_reg="$_sel"; input="${input:0:_a}${input:_b+1}"; cursor=$_a; _clamp;;
+    c|s) _vi_reg="$_sel"; input="${input:0:_a}${input:_b+1}"; cursor=$_a; mode="insert";;
+    \~) for ((_i=0;_i<${#_sel};_i++)); do _ch="${_sel:_i:1}"
+           if [[ "$_ch" =~ [a-z] ]]; then _upper "$_ch"; _ch=$REPLY
+           elif [[ "$_ch" =~ [A-Z] ]]; then _lower "$_ch"; _ch=$REPLY; fi
+           _o+="$_ch"; done
+         input="${input:0:_a}${_o}${input:_b+1}"; cursor=$_a;;
+    r)   _vi_read
+         if [[ -n "$c2" && "$c2" != $'\x1b' ]]; then
+           printf -v _o '%*s' "${#_sel}" ''
+           input="${input:0:_a}${_o// /$c2}${input:_b+1}"; cursor=$_a
+         else unset 'UNDO_STACK[-1]'; fi;;
+    p|P) # vim: the register replaces the selection, and the selection becomes the register
+         _o="$_vi_reg"
+         local _av=$((512 - ${#input} + ${#_sel})); ((_av < 0)) && _av=0
+         ((${#_o} > _av)) && _o="${_o:0:_av}"
+         input="${input:0:_a}${_o}${input:_b+1}"; _vi_reg="$_sel"
+         cursor=$((_a + ${#_o} - 1)); ((cursor < 0)) && cursor=0; _clamp;;
+  esac
+  VI_VIS=-1; draw; return 0
+}
+
 _vi_normal() {
   if [[ "$c" =~ ^[1-9]$ ]] || { [[ "$c" == "0" ]] && [[ -n "$_rep" ]]; }; then _rep+="$c"; return 1; fi
   # Clamp the count: an unbounded one freezes the session (999999999w) and a 20-digit
   # one silently overflows int64. Length test first — short-circuits before the arithmetic.
   local _n=${_rep:-1}; _rep=""; ((${#_n} > 3 || _n > 512)) && _n=512
+  # A live selection claims the operator keys; motions fall through and extend it.
+  ((VI_VIS >= 0)) && _vi_visual && return 1
   # Snapshot before any handler mutates cursor/input — i/a/A/I included, so the text
   # typed in the insert session they open is undoable as one step.
   case "$c" in i|a|A|I|s|S|x|X|D|C|d|c|r|'~'|p|P) UNDO_STACK+=("$cursor:$input");; esac
   case "$c" in
     i) mode="insert"; draw;; a) mode="insert"; ((cursor<${#input})) && ((++cursor)); draw;;
     A) mode="insert"; cursor=${#input}; draw;; I) mode="insert"; cursor=0; draw;;
+    v) ((${#input}>0)) && { VI_VIS=$cursor; draw; };;
+    V) ((${#input}>0)) && { VI_VIS=0; cursor=$((${#input}-1)); draw; };;
     s) ((${#input}>0)) && { _vi_reg="${input:cursor:1}"; input="${input:0:cursor}${input:cursor+1}"; }; mode="insert"; draw;;
     S) _vi_reg="$input"; input="" cursor=0 mode="insert"; draw;;
     h) for ((_i=0;_i<_n&&cursor>0;_i++)); do ((cursor--)); done; draw;;
@@ -5679,14 +5741,16 @@ _vi_normal() {
     $'\x1b') local _e1 _e2; read -rsn1 -t 0.01 _e1 || _e1=""
       if [[ "$_e1" == "[" ]]; then read -rsn1 -t 0.01 _e2 || _e2=""
         if [[ "$_e2" == "2" ]]; then _paste_start && { _paste_insert; draw; }
-        else case "$_e2" in A) _vi_hist -1 && draw;; B) _vi_hist 1 && draw;; C) ((cursor<${#input}-1)) && ((++cursor)) && draw;; D) ((cursor>0)) && ((cursor--)) && draw;; *) [[ "$_e2" =~ ^[0-9\;]$ ]] && _csi_drain;; esac; fi; fi;;
+        else case "$_e2" in A) _vi_hist -1 && draw;; B) _vi_hist 1 && draw;; C) ((cursor<${#input}-1)) && ((++cursor)) && draw;; D) ((cursor>0)) && ((cursor--)) && draw;; *) [[ "$_e2" =~ ^[0-9\;]$ ]] && _csi_drain;; esac; fi
+      elif ((VI_VIS >= 0)); then VI_VIS=-1; draw; fi;;   # bare Esc drops the selection
     $'\x04') _quit;;
     q) _quit;;
     :) ;;
-    \?) ((_rl_hints)) && { printf '\n%s\n%s\n%s\n%s\n\n%s\n%s\n%s\n%s\n%s\n%s\n' \
+    \?) ((_rl_hints)) && { printf '\n%s\n%s\n%s\n%s\n%s\n\n%s\n%s\n%s\n%s\n%s\n%s\n' \
       "${C}hl${N} move  ${C}kj${N} history  ${C}wb${N} word  ${C}fFtT${N}+char find  ${C};,${N} repeat find  ${C}0\$^/gg/G${N} line" \
       "${C}x/X${N} del char  ${C}dw/db/de/dd${N} del  ${C}cw/cb/ce/cc${N} change  ${C}r${N} replace  ${C}~${N} case" \
       "${C}y${N}+motion yank  ${C}p/P${N} paste  ${C}s/S${N} subst  ${C}i/a/I/A${N} insert  ${C}u${N} undo(stack)" \
+      "${C}v${N} visual  ${C}V${N} whole line  ${C}o${N} swap ends  ${D}then${N} ${C}d y c x s r ~ p${N}  ${C}Esc${N} cancel" \
       "${C}Tab${N} man  ${C}Ctrl+d${N} menu  ${C}Ctrl+w${N} del word  ${C}Ctrl+u${N} del line  ${C}[num]cmd${N} repeat" \
       "${U}vi mode for your shell${N} ${D}(~/.inputrc):${N}" \
       "${D}  set editing-mode vi${N}" \
@@ -5732,7 +5796,7 @@ _read_line() {
   local _rl_hints=${1:-1} _rl_hist=${2:-1} _rl_timeout=${3:-0} _rl_deadline=0 _rc=0
   input="" cursor=0 mode="insert" _rep="" _man_open=0
   UNDO_STACK=()
-  _vi_reg="" _vi_lastf=""
+  _vi_reg="" _vi_lastf="" VI_VIS=-1
   local _rl_last_sec=0 _rl_resized=0
   # Resize handling: SIGWINCH sets a flag (async-safe minimal), acted on at the loop
   # top — recompute width, drop the wrap cache, full redraw. Without this the width is
@@ -7930,7 +7994,7 @@ Tips:
   - Press Tab during a question to see the relevant manpage.
   - ${_GUP}/${_GDN} (or k/j in vi normal mode) recall input history.
   - Vi mode (Options menu): Esc → normal, i/a → insert, h/l/w/b move,
-    dw/cw delete/change word.
+    dw/cw delete/change word, v/V select then d/y/c.
   - Beat the boss of each level to unlock the next. Boss runs without
     manpages.
   - Some levels (network, hashcrack, forensics, privesc) run their

@@ -1144,6 +1144,23 @@ phase12_line_editor() {
     "G|foo ba|foo bar${E}|G|x"
     "yw then p|foo bbarar|foo bar${E}|b|yw|p"
     "yw then P|foo barbar|foo bar${E}|b|yw|P"
+    # visual mode — cross-checked against vis(1), a real vi
+    "v d one char|oo bar|foo bar${E}|0|v|d"
+    "ve d word| bar|foo bar${E}|0|ve|d"
+    "vee d two words| baz|foo bar baz${E}|0|vee|d"
+    "v\$ d to end||foo bar${E}|0|v\$|d"
+    "vb d backwards|foo |foo bar${E}|\$|vb|d"
+    "V d whole line||foo bar${E}|V|d"
+    "v x deletes|oo bar|foo bar${E}|0|v|x"
+    "ve c change|hi bar|foo bar${E}|0|vec|hi"
+    "ve tilde|FOO bar|foo bar${E}|0|ve|~"
+    "ve r fills|xxx bar|foo bar${E}|0|ve|rx"
+    "ve y then P|foofoo bar|foo bar${E}|0|vey|0P"
+    "vo swaps ends|ar|foo bar${E}|\$|vbo|0d"
+    "v esc cancels|foo bar|foo bar${E}|0|ve|${E}"
+    "vv cancels|foo bar|foo bar${E}|0|vev"
+    "u after v d|foo bar|foo bar${E}|0|ved|u"
+    "v on empty line|hi|${E}|v|i|hi"
   )
   local c name exp
   local IFS='|'
@@ -1170,7 +1187,7 @@ phase12_line_editor() {
     elif ((${#REPLY} > 512)); then _fail "editor fuzz #$i (seed $seed): buffer grew to ${#REPLY} (cap 512)"
     else _ok; fi
   done
-  printf '  keystroke runs: %d (28 vi + 7 insert + 40 fuzz, seed %d)   broken: %d\n' "$cases" "$seed" "$((FAIL - before))"
+  printf '  keystroke runs: %d (44 vi + 7 insert + 40 fuzz, seed %d)   broken: %d\n' "$cases" "$seed" "$((FAIL - before))"
 }
 
 # ═══════════════════════════════════════════════════════════════════
