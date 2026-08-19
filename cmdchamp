@@ -5243,7 +5243,11 @@ _sandbox_validate() {
   fi
   # Redirect sandbox stderr to a file so it stays off-screen and out of the graded
   # output; the contents aren't inspected, only kept from leaking into the UI.
-  output=$(_sandbox_exec "$inp" 5 2>"$SANDBOX_DIR/.stderr"); _sb_rc=$?
+  # NULs stripped before bash sees them: a command whose output is binary (cat on the
+  # forensics sample, say) otherwise makes the command substitution print "ignored null
+  # byte in input" onto the question screen. Expected outputs are text, so dropping them
+  # cannot change a verdict. PIPESTATUS, or the exit code would be tr's.
+  output=$(_sandbox_exec "$inp" 5 2>"$SANDBOX_DIR/.stderr" | tr -d '\000'); _sb_rc=${PIPESTATUS[0]}
   _is_destructive "$inp" && _SANDBOX_DESTRUCTIVE=1
   # Reject command-not-found (127) and cannot-execute (126)
   ((_sb_rc == 127 || _sb_rc == 126)) && { ((_req_fail)) && _SANDBOX_REQUIRE_FAIL=1; return 1; }
@@ -6673,6 +6677,12 @@ _play_card() {
   _pause
 }
 
+# What the playground prints is whatever the player's command produced, and that can be
+# a binary file. NUL makes bash warn on the terminal mid-frame; SO/SI and the other C0
+# controls leave the terminal in line-drawing mode or overwrite the frame with CR. Tab,
+# newline and ESC stay — colour output from ls or grep is worth keeping.
+_play_sanitize() { tr -d '\000-\010\013-\032\034-\037\177'; }
+
 play() {
   if ! ((SANDBOX_MODE)) || ! _check_bwrap; then
     printf '%s\e[2J\e[H%s\n\n%s\n%s' "$_SY" "${M}${B}${_H3} PLAYGROUND ${_H3}${N}" \
@@ -6703,7 +6713,7 @@ play() {
   # files, a hardcoded line does not, and it shows on arrival that what you type really
   # runs. TABSIZE=0 makes ls pad its columns with spaces, not tabs.
   _COLS
-  _last="${D}\$ ls${N}"$'\n'"$(_sandbox_exec "TABSIZE=0 ls -CF -w $((REPLY > 20 ? REPLY - 1 : 79))" 5 2>&1 | head -n 8)"
+  _last="${D}\$ ls${N}"$'\n'"$(_sandbox_exec "TABSIZE=0 ls -CF -w $((REPLY > 20 ? REPLY - 1 : 79))" 5 2>&1 | _play_sanitize | head -n 8)"
   while true; do
     _REDRAW_HDR() {
       local _fc=${#_flags[@]} _fcol=$D; ((_fc)) && _fcol=$G; ((_PLAY_FLAG_TOTAL && _fc >= _PLAY_FLAG_TOTAL)) && _fcol="${G}${B}"
@@ -6711,7 +6721,9 @@ play() {
       printf '%s\e[K\n\e[K\n' "${D}${C}map${D} chain  ${C}learn${D} syllabus  ${C}hint${D} nudge  ${C}Tab${D} explains  ${C}reset${D} restores  ${C}q${D} quits${N}"
       printf '%s\e[K\n' "${D}--- output ---${N}"
       printf '\e[K\n%s\e[K\n' "$_last"
-      [[ -n "$_note" ]] && printf '\e[K\n%s\e[K\n' "$_note"
+      # The note is prose the game wrote, not command output, so it wraps. A captured
+      # flag's teaching line ran to 154 columns and sheared the frame under it.
+      [[ -n "$_note" ]] && { _pfmt "$_note"; printf '\e[K\n%s\e[K\n' "$REPLY"; }
       printf '\e[K\n%s\e[K\n%s' "${D}--- your command ---${N}" "$_SN"
     }
     printf '\e[2J'; _REDRAW_HDR
@@ -6737,7 +6749,7 @@ play() {
     rm -f "$SANDBOX_DIR/.cc_pwd"
     local _wrapped="cd '/sandbox${_cwd}' 2>/dev/null || cd /sandbox"$'\n'"$input"$'\n''printf %s "$PWD" > /sandbox/.cc_pwd 2>/dev/null'
     # 200 lines is the memory bound (head SIGPIPEs a runaway producer); 12 is what fits.
-    local _raw; _raw=$(_sandbox_exec "$_wrapped" 8 2>&1 | head -n 200)
+    local _raw; _raw=$(_sandbox_exec "$_wrapped" 8 2>&1 | _play_sanitize | head -n 200)
     local _newpwd=""; [[ -f "$SANDBOX_DIR/.cc_pwd" ]] && _newpwd=$(<"$SANDBOX_DIR/.cc_pwd")
     rm -f "$SANDBOX_DIR/.cc_pwd"
     # Only accept a plain path under /sandbox - anything else (a dir with a quote in its
@@ -6767,11 +6779,11 @@ play() {
     # forms like `top -bn1` still work) and point at the right surface instead.
     case " vi vim nvim nano emacs joe view " in
       *" $_c0 "*) if [[ "$_last" == *"failed tty get"* || "$_last" == *"Inappropriate ioctl"* || "$_last" == *"terminal"* || "$_last" == *"not a tty"* || "$_last" == *"command not found"* ]]; then
-          _last="${Y}${_c0}${N} ${D}can't open here — but cmdchamp's own answer line IS a vi editor: press ${C}Esc${D} for normal mode, ${C}?${D} for every binding. the playground runs non-interactive commands.${N}"; _note=""
+          _pfmt "${Y}${_c0}${N} ${D}can't open here — but cmdchamp's own answer line IS a vi editor: press ${C}Esc${D} for normal mode, ${C}?${D} for every binding. the playground runs non-interactive commands.${N}"; _note=""; _last=$REPLY
         fi;; esac
     case " top htop atop iotop btop bashtop watch tmux screen byobu " in
       *" $_c0 "*) if [[ "$_last" == *"failed tty get"* || "$_last" == *"Inappropriate ioctl"* || "$_last" == *"terminal"* || "$_last" == *"not a tty"* ]]; then
-          _last="${Y}${_c0}${N} ${D}needs a terminal the playground has none of. try a one-shot form: ${C}top -bn1${D}, ${C}ps aux${D}, or ${C}free -h${D}.${N}"; _note=""
+          _pfmt "${Y}${_c0}${N} ${D}needs a terminal the playground has none of. try a one-shot form: ${C}top -bn1${D}, ${C}ps aux${D}, or ${C}free -h${D}.${N}"; _note=""; _last=$REPLY
         fi;; esac
     [[ -z "$_last" ]] && _last="${D}(no output)${N}"
     _last="${D}\$ ${input}${N}"$'\n'"$_last"   # the prompt line is cleared on Enter - keep

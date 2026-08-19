@@ -1011,8 +1011,21 @@ phase10_render_smoke() {
     _render_check "pfmt at $_w2 cols" "COLUMNS=$_w2; _pfmt \"$_longest\"; printf '%s\\n' \"\$REPLY\""
     ((screens++))
   done
+  # The playground's flag note is the longest line the game composes at runtime: it
+  # names the technique, the module and two follow-up commands, and ran to 154 columns.
+  local _fk
+  for _fk in "${_PLAY_FLAG_ORDER[@]}"; do
+    _render_check "flag note ${_fk}" \
+      "_n=\"\${G}\${_GOK} flag captured\${N} \${D}- \${_PLAY_FLAG_TECH[$_fk]}. module \${_PLAY_FLAG_MOD[$_fk]} (\${PLAY_MOD_NAME[\${_PLAY_FLAG_MOD[$_fk]}]}) proven. \${C}learn \${_PLAY_FLAG_MOD[$_fk]}\${D} for why it matters. \${C}hint\${D} for the next trail.\${N}\"; _pfmt \"\$_n\"; printf '%s\\n' \"\$REPLY\""
+    ((screens++))
+  done
   if grep -q '\${C}\${prompt}\${N}' "$CMDCHAMP"; then
     _fail "render: a timed-mode header still prints the prompt unwrapped (use _pfmt)"
+  else _ok; fi
+  # Same shape, different surface: the playground note is prose the game composes, and
+  # calling _pfmt somewhere else does not help if the header prints the raw string.
+  if grep -q 'printf .*%s.*"\$_note"' "$CMDCHAMP"; then
+    _fail "render: the playground header still prints its note unwrapped (use _pfmt)"
   else _ok; fi
 
   printf '  screens drawn: %d   longest prompt: %d cols   broken: %d\n' "$screens" "${#_longest}" "$((FAIL - before))"
@@ -1676,11 +1689,18 @@ source "$1"
 PLAYER_NAME=driver
 _pause() { :; }
 sleep() { :; }
+# The selector waits on a keypress; the bot has none. Print the rows and back out,
+# which is what a player pressing q does.
+_sel() { printf '%s\n' "$1" "${@:2}"; REPLY=0; return 1; }
 # AD_MAX is a runaway guard, not a scenario: the gauntlet never ends for a bot that
 # never misses, so each mode gets its own budget. AD_WRONG misses on purpose.
-AD_WRONG=0 AD_MAX=4000 AD_N=0
+AD_WRONG=0 AD_MAX=4000 AD_N=0; declare -a AD_CMDS=()
 _ad_budget() { AD_N=0; AD_MAX=$1; AD_WRONG=${2:-0}; _QUIT=0; }
 _read_line() {
+  # A queued script wins when there is one — that is how the playground, which has no
+  # questions and no canonical answer, gets driven. Empty queue ends the session.
+  if ((${#AD_CMDS[@]})); then input=${AD_CMDS[0]}; AD_CMDS=("${AD_CMDS[@]:1}"); ((++AD_N)); return 0; fi
+  [[ "${AD_MODE:-}" == script ]] && { _QUIT=1; input=""; return 2; }
   input="$_qans"
   ((AD_WRONG > 0)) && { input="nonsense not-an-answer"; ((AD_WRONG--)); }
   ((++AD_N)); ((AD_N > AD_MAX)) && { _QUIT=1; input=""; return 2; }
@@ -1693,13 +1713,17 @@ RUNNER
 # _ad_drive <name> <key fed to blocking reads> <code>. Fails on a hang, a bash error,
 # a dirty stderr, or a line wider than 79 columns anywhere in the transcript.
 _ad_drive() {
-  local name=$1 key=$2 code=$3 rc wide
+  local name=$1 key=$2 code=$3 nowidth=${4:-} rc wide
   : > "$_AD_ERR"
   yes "$key" 2>/dev/null | COLUMNS=79 XDG_DATA_HOME="$_AD_DIR" timeout 300 \
     bash "$_AD_RUN" "$_AD_SRC" "$code" >"$_AD_OUT" 2>"$_AD_ERR"
   rc=${PIPESTATUS[1]}
   if ((rc == 124)); then _fail "playthrough $name: hung (300s)"; return 1; fi
   if [[ -s "$_AD_ERR" ]]; then _fail "playthrough $name: stderr — $(head -c 100 "$_AD_ERR")"; return 1; fi
+  # The playground prints whatever the player's command produced, and real output can be
+  # any width — `cat /proc/1/environ` is one long line in any shell. Its own frame lines
+  # are measured exhaustively by phases 10 and 11 instead.
+  [[ "$nowidth" == nowidth ]] && return 0
   wide=$(sed -e 's/\x1b\[[0-9;?]*[a-zA-Z]//g' -e 's/\x1b[()][A-Z0-9]//g' -e 's/\x1b[=>78]//g' "$_AD_OUT" \
     | awk 'length($0) > 79 { print length($0) ": " substr($0,1,60); exit }')
   if [[ -n "$wide" ]]; then _fail "playthrough $name: line past 79 cols — $wide"; return 1; fi
@@ -1814,7 +1838,44 @@ phase14_playthrough() {
     _ad_expect "placement places" "@PLACE beaten=$MAX_LEVEL placed=$MAX_LEVEL" 1
   fi
 
-  printf '  playthrough: %d levels + %d scenarios + challenge/daily/practice/placement   broken: %d\n' \
+  # ── 8. the playground, driven by a typed script ──────────────────
+  # The one surface that runs arbitrary input, so it is also the one where a stray
+  # keystroke has to be survivable. Needs a sandbox; without one it refuses politely
+  # and there is nothing to drive.
+  if ((SANDBOX_MODE)); then
+    local _pt="$XDG_DATA_HOME/play_tmp"; rm -rf "$_pt"; mkdir -p "$_pt"
+    if TMPDIR="$_pt" _ad_drive "playground" '' '
+        SANDBOX_MODE=1; _check_bwrap; _load_profile
+        AD_MODE=script
+        AD_CMDS=(
+          "ls -la" "map" "learn" "learn 3" "learn 99" "hint" "hint" "hint" "hint"
+          "cd web" "ls" "cat config.php" "cd .." "pwd"
+          "grep -ri flag{ . | head -3"
+          "tar tzf archive/site-backup.tar.gz"
+          "cat /proc/1/environ" "id" "hostname" "cat /proc/cmdline"
+          "rm -rf /" "rm -rf *" "ls"
+          "reset" "ls"
+          "?" ":(){ :|:& };:" "while :; do :; done"
+          "echo \$(id) \`whoami\`" "printf %s%s%s" "cat" "sudo -l"
+          "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          "q"
+        )
+        printf "@PLAYSTART tmp=%d\n" "$(ls -d "$TMPDIR"/cmdchamp.* 2>/dev/null | wc -l)"
+        play
+        printf "@PLAYEND tmp=%d\n" "$(ls -d "$TMPDIR"/cmdchamp.* 2>/dev/null | wc -l)"' nowidth; then
+      _ad_expect "playground starts clean" "@PLAYSTART tmp=0" 1
+      # Both mktemp trees (the box and its pristine copy) must be gone on the way out —
+      # a session that leaves them behind fills /tmp one playground at a time.
+      _ad_expect "playground leaves no temp dirs" "@PLAYEND tmp=0" 1
+      _ad_expect "playground drew its own frame" "PLAYGROUND" "min:1"
+      _ad_expect "the kill-chain map drew" "learn" "min:1"
+    fi
+    rm -rf "$_pt"
+  else
+    _warn "playthrough: no bwrap — the playground was not driven"
+  fi
+
+  printf '  playthrough: %d levels + %d scenarios + playground + challenge/daily/practice/placement   broken: %d\n' \
     "$MAX_LEVEL" "$SC_TOTAL" "$((FAIL - before))"
 }
 
