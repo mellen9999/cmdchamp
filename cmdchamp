@@ -456,12 +456,12 @@ PLAY_MOD_SCEN=("" 5 0 2 11 0 11 12 3)   # crafted scenario that drills this modu
 PLAY_PHASE_TOTAL=6
 PLAY_PHASE_NAME=("" "recon" "access" "escalation" "persistence" "loot" "cleanup")
 PLAY_PHASE_DID=("" \
-  "orient the box - read the config and the intruder's own shell history" \
-  "brute force, then one stolen key, got them a shell as deploy" \
-  "deploy sudo'd to root and parked a second uid-0 account to keep it" \
-  "a cron beacon, an extra ssh key, a hidden root home - ways back in" \
-  "creds and data: encoded, compressed, archived, or locked behind a crackable key" \
-  "history -c, a timestomp, an rm - they tried to erase the trail and missed")
+  "read the config and the intruder's own shell history" \
+  "brute force, then one stolen key, got a shell as deploy" \
+  "deploy sudo'd to root, parked a 2nd uid-0 account to stay" \
+  "a cron beacon, a spare ssh key, a hidden root home" \
+  "creds + data: encoded, zipped, archived, or behind a crack" \
+  "history -c, a timestomp, an rm - and they still missed")
 PLAY_PHASE_ART=("" \
   ".env  .bash_history  samples/target.bin" \
   "incident/auth.log  .ssh/authorized_keys  .ssh/known_hosts" \
@@ -6328,13 +6328,14 @@ _play_card() {
                 "${D}can touch your machine. this is a frozen crime scene - take it apart.${N}" ''
   printf '%s\n' "${W}the box:${N} ${D}someone got in, used it, then tried to tidy up - history -c, an${N}" \
                 "${D}rm, a note 'encrypted'. they failed; every move left a mark on disk.${N}" ''
-  printf '%s %s\n\n' "${Y}${B}${#_fl[@]}/${_PLAY_FLAG_TOTAL} flags${N}" "${D}each proves one technique. more of the box unlocks as you clear levels.${N}"
+  printf '%s %s\n\n' "${Y}${B}${#_fl[@]}/${_PLAY_FLAG_TOTAL} flags${N}" "${D}each proves one technique · the box grows as you clear levels${N}"
   printf '%s\n' "${W}start here:${N}"
   printf '  %-30s %s\n'   "${C}map${N}"               "${D}the whole break-in at a glance - start here${N}"
   printf '  %-30s %s\n'   "${C}ls -la${N}"            "${D}dotfiles are where it starts${N}"
   printf '  %-30s %s\n'   "${C}cat .bash_history${N}" "${D}the intruder's confession - it names the rest${N}"
   printf '  %-30s %s\n\n' "${C}learn${N}"            "${D}the syllabus: every technique, why it lasts${N}"
-  printf '%s\n' "${D}${C}map${D} the break-in  ${C}learn${D} syllabus  ${C}hint${D} nudge (repeat=deeper)  ${C}reset${D} restores  ${C}Tab${D} explains  ${C}q${D} back${N}"
+  printf '%s\n' "${D}${C}map${D} the break-in   ${C}learn${D} the syllabus   ${C}hint${D} nudge (repeat = deeper)${N}"
+  printf '%s\n' "${D}${C}reset${D} restores   ${C}Tab${D} explains any command   ${C}q${D} back${N}"
   _pause
 }
 
@@ -6487,17 +6488,22 @@ _play_mod_state() {
 _play_learn() {
   local -n _fl=$1; local _SEL_CUR=0 i n=$PLAY_MOD_TOTAL prov=0 st
   for ((i=1;i<=n;i++)); do [[ "$(_play_mod_state _fl "$i")" == proven ]] && ((prov++)); done
+  # _sel redraws rows with \e[K but only full-clears on first draw, so a row wider than the
+  # terminal wraps and corrupts navigation. Budget the concept column to the real width
+  # (name field 28 + marks/indent ~12) - wide terminals show it whole, narrow ones truncate.
+  _COLS; local _av=$(( REPLY - 40 )); ((_av < 16)) && _av=16
   while true; do
     local -a it=()
     for ((i=1;i<=n;i++)); do
-      st=$(_play_mod_state _fl "$i"); local mark tail
+      st=$(_play_mod_state _fl "$i"); local mark ct
       case $st in
-        proven)   mark="${G}${_GOK}${N}";  tail="${D}${PLAY_MOD_CONCEPT[$i]}${N}";;
-        open)     mark="${Y}${_GDOT}${N}"; tail="${D}${PLAY_MOD_CONCEPT[$i]}${N}";;
-        task)     mark="${C}${_GDOT}${N}"; tail="${D}${PLAY_MOD_CONCEPT[$i]}${N}";;
-        locked:*) mark="${D}${_GNO}${N}";  tail="${D}beat L${st#locked:} to hunt the flag - lesson readable now${N}";;
+        proven)   mark="${G}${_GOK}${N}";  ct=${PLAY_MOD_CONCEPT[$i]};;
+        open)     mark="${Y}${_GDOT}${N}"; ct=${PLAY_MOD_CONCEPT[$i]};;
+        task)     mark="${C}${_GDOT}${N}"; ct=${PLAY_MOD_CONCEPT[$i]};;
+        locked:*) mark="${D}${_GNO}${N}";  ct="beat L${st#locked:} - lesson readable now";;
       esac
-      local row; printf -v row '%s %-28s %s' "$mark" "${PLAY_MOD_NAME[$i]}" "$tail"
+      (( ${#ct} > _av )) && ct="${ct:0:_av-1}…"
+      local row; printf -v row '%s %-28s %s' "$mark" "${PLAY_MOD_NAME[$i]}" "${D}${ct}${N}"
       it+=("$row")
     done
     _SEL_BACK=1
@@ -6513,9 +6519,12 @@ _play_mod_detail() {
   local -n _fl=$1; local m=$2
   [[ "$m" =~ ^[0-9]+$ ]] && ((m>=1 && m<=PLAY_MOD_TOTAL)) || { _last="${D}\$ learn $m${N}"$'\n'"${R}no such module (1-${PLAY_MOD_TOTAL})${N}"; return 1; }
   printf '%s\e[2J\e[H%s %s\n\n' "$_SY" "${M}${B}${_H3} MODULE ${m} ${_H3}${N}" "${W}${B}${PLAY_MOD_NAME[$m]}${N}"
-  printf '%s %s\n\n'   "${Y}why it lasts${N}" "${D}${PLAY_MOD_CONCEPT[$m]}${N}"
-  printf '%s\n  %s\n'  "${W}try${N}"          "${C}${PLAY_MOD_TRY[$m]}${N}"
-  printf '  %s %s\n\n' "${D}${_GAR}${N}"      "${D}${PLAY_MOD_FOUND[$m]}${N}"
+  # Wrap prose to the real width (labels on their own line): a fixed-width terminal would
+  # otherwise hard-wrap these teaching lines mid-word. Commands wrap at their ` ; ` seams.
+  _COLS; local _cw=$REPLY
+  printf '%s\n'    "${Y}why it lasts${N}"; _wrap "${PLAY_MOD_CONCEPT[$m]}" "$((_cw-2))"; printf '  %s%s%s\n\n' "$D" "${REPLY//$'\n'/$'\n'  }" "$N"
+  printf '%s\n'    "${W}try${N}";          _wrap "${PLAY_MOD_TRY[$m]}"     "$((_cw-2))"; printf '  %s%s%s\n'   "$C" "${REPLY//$'\n'/$'\n'  }" "$N"
+  _wrap "${PLAY_MOD_FOUND[$m]}" "$((_cw-4))"; printf '  %s %s%s%s\n\n' "${D}${_GAR}${N}" "$D" "${REPLY//$'\n'/$'\n'    }" "$N"
   printf '%s %s\n'     "${R}attacker${N}"     "${D}${PLAY_MOD_ATK[$m]}${N}"
   printf '%s %s\n'     "${G}defender${N}"     "${D}${PLAY_MOD_DEF[$m]}${N}"
   local tok shown=0
@@ -6523,9 +6532,10 @@ _play_mod_detail() {
     [[ "${_PLAY_FLAG_MOD[$tok]:-0}" == "$m" ]] || continue
     ((shown++)) || printf '\n'
     if [[ -n "${_fl[$tok]:-}" ]]; then
-      printf '  %s %s  %s\n' "${G}${_GOK}${N}" "${G}${tok}${N}" "${D}${_PLAY_FLAG_LOC[$tok]}${N}"
+      printf '  %s %s\n' "${G}${_GOK}${N}" "${G}${tok}${N}"
+      _wrap "${_PLAY_FLAG_LOC[$tok]}" "$((_cw-6))"; printf '      %s%s%s\n' "$D" "${REPLY//$'\n'/$'\n'      }" "$N"
     elif [[ " ${_PLAY_PLANTED[*]} " == *" $tok "* ]]; then
-      printf '  %s %s\n' "${Y}?${N}" "${D}${_PLAY_FLAG_HINT[$tok]}${N}"
+      _wrap "${_PLAY_FLAG_HINT[$tok]}" "$((_cw-4))"; printf '  %s %s%s%s\n' "${Y}?${N}" "$D" "${REPLY//$'\n'/$'\n'    }" "$N"
     else
       printf '  %s %s\n' "${D}${_GNO}${N}" "${D}locked - beat L${_PLAY_FLAG_UNLOCK[$tok]} to hunt this one${N}"
     fi
@@ -6556,9 +6566,10 @@ _play_next_hint() {
       2) _body="the tool: ${W}${_PLAY_FLAG_TECH[$tok]}${N}${D}"; _foot="${C}hint${D} again shows the command";;
       *) _body="run: ${W}${_PLAY_FLAG_CMD[$tok]}${N}${D}";       _foot="then read the ${W}flag{...}${D} out of the output";;
     esac
+    _COLS; _wrap "$_body" "$((REPLY-2))"   # fit the real width; continuation lines keep the 2-indent
     printf -v _PLAY_HINT_OUT '%s\n%s\n%s' \
       "${Y}${B}hint${N} ${D}(module ${_mi}: ${PLAY_MOD_NAME[$_mi]}) · tier ${_lvl}/3${N}" \
-      "  ${W}${_body}${N}" \
+      "  ${W}${REPLY//$'\n'/$'\n'  }${N}" \
       "${D}${#_f[@]}/${_PLAY_FLAG_TOTAL} found · ${_foot} · ${C}learn${D} for the syllabus${N}"
     return
   done
