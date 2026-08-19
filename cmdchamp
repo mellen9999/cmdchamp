@@ -6486,8 +6486,8 @@ _play_mod_state() {
 # never locks - only the hands-on flag gates), so a beginner can learn the concept before the box
 # hands them the fixture. Enter -> detail, q/esc -> back to the shell.
 _play_learn() {
-  local -n _fl=$1; local _SEL_CUR=0 i n=$PLAY_MOD_TOTAL prov=0 st
-  for ((i=1;i<=n;i++)); do [[ "$(_play_mod_state _fl "$i")" == proven ]] && ((prov++)); done
+  local _SEL_CUR=0 i n=$PLAY_MOD_TOTAL prov=0 st
+  for ((i=1;i<=n;i++)); do [[ "$(_play_mod_state "$1" "$i")" == proven ]] && ((prov++)); done
   # _sel redraws rows with \e[K but only full-clears on first draw, so a row wider than the
   # terminal wraps and corrupts navigation. Budget the concept column to the real width
   # (name field 28 + marks/indent ~12) - wide terminals show it whole, narrow ones truncate.
@@ -6495,7 +6495,7 @@ _play_learn() {
   while true; do
     local -a it=()
     for ((i=1;i<=n;i++)); do
-      st=$(_play_mod_state _fl "$i"); local mark ct
+      st=$(_play_mod_state "$1" "$i"); local mark ct
       case $st in
         proven)   mark="${G}${_GOK}${N}";  ct=${PLAY_MOD_CONCEPT[$i]};;
         open)     mark="${Y}${_GDOT}${N}"; ct=${PLAY_MOD_CONCEPT[$i]};;
@@ -6508,7 +6508,7 @@ _play_learn() {
     done
     _SEL_BACK=1
     _sel "${M}${B}${_H3} SYLLABUS ${_H3}${N} ${D}applied security · crafted drills in Scenarios${N}  ${G}${prov}/${n}${N}" "${it[@]}" || return
-    _play_mod_detail _fl "$((REPLY+1))"
+    _play_mod_detail "$1" "$((REPLY+1))"
   done
 }
 
