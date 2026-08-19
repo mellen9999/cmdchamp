@@ -30,8 +30,20 @@ set -uo pipefail
 _tty() { [[ -t 0 ]] || { echo "Error: requires interactive terminal" >&2; exit 1; }; }
 command -v awk &>/dev/null || { echo "Error: awk not found" >&2; exit 1; }
 
+# Character ranges follow LC_COLLATE, and in tr_TR.UTF-8 "I" sorts outside [A-Z]:
+# the profile loader's ^[A-Z_]+$ key filter dropped every key holding one — PROFILE_VER
+# included — so the file read as version 0 and a Turkish player's progress was wiped
+# and re-backed-up on every single launch. Pin the categories that decide logic to C.
+# LC_CTYPE stays the player's, so ${#str} still counts characters and a UTF-8 handle
+# measures right; LC_ALL has to go because it outranks the per-category pins.
+_lc_ctype=${LC_ALL:-${LC_CTYPE:-${LANG:-}}}
+unset LC_ALL
+export LC_COLLATE=C LC_NUMERIC=C LC_TIME=C
+[[ -n "$_lc_ctype" ]] && export LC_CTYPE="$_lc_ctype"
+unset _lc_ctype
+
 DATA="${XDG_DATA_HOME:-${HOME:-/tmp}/.local/share}/cmdchamp"
-mkdir -p "$DATA" || { echo "Error: cannot create data dir: $DATA" >&2; exit 1; }
+mkdir -p "$DATA" 2>/dev/null || { echo "Error: cannot create data dir: $DATA" >&2; exit 1; }
 DATA="$(cd "$DATA" && pwd)" || { echo "Error: data dir unavailable: $DATA" >&2; exit 1; }  # absolute path (bwrap --bind needs it)
 touch "$DATA/scores" 2>/dev/null
 
@@ -149,6 +161,27 @@ _COLS() { local c=${COLUMNS:-0}; ((c > 0)) || c=$(tput cols 2>/dev/null) || c=80
 _LINES() { local r=${LINES:-0}; ((r > 0)) || r=$(tput lines 2>/dev/null) || r=24; ((r > 0)) || r=24; REPLY=$r; }
 
 _trim() { REPLY="${1#"${1%%[![:space:]]*}"}"; REPLY="${REPLY%"${REPLY##*[![:space:]]}"}"; }
+
+# Non-negative integer from untrusted text (profile fields, hand edits, half-written
+# files). A leading zero makes bash read the value as octal: "010" quietly becomes 8
+# and "08" is a fatal arithmetic error that then poisons every ((...)) for the rest of
+# the session. Force base 10, refuse anything past int64 rather than wrapping negative,
+# and clamp to $2 when a ceiling is given.
+_uint() {
+  local _v=${1:-} _max=${2:-}
+  [[ "$_v" =~ ^[0-9]+$ ]] || { REPLY=0; return 1; }
+  while [[ "$_v" == 0?* ]]; do _v="${_v#0}"; done   # no extglob in this script
+  ((${#_v} > 18)) && { REPLY=${_max:-0}; return 0; }
+  REPLY=$((10#$_v)); [[ -n "$_max" ]] && ((REPLY > _max)) && REPLY=$_max
+  return 0
+}
+
+# ASCII case folding. ${x^^} follows LC_CTYPE, so in tr_TR.UTF-8 "admin" upcases to
+# "ADMIN" with a dotted I while the sandbox (pinned to C) prints a plain one — the
+# right answer would then be graded wrong. Anything that feeds a question or a
+# generated file folds here; display text can keep the player's locale.
+_upper() { local LC_CTYPE=C; REPLY="${1^^}"; }
+_lower() { local LC_CTYPE=C; REPLY="${1,,}"; }
 _csv_count() { [[ -z "$1" ]] && { REPLY=0; return; }; IFS=',' read -ra _cca <<< "$1"; REPLY=${#_cca[@]}; }
 
 _strip_ansi() {
@@ -167,6 +200,44 @@ _strip_ansi() {
     else out+="$ch"; ((i++)); fi
   done
   REPLY="$out"
+}
+
+# Display columns, not characters. A CJK or emoji handle is two columns per character
+# and a combining accent is zero, so a frame padded from ${#str} shears by however many
+# of those the text holds. Ranges are the standard compact East-Asian-Wide set plus the
+# common zero-width blocks; everything printable-ASCII takes the fast path and never
+# pays for the scan, which is every prompt and label in the game.
+_vwidth() {
+  local _s=$1 _w=0 _i _c _cp
+  [[ "$_s" != *[!$'\x20'-$'\x7e']* ]] && { REPLY=${#_s}; return; }
+  for ((_i=0; _i<${#_s}; _i++)); do
+    _c=${_s:_i:1}
+    printf -v _cp '%d' "'$_c" 2>/dev/null || _cp=32
+    if   ((_cp < 0x300)); then ((_w++))
+    elif ((_cp <= 0x36f)) || ((_cp >= 0x200b && _cp <= 0x200f)) \
+      || ((_cp >= 0x20d0 && _cp <= 0x20ff)) || ((_cp >= 0xfe00 && _cp <= 0xfe0f)); then :
+    elif ((_cp >= 0x1100 && _cp <= 0x115f)) || ((_cp >= 0x2e80 && _cp <= 0x303e)) \
+      || ((_cp >= 0x3041 && _cp <= 0x33ff)) || ((_cp >= 0x3400 && _cp <= 0x4dbf)) \
+      || ((_cp >= 0x4e00 && _cp <= 0x9fff)) || ((_cp >= 0xa000 && _cp <= 0xa4cf)) \
+      || ((_cp >= 0xac00 && _cp <= 0xd7a3)) || ((_cp >= 0xf900 && _cp <= 0xfaff)) \
+      || ((_cp >= 0xfe30 && _cp <= 0xfe6f)) || ((_cp >= 0xff00 && _cp <= 0xff60)) \
+      || ((_cp >= 0xffe0 && _cp <= 0xffe6)) || ((_cp >= 0x1f300 && _cp <= 0x1faff)) \
+      || ((_cp >= 0x20000 && _cp <= 0x3fffd)); then ((_w += 2))
+    else ((_w++)); fi
+  done
+  REPLY=$_w
+}
+
+# Clip to a column budget rather than a character count, so a wide handle can't push
+# a fixed-width frame apart. Returns the longest prefix that still fits.
+_vclip() {
+  local _s=$1 _max=$2
+  _vwidth "$_s"; ((REPLY <= _max)) && { REPLY=$_s; return; }
+  while [[ -n "$_s" ]]; do
+    _s=${_s:0:${#_s}-1}
+    _vwidth "$_s"; ((REPLY <= _max)) && break
+  done
+  REPLY=$_s
 }
 
 VERSION="1.10.0"
@@ -196,7 +267,7 @@ _load_profile() {
     while IFS='=' read -r key val; do
       [[ "$key" =~ ^[A-Z_]+$ ]] || continue
       case "$key" in
-        PLAYER_NAME) _strip_ansi "$val"; PLAYER_NAME="${REPLY:0:32}";;
+        PLAYER_NAME) _strip_ansi "$val"; _vclip "$REPLY" 20; PLAYER_NAME="$REPLY";;
         BOSS_BEATEN) BOSS_BEATEN="$val";;
         BEST_CHALLENGE|BEST_GAUNTLET) BEST_CHALLENGE="$val";;
         DISKS_FOUND|EGGS_FOUND) DISKS_FOUND="$val";;
@@ -214,23 +285,23 @@ _load_profile() {
         PROFILE_VER) _file_ver="$val";;
       esac
     done < "$DATA/profile"
-    [[ "$_file_ver" =~ ^[0-9]+$ ]] || _file_ver=0  # corrupt version -> reset-with-backup path
+    _uint "$_file_ver"; _file_ver=$REPLY  # corrupt version -> 0 -> reset-with-backup path
     # Validate/clamp BEFORE any migration re-save below: an out-of-range but numeric
     # field (e.g. BOSS_BEATEN=999 from a manual edit) would otherwise be written under
     # the new PROFILE_VER and frozen on disk forever, since migration never re-fires.
-    [[ "$BOSS_BEATEN" =~ ^[0-9]+$ ]] || BOSS_BEATEN=0
-    ((BOSS_BEATEN > MAX_LEVEL)) && BOSS_BEATEN=$MAX_LEVEL
-    [[ "$BEST_CHALLENGE" =~ ^[0-9]+$ ]] || BEST_CHALLENGE=0
-    [[ "$LAST_DECAY" =~ ^[0-9]+$ ]] || LAST_DECAY=0
+    # Every numeric goes through _uint, so a leading zero can't smuggle in an octal
+    # value or a fatal "value too great for base" that breaks the rest of the session.
+    _uint "$BOSS_BEATEN"     "$MAX_LEVEL"; BOSS_BEATEN=$REPLY
+    _uint "$PLACED_THROUGH"  "$MAX_LEVEL"; PLACED_THROUGH=$REPLY
+    _uint "$BEST_CHALLENGE";  BEST_CHALLENGE=$REPLY
+    _uint "$LAST_DECAY";      LAST_DECAY=$REPLY
+    _uint "$DAILY_STREAK";    DAILY_STREAK=$REPLY
+    _uint "$DAILY_MAXSTREAK"; DAILY_MAXSTREAK=$REPLY
+    _uint "$DAILY_BEST";      DAILY_BEST=$REPLY
     [[ "$OPT_VI" =~ ^[01]$ ]] || OPT_VI=1
     [[ "$OPT_ALTS" =~ ^[01]$ ]] || OPT_ALTS=1
     [[ "$OPT_BRIEF" =~ ^[01]$ ]] || OPT_BRIEF=1
-    [[ "$PLACED_THROUGH" =~ ^[0-9]+$ ]] || PLACED_THROUGH=0
-    ((PLACED_THROUGH > MAX_LEVEL)) && PLACED_THROUGH=$MAX_LEVEL
     [[ "$LAST_DAILY" =~ ^[0-9]{8}$ ]] || LAST_DAILY=""
-    [[ "$DAILY_STREAK" =~ ^[0-9]+$ ]] || DAILY_STREAK=0
-    [[ "$DAILY_MAXSTREAK" =~ ^[0-9]+$ ]] || DAILY_MAXSTREAK=0
-    [[ "$DAILY_BEST" =~ ^[0-9]+$ ]] || DAILY_BEST=0
     [[ "$DAILY_BEST_DATE" =~ ^[0-9-]{0,10}$ ]] || DAILY_BEST_DATE=""
     local _now_l; printf -v _now_l '%(%s)T' -1
     ((LAST_DECAY > _now_l)) && LAST_DECAY=0  # clock-skew guard: future timestamps would block decay forever
@@ -279,11 +350,11 @@ _save_profile() {
     local key val
     while IFS='=' read -r key val; do
       case "$key" in
-        BOSS_BEATEN)    [[ "$val" =~ ^[0-9]+$ ]] && ((val <= MAX_LEVEL && val > BOSS_BEATEN)) && BOSS_BEATEN=$val;;
-        PLACED_THROUGH) [[ "$val" =~ ^[0-9]+$ ]] && ((val <= MAX_LEVEL && val > PLACED_THROUGH)) && PLACED_THROUGH=$val;;
-        BEST_CHALLENGE) [[ "$val" =~ ^[0-9]+$ ]] && ((val > BEST_CHALLENGE)) && BEST_CHALLENGE=$val;;
-        DAILY_BEST)     [[ "$val" =~ ^[0-9]+$ ]] && ((val > DAILY_BEST)) && DAILY_BEST=$val;;
-        DAILY_MAXSTREAK) [[ "$val" =~ ^[0-9]+$ ]] && ((val > DAILY_MAXSTREAK)) && DAILY_MAXSTREAK=$val;;
+        BOSS_BEATEN)    _uint "$val" "$MAX_LEVEL" && ((REPLY > BOSS_BEATEN)) && BOSS_BEATEN=$REPLY;;
+        PLACED_THROUGH) _uint "$val" "$MAX_LEVEL" && ((REPLY > PLACED_THROUGH)) && PLACED_THROUGH=$REPLY;;
+        BEST_CHALLENGE) _uint "$val" && ((REPLY > BEST_CHALLENGE)) && BEST_CHALLENGE=$REPLY;;
+        DAILY_BEST)     _uint "$val" && ((REPLY > DAILY_BEST)) && DAILY_BEST=$REPLY;;
+        DAILY_MAXSTREAK) _uint "$val" && ((REPLY > DAILY_MAXSTREAK)) && DAILY_MAXSTREAK=$REPLY;;
         DISKS_FOUND)    [[ -n "$val" ]] && _csv_merge DISKS_FOUND "$val";;
         SC_DONE)        [[ -n "$val" ]] && _csv_merge SC_DONE "$val";;
       esac
@@ -300,7 +371,7 @@ _first_run() {
   _strip_ansi "$PLAYER_NAME"; PLAYER_NAME="$REPLY"
   PLAYER_NAME="${PLAYER_NAME//$'\n'/}"            # strip newlines
   PLAYER_NAME="${PLAYER_NAME//$'\r'/}"            # strip carriage returns
-  PLAYER_NAME="${PLAYER_NAME:0:20}"              # truncate to 20 chars
+  _vclip "$PLAYER_NAME" 20; PLAYER_NAME="$REPLY"  # 20 COLUMNS: a CJK handle is 2 per char
   [[ -z "$PLAYER_NAME" ]] && PLAYER_NAME="anon"
   BOSS_BEATEN=0
   _save_profile
@@ -329,7 +400,7 @@ _intro() {
   local _r _pad
   printf '\n    %s\n' "$_SH70"
   for _r in "${_rows[@]}"; do
-    _strip_ansi "$_r"; local _w=$(( 60 - ${#REPLY} )); ((_w < 0)) && _w=0
+    _strip_ansi "$_r"; _vwidth "$REPLY"; local _w=$(( 60 - REPLY )); ((_w < 0)) && _w=0
     printf -v _pad '%*s' "$_w" ''
     printf '    %s      %s%s%s\n' "$_SH2" "$_r" "$_pad" "$_SH2"
   done
@@ -777,7 +848,8 @@ _gen_csv() {
     _fpick names; local name=$REPLY; _fpick domains; local domain=$REPLY
     _fpick statuses; local status=$REPLY
     local ts; printf -v ts '%(%Y-%m-%d)T' "$((now - RANDOM % 2592000))"
-    printf '%d,%s,%s@%s,%s,%s\n' "$i" "$name" "${name,,}" "$domain" "$status" "$ts"
+    _lower "$name"   # ASCII fold: a Turkish locale would write "ıvy@" and no answer could match
+    printf '%d,%s,%s@%s,%s,%s\n' "$i" "$name" "$REPLY" "$domain" "$status" "$ts"
   done >> "$f"
 }
 
@@ -2687,8 +2759,12 @@ gen_level6() {
   _fphrase hello world example config backup server admin debug; word=$REPLY
   _fphrase test data input query search token ready active; word2=$REPLY
   local num1=$((RANDOM % 50 + 10)) num2=$((RANDOM % 20 + 5))
-  questions+=("Uppercase the string ${Y}'${word}'${C} directly§tr a-z A-Z <<< '${word}'§tr a-z A-Z <<< ${word}§tr '[:lower:]' '[:upper:]' <<< '${word}'§tr '[:lower:]' '[:upper:]' <<< ${word}§echo '${word}' | tr a-z A-Z§echo ${word} | tr a-z A-Z§echo '${word}' | tr '[:lower:]' '[:upper:]'§echo ${word} | tr '[:lower:]' '[:upper:]'§#require:${word}#output:${word^^}")
-  questions+=("Lowercase the string ${Y}'${word2^^}'${C} directly§tr A-Z a-z <<< '${word2^^}'§tr A-Z a-z <<< ${word2^^}§tr '[:upper:]' '[:lower:]' <<< '${word2^^}'§tr '[:upper:]' '[:lower:]' <<< ${word2^^}§echo '${word2^^}' | tr A-Z a-z§echo ${word2^^} | tr A-Z a-z§echo '${word2^^}' | tr '[:upper:]' '[:lower:]'§echo ${word2^^} | tr '[:upper:]' '[:lower:]'§#require:${word2^^}#output:${word2}")
+  # Case folding through _upper/_lower, not ${w^^}: the sandbox runs tr under LC_ALL=C,
+  # so a locale-aware fold here would print an expected output no correct answer produces.
+  _upper "$word"; local wordU=$REPLY
+  _upper "$word2"; local word2U=$REPLY
+  questions+=("Uppercase the string ${Y}'${word}'${C} directly§tr a-z A-Z <<< '${word}'§tr a-z A-Z <<< ${word}§tr '[:lower:]' '[:upper:]' <<< '${word}'§tr '[:lower:]' '[:upper:]' <<< ${word}§echo '${word}' | tr a-z A-Z§echo ${word} | tr a-z A-Z§echo '${word}' | tr '[:lower:]' '[:upper:]'§echo ${word} | tr '[:lower:]' '[:upper:]'§#require:${word}#output:${wordU}")
+  questions+=("Lowercase the string ${Y}'${word2U}'${C} directly§tr A-Z a-z <<< '${word2U}'§tr A-Z a-z <<< ${word2U}§tr '[:upper:]' '[:lower:]' <<< '${word2U}'§tr '[:upper:]' '[:lower:]' <<< ${word2U}§echo '${word2U}' | tr A-Z a-z§echo ${word2U} | tr A-Z a-z§echo '${word2U}' | tr '[:upper:]' '[:lower:]'§echo ${word2U} | tr '[:upper:]' '[:lower:]'§#require:${word2U}#output:${word2}")
   local _rw="" _rw2="" _i; for ((_i=${#word}-1;_i>=0;_i--)); do _rw+="${word:_i:1}"; done
   for ((_i=${#word2}-1;_i>=0;_i--)); do _rw2+="${word2:_i:1}"; done
   questions+=("Reverse the string ${Y}'${word}'${C}§rev <<< '${word}'§rev <<< ${word}§echo '${word}' | rev§echo ${word} | rev§#require:${word}#output:~${_rw}")
@@ -5348,7 +5424,7 @@ _wrap() {
   local w=$2 out="" line="" vis=0 word wl
   local -a words; read -ra words <<< "$1"
   for word in "${words[@]}"; do
-    _strip_ansi "$word"; wl=${#REPLY}
+    _strip_ansi "$word"; _vwidth "$REPLY"; wl=$REPLY
     if ((vis == 0)); then line=$word; vis=$wl
     elif ((vis + 1 + wl <= w)); then line+=" $word"; ((vis += 1 + wl))
     else out+="$line"$'\n'; line=$word; vis=$wl; fi
@@ -5582,7 +5658,8 @@ _vi_normal() {
     C) _vi_reg="${input:cursor}"; input="${input:0:cursor}"; mode="insert"; draw;;
     r) _vi_read; [[ -n "$c2" && "$c2" != $'\x1b' && ${#input} -gt 0 ]] && { input="${input:0:cursor}${c2}${input:cursor+1}"; draw; };;  # vim: r no-ops on empty line
     '~') for ((_i=0;_i<_n&&cursor<${#input};_i++)); do local _ch="${input:cursor:1}"
-      if [[ "$_ch" =~ [a-z] ]]; then _ch="${_ch^^}"; elif [[ "$_ch" =~ [A-Z] ]]; then _ch="${_ch,,}"; fi
+      # ASCII fold: the buffer is a shell command, and a Turkish dotted I is never one
+      if [[ "$_ch" =~ [a-z] ]]; then _upper "$_ch"; _ch=$REPLY; elif [[ "$_ch" =~ [A-Z] ]]; then _lower "$_ch"; _ch=$REPLY; fi
       input="${input:0:cursor}${_ch}${input:cursor+1}"; ((cursor<${#input}-1)) && ((++cursor)); done; draw;;
     p) if [[ -n "$_vi_reg" ]]; then local _ps="" _pj; for ((_pj=0;_pj<_n;_pj++)); do _ps+="$_vi_reg"; done  # vim: count repeats the register, not interleaved
       local _pav=$((512 - ${#input})); ((_pav<0)) && _pav=0; ((${#_ps}>_pav)) && _ps="${_ps:0:_pav}"
