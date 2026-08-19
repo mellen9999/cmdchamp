@@ -806,6 +806,7 @@ _bwrap_notice() {
   [[ -t 0 && -t 2 ]] && _pause >&2 ||:
 }
 
+_BWRAP=""   # absolute path, resolved once (see _sandbox_exec: env -i cannot use PATH)
 _check_bwrap() {
   if ! command -v bwrap &>/dev/null; then
     SANDBOX_MODE=0
@@ -1411,7 +1412,16 @@ _sandbox_exec() {
   # ulimit -f caps file size (64MB) so dd/yes into /sandbox can't fill the real disk in the timeout window
   # stdin from /dev/null: an answer like bare `cat`/`head` must not read the terminal
   # and eat the player's keystrokes for the whole timeout window.
-  timeout "$timeout_sec" bwrap "${bwrap_args[@]}" /bin/bash -c 'ulimit -u 256 2>/dev/null; ulimit -f 65536 2>/dev/null; eval "$1"' -- "$cmd" </dev/null; _rc=$?
+  # Two leaks closed, both reachable from the playground with one `cat`:
+  #   --as-pid-1  drops bwrap's reaper, so /proc/1 is the player's own shell. With the
+  #               reaper, /proc/1/environ held the HOST environment (--clearenv applies
+  #               to the sandboxed command, not to bwrap itself) - 100+ variables,
+  #               API tokens included - and /proc/1/cmdline spelled out the real
+  #               $HOME path in the --bind argument.
+  #   env -i      belt and braces: bwrap itself starts with nothing to leak either way.
+  # The namespace still dies with its PID 1, so nothing survives the command.
+  [[ -n "$_BWRAP" ]] || { _BWRAP=$(command -v bwrap 2>/dev/null) || _BWRAP=/usr/bin/bwrap; }
+  timeout "$timeout_sec" env -i "$_BWRAP" --as-pid-1 "${bwrap_args[@]}" /bin/bash -c 'ulimit -u 256 2>/dev/null; ulimit -f 65536 2>/dev/null; eval "$1"' -- "$cmd" </dev/null; _rc=$?
   ((_rc >= 125)) && printf '%s\n' "${R}sandbox error (exit ${_rc})${N}" >&2
   return "$_rc"
 }
@@ -7608,9 +7618,10 @@ _selftest() {
     # (c) network egress refused - literal IP (no DNS -> no hang), fails fast under --unshare-all
     _bx=$(_sandbox_exec 'timeout 3 bash -c "exec 3<>/dev/tcp/192.0.2.1/80" 2>&1; echo rc=$?' 5 2>/dev/null)
     _assert_match "(c) network egress refused" "$_bx" 'rc=[1-9]'
-    # (d) fresh PID namespace: init is bwrap, only a handful of procs (no host PID/cmdline leak)
+    # (d) fresh PID namespace: pid 1 IS the sandboxed shell (--as-pid-1, see (i)), and
+    # only a handful of procs are visible — no host PID or cmdline leak
     _bx=$(_sandbox_exec 'cat /proc/1/comm' 5 2>/dev/null)
-    _assert "(d) own PID namespace (pid1=bwrap)" "$_bx" "bwrap"
+    _assert "(d) own PID namespace (pid1 = the command)" "$_bx" "bash"
     _bx=$(_sandbox_exec 'ls -d /proc/[0-9]* 2>/dev/null | wc -l' 5 2>/dev/null)
     _assert "(d) no host PIDs visible" "$([[ ${_bx:-999} -lt 50 ]] && echo few || echo "${_bx:-?}")" "few"
     # (e) host paths outside the binds are absent; HOME is /sandbox
@@ -7629,6 +7640,20 @@ _selftest() {
     # (h) all capabilities dropped (--cap-drop ALL; userns already zeroes them - belt+suspenders)
     _bx=$(_sandbox_exec 'grep CapEff /proc/self/status' 5 2>/dev/null)
     _assert_match "(h) all caps dropped" "$_bx" '0000000000000000'
+    # (i) /proc/1 must not spill the caller. bwrap's reaper runs with the environment
+    # bwrap was started in - --clearenv only covers the sandboxed command - so
+    # /proc/1/environ held the player's whole environment, API tokens included, and
+    # /proc/1/cmdline spelled out the real $HOME inside the --bind argument. One `cat`
+    # in the playground printed either to screen. --as-pid-1 and env -i close both.
+    export _CC_LEAK_CANARY=canary_must_not_escape
+    _bx=$(_sandbox_exec "tr '\\0' '\\n' < /proc/1/environ | grep -c _CC_LEAK_CANARY" 5 2>/dev/null)
+    _assert "(i) caller environment not in /proc/1" "${_bx:-?}" "0"
+    unset _CC_LEAK_CANARY
+    # The needle is glued together at runtime. Spelled out, it would appear in the
+    # probe's OWN command line - which is what /proc/1/cmdline holds now - and the
+    # check would fail on itself instead of on a leak.
+    _bx=$(_sandbox_exec 'n=--ro; n+=-bind; tr "\\0" " " < /proc/1/cmdline | grep -c -- "$n"' 5 2>/dev/null)
+    _assert "(i) bwrap arg list not in /proc/1/cmdline" "${_bx:-?}" "0"
     SANDBOX_MODE=$_sv_mode; SANDBOX_DIR=$_sv_dir
     rm -rf "$_bxdir"
   fi
