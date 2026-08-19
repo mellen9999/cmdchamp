@@ -1113,7 +1113,7 @@ source "$1"
 OPT_VI=$2; _apply_opts
 HIST=("first cmd" "second cmd"); HIST_IDX=${#HIST[@]}
 _REDRAW_HDR() { :; }
-: > "$4"          # ready: sourcing 700KB of script is done, the reader is next
+printf '%s' $$ > "$4"   # ready, and the pid the signal cases need
 _read_line 0 1 0
 printf '%s' "$input" > "$3"
 RUNNER
@@ -1133,6 +1133,26 @@ _ed_type() {
     | COLUMNS=79 timeout 10 bash "$_ED_RUN" "$_ED_SRC" "$vi" "$_ED_OUT" "$_ED_RDY" >/dev/null 2>"$_ED_ERR"
   _ED_RC=$?
   REPLY=$(<"$_ED_OUT")
+}
+
+# Type, deliver a signal mid-line, keep typing. The reader arms traps for WINCH and
+# CONT (resize, and resuming after Ctrl-Z) which re-measure the width and repaint; both
+# interrupt the blocking read, and a read that mistook that for EOF would drop the line
+# the player was halfway through writing.
+_ed_signal() { # <name> <signal> <expected>
+  local name=$1 sig=$2 exp=$3 rc got
+  : > "$_ED_OUT"; : > "$_ED_ERR"; rm -f "$_ED_RDY"
+  { local _w=0
+    while [[ ! -s "$_ED_RDY" ]] && ((_w < 500)); do read -rt 0.01 _ 2>/dev/null; ((_w++)); done
+    sleep 0.1; printf 'foo bar'
+    sleep 0.1; kill -"$sig" "$(<"$_ED_RDY")" 2>/dev/null
+    sleep 0.15; printf ' baz\n'; sleep 0.1; } \
+    | COLUMNS=79 timeout 15 bash "$_ED_RUN" "$_ED_SRC" 1 "$_ED_OUT" "$_ED_RDY" >/dev/null 2>"$_ED_ERR"
+  rc=$?; got=$(<"$_ED_OUT")
+  if   ((rc == 124));        then _fail "editor $name: hung"
+  elif [[ -s "$_ED_ERR" ]];  then _fail "editor $name: stderr — $(head -c 90 "$_ED_ERR")"
+  elif [[ "$got" != "$exp" ]]; then _fail "editor $name: got |$got| want |$exp|"
+  else _ok; fi
 }
 
 _ed_case() { # <name> <vi> <expected> <chunk...>
@@ -1240,7 +1260,11 @@ phase12_line_editor() {
     elif ((${#REPLY} > 512)); then _fail "editor fuzz #$i (seed $seed): buffer grew to ${#REPLY} (cap 512)"
     else _ok; fi
   done
-  printf '  keystroke runs: %d (44 vi + 7 insert + 40 fuzz, seed %d)   broken: %d\n' "$cases" "$seed" "$((FAIL - before))"
+  _ed_signal "SIGWINCH mid-line" WINCH "foo bar baz"; ((cases++))
+  _ed_signal "SIGCONT mid-line"  CONT  "foo bar baz"; ((cases++))
+  _ed_signal "SIGWINCH again"    WINCH "foo bar baz"; ((cases++))
+
+  printf '  keystroke runs: %d (44 vi + 7 insert + 3 signal + 40 fuzz, seed %d)   broken: %d\n' "$cases" "$seed" "$((FAIL - before))"
 }
 
 # ═══════════════════════════════════════════════════════════════════
