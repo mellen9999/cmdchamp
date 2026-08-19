@@ -261,10 +261,35 @@ PLACED_THROUGH=0  # highest level passed via placement test
 # Daily gauntlet: last-played date (YYYYMMDD), current + best streak, best score + when
 LAST_DAILY="" DAILY_STREAK=0 DAILY_MAXSTREAK=0 DAILY_BEST=0 DAILY_BEST_DATE=""
 
+# Read the scores file into the associative array named $1. Five callers used to carry
+# their own copy of this loop, so a parsing fix had to land in five places or a save
+# that survived one screen vanished on the next.
+#   `|| [[ -n "$_k" ]]`  keeps the last line of a file that ends without a newline —
+#                        a truncated write would otherwise drop it silently
+#   CR strip             a file round-tripped through a CRLF editor or sync tool would
+#                        otherwise carry a CR into every value and read as corrupt
+#   `-z` guard           a blank line makes an empty subscript, which is fatal and
+#                        aborts the load mid-file
+_scores_load() {
+  local -n _sl=$1; _sl=()
+  [[ -f "$DATA/scores" ]] || return 0
+  local _k _v
+  while IFS='|' read -r _k _v || [[ -n "$_k" ]]; do
+    _k=${_k%$'\r'}; _v=${_v%$'\r'}
+    [[ "$_k" == "#"* || -z "$_k" ]] && continue
+    _sl[$_k]=$_v
+  done < "$DATA/scores"
+}
+
 _load_profile() {
   if [[ -f "$DATA/profile" ]]; then
     local _file_ver=0
-    while IFS='=' read -r key val; do
+    # `|| [[ -n "$key" ]]` keeps a final line with no trailing newline, and the CR strip
+    # keeps a CRLF-mangled file readable: without either, PROFILE_VER was the casualty
+    # and the whole profile reset itself with a backup on every launch.
+    while IFS='=' read -r key val || [[ -n "$key" ]]; do
+      key=${key%$'\r'}; val=${val%$'\r'}
+      _trim "$key"; key=$REPLY; _trim "$val"; val=$REPLY   # hand edits put spaces round the =
       [[ "$key" =~ ^[A-Z_]+$ ]] || continue
       case "$key" in
         PLAYER_NAME) _strip_ansi "$val"; _vclip "$REPLY" 20; PLAYER_NAME="$REPLY";;
@@ -348,7 +373,9 @@ _save_profile() {
   { exec {_fd}>"$DATA/profile.lock"; } 2>/dev/null && flock -x "$_fd"
   if [[ -f "$DATA/profile" ]]; then
     local key val
-    while IFS='=' read -r key val; do
+    while IFS='=' read -r key val || [[ -n "$key" ]]; do
+      key=${key%$'\r'}; val=${val%$'\r'}
+      _trim "$key"; key=$REPLY; _trim "$val"; val=$REPLY
       case "$key" in
         BOSS_BEATEN)    _uint "$val" "$MAX_LEVEL" && ((REPLY > BOSS_BEATEN)) && BOSS_BEATEN=$REPLY;;
         PLACED_THROUGH) _uint "$val" "$MAX_LEVEL" && ((REPLY > PLACED_THROUGH)) && PLACED_THROUGH=$REPLY;;
@@ -598,7 +625,7 @@ declare -A _PLAY_FLAG_PHASE=(
 
 _victory() {
   printf '%s\e[2J\e[H' "$_SY"
-  local -A sc; [[ -f "$DATA/scores" ]] && while IFS='|' read -r k v; do [[ "$k" == "#"* || -z "$k" ]] && continue; sc[$k]=$v; done < "$DATA/scores"
+  local -A sc; _scores_load sc
   local total=0 mastered=0
   for k in "${!sc[@]}"; do
     ((++total))
@@ -5287,14 +5314,8 @@ _sflush() {
   { exec {_fd}>"$DATA/scores.lock"; } 2>/dev/null && flock -x "$_fd"
   # Merge with current disk state to survive concurrent instances: for shared
   # keys, keep whichever has the later timestamp.
-  local -A _disk_sc=()
+  local -A _disk_sc=(); _scores_load _disk_sc
   local _dk _dv _dt _mt _k _nowf; printf -v _nowf '%(%s)T' -1
-  if [[ -f "$DATA/scores" ]]; then
-    while IFS='|' read -r _dk _dv; do
-      [[ "$_dk" == "#"* || -z "$_dk" ]] && continue
-      _disk_sc[$_dk]=$_dv
-    done < "$DATA/scores"
-  fi
   for _k in "${!_disk_sc[@]}"; do
     if [[ -n "${_sc[$_k]:-}" ]]; then
       _dt="${_disk_sc[$_k]##*|}"; _mt="${_sc[$_k]##*|}"
@@ -5342,7 +5363,7 @@ _calc_mastery() {
 }
 
 stats() {
-  local -A sc; [[ -f "$DATA/scores" ]] && while IFS='|' read -r k v; do [[ "$k" == "#"* || -z "$k" ]] && continue; sc[$k]=$v; done < "$DATA/scores"
+  local -A sc; _scores_load sc
   printf '%s\n' "${W}${B}${PLAYER_NAME:-anon}${N}"
   printf '%s\n\n' "${D}Stats show unique prompts seen${N}"
   local -A lv_total lv_mastered; _calc_mastery sc
@@ -5937,13 +5958,7 @@ _sget() {
 }
 _mode_init() {
   _MODE_TAG=$1
-  declare -gA _sc; _sc=()
-  [[ -f "$DATA/scores" ]] && while IFS='|' read -r k v; do
-    # -z guard: a blank line makes _sc['']=... a fatal bad-subscript error that
-    # aborts _mode_init mid-load (rest of scores dropped, _sget never defined)
-    [[ "$k" == "#"* || -z "$k" ]] && continue
-    _sc[$k]=$v
-  done < "$DATA/scores"
+  declare -gA _sc; _scores_load _sc
   # Decay stale mastery (once per 24h): tier≥2 + >30d → tier-1, tier==1 + >30d → 0,
   # tier==0 + >30d → pruned (a missing key already reads as tier 0 via _sget)
   local _now _decayed=0; printf -v _now '%(%s)T' -1
@@ -6444,7 +6459,7 @@ _practice_menu() {
   _session_init
   while true; do
     local -A lv_total=() lv_mastered=() sc=()
-    [[ -f "$DATA/scores" ]] && while IFS='|' read -r k v; do [[ "$k" == "#"* || -z "$k" ]] && continue; sc[$k]=$v; done < "$DATA/scores"
+    _scores_load sc
     _calc_mastery sc
     local -a it=(); local lv _row
     for ((lv=1; lv<=_maxlv; lv++)); do
