@@ -806,6 +806,33 @@ _bwrap_notice() {
   [[ -t 0 && -t 2 ]] && _pause >&2 ||:
 }
 
+_SBX_ETC=""
+# Written once per data dir, never regenerated: nothing in here depends on the host.
+# If the data dir is unwritable the binds are simply skipped and the host files show
+# through, which is the old behaviour rather than a broken sandbox.
+_sandbox_etc() {
+  _SBX_ETC="$DATA/etc"
+  [[ -f "$_SBX_ETC/cmdline" ]] && return 0
+  mkdir -p "$_SBX_ETC" 2>/dev/null || { _SBX_ETC="/nonexistent"; return 1; }
+  {
+    printf '%s\n' 'root:x:0:0:root:/root:/bin/bash' \
+      'daemon:x:1:1:daemon:/usr/sbin:/usr/sbin/nologin' \
+      'bin:x:2:2:bin:/bin:/usr/sbin/nologin' \
+      'sys:x:3:3:sys:/dev:/usr/sbin/nologin' \
+      'www-data:x:33:33:www-data:/var/www:/usr/sbin/nologin' \
+      'sshd:x:74:74:sshd:/var/empty:/usr/sbin/nologin' \
+      'nobody:x:65534:65534:nobody:/nonexistent:/usr/sbin/nologin' \
+      'sandbox:x:1000:1000:sandbox:/sandbox:/bin/bash'
+  } > "$_SBX_ETC/passwd.tmp" && mv "$_SBX_ETC/passwd.tmp" "$_SBX_ETC/passwd" || rm -f "$_SBX_ETC/passwd.tmp"
+  {
+    printf '%s\n' 'root:x:0:' 'daemon:x:1:' 'bin:x:2:' 'sys:x:3:' 'adm:x:4:sandbox' \
+      'sudo:x:27:sandbox' 'www-data:x:33:' 'sshd:x:74:' 'nobody:x:65534:' 'sandbox:x:1000:'
+  } > "$_SBX_ETC/group.tmp" && mv "$_SBX_ETC/group.tmp" "$_SBX_ETC/group" || rm -f "$_SBX_ETC/group.tmp"
+  printf '%s\n' 'BOOT_IMAGE=/boot/vmlinuz root=/dev/sda1 rw quiet' \
+    > "$_SBX_ETC/cmdline.tmp" && mv "$_SBX_ETC/cmdline.tmp" "$_SBX_ETC/cmdline" || rm -f "$_SBX_ETC/cmdline.tmp"
+  return 0
+}
+
 _BWRAP=""   # absolute path, resolved once (see _sandbox_exec: env -i cannot use PATH)
 _check_bwrap() {
   if ! command -v bwrap &>/dev/null; then
@@ -1389,6 +1416,8 @@ _sandbox_exec() {
     --bind "$SANDBOX_DIR" /sandbox
     --chdir /sandbox
     --unshare-all
+    --hostname sandbox
+    --uid 1000 --gid 1000
     --cap-drop ALL
     --die-with-parent
     --new-session
@@ -1405,6 +1434,18 @@ _sandbox_exec() {
   # symlinks. Without this bind those symlinks dangle in the sandbox and the tool
   # silently produces nothing — awk answers would fail for every Debian-family user.
   [[ -e /etc/alternatives ]] && bwrap_args+=(--ro-bind /etc/alternatives /etc/alternatives)
+  # A synthetic identity, bound last so it wins over the host files above. Two reasons,
+  # and the second is the bigger one:
+  #   privacy  - `id`, `hostname`, `cat /etc/passwd` and `cat /proc/cmdline` printed
+  #              the player's real username, machine name, every account on the box and
+  #              the kernel command line (LUKS device UUIDs and all) into a window they
+  #              might be sharing. The playground runs whatever you type.
+  #   grading  - the same commands now answer the same on every machine, so a question
+  #              can be graded on their output instead of only text-matched.
+  _sandbox_etc
+  [[ -f "$_SBX_ETC/passwd"  ]] && bwrap_args+=(--ro-bind "$_SBX_ETC/passwd" /etc/passwd)
+  [[ -f "$_SBX_ETC/group"   ]] && bwrap_args+=(--ro-bind "$_SBX_ETC/group" /etc/group)
+  [[ -f "$_SBX_ETC/cmdline" ]] && bwrap_args+=(--ro-bind "$_SBX_ETC/cmdline" /proc/cmdline)  # after --proc, or the mount hides it
 
   local _rc
   # ulimit -u caps processes inside the sandbox so a fork bomb can't pin a core
@@ -7654,6 +7695,15 @@ _selftest() {
     # check would fail on itself instead of on a leak.
     _bx=$(_sandbox_exec 'n=--ro; n+=-bind; tr "\\0" " " < /proc/1/cmdline | grep -c -- "$n"' 5 2>/dev/null)
     _assert "(i) bwrap arg list not in /proc/1/cmdline" "${_bx:-?}" "0"
+    # (j) the identity inside is synthetic, so nothing the player runs can print their
+    # real username, machine name, account list or kernel command line — and `id`,
+    # `whoami` and `hostname` answer the same on every machine, which is what lets a
+    # question be graded on their output at all.
+    _bx=$(_sandbox_exec 'id -un; id -u; hostname; cut -d: -f1 /etc/passwd | tr "\n" ","' 5 2>/dev/null)
+    _assert "(j) identity is synthetic" "${_bx//$'\n'/ }" \
+      "sandbox 1000 sandbox root,daemon,bin,sys,www-data,sshd,nobody,sandbox,"
+    _bx=$(_sandbox_exec 'grep -c "rd.luks\|cryptdevice\|resume=UUID" /proc/cmdline' 5 2>/dev/null)
+    _assert "(j) kernel command line is synthetic" "${_bx:-?}" "0"
     SANDBOX_MODE=$_sv_mode; SANDBOX_DIR=$_sv_dir
     rm -rf "$_bxdir"
   fi
