@@ -313,24 +313,27 @@ _first_run() {
 
 _intro() {
   printf '%s\e[2J\e[H%s' "$_SY" "$_SN"
-  local pad=$((25 - ${#PLAYER_NAME})); ((pad < 0)) && pad=0
-  local spaces; printf -v spaces '%*s' "$pad" ''
-  cat <<EOF
-
-    ${_SH70}
-    ${_SH2}                                                                  ${_SH2}
-    ${_SH2}      The networks are dead. The sky is ash.                      ${_SH2}
-    ${_SH2}      What remains runs on bone and silicon.                      ${_SH2}
-    ${_SH2}                                                                  ${_SH2}
-    ${_SH2}      You are ${W}${B}${PLAYER_NAME}${N}. You have only your shell.${spaces}${_SH2}
-    ${_SH2}                                                                  ${_SH2}
-    ${_SH2}      30 daemons guard the descent to ROOT.                       ${_SH2}
-    ${_SH2}                                                                  ${_SH2}
-    ${_SH2}      ${D}Know the words, or be forgotten.${N}                            ${_SH2}
-    ${_SH2}                                                                  ${_SH2}
-    ${_SH70}
-
-EOF
+  # Sets the frame in plain terms: a prompt, a ladder of bosses, and the one way up.
+  # Rows are padded from their VISIBLE width so colour and a long handle can't shear the frame.
+  local -a _rows=(
+    ""
+    "One prompt. No gui, no docs, no mouse."
+    ""
+    "You are ${W}${B}${PLAYER_NAME}${N}. Everything here, you type."
+    ""
+    "${MAX_LEVEL} daemons guard the way to ROOT."
+    ""
+    "${D}Know the command, or stay where you are.${N}"
+    ""
+  )
+  local _r _pad
+  printf '\n    %s\n' "$_SH70"
+  for _r in "${_rows[@]}"; do
+    _strip_ansi "$_r"; local _w=$(( 60 - ${#REPLY} )); ((_w < 0)) && _w=0
+    printf -v _pad '%*s' "$_w" ''
+    printf '    %s      %s%s%s\n' "$_SH2" "$_r" "$_pad" "$_SH2"
+  done
+  printf '    %s\n\n' "$_SH70"
   [[ "${1:-}" == nopause ]] && return
   read -rsp "                            Press Enter to continue..."
   echo
@@ -360,16 +363,16 @@ EOF
 BOSS_NAMES=("" "n00b" "CopyPasta" "Clobber" "CatMan" "PipeWrench" "Murmur" "DevNull" "AndOr" "\$VARIABLE" "\$\$"
   "BackgroundNoise" "TestCase" "Gatekeeper" "Daemon" "Mux" "Needle" "Globber" "Sieve" "Indexer" "TheFork"
   "Swarm" "Lookaround" "Rebase" "Netcat" "Portbreaker" "Spectrum" "Collision" "Void" "Phantom" "ROOT")
-BOSS_FLAVOR=("" "There is no shortcut. Only the first step." "Every copy is a ghost of the original." "What you saved, I devour."
-  "I read the bones of dead files." "Data is blood. I am the vein." "I feed the silence into your commands."
-  "Your stderr falls into the void." "True or false. Live or die." "I hold what you've forgotten."
-  "Every process has a death." "I wait in the dark between processes." "Pass my test or be terminated."
-  "Every door has a lock. I hold the modes." "I run while you sleep forever." "One terminal. Infinite cages."
-  "I see every line. Nothing hides from me." "I match everything. I consume all." "What passes through me is all that remains."
-  "Zero-indexed. Off-by-one. You miscount, you die." "Every path diverges. None return." "A thousand commands. One directive."
+BOSS_FLAVOR=("" "You don't know where you are yet." "Every copy is a ghost of the original." "One > and yesterday's file is gone."
+  "Everything you wrote, I read back." "Nothing here stands alone. It all flows through me." "I decide what your commands get to read."
+  "Your stderr falls into the void." "Exit zero and you pass. Anything else is mine." "I hold what you've forgotten."
+  "I am the number you never chose." "I keep running after you look away." "Every question I ask has exactly two answers."
+  "Every door has a lock. I hold the modes." "I started before you logged in. I'll be here after." "Detach all you like. I keep the session."
+  "I have read every line. Bring me the right pattern." "Name what you want. I will walk the whole tree." "What passes through me is all that remains."
+  "Zero-indexed. Off by one and you get nothing." "Every branch you don't take, I take." "A thousand commands. One directive."
   "I remember what you wrote. I match it again." "Your history is mine to rewrite." "I listen where you cannot see."
-  "I count the doors before you knock." "Every frequency bleeds secrets." "Your hashes are already broken."
-  "I am where data goes to die." "Every privilege is a door I already opened." "I am ROOT. Bow or break.")
+  "I count the doors before you knock." "It is all in the air, and someone is always listening." "Your hashes are already broken."
+  "Nothing you deleted is as gone as you think." "Every privilege is a door I already opened." "I answer to nothing. Show me you belong here.")
 LEVEL_NAMES=("" "First Steps" "File Basics" "Save Your Work" "Reading Files" "Basic Pipes"
   "Input & Here-Strings" "Error Handling" "Logic Gates" "Variables" "Special Variables" "Job Control"
   "Test Conditions" "Core File Tools" "System Admin" "Multiplexers" "Text Search"
@@ -568,10 +571,9 @@ EOF
   printf '\n'
   printf '    %s\n' "$edge"
   printf '    %s                                                              %s\n' "$br" "$br"
-  printf '    %s      The daemons are silent. The descent is complete.        %s\n' "$br" "$br"
-  printf '    %s      What remains bends to your command.                     %s\n' "$br" "$br"
+  printf '    %s      %-56s%s\n' "$br" "The daemons are silent." "$br"
   printf '    %s                                                              %s\n' "$br" "$br"
-  printf '    %s      30 bosses defeated. The shell is yours.                 %s\n' "$br" "$br"
+  printf '    %s      %-56s%s\n' "$br" "${MAX_LEVEL} bosses defeated. Every level cleared." "$br"
   printf '    %s      %s%s%s\n' "$br" "$stat_text" "$stat_pad" "$br"
   printf '    %s                                                              %s\n' "$br" "$br"
   printf '    %s                      %sYou are ROOT.%s                           %s\n' "$br" "${B}" "${N}" "$br"
@@ -5860,11 +5862,11 @@ run() {
     fi
   done
   if ((boss_only)); then
-    printf '%s\n' "${W}Straight to boss!${N}"
+    printf '%s\n' "${W}Straight to boss${N}"
     sleep 1
   # Safety check: if no questions to practice, skip to boss
   elif ((${#shuf[@]} == 0)); then
-    printf '%s\n' "${W}No questions to practice. Straight to boss!${N}"
+    printf '%s\n' "${W}Nothing left to practice - straight to boss${N}"
     sleep 1
   fi
   if ((!boss_only)); then
@@ -5897,7 +5899,7 @@ run() {
         fi
         ((++streak)); _sset "$prompt" "$_new_tier"
         ((streak == FIRE_STREAK)) && {
-          printf '\n%s%s* * *  ON FIRE - keep the streak going  * * *%s\n' "$Y" "$B" "$N"
+          printf '\n%s%s* * *  ON FIRE - %d in a row  * * *%s\n' "$Y" "$B" "$FIRE_STREAK" "$N"
           read -t 0.6 -rsn1 _ ||:
         }
         _pause; ((++qi)); QI=$qi; save; break
@@ -5996,7 +5998,7 @@ run() {
   if ((boss_total > 0 && boss_correct >= _boss_thresh)); then
     ((boss_correct == boss_total)) && _disk_check flawless
     printf '%s\n' "${G}${B}${_H2} ${M}${B}${boss}${G} DEFEATED ${_H2}${N}"
-    printf '%s\n' "${G}${boss_correct}/${boss_total}${N} correct!"
+    printf '%s\n' "${G}${boss_correct}/${boss_total}${N} correct"
     printf '%s\n\n' "${W}Cleared: ${G}${LEVEL_NAMES[$lv]}${N}"
     if ((BOSS_BEATEN < lv)); then
       BOSS_BEATEN=$lv; _save_profile
@@ -6155,7 +6157,7 @@ _gt_bar() { local _r=$1 _o="" _i _c; for ((_i=0; _i<${#_r}; _i++)); do _c=${_r:_
 challenge() {
   _post_root_check
   _session_init
-  printf '%s\e[2J\e[H%s\n%s\n' "$_SY" "${M}${B}${_H3} CHALLENGE ${_H3}${N}" "${D}Insane multi-command chains. 30s each. One life. No manpages.${N}"
+  printf '%s\e[2J\e[H%s\n%s\n' "$_SY" "${M}${B}${_H3} CHALLENGE ${_H3}${N}" "${D}Multi-command chains from the whole game. 30s each. One life. No manpages.${N}"
   ((BEST_CHALLENGE > 0)) && printf '%s\n' "${D}Best: ${Y}${BEST_CHALLENGE}${N}"
   printf '%s\n' "$_SN"; read -rsp "${D}Press Enter to start...${N}"; echo
 
@@ -6712,10 +6714,15 @@ _main_menu() {
     load
     # build tagline — center under 71-char banner
     local _tl_text _tl_w _tl_pad _tagline
-    if ((BOSS_BEATEN >= MAX_LEVEL)); then _tl_text="${G}${_GSH}${_GS2}${_GS3}${_GBK}${N} ${W}${B}ALL BOSSES DEFEATED${N} ${G}${_GBK}${_GS3}${_GS2}${_GSH}${N}" _tl_w=29
-    elif ((BOSS_BEATEN >= 20)); then _tl_text="${Y}${_GSH}${_GS2}${_GS3}${_GBK}${N} ${W}NEARING ROOT${N} ${Y}${_GBK}${_GS3}${_GS2}${_GSH}${N}" _tl_w=22
-    elif ((BOSS_BEATEN >= 10)); then _tl_text="${D}${_GSH}${_GS2}${_GS3}${_GBK}${N} ${W}GOING DEEPER${N} ${D}${_GBK}${_GS3}${_GS2}${_GSH}${N}" _tl_w=22
-    else _tl_text="${D}${_GSH}${_GS2}${_GS3}${_GBK} MASTER THE COMMAND LINE ${_GBK}${_GS3}${_GS2}${_GSH}${N}" _tl_w=33; fi
+    # States the truth and nothing else: how many bosses are still between you and ROOT.
+    # It re-reads every level, so the banner is a progress meter, not a slogan.
+    local _tl_left=$((MAX_LEVEL - BOSS_BEATEN)) _tl_col=$D _tl_mid
+    ((_tl_left < 0)) && _tl_left=0
+    if   ((_tl_left == 0)); then _tl_mid="ALL ${MAX_LEVEL} BOSSES DOWN" _tl_col=$G
+    elif ((_tl_left == 1)); then _tl_mid="1 LEVEL TO ROOT"             _tl_col=$Y
+    else                         _tl_mid="${_tl_left} LEVELS TO ROOT"; ((_tl_left <= 5)) && _tl_col=$Y; fi
+    _tl_text="${_tl_col}${_GSH}${_GS2}${_GS3}${_GBK}${N} ${W}${B}${_tl_mid}${N} ${_tl_col}${_GBK}${_GS3}${_GS2}${_GSH}${N}"
+    _tl_w=$(( ${#_tl_mid} + 10 ))   # 4 glyphs + space each side
     printf -v _tl_pad '%*s' $(( (71 - _tl_w) / 2 )) ''
     _tagline="${_tl_pad}${_tl_text}"
     # controls hint (Quit is a key, not a row), centered under the 71-wide banner
