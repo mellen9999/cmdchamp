@@ -1274,6 +1274,220 @@ phase7_scenario_negatives() {
   done
 }
 
+
+# ═══════════════════════════════════════════════════════════════════
+# PHASE 13: HOSTILE ENVIRONMENT
+#
+# Everything a player's box can be that the developer's box never is. Each of
+# these shipped as a real bug at least once:
+#   - tr_TR.UTF-8 sorts "I" outside [A-Z], so the profile loader dropped
+#     PROFILE_VER and reset the save on every launch
+#   - "08" passed the ^[0-9]+$ guard and then died in ((...)) as octal
+#   - a profile with no trailing newline lost its last line — PROFILE_VER again
+#   - a CRLF round-trip put a CR in every value
+# The rule for every check: a *recoverable* file round-trips intact, an
+# *unrecoverable* one resets cleanly with a backup, and neither prints a byte to
+# stderr. Runs under `env -i` — an inherited LANG would decide the result
+# instead of the case under test.
+# ═══════════════════════════════════════════════════════════════════
+_HE_SRC="$XDG_DATA_HOME/he_src.sh"
+_HE_DIR="$XDG_DATA_HOME/he_data"
+_HE_LOC="$XDG_DATA_HOME/he_loc"
+_HE_GRADED="$XDG_DATA_HOME/he_graded.sh"
+_HE_PROFILE='PLAYER_NAME=ali
+BOSS_BEATEN=15
+BEST_CHALLENGE=42
+DISKS_FOUND=nightowl
+SC_DONE=1,2
+LAST_DECAY=0
+OPT_VI=1
+OPT_ALTS=1
+OPT_BRIEF=1
+PLACED_THROUGH=3
+LAST_DAILY=20260818
+DAILY_STREAK=4
+DAILY_MAXSTREAK=9
+DAILY_BEST=77
+DAILY_BEST_DATE=2026-08-18
+PROFILE_VER=8'
+_HE_WANT='ali|15|42|nightowl|20260818|4|77'
+_HE_PROBE='_load_profile; printf "%s|%s|%s|%s|%s|%s|%s" "$PLAYER_NAME" "$BOSS_BEATEN" "$BEST_CHALLENGE" "$DISKS_FOUND" "$LAST_DAILY" "$DAILY_STREAK" "$DAILY_BEST"'
+
+_he_prepare() {
+  sed -e 's/^_tty().*/\_tty() { :; }/' -e '/^# ═══ CLI ENTRYPOINT ═══/,$d' "$CMDCHAMP" > "$_HE_SRC"
+  printf '%s\n' 'SANDBOX_MODE=0' >> "$_HE_SRC"
+  # Every string a question is GRADED on has to be 7-bit: the sandbox runs under
+  # LC_ALL=C, so an expected output that changed with the player's locale (a Turkish
+  # "ADMİN" for "admin") is an answer nobody can type.
+  cat > "$_HE_GRADED" <<'GRADED'
+_he_ascii() { [[ "$1" != *[!$'\x20'-$'\x7e']* ]]; }
+_he_bad=""
+for ((_lv=1; _lv<=MAX_LEVEL; _lv++)); do
+  declare -a _Q=(); "gen_level$_lv" _Q 2>/dev/null
+  for _q in "${_Q[@]}"; do
+    [[ -z "$_q" ]] && continue
+    for _tag in "#output:" "#require:"; do
+      [[ "$_q" == *"$_tag"* ]] || continue
+      _f=${_q##*"$_tag"}; _f=${_f%%#*}
+      _he_ascii "$_f" || _he_bad="L$_lv $_tag$_f"
+    done
+  done
+done
+printf '%s' "${_he_bad:-ok}"
+GRADED
+}
+
+_he_profile() { rm -rf "$_HE_DIR"; mkdir -p "$_HE_DIR/cmdchamp"; cat > "$_HE_DIR/cmdchamp/profile"; }
+
+_he_run() {
+  local envs=$1 code=$2
+  # shellcheck disable=SC2086  # envs is a deliberate word-split list of NAME=VALUE
+  env -i PATH="/usr/bin:/bin" XDG_DATA_HOME="$_HE_DIR" $envs \
+    timeout 60 bash -c 'source "$1"; eval "$2"' _ "$_HE_SRC" "$code" 2>"$XDG_DATA_HOME/he_err"
+}
+
+_he_case() { # <name> <env> <code> <want>
+  local name=$1 envs=$2 code=$3 want=$4 got rc err
+  got=$(_he_run "$envs" "$code"); rc=$?
+  err=$(<"$XDG_DATA_HOME/he_err")
+  if   ((rc == 124));           then _fail "hostile $name: hung"
+  elif ((rc != 0));             then _fail "hostile $name: exit $rc"
+  elif [[ -n "$err" ]];         then _fail "hostile $name: stderr — ${err%%$'\n'*}"
+  elif [[ "$got" != "$want" ]]; then _fail "hostile $name: got |$got| want |$want|"
+  else _ok; fi
+}
+
+# Build a locale into a private LOCPATH so the box need not have it installed.
+# Turkish is the one that matters: [A-Z] and ${x^^} both change meaning there.
+_he_locale() {
+  local name=$1 src=$2
+  [[ -d "$_HE_LOC/$name" ]] && { REPLY="LOCPATH=$_HE_LOC LC_ALL=$name"; return 0; }
+  command -v localedef >/dev/null 2>&1 || return 1
+  [[ -f "/usr/share/i18n/locales/$src" ]] || return 1
+  mkdir -p "$_HE_LOC"
+  localedef -i "$src" -f UTF-8 "$_HE_LOC/$name" >/dev/null 2>&1 || return 1
+  REPLY="LOCPATH=$_HE_LOC LC_ALL=$name"
+}
+
+phase13_hostile_env() {
+  printf '\n%s\n' "═══ PHASE 13: Hostile Environment ═══"
+  local before=$FAIL checks=0 locales=0 nm gen want got err rc s p e a l
+  _he_prepare
+
+  # ── A. save files a player can actually end up with ──────────────
+  local -a survivable=(
+    "trailing newline|printf '%s\n' \"\$_HE_PROFILE\""
+    "no trailing newline|printf '%s' \"\$_HE_PROFILE\""
+    "CRLF line endings|printf '%s\n' \"\$_HE_PROFILE\" | sed 's/\$/\r/'"
+    "spaces round the =|printf '%s\n' \"\$_HE_PROFILE\" | sed 's/=/ = /'"
+    "blank lines|printf '%s\n' \"\$_HE_PROFILE\" | sed G"
+    "unknown future key|printf '%s\nWHAT_IS_THIS=1\n' \"\$_HE_PROFILE\""
+    "leading-zero number|printf '%s\n' \"\$_HE_PROFILE\" | sed 's/=15/=015/'"
+  )
+  for s in "${survivable[@]}"; do
+    nm=${s%%|*}; gen=${s#*|}
+    eval "$gen" | _he_profile
+    _he_case "profile: $nm" "" "$_HE_PROBE" "$_HE_WANT"; ((checks++))
+  done
+
+  # Numbers that pass ^[0-9]+$ and then break arithmetic, or that a hand edit invents.
+  local -a poisoned=("octal 08:08:8" "octal 010:010:10" "over the cap:999:30"
+    "past int64:99999999999999999999999:30" "not a number:fifteen:0" "negative:-5:0" "hex:0x10:0")
+  for p in "${poisoned[@]}"; do
+    nm=${p%%:*}; want=${p##*:}; gen=${p#*:}; gen=${gen%:*}
+    printf '%s\n' "$_HE_PROFILE" | sed "s/^BOSS_BEATEN=15/BOSS_BEATEN=$gen/" | _he_profile
+    _he_case "BOSS_BEATEN $nm" "" '_load_profile; printf "%s" "$BOSS_BEATEN"' "$want"; ((checks++))
+  done
+
+  # Unreadable files must reset cleanly — with a backup, and without a crash.
+  head -c 64 /dev/urandom | _he_profile
+  got=$(_he_run "" '_load_profile 2>/dev/null; printf "%s|%s" "$BOSS_BEATEN" "$PLAYER_NAME"')
+  if [[ "$got" == "0|" && -f "$_HE_DIR/cmdchamp/profile.bak" ]]; then _ok
+  else _fail "hostile profile: binary junk did not reset with a backup (got |$got|)"; fi
+  ((checks++))
+
+  # Scores: the same file shapes, plus a blank line (an empty subscript is fatal).
+  local -a scorefiles=("trailing newline:a|2|1750000000\nb|2|1750000000\n:2"
+    "no trailing newline:a|2|1750000000\nb|2|1750000000:2"
+    "CRLF:a|2|1750000000\r\nb|2|1750000000\r\n:2"
+    "blank line:a|2|1750000000\n\nb|2|1750000000\n:2"
+    "comment line:# note\na|2|1750000000\n:1")
+  printf '%s\n' "$_HE_PROFILE" | _he_profile
+  for s in "${scorefiles[@]}"; do
+    nm=${s%%:*}; want=${s##*:}; gen=${s#*:}; gen=${gen%:*}
+    printf "$gen" > "$_HE_DIR/cmdchamp/scores"
+    _he_case "scores: $nm" "" 'declare -A _t; _scores_load _t; printf "%s" "${#_t[@]}"' "$want"; ((checks++))
+  done
+  rm -f "$_HE_DIR/cmdchamp/scores"
+
+  # ── B. locales ───────────────────────────────────────────────────
+  printf '%s\n' "$_HE_PROFILE" | _he_profile
+  local -a locs=("C" "POSIX")
+  for s in "tr_TR.UTF-8:tr_TR" "de_DE.UTF-8:de_DE"; do
+    _he_locale "${s%%:*}" "${s##*:}" && { locs+=("${s%%:*}"); ((locales++)); }
+  done
+  ((locales < 2)) && _warn "hostile: localedef or locale sources missing — tr_TR/de_DE coverage skipped"
+  # Both spellings: LC_ALL is what a script exports, LANG is what a desktop sets, and
+  # they take different paths through the pin (LC_ALL is unset, LANG is left alone).
+  local v
+  for l in "${locs[@]}"; do
+    for v in LC_ALL LANG; do
+      e="$v=$l"; [[ -d "$_HE_LOC/$l" ]] && e="LOCPATH=$_HE_LOC $v=$l"
+      _he_case "locale $v=$l: profile"   "$e" "$_HE_PROBE" "$_HE_WANT"; ((checks++))
+      _he_case "locale $v=$l: case fold" "$e" '_upper admin; printf "%s" "$REPLY"; _lower IVY; printf "%s" "$REPLY"' "ADMINivy"; ((checks++))
+      _he_case "locale $v=$l: ranges"    "$e" \
+        'r=; for k in PROFILE_VER DISKS_FOUND OPT_VI DAILY_BEST; do [[ "$k" =~ ^[A-Z_]+$ ]] && r+=1 || r+=0; done; printf "%s" "$r"' "1111"; ((checks++))
+      _he_case "locale $v=$l: graded strings stay 7-bit" "$e" "source '$_HE_GRADED'" "ok"; ((checks++))
+    done
+  done
+
+  # ── C. an environment nobody tests in ────────────────────────────
+  local -a envs=("IFS=x" "CDPATH=/tmp" "POSIXLY_CORRECT=1" "GREP_OPTIONS=--color=always"
+    "COLUMNS=20" "COLUMNS=1000" "LINES=5" "TERM=dumb" "TERM=vt100" "NO_COLOR=1"
+    "TZ=Pacific/Kiritimati" "TZ=Etc/GMT+12" "CMDCHAMP_ASCII=1" "CMDCHAMP_UNICODE=1" "CMD_PROMPT=%s")
+  for e in "${envs[@]}"; do
+    _he_case "env $e: profile" "$e" "$_HE_PROBE" "$_HE_WANT"; ((checks++))
+    _he_case "env $e: grade"   "$e" \
+      'PLAYER_NAME=x; _qparse "List files|ls"; check ls "$_qanswers" && printf yes || printf no' "yes"; ((checks++))
+    _he_case "env $e: draws"   "$e" \
+      'PLAYER_NAME=x BOSS_BEATEN=30; o=$(_intro nopause </dev/null); [[ -n "${o//[[:space:]]/}" ]] && printf drew || printf blank' "drew"; ((checks++))
+  done
+
+  # ── D. arguments a user or a script can hand it ──────────────────
+  for a in "--badflag" "daily 9999-99-99" "daily ../../etc/passwd" "daily \$(id)" "daily 0" "nonsense" "play extra"; do
+    # shellcheck disable=SC2086
+    got=$(env -i PATH="/usr/bin:/bin" XDG_DATA_HOME="$_HE_DIR" timeout 20 "$CMDCHAMP" $a </dev/null 2>"$XDG_DATA_HOME/he_err"); rc=$?
+    err=$(<"$XDG_DATA_HOME/he_err")
+    if   ((rc == 124));                       then _fail "hostile arg '$a': hung"
+    elif [[ "$err" == *"line "*": "* ]];      then _fail "hostile arg '$a': bash error — ${err%%$'\n'*}"
+    elif [[ -z "${got}${err}" ]];             then _fail "hostile arg '$a': said nothing (rc $rc)"
+    else _ok; fi
+    ((checks++))
+  done
+
+  # ── E. no terminal, an unwritable data dir, no HOME ──────────────
+  got=$(env -i PATH="/usr/bin:/bin" XDG_DATA_HOME="$_HE_DIR" timeout 20 "$CMDCHAMP" </dev/null 2>&1); rc=$?
+  if ((rc == 1)) && [[ "$got" == *"interactive terminal"* ]]; then _ok
+  else _fail "hostile: no-tty launch should refuse cleanly (rc $rc, out |${got:0:60}|)"; fi
+  ((checks++))
+
+  chmod 500 "$_HE_DIR/cmdchamp"
+  got=$(env -i PATH="/usr/bin:/bin" XDG_DATA_HOME="$_HE_DIR" timeout 20 "$CMDCHAMP" version 2>"$XDG_DATA_HOME/he_err"); rc=$?
+  err=$(<"$XDG_DATA_HOME/he_err")
+  chmod 700 "$_HE_DIR/cmdchamp"
+  if ((rc == 0)) && [[ -n "$got" && -z "$err" ]]; then _ok
+  else _fail "hostile: read-only data dir broke a plain run (rc $rc, err ${err%%$'\n'*})"; fi
+  ((checks++))
+
+  got=$(env -i PATH="/usr/bin:/bin" HOME="$XDG_DATA_HOME/nohome" timeout 20 "$CMDCHAMP" version 2>"$XDG_DATA_HOME/he_err"); rc=$?
+  err=$(<"$XDG_DATA_HOME/he_err")
+  if ((rc == 0)) && [[ -z "$err" ]]; then _ok
+  else _fail "hostile: a fresh HOME broke a plain run (rc $rc, err ${err%%$'\n'*})"; fi
+  ((checks++))
+
+  printf '  hostile checks: %d   locales built: %d   broken: %d\n' "$checks" "$locales" "$((FAIL - before))"
+}
+
 # ═══════════════════════════════════════════════════════════════════
 # MAIN
 # ═══════════════════════════════════════════════════════════════════
@@ -1281,7 +1495,7 @@ main() {
   local _want="${1:-}"
   printf '%s\n' "╔══════════════════════════════════════════╗"
   printf '%s\n' "║   CmdChamp Omega Audit                   ║"
-  printf '%s\n' "║   30 levels × 12 phases                  ║"
+  printf '%s\n' "║   30 levels × 13 phases                  ║"
   printf '%s\n' "╚══════════════════════════════════════════╝"
 
   if ! ((SANDBOX_MODE)); then
@@ -1293,7 +1507,8 @@ main() {
   # enough that iterating on one phase otherwise means waiting on nine others.
   local -a _phases=(phase1_syntax phase2_positive phase3_confusable phase4_generic
     phase5_crosscheck phase6_scenarios phase7_scenario_negatives phase8_panel_coverage
-    phase9_manpage_grid phase10_render_smoke phase11_playground_trail phase12_line_editor)
+    phase9_manpage_grid phase10_render_smoke phase11_playground_trail phase12_line_editor
+    phase13_hostile_env)
   local _p _n
   for _p in "${_phases[@]}"; do
     _n=${_p#phase}; _n=${_n%%_*}
