@@ -5643,7 +5643,7 @@ _sw() { ((_S_ANSWERED++)); _S_STREAK=0; _wrong_show; }
 bar() {
   local p=$((qi<TOT?qi:TOT)) w=$(( ${1:-80} - 4 )) f e
   ((w < 8)) && w=8
-  ((TOT > 0)) || { printf "${B}[]${N}"; return; }
+  ((TOT > 0)) || { printf '%s[]%s' "$B" "$N"; return; }
   ((TOT < w)) && w=$TOT
   f=$(( p * w / TOT )); ((p > 0 && f == 0)) && f=1   # any progress shows as progress
   e=$((w - f))
