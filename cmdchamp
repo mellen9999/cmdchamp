@@ -29,6 +29,11 @@ set -uo pipefail
 [[ ${BASH_VERSINFO[0]:-0} -lt 4 || (${BASH_VERSINFO[0]} -eq 4 && ${BASH_VERSINFO[1]:-0} -lt 4) ]] && { echo "Requires bash 4.4+"; exit 1; }  # 4.4: empty-array expansion under set -u (boss-retry path expands empty SEEN_PROMPTS)
 _tty() { [[ -t 0 ]] || { echo "Error: requires interactive terminal" >&2; exit 1; }; }
 command -v awk &>/dev/null || { echo "Error: awk not found" >&2; exit 1; }
+# flock is util-linux, and macOS - a platform this README supports - does not ship it.
+# Without this probe every save forked a "flock: command not found" onto the screen.
+# Losing the lock is survivable: what actually stops a second instance reverting
+# progress is the monotonic merge in _save_profile and _sflush, not the lock.
+command -v flock >/dev/null 2>&1 && _HAVE_FLOCK=1 || _HAVE_FLOCK=0
 
 # Character ranges follow LC_COLLATE, and in tr_TR.UTF-8 "I" sorts outside [A-Z]:
 # the profile loader's ^[A-Z_]+$ key filter dropped every key holding one — PROFILE_VER
@@ -334,6 +339,13 @@ _load_profile() {
       # Graceful migration: re-save in current format. Defaults already loaded
       # for any new fields the old profile didn't set.
       _save_profile
+    elif ((_file_ver > _PROFILE_VER)); then
+      # A profile written by a NEWER build. Two machines sharing one save (or a
+      # downgrade) would otherwise reset it here — destroying a file this binary
+      # simply does not understand. Say so and stop instead.
+      printf '%s\n' "This profile was written by a newer cmdchamp (format $_file_ver, this build reads $_PROFILE_VER)." >&2
+      printf '%s\n' "Refusing to overwrite it. Update cmdchamp, or move $DATA/profile aside to start over." >&2
+      exit 1
     elif ((_file_ver != _PROFILE_VER)); then
       [[ -f "$DATA/profile" ]] && cp "$DATA/profile" "$DATA/profile.bak"
       [[ -f "$DATA/scores" ]] && cp "$DATA/scores" "$DATA/scores.bak"
@@ -370,7 +382,7 @@ _save_profile() {
   # instance had already written. Progress fields take max(disk, memory), CSV
   # collections union; options/name stay last-writer.
   local _fd=""
-  { exec {_fd}>"$DATA/profile.lock"; } 2>/dev/null && flock -x "$_fd"
+  { exec {_fd}>"$DATA/profile.lock"; } 2>/dev/null && ((_HAVE_FLOCK)) && flock -x "$_fd"
   if [[ -f "$DATA/profile" ]]; then
     local key val
     while IFS='=' read -r key val || [[ -n "$key" ]]; do
@@ -5343,7 +5355,7 @@ _show_alts() {
 LVL=1 QI=0 TOT=0
 load() {
   [[ -f "$DATA/session.json" ]] && {
-    local fd t; exec {fd}<>"$DATA/session.lock"; flock -s "$fd"
+    local fd t; exec {fd}<>"$DATA/session.lock"; ((_HAVE_FLOCK)) && flock -s "$fd"
     t=$(<"$DATA/session.json")
     exec {fd}>&-
     LVL="${t#*\"level\":}"; LVL="${LVL%%[!0-9]*}"
@@ -5354,7 +5366,7 @@ load() {
   ((LVL > MAX_LEVEL)) && LVL=$MAX_LEVEL
 }
 save() {
-  local fd; exec {fd}>"$DATA/session.lock"; flock -x "$fd"
+  local fd; exec {fd}>"$DATA/session.lock"; ((_HAVE_FLOCK)) && flock -x "$fd"
   # Guard the promote on write success (matches _sflush/_write_profile): on ENOSPC the
   # printf leaves a truncated tmp, and an unconditional mv would clobber the good file.
   { printf '{"level":%d,"qi":%d}\n' "$LVL" "$QI" > "$DATA/session.json.tmp"; } \
@@ -5393,7 +5405,7 @@ _sflush() {
   # `exec ... 2>/dev/null` would redirect the whole game's stderr permanently
   # (exec with no command makes redirections stick), silently eating every
   # later `read -p` prompt so the game looks frozen at the next _pause.
-  { exec {_fd}>"$DATA/scores.lock"; } 2>/dev/null && flock -x "$_fd"
+  { exec {_fd}>"$DATA/scores.lock"; } 2>/dev/null && ((_HAVE_FLOCK)) && flock -x "$_fd"
   # Merge with current disk state to survive concurrent instances: for shared
   # keys, keep whichever has the later timestamp.
   local -A _disk_sc=(); _scores_load _disk_sc
@@ -7057,8 +7069,8 @@ _main_menu() {
         # Same lock discipline as the CLI reset: hold the writers' locks so a concurrent
         # instance can't resurrect wiped scores/profile, and keep the .lock files.
         local _nrfd1 _nrfd2
-        exec {_nrfd1}>"$DATA/scores.lock" 2>/dev/null && flock -x "$_nrfd1" 2>/dev/null
-        exec {_nrfd2}>"$DATA/profile.lock" 2>/dev/null && flock -x "$_nrfd2" 2>/dev/null
+        exec {_nrfd1}>"$DATA/scores.lock" 2>/dev/null && ((_HAVE_FLOCK)) && flock -x "$_nrfd1" 2>/dev/null
+        exec {_nrfd2}>"$DATA/profile.lock" 2>/dev/null && ((_HAVE_FLOCK)) && flock -x "$_nrfd2" 2>/dev/null
         rm -f "$DATA"/*.json "$DATA/scores" "$DATA/profile" "$DATA/.bwrap_blocked"; rm -rf "$DATA/sandbox" "$DATA/sandbox.pristine" 2>/dev/null
         [[ -n "${_nrfd1:-}" ]] && exec {_nrfd1}>&-; [[ -n "${_nrfd2:-}" ]] && exec {_nrfd2}>&-
         # Reset position too: load() keeps the current globals when session.json is gone,
@@ -7969,8 +7981,8 @@ case "${1:-}" in
     # Hold the writers' locks so a concurrent instance can't resurrect scores/profile
     # between our rm and its mv. Keep the .lock files themselves — unlinking one drops
     # the inode a concurrent holder still has open, silently breaking flock exclusion.
-    exec {_rfd1}>"$DATA/scores.lock" 2>/dev/null && flock -x "$_rfd1" 2>/dev/null
-    exec {_rfd2}>"$DATA/profile.lock" 2>/dev/null && flock -x "$_rfd2" 2>/dev/null
+    exec {_rfd1}>"$DATA/scores.lock" 2>/dev/null && ((_HAVE_FLOCK)) && flock -x "$_rfd1" 2>/dev/null
+    exec {_rfd2}>"$DATA/profile.lock" 2>/dev/null && ((_HAVE_FLOCK)) && flock -x "$_rfd2" 2>/dev/null
     rm -f "$DATA"/*.json "$DATA/scores" "$DATA/profile" "$DATA/.bwrap_blocked"; rm -rf "$DATA/sandbox" "$DATA/sandbox.pristine" 2>/dev/null
     [[ -n "${_rfd1:-}" ]] && exec {_rfd1}>&-; [[ -n "${_rfd2:-}" ]] && exec {_rfd2}>&-
     echo "reset";;

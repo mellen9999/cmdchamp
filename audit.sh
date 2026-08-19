@@ -1090,6 +1090,7 @@ _ED_SRC="$XDG_DATA_HOME/ed_src.sh"
 _ED_RUN="$XDG_DATA_HOME/ed_run.sh"
 _ED_OUT="$XDG_DATA_HOME/ed_out"
 _ED_ERR="$XDG_DATA_HOME/ed_err"
+_ED_RDY="$XDG_DATA_HOME/ed_ready"
 
 _ed_prepare() {
   sed -e 's/^_tty().*/\_tty() { :; }/' -e '/^# ═══ CLI ENTRYPOINT ═══/,$d' "$CMDCHAMP" > "$_ED_SRC"
@@ -1099,6 +1100,7 @@ source "$1"
 OPT_VI=$2; _apply_opts
 HIST=("first cmd" "second cmd"); HIST_IDX=${#HIST[@]}
 _REDRAW_HDR() { :; }
+: > "$4"          # ready: sourcing 700KB of script is done, the reader is next
 _read_line 0 1 0
 printf '%s' "$input" > "$3"
 RUNNER
@@ -1107,20 +1109,36 @@ RUNNER
 # _ed_type <vi> <chunk...> — feed keystrokes, leave the final buffer in $REPLY.
 _ed_type() {
   local vi=$1; shift
-  : > "$_ED_OUT"; : > "$_ED_ERR"
-  { sleep 0.05; local p; for p in "$@"; do printf '%s' "$p"; sleep 0.03; done; } \
-    | COLUMNS=79 timeout 10 bash "$_ED_RUN" "$_ED_SRC" "$vi" "$_ED_OUT" >/dev/null 2>"$_ED_ERR"
+  : > "$_ED_OUT"; : > "$_ED_ERR"; rm -f "$_ED_RDY"
+  # Wait for the runner to signal it is up, THEN type. A fixed head start raced with
+  # _read_line's typeahead flush under load: the first chunk was swallowed and the
+  # case failed with a buffer that had never seen its own opening keystrokes.
+  { local _w=0
+    while [[ ! -e "$_ED_RDY" ]] && ((_w < 500)); do read -rt 0.01 _ 2>/dev/null; ((_w++)); done
+    sleep 0.05
+    local p; for p in "$@"; do printf '%s' "$p"; sleep 0.03; done; } \
+    | COLUMNS=79 timeout 10 bash "$_ED_RUN" "$_ED_SRC" "$vi" "$_ED_OUT" "$_ED_RDY" >/dev/null 2>"$_ED_ERR"
   _ED_RC=$?
   REPLY=$(<"$_ED_OUT")
 }
 
 _ed_case() { # <name> <vi> <expected> <chunk...>
   local name=$1 vi=$2 exp=$3; shift 3
-  _ed_type "$vi" "$@"
-  if ((_ED_RC == 124)); then _fail "editor $name: hung (10s timeout)"; return; fi
-  if [[ -s "$_ED_ERR" ]]; then _fail "editor $name: stderr — $(head -c 90 "$_ED_ERR")"; return; fi
-  if [[ "$REPLY" != "$exp" ]]; then _fail "editor $name: got |$REPLY| want |$exp|"; return; fi
-  _ok
+  # One retry, because feeding a pipe has no flow control. If the reader is
+  # descheduled the feeder gets ahead of it, so ESC and the next chunk end up in the
+  # pipe together and the 10ms ESC-disambiguation window sees data that has "already
+  # arrived" — the same reason vim has a timeoutlen. A real defect fails both passes;
+  # only a scheduling artefact passes the second.
+  local try
+  for try in 1 2; do
+    _ed_type "$vi" "$@"
+    ((_ED_RC == 124)) && continue
+    [[ -s "$_ED_ERR" ]] && continue
+    [[ "$REPLY" == "$exp" ]] && { _ok; return; }
+  done
+  if ((_ED_RC == 124)); then _fail "editor $name: hung (10s timeout)"
+  elif [[ -s "$_ED_ERR" ]]; then _fail "editor $name: stderr — $(head -c 90 "$_ED_ERR")"
+  else _fail "editor $name: got |$REPLY| want |$exp|"; fi
 }
 
 phase12_line_editor() {
@@ -1370,7 +1388,9 @@ _he_run() {
 
 _he_case() { # <name> <env> <code> <want>
   local name=$1 envs=$2 code=$3 want=$4 got rc err
-  got=$(_he_run "$envs" "$code"); rc=$?
+  # The exit trap restores the cursor and bracketed paste on the way out; that is
+  # terminal housekeeping, not the value under test.
+  got=$(_he_run "$envs" "$code" | sed -e 's/\x1b\[[0-9;?]*[a-zA-Z]//g' -e 's/\x1b[()][A-Z0-9]//g'); rc=${PIPESTATUS[0]}
   err=$(<"$XDG_DATA_HOME/he_err")
   if   ((rc == 124));           then _fail "hostile $name: hung"
   elif ((rc != 0));             then _fail "hostile $name: exit $rc"
@@ -1506,6 +1526,119 @@ phase13_hostile_env() {
   if ((rc == 0)) && [[ -z "$err" ]]; then _ok
   else _fail "hostile: a fresh HOME broke a plain run (rc $rc, err ${err%%$'\n'*})"; fi
   ((checks++))
+
+  # ── F. tools that are not on every box ───────────────────────────
+  # flock is util-linux and macOS - a platform this README supports - has none, so
+  # every save used to fork a "flock: command not found" onto the player's screen.
+  # timeout, bwrap, column, cksum and base64 are missing here too.
+  local _mb="$XDG_DATA_HOME/minbin"; rm -rf "$_mb"; mkdir -p "$_mb"
+  local _t
+  for _t in bash awk sed grep sort uniq cat head tail tr cut wc cp mv rm mkdir rmdir \
+            chmod find date stty tput mktemp touch ls ln dirname basename id; do
+    [[ -x "$(command -v "$_t" 2>/dev/null)" ]] && ln -sf "$(command -v "$_t")" "$_mb/$_t"
+  done
+  # timeout goes OUTSIDE env -i, or env would look for it on the stripped PATH too.
+  got=$(timeout 120 env -i PATH="$_mb" XDG_DATA_HOME="$XDG_DATA_HOME/minbin_data" "$CMDCHAMP" test 2>"$XDG_DATA_HOME/he_err" | tail -1); rc=${PIPESTATUS[0]}
+  err=$(<"$XDG_DATA_HOME/he_err")
+  if   ((rc != 0));                    then _fail "hostile minimal PATH: cmdchamp test exited $rc"
+  elif [[ -n "$err" ]];                then _fail "hostile minimal PATH: stderr — ${err%%$'\n'*}"
+  elif [[ "$got" != *"0 failed"* ]];   then _fail "hostile minimal PATH: selftests failed — ${got:0:60}"
+  else _ok; fi
+  ((checks++))
+
+  # ── G. two instances at once ─────────────────────────────────────
+  # A save is a read-modify-write. Last-writer-wins would revert whichever instance
+  # finished first, which is exactly what happens on two machines sharing one save.
+  # Progress fields take max(disk, memory) and CSV collections union.
+  printf '%s\n' "$_HE_PROFILE" | _he_profile
+  printf '#v1\n' > "$_HE_DIR/cmdchamp/scores"
+  cat > "$XDG_DATA_HOME/conc.sh" <<'CONC'
+source "$1"
+_load_profile
+case "$2" in
+  a) BOSS_BEATEN=20; DISKS_FOUND=nightowl; _mode_init a; _sset "q from A" 2; _sflush; _save_profile;;
+  b) BOSS_BEATEN=10; DISKS_FOUND=flawless; _mode_init b; _sset "q from B" 2; _sflush; _save_profile;;
+esac
+CONC
+  env -i PATH="/usr/bin:/bin" XDG_DATA_HOME="$_HE_DIR" bash "$XDG_DATA_HOME/conc.sh" "$_HE_SRC" a >/dev/null 2>&1 &
+  env -i PATH="/usr/bin:/bin" XDG_DATA_HOME="$_HE_DIR" bash "$XDG_DATA_HOME/conc.sh" "$_HE_SRC" b >/dev/null 2>&1 &
+  wait
+  got=$(grep -c '^[^#]' "$_HE_DIR/cmdchamp/scores")
+  ((got == 2)) && _ok || _fail "hostile concurrent save: $got score keys survived, wanted both"; ((checks++))
+
+  # The race above exercises the lock but cannot prove the merge: whoever writes last
+  # wins by accident half the time. Force the losing order instead — load, let the
+  # other instance get further on disk, then save something lower.
+  printf '%s\n' "$_HE_PROFILE" | _he_profile
+  _he_case "a lower save cannot revert a higher one" "" '
+      _load_profile
+      sed -i "s/^BOSS_BEATEN=15/BOSS_BEATEN=20/; s/^DISKS_FOUND=nightowl/DISKS_FOUND=streak10/" "$DATA/profile"
+      BOSS_BEATEN=10 DISKS_FOUND=flawless PLACED_THROUGH=0 BEST_CHALLENGE=1
+      _save_profile
+      printf "%s|%s" "$(sed -n "s/^BOSS_BEATEN=//p" "$DATA/profile")" "$(sed -n "s/^DISKS_FOUND=//p" "$DATA/profile")"' \
+    "20|flawless,streak10"; ((checks++))
+
+  # Same for a score key. Both ways disk can win are forced here, with the timestamps
+  # written by hand rather than slept for: a strictly newer disk entry, and the
+  # same-second tie two instances hit on a 1s-resolution clock.
+  printf '%s\n' "$_HE_PROFILE" | _he_profile
+  _he_case "a newer disk tier wins the merge" "" '
+      _mode_init m; _sset "shared key" 1; _qkey "shared key"; _k=$REPLY
+      _ts=${_sc[$_k]##*|}; _sc[$_k]="1|m|$((_ts - 100))"      # memory is 100s stale
+      printf "#v1\n%s|2|m|%s\n" "$_k" "$_ts" > "$DATA/scores"
+      _sflush
+      declare -A _t; _scores_load _t; printf "%s" "${_t[$_k]%%|*}"' "2"; ((checks++))
+  printf '%s\n' "$_HE_PROFILE" | _he_profile
+  _he_case "a same-second tie keeps the higher tier" "" '
+      _mode_init m; _sset "shared key" 1; _qkey "shared key"; _k=$REPLY
+      _ts=${_sc[$_k]##*|}
+      printf "#v1\n%s|2|m|%s\n" "$_k" "$_ts" > "$DATA/scores"
+      _sflush
+      declare -A _t; _scores_load _t; printf "%s" "${_t[$_k]%%|*}"' "2"; ((checks++))
+
+  # ── H. a data dir that stops being writable ──────────────────────
+  # Disk full, a read-only remount, a sync tool holding the directory. A failed write
+  # must leave the good file alone and clean up after itself.
+  printf '%s\n' "$_HE_PROFILE" | _he_profile
+  printf '#v1\nakey|2|1750000000\n' > "$_HE_DIR/cmdchamp/scores"
+  _he_run "" 'chmod 500 "$DATA"; _load_profile; BOSS_BEATEN=29; _save_profile; _mode_init x; _sset "k" 2; _sflush; chmod 700 "$DATA"' >/dev/null 2>&1
+  got=$(sed -n 's/^BOSS_BEATEN=//p' "$_HE_DIR/cmdchamp/profile")
+  [[ "$got" == 15 ]] && _ok || _fail "hostile unwritable dir: profile changed to BOSS_BEATEN=$got on a failed write"; ((checks++))
+  [[ -e "$_HE_DIR/cmdchamp/profile.tmp" || -e "$_HE_DIR/cmdchamp/scores.tmp" ]] \
+    && _fail "hostile unwritable dir: a half-written .tmp was left behind" || _ok; ((checks++))
+
+  # ── I. profile formats from other builds ─────────────────────────
+  # Forward: an older format migrates in place. Backward: a NEWER one is left alone —
+  # two machines on one save must not have the older binary reset the newer file.
+  local _v
+  for _v in 2 3 5 7; do
+    printf '%s\n' "$_HE_PROFILE" | sed "s/^PROFILE_VER=8/PROFILE_VER=$_v/" | _he_profile
+    _he_case "profile format $_v migrates" "" "$_HE_PROBE" "$_HE_WANT"; ((checks++))
+  done
+  printf '%s\n' "$_HE_PROFILE" | sed 's/^PROFILE_VER=8/PROFILE_VER=1/' | _he_profile
+  got=$(_he_run "" '_load_profile 2>/dev/null; printf "%s" "$BOSS_BEATEN"')
+  [[ "$got" == 0 && -f "$_HE_DIR/cmdchamp/profile.bak" ]] && _ok \
+    || _fail "hostile profile format 1: should reset with a backup (got |$got|)"; ((checks++))
+  printf '%s\n' "$_HE_PROFILE" | sed 's/^PROFILE_VER=8/PROFILE_VER=99/' | _he_profile
+  _he_run "" '_load_profile' >/dev/null 2>&1
+  got=$(sed -n 's/^BOSS_BEATEN=//p' "$_HE_DIR/cmdchamp/profile")
+  [[ "$got" == 15 && "$(sed -n 's/^PROFILE_VER=//p' "$_HE_DIR/cmdchamp/profile")" == 99 ]] && _ok \
+    || _fail "hostile profile format 99: an older build overwrote a newer save (BOSS_BEATEN=$got)"; ((checks++))
+
+  # ── J. the calendar ──────────────────────────────────────────────
+  # The daily streak compares day numbers rather than subtracting 86400 seconds, so it
+  # has to be right across DST, month and year ends, leap days and the century rule.
+  printf '%s\n' "$_HE_PROFILE" | _he_profile
+  local -a days=("20260818 20260819 1" "20261231 20270101 1" "20240228 20240229 1"
+    "20240229 20240301 1" "20230228 20230301 1" "20260308 20260309 1" "20261101 20261102 1"
+    "20260131 20260201 1" "20260819 20260819 0" "20260819 20260821 2" "19991231 20000101 1"
+    "21000228 21000301 1" "20000228 20000229 1" "18991231 19000101 1")
+  local _d
+  for _d in "${days[@]}"; do
+    set -- $_d
+    _he_case "days $1 -> $2" "" "_days $1; _a=\$REPLY; _days $2; printf '%s' \$((REPLY - _a))" "$3"
+    ((checks++))
+  done
 
   printf '  hostile checks: %d   locales built: %d   broken: %d\n' "$checks" "$locales" "$((FAIL - before))"
 }
