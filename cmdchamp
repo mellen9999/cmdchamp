@@ -5505,10 +5505,14 @@ _vi_range() {
   ((_rs==_re)) && return 1
   return 0
 }
-_del() { # $1=motion  (also used by c via _vi_normal)
+_del() { # $1=motion  $2=c when the caller is `change` (also used by c via _vi_normal)
   case "$1" in d|c) [[ -n "$input" ]] && _vi_reg="$input"; input="" cursor=0; return;; esac  # -n guard: counted 2dd's second pass must not wipe the register
   _vi_range "$1" || return
-  _vi_reg="${input:_rs:_re-_rs}"; input="${input:0:_rs}${input:_re}"; cursor=$_rs; _clamp
+  _vi_reg="${input:_rs:_re-_rs}"; input="${input:0:_rs}${input:_re}"; cursor=$_rs
+  # `d` leaves normal mode, where the cursor must sit ON a character - clamp it.
+  # `c` opens insert mode, where one past the end is a legal place to type: clamping
+  # there put `cw` on the last word one column early ("foo bar" -> cw -> "foobaz ").
+  [[ "${2:-}" == c ]] || _clamp
 }
 
 # ═══ VI HANDLER ═══
@@ -5591,7 +5595,7 @@ _vi_normal() {
     c) _vi_opcount "$_n"; local _cn=$REPLY _cm=$c2; _vi_ft=""
       # vim special-cases cw/cW to behave like ce on a non-blank (no trailing-space eat).
       # Re-decide per iteration: the cursor moves between counted changes.
-      for ((_i=0;_i<_cn;_i++)); do local _m="$_cm"; [[ "$_cm" == w && "${input:cursor:1}" != " " ]] && _m=cw; _del "$_m"; done; mode="insert"; draw;;
+      for ((_i=0;_i<_cn;_i++)); do local _m="$_cm"; [[ "$_cm" == w && "${input:cursor:1}" != " " ]] && _m=cw; _del "$_m" c; done; mode="insert"; draw;;
     u) ((${#UNDO_STACK[@]}>0)) && { local _u="${UNDO_STACK[-1]}"; unset 'UNDO_STACK[-1]'; cursor="${_u%%:*}"; input="${_u#*:}"; draw; };;
     g) _vi_read; [[ "$c2" == "g" ]] && { cursor=0; draw; };;
     G) cursor=$((${#input}>0?${#input}-1:0)); draw;;

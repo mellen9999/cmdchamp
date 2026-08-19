@@ -1049,6 +1049,131 @@ phase11_playground_trail() {
 }
 
 # ═══════════════════════════════════════════════════════════════════
+# PHASE 12: LINE EDITOR
+# Every answer in the game is typed through _read_line, and nothing tested it.
+# Two passes:
+#   1. exact cases - keystrokes in, expected buffer out, checked against vim's
+#      real semantics (D leaves the space, p pastes AFTER the cursor, X deletes
+#      the char before it). This pass caught `cw` on the last word inserting one
+#      column early, because _del clamped a cursor that was about to enter insert.
+#   2. fuzz - seeded random keystrokes, including raw escapes and control bytes.
+#      Nothing may hang, crash, write to stderr, or grow the buffer past its cap.
+#
+# ESC is fed in its own chunk with a gap: _read_line only treats ESC as "leave
+# insert" when no byte follows within 10ms, which is exactly how it tells a
+# human's Esc from a terminal's arrow key. Feeding "\x1bx" in one write is an
+# escape sequence, not Esc-then-x - the test has to type like a human here.
+# ═══════════════════════════════════════════════════════════════════
+_ED_SRC="$XDG_DATA_HOME/ed_src.sh"
+_ED_RUN="$XDG_DATA_HOME/ed_run.sh"
+_ED_OUT="$XDG_DATA_HOME/ed_out"
+_ED_ERR="$XDG_DATA_HOME/ed_err"
+
+_ed_prepare() {
+  sed -e 's/^_tty().*/\_tty() { :; }/' -e '/^# ═══ CLI ENTRYPOINT ═══/,$d' "$CMDCHAMP" > "$_ED_SRC"
+  printf '%s\n' 'SANDBOX_MODE=0' >> "$_ED_SRC"
+  cat > "$_ED_RUN" <<'RUNNER'
+source "$1"
+OPT_VI=$2; _apply_opts
+HIST=("first cmd" "second cmd"); HIST_IDX=${#HIST[@]}
+_REDRAW_HDR() { :; }
+_read_line 0 1 0
+printf '%s' "$input" > "$3"
+RUNNER
+}
+
+# _ed_type <vi> <chunk...> — feed keystrokes, leave the final buffer in $REPLY.
+_ed_type() {
+  local vi=$1; shift
+  : > "$_ED_OUT"; : > "$_ED_ERR"
+  { sleep 0.05; local p; for p in "$@"; do printf '%s' "$p"; sleep 0.03; done; } \
+    | COLUMNS=79 timeout 10 bash "$_ED_RUN" "$_ED_SRC" "$vi" "$_ED_OUT" >/dev/null 2>"$_ED_ERR"
+  _ED_RC=$?
+  REPLY=$(<"$_ED_OUT")
+}
+
+_ed_case() { # <name> <vi> <expected> <chunk...>
+  local name=$1 vi=$2 exp=$3; shift 3
+  _ed_type "$vi" "$@"
+  if ((_ED_RC == 124)); then _fail "editor $name: hung (10s timeout)"; return; fi
+  if [[ -s "$_ED_ERR" ]]; then _fail "editor $name: stderr — $(head -c 90 "$_ED_ERR")"; return; fi
+  if [[ "$REPLY" != "$exp" ]]; then _fail "editor $name: got |$REPLY| want |$exp|"; return; fi
+  _ok
+}
+
+phase12_line_editor() {
+  printf '\n%s\n' "═══ PHASE 12: Line Editor ═══"
+  local before=$FAIL cases=0 E=$'\e' BS=$'\x7f'
+  _ed_prepare
+  # ── insert mode ──
+  _ed_case "type"        0 'echo hi'   $'echo hi\n'
+  _ed_case "backspace"   0 'echo hi'   "echo hix${BS}"$'\n'
+  _ed_case "ctrl-u"      0 'xyz'       $'abc\x15xyz\n'
+  _ed_case "ctrl-w"      0 'foo baz'   $'foo bar\x17baz\n'
+  _ed_case "left arrow"  0 'aXbc'      $'abc\e[D\e[DX\n'
+  _ed_case "history up"  0 'second cmd' $'\e[A\n'
+  _ed_case "history up2" 0 'first cmd'  $'\e[A\e[A\n'
+  cases=7
+  # ── vi normal mode (expectations are vim's, not ours) ──
+  local -a vi=(
+    "x|hell|hello${E}|x"
+    "X|foo br|foo bar${E}|X"
+    "dw|bar|foo bar${E}|0|dw"
+    "db|foo r|foo bar${E}|db"
+    "D|foo |foo bar${E}|b|D"
+    "cw last word|foo baz|foo bar${E}|b|cw|baz"
+    "cw via w|foo baz|foo bar${E}|0|w|cw|baz"
+    "ce|foo baz|foo bar${E}|b|ce|baz"
+    "c\$|foo baz|foo bar${E}|b|c\$|baz"
+    "cb|foo r|foo bar${E}|cb"
+    "cc|baz|foo bar${E}|cc|baz"
+    "cl|zoo bar|foo bar${E}|0|cl|z"
+    "s|oo bar|foo bar${E}|0|s"
+    "S|x|foo bar${E}|S|x"
+    "r|zoo bar|foo bar${E}|0|rz"
+    "tilde|Abc|abc${E}|0|~"
+    "count 3x|a|aaaa${E}|0|3x"
+    "count clamp|ab|ab${E}|999999999w"
+    "undo|abc|abc${E}|x|u"
+    "f then x|ab,c|a,b,c${E}|0|f,|x"
+    "A append|helloX|hello${E}|A|X"
+    "I insert|Xhello|hello${E}|I|X"
+    "0 then l l|helo|hello${E}|0|ll|x"
+    "dollar|hell|hello${E}|\$|x"
+    "gg|oo bar|foo bar${E}|gg|x"
+    "G|foo ba|foo bar${E}|G|x"
+    "yw then p|foo bbarar|foo bar${E}|b|yw|p"
+    "yw then P|foo barbar|foo bar${E}|b|yw|P"
+  )
+  local c name exp
+  local IFS='|'
+  for c in "${vi[@]}"; do
+    local -a f=($c); IFS=' '
+    name=${f[0]}; exp=${f[1]}
+    _ed_case "$name" 1 "$exp" "${f[@]:2}" $'\n'
+    ((cases++)); IFS='|'
+  done
+  IFS=' '
+  # ── fuzz: seeded, so a failure is reproducible ──
+  local seed=20260819 i n k blob
+  RANDOM=$seed
+  local -a bytes=(a b Z 0 9 ' ' '|' '"' "'" '$' '\' '/' '-' '.' ';' '~' '^'
+    $'\e' $'\e[' $'\e[A' $'\e[B' $'\e[C' $'\e[D' $'\e[2' $'\x7f' $'\x17' $'\x15'
+    d c y w b e x X p P u i a A I r f t '0' '$' '3' '9' $'\t')
+  for ((i=0; i<40; i++)); do
+    blob=""; n=$((RANDOM % 24 + 4))
+    for ((k=0; k<n; k++)); do blob+="${bytes[RANDOM % ${#bytes[@]}]}"; done
+    _ed_type $((i % 2)) "$blob"$'\n'
+    ((cases++))
+    if ((_ED_RC == 124)); then _fail "editor fuzz #$i (seed $seed): hung — |$(printf '%q' "$blob")|"
+    elif [[ -s "$_ED_ERR" ]]; then _fail "editor fuzz #$i (seed $seed): stderr — $(head -c 90 "$_ED_ERR")"
+    elif ((${#REPLY} > 512)); then _fail "editor fuzz #$i (seed $seed): buffer grew to ${#REPLY} (cap 512)"
+    else _ok; fi
+  done
+  printf '  keystroke runs: %d (28 vi + 7 insert + 40 fuzz, seed %d)   broken: %d\n' "$cases" "$seed" "$((FAIL - before))"
+}
+
+# ═══════════════════════════════════════════════════════════════════
 # PHASE 7: SCENARIO WRONG-ANSWER REJECTION
 # Similar-but-wrong answers for scenario steps should be rejected
 # ═══════════════════════════════════════════════════════════════════
@@ -1139,7 +1264,7 @@ main() {
   local _want="${1:-}"
   printf '%s\n' "╔══════════════════════════════════════════╗"
   printf '%s\n' "║   CmdChamp Omega Audit                   ║"
-  printf '%s\n' "║   30 levels × 11 phases                  ║"
+  printf '%s\n' "║   30 levels × 12 phases                  ║"
   printf '%s\n' "╚══════════════════════════════════════════╝"
 
   if ! ((SANDBOX_MODE)); then
@@ -1151,7 +1276,7 @@ main() {
   # enough that iterating on one phase otherwise means waiting on nine others.
   local -a _phases=(phase1_syntax phase2_positive phase3_confusable phase4_generic
     phase5_crosscheck phase6_scenarios phase7_scenario_negatives phase8_panel_coverage
-    phase9_manpage_grid phase10_render_smoke phase11_playground_trail)
+    phase9_manpage_grid phase10_render_smoke phase11_playground_trail phase12_line_editor)
   local _p _n
   for _p in "${_phases[@]}"; do
     _n=${_p#phase}; _n=${_n%%_*}
