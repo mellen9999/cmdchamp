@@ -169,7 +169,7 @@ _strip_ansi() {
   REPLY="$out"
 }
 
-VERSION="1.9.0"
+VERSION="1.10.0"
 SANDBOX_TIMEOUT=5      # Seconds before sandbox command times out
 BOSS_THRESHOLD=4       # Correct answers needed to beat boss (out of BOSS_TOTAL)
 BOSS_TOTAL=5           # Number of questions in boss round
@@ -397,6 +397,91 @@ SC_FLAVOR=(""
   "A backup job tars a writable dir with tar *. Turn that into code execution."
   "A job calls a command by bare name. Own its PATH and read the secret.")
 
+# ── playground syllabus: applied-security modules over the compromised box ──────────────────
+# The shared applied-security curriculum. Each module teaches the SECURITY READING of a skill the
+# levels already taught mechanically (dedup), proven hands-on by a flag OR a tasked exercise over a
+# real artifact. Data is plain text; the `learn` renderer applies colour. State derives from the
+# flag registry below - there is no module-unlock array (fixtures gate per-flag). PLAY_MOD_SCEN
+# cross-links the crafted scenario that drills the same skill (0 = none). See _play_learn.
+PLAY_MOD_TOTAL=8
+PLAY_MOD_NAME=("" "recon & orientation" "encoding is not encryption" "archives & deleted data" \
+  "timeline forensics" "credentials, cracking & reuse" "log forensics & triage" \
+  "persistence hunting" "pipelines & power tools")
+PLAY_MOD_CONCEPT=("" \
+  "orient before you touch anything - dotfiles hold config, history is a confession" \
+  "reversible with no key is obfuscation, never protection - do not mistake it for a lock" \
+  "delete removes one name for the bytes, not the bytes - backups outlive the original" \
+  "an intrusion is a burst of writes in a narrow window - time order clusters the work" \
+  "a cracked cred is a skeleton key - people reuse secrets, so one door opens the next" \
+  "the logs already recorded the break-in - counting turns noise into the story" \
+  "getting in is a visit; staying in is the goal - hunt the few places code runs itself" \
+  "small sharp tools piped together become the exact tool the moment needs, at any scale")
+# TRY: a tasked exercise the player can run right now (\$ escaped so awk fields render literally)
+PLAY_MOD_TRY=("" \
+  "ls -la ; cat .bash_history ; file *" \
+  "base64 -d vault/notes.b64 ; tr 'A-Za-z' 'N-ZA-Mn-za-m' < vault/.stash" \
+  "tar tzf archive/site-backup.tar.gz ; tar xzOf archive/site-backup.tar.gz web/config.php ; zcat vault/core.gz" \
+  "ls -lt ; find . -type f -newer .env" \
+  "while read l; do p=\${l##*:}; echo -n <word>|md5sum; done < vault/hashes.txt ; openssl enc -d -aes-256-cbc -pbkdf2 -in vault/backup.enc -k <cracked>" \
+  "grep -oE '([0-9]+\.){3}[0-9]+' incident/auth.log | sort | uniq -c | sort -rn ; grep -c ERROR big.log" \
+  "awk -F: '\$3==0' incident/passwd ; cat incident/crontab ; find . -perm -002 -type f ; cat .ssh/authorized_keys" \
+  "find . -print0 | xargs -0 grep -l pass 2>/dev/null ; cut -d: -f1 incident/passwd | sort")
+# FOUND: what the exercise reveals (the payoff that makes the lesson land)
+PLAY_MOD_FOUND=("" \
+  "the intruder's own commands - every breadcrumb in the box starts from cat .bash_history" \
+  "a passphrase and a flag that needed no key; history shows the note was base64'd then rm'd" \
+  "web/config.php with live db creds - deleted from disk, still whole inside the backup" \
+  "one file newer than all the rest: web/uploads/avatar.php.txt, the intruder's drop" \
+  "svc_backup=letmein opens the vault; that same secret is DB_PASS in .env - reuse in action" \
+  "203.0.113.66 owns every failed login, then one Accepted for deploy, then sudo to root" \
+  "a second uid-0 account, a */5 cron re-run, a world-writable beacon, an extra ssh key" \
+  "one line you composed pulls the answer out of a tree you never opened by hand")
+PLAY_MOD_ATK=("" \
+  "reads history to learn the box" "peels obfuscation layer by layer" \
+  "loots the backup for what was deleted" "timestomps to blend into the noise" \
+  "cracks one cred, sprays it everywhere" "knows what the logs show, then wipes them (history -c)" \
+  "plants cron + a uid-0 account to get back in" "automates one trick across the whole tree")
+PLAY_MOD_DEF=("" \
+  "every artifact on disk is evidence" "never treat encoding as a security control" \
+  "old archives hold live secrets - guard them" "correlate mtime against off-box logs" \
+  "unique creds per system + mfa breaks the chain" "ship logs off-box in real time; alert on the rank spike" \
+  "one uid-0 only; baseline crontabs and authorized_keys" "the same pipeline is your detector")
+PLAY_MOD_SCEN=("" 5 0 2 11 0 11 12 3)   # crafted scenario that drills this module (0 = none)
+
+# ── playground flag metadata (parallel to _PLAY_FLAG_ORDER/_PLAY_FLAG_UNLOCK above) ──────────
+declare -A _PLAY_FLAG_MOD=(
+  ['flag{str1ngs_pull_the_truth}']=1        ['flag{uid_zero_hides_in_plain_sight}']=7
+  ['flag{base64_is_not_encryption}']=2      ['flag{rot_thirteen_spins_the_truth}']=2
+  ['flag{gzip_hides_nothing_from_zcat}']=3  ['flag{tar_it_up_and_look_inside}']=3
+  ['flag{newest_file_names_the_intruder}']=4 ['flag{crack_the_hash_then_open_the_vault}']=5)
+declare -A _PLAY_FLAG_TECH=(
+  ['flag{str1ngs_pull_the_truth}']="strings - text out of a binary"
+  ['flag{uid_zero_hides_in_plain_sight}']="awk -F: - uid 0 is root by number, not name"
+  ['flag{base64_is_not_encryption}']="base64 -d - encoding, not encryption"
+  ['flag{rot_thirteen_spins_the_truth}']="tr - rotate the alphabet back"
+  ['flag{gzip_hides_nothing_from_zcat}']="zcat - read compressed without unpacking"
+  ['flag{tar_it_up_and_look_inside}']="tar - deleted lives on in the backup"
+  ['flag{newest_file_names_the_intruder}']="find -newer / ls -lt - newest file names the drop"
+  ['flag{crack_the_hash_then_open_the_vault}']="crack the hash, reuse the cred, open the vault")
+declare -A _PLAY_FLAG_HINT=(
+  ['flag{str1ngs_pull_the_truth}']="a file that isn't text still leaks text. samples/ - what pulls readable bytes out?"
+  ['flag{uid_zero_hides_in_plain_sight}']="incident/passwd - two accounts claim uid 0. one is lying. where does it live?"
+  ['flag{base64_is_not_encryption}']="vault/ has a .b64. it decodes; it does not decrypt."
+  ['flag{rot_thirteen_spins_the_truth}']="vault/.stash reads like line noise. it's a caesar cipher - rotate the alphabet."
+  ['flag{gzip_hides_nothing_from_zcat}']="vault/ has a lone .gz - no tarball, just deflate. one command reads it straight."
+  ['flag{tar_it_up_and_look_inside}']="archive/ - what was packed was never really deleted. peek inside without unpacking."
+  ['flag{newest_file_names_the_intruder}']="everything shares one timestamp except the intruder's drop. sort by time."
+  ['flag{crack_the_hash_then_open_the_vault}']="vault/backup.enc is really encrypted. its key is a service cred - crack the hashes.")
+declare -A _PLAY_FLAG_LOC=(
+  ['flag{str1ngs_pull_the_truth}']="samples/target.bin"
+  ['flag{uid_zero_hides_in_plain_sight}']="/sandbox/.syscache/note.txt (home of the uid-0 backdoor)"
+  ['flag{base64_is_not_encryption}']="vault/notes.b64"
+  ['flag{rot_thirteen_spins_the_truth}']="vault/.stash"
+  ['flag{gzip_hides_nothing_from_zcat}']="vault/core.gz"
+  ['flag{tar_it_up_and_look_inside}']="web/config.php inside archive/site-backup.tar.gz"
+  ['flag{newest_file_names_the_intruder}']="web/uploads/avatar.php.txt (newest file)"
+  ['flag{crack_the_hash_then_open_the_vault}']="vault/backup.enc (opened with svc_backup's cracked password)")
+
 _victory() {
   printf '%s\e[2J\e[H' "$_SY"
   local -A sc; [[ -f "$DATA/scores" ]] && while IFS='|' read -r k v; do [[ "$k" == "#"* || -z "$k" ]] && continue; sc[$k]=$v; done < "$DATA/scores"
@@ -503,6 +588,34 @@ _GAUNTLET_DIR=""    # when set, the gauntlet owns a randomised fixture tree it a
 _GAUNTLET_PRISTINE="" # the gauntlet tree's own pristine, so a reset restores THOSE fixtures
 _PLAY_DIR=""        # the playground owns its own compromised-box tree, never the shared sandbox
 _PLAY_PRISTINE=""   # that tree's pristine, so the playground's `reset` restores THOSE fixtures
+_PLAY_PLANTED=()     # flag tokens actually planted this build (drives the dynamic total)
+_PLAY_FLAG_TOTAL=0   # ${#_PLAY_PLANTED[@]} after gen; replaces the old hardcoded 3
+_play_have(){ command -v "$1" >/dev/null 2>&1; }  # host PATH == sandbox PATH (bwrap ro-binds /usr,/bin)
+# playground flag registry. ORDER = difficulty (easiest first, drives `hint`). UNLOCK = the
+# BOSS_BEATEN a player needs before the flag's fixture is planted == the level that teaches the
+# flag's hardest tool (playground-taught strings/zcat = 0). This is the ONE source of truth for
+# per-flag gating: _gen_play_files gates on it, the `learn` syllabus reads it, the selftest guards
+# it. Every threshold is prerequisite-audited (see the unlock-prerequisite selftest).
+_PLAY_FLAG_ORDER=(
+  'flag{str1ngs_pull_the_truth}'
+  'flag{rot_thirteen_spins_the_truth}'
+  'flag{uid_zero_hides_in_plain_sight}'
+  'flag{gzip_hides_nothing_from_zcat}'
+  'flag{newest_file_names_the_intruder}'
+  'flag{tar_it_up_and_look_inside}'
+  'flag{base64_is_not_encryption}'
+  'flag{crack_the_hash_then_open_the_vault}')
+declare -A _PLAY_FLAG_UNLOCK=(
+  ['flag{str1ngs_pull_the_truth}']=0
+  ['flag{rot_thirteen_spins_the_truth}']=6
+  ['flag{uid_zero_hides_in_plain_sight}']=7
+  ['flag{gzip_hides_nothing_from_zcat}']=0
+  ['flag{newest_file_names_the_intruder}']=13
+  ['flag{tar_it_up_and_look_inside}']=13
+  ['flag{base64_is_not_encryption}']=27
+  ['flag{crack_the_hash_then_open_the_vault}']=27)
+# true when the player has cleared far enough for this flag's fixture to exist
+_play_gate(){ (( BOSS_BEATEN >= ${_PLAY_FLAG_UNLOCK[$1]:-0} )); }
 
 _BWRAP_FLAG="$DATA/.bwrap_blocked"
 _bwrap_notice() {
@@ -871,6 +984,12 @@ _gen_gauntlet_files() {
 _gen_play_files() {
   local dir="$1"
   _gen_sandbox_files "$dir" || return 1
+  # A flag token is recorded in _PLAY_PLANTED only when its fixture actually lands, so the
+  # dynamic total never counts a flag that graceful degradation (missing tool) or progressive
+  # unlock (BOSS_BEATEN gate) left out. samples/target.bin (flag 1, strings) is planted
+  # unconditionally by _gen_sandbox_files above.
+  _PLAY_PLANTED=()
+  _play_gate 'flag{str1ngs_pull_the_truth}' && _PLAY_PLANTED+=('flag{str1ngs_pull_the_truth}')
 
   # ── dotfiles: the first thing `ls -la` should reward ──
   printf '%s\n' \
@@ -912,7 +1031,15 @@ _gen_play_files() {
   } > "$dir/incident/auth.log"
   printf '%s\n' 'root:x:0:0:root:/root:/bin/bash' 'daemon:x:1:1:daemon:/usr/sbin:/usr/sbin/nologin' \
     'sandbox:x:1000:1000:sandbox:/sandbox:/bin/bash' 'deploy:x:1001:1001:deploy:/home/deploy:/bin/bash' \
-    'backdoor:x:0:0:system:/root:/bin/bash' 'nobody:x:65534:65534:nobody:/nonexistent:/usr/sbin/nologin' > "$dir/incident/passwd"
+    'backdoor:x:0:0:system:/sandbox/.syscache:/bin/bash' 'nobody:x:65534:65534:nobody:/nonexistent:/usr/sbin/nologin' > "$dir/incident/passwd"
+  # flag 2 (awk -F: uid-0 forensics): a second account claims uid 0; its HOME hides in the app
+  # tree, not /root. `awk -F: '$3==0{print $6}' incident/passwd` names the dir; the flag waits there.
+  if _play_gate 'flag{uid_zero_hides_in_plain_sight}'; then
+    mkdir -p "$dir/.syscache"
+    printf '%s\n' 'root shell parked here by the deploy user - see incident/passwd' \
+      'flag{uid_zero_hides_in_plain_sight}' > "$dir/.syscache/note.txt"
+    _PLAY_PLANTED+=('flag{uid_zero_hides_in_plain_sight}')
+  fi
   printf '%s\n' '# m h dom mon dow  command' '*/5 * * * *  /sandbox/bin/collect.sh >/dev/null 2>&1' \
     '0 3 * * *    /sandbox/backup.sh' > "$dir/incident/crontab"
 
@@ -924,10 +1051,13 @@ _gen_play_files() {
     'rm -f /tmp/.c' > "$dir/bin/collect.sh"
   chmod 666 "$dir/bin/collect.sh"
 
-  # ── vault/: encoded, not encrypted (flag 2) + a hash/wordlist pair to crack ──
+  # ── vault/: a layered decode set (base64 / rot13 / gzip) + a hash/wordlist pair to crack ──
   mkdir -p "$dir/vault"
-  printf '%s' 'IyBWYXVsdApiYWNrdXAgcGFzc3BocmFzZTogaHVudGVyMgpmbGFne2Jhc2U2NF9pc19ub3RfZW5jcnlwdGlvbn0K' > "$dir/vault/notes.b64"
-  printf '\n' >> "$dir/vault/notes.b64"
+  # flag 4 (base64): encoding is not encryption - it decodes with no key. `base64 -d vault/notes.b64`.
+  if _play_gate 'flag{base64_is_not_encryption}'; then
+    printf '%s\n' 'IyBWYXVsdApiYWNrdXAgcGFzc3BocmFzZTogaHVudGVyMgpmbGFne2Jhc2U2NF9pc19ub3RfZW5jcnlwdGlvbn0K' > "$dir/vault/notes.b64"
+    _PLAY_PLANTED+=('flag{base64_is_not_encryption}')
+  fi
   # Every hash is md5 of a word that IS in wordlist.txt, hashed with no trailing newline
   # (what hashcat/john do). The header line says so on purpose: `echo w | md5sum` hashes
   # the newline too and matches nothing, which is a dead end, not a lesson.
@@ -937,8 +1067,26 @@ _gen_play_files() {
     'monitor:e6078b9b1aac915d11b9fd59791030bf' > "$dir/vault/hashes.txt"
   printf '%s\n' hunter2 letmein password123 correct-horse-battery-staple s3cr3t \
     opensesame changeme qwerty dragon trustno1 > "$dir/vault/wordlist.txt"
+  # flag 5 (rot13/tr): a Caesar cipher is not a key. `tr 'A-Za-z' 'N-ZA-Mn-za-m' < vault/.stash`.
+  if _play_gate 'flag{rot_thirteen_spins_the_truth}'; then
+    printf '%s\n' 'synt{ebg_guvegrra_fcvaf_gur_gehgu}' > "$dir/vault/.stash"
+    _PLAY_PLANTED+=('flag{rot_thirteen_spins_the_truth}')
+  fi
+  # flag 6 (gzip): compression hides nothing from zcat. `zcat vault/core.gz`. (gated on gzip)
+  if _play_gate 'flag{gzip_hides_nothing_from_zcat}' && _play_have gzip; then
+    printf 'flag{gzip_hides_nothing_from_zcat}\n' | gzip -c > "$dir/vault/core.gz" 2>/dev/null \
+      && _PLAY_PLANTED+=('flag{gzip_hides_nothing_from_zcat}')
+  fi
+  # flag 8 (crack then decrypt): the vault backup is really encrypted; its passphrase is a cracked
+  # service cred - svc_backup's md5 in hashes.txt = md5(letmein), and letmein is in wordlist.txt.
+  # `openssl enc -d -aes-256-cbc -pbkdf2 -in vault/backup.enc -k letmein`. (gated on openssl+md5sum)
+  if _play_gate 'flag{crack_the_hash_then_open_the_vault}' && _play_have openssl && _play_have md5sum; then
+    printf 'flag{crack_the_hash_then_open_the_vault}\n' \
+      | openssl enc -aes-256-cbc -pbkdf2 -salt -out "$dir/vault/backup.enc" -k letmein 2>/dev/null \
+      && _PLAY_PLANTED+=('flag{crack_the_hash_then_open_the_vault}')
+  fi
 
-  # ── web/ + archive/: the tarball still holds what was deleted from disk (flag 3) ──
+  # ── web/ + archive/: the tarball still holds what was deleted from disk (flag 7, tar) ──
   mkdir -p "$dir/web/uploads"
   printf '%s\n' '<!doctype html>' '<html><head><title>internal tools</title></head>' \
     '<body><h1>internal tools</h1>' '<ul>' '<li><a href="/admin">admin</a></li>' \
@@ -946,15 +1094,23 @@ _gen_play_files() {
   printf '%s\n' 'Options -Indexes' 'AuthType Basic' 'AuthName "restricted"' \
     'AuthUserFile /sandbox/web/.htpasswd' 'Require valid-user' > "$dir/web/.htaccess"
   printf '%s\n' 'admin:$apr1$notreal$hashhashhashhashhash0' > "$dir/web/.htpasswd"
-  printf '%s\n' '<?php' '// uploaded 12/Feb 08:31 - not by us' \
-    '@system($_REQUEST["c"]);' '?>' > "$dir/web/uploads/avatar.php.txt"
+  { printf '%s\n' '<?php' '// uploaded 12/Feb 08:31 - not by us'
+    # flag 3 (mtime/timeline): the webshell is the one file newer than everything else.
+    _play_gate 'flag{newest_file_names_the_intruder}' && printf '%s\n' '// flag{newest_file_names_the_intruder}'
+    printf '%s\n' '@system($_REQUEST["c"]);' '?>'; } > "$dir/web/uploads/avatar.php.txt"
   mkdir -p "$dir/archive"
   local _stage; if _stage=$(mktemp -d "${TMPDIR:-/tmp}/cmdchamp.XXXXXX" 2>/dev/null); then
     mkdir -p "$_stage/web"
-    printf '%s\n' '<?php' '$DB_HOST = "db.internal";' '$DB_USER = "appuser";' \
-      '$DB_PASS = "correct-horse-battery-staple";' '// flag{tar_it_up_and_look_inside}' '?>' > "$_stage/web/config.php"
+    { printf '%s\n' '<?php' '$DB_HOST = "db.internal";' '$DB_USER = "appuser";' \
+        '$DB_PASS = "correct-horse-battery-staple";'
+      # flag 7 (tar): deleting web/config.php from disk did not delete it from the backup.
+      _play_gate 'flag{tar_it_up_and_look_inside}' && printf '%s\n' '// flag{tar_it_up_and_look_inside}'
+      printf '%s\n' '?>'; } > "$_stage/web/config.php"
     cp "$dir/web/index.html" "$_stage/web/index.html" 2>/dev/null
-    tar czf "$dir/archive/site-backup.tar.gz" -C "$_stage" web 2>/dev/null
+    if tar czf "$dir/archive/site-backup.tar.gz" -C "$_stage" web 2>/dev/null \
+       && [[ -s "$dir/archive/site-backup.tar.gz" ]] && _play_gate 'flag{tar_it_up_and_look_inside}'; then
+      _PLAY_PLANTED+=('flag{tar_it_up_and_look_inside}')
+    fi
     rm -rf "$_stage"
   fi
 
@@ -973,6 +1129,13 @@ _gen_play_files() {
         "$( ((_b % 97 == 0)) && printf ERROR || printf INFO )" $((_b%8+1)) $((_b%450+3))
     done; } > "$dir/big.log"
   printf '%s\n' 'you cannot read this until you chmod it' > "$dir/locked.txt"
+  # Timeline: stamp the whole tree to one moment, then bump the intruder's drop a day later so
+  # `ls -lt` / `find -newer .env` single it out (matches its "uploaded 12/Feb 08:31" comment).
+  # Runs always - the scene IS the lesson; the flag itself only rode in when unlocked. cp -a into
+  # the pristine and _sandbox_reset both preserve these mtimes.
+  find "$dir" -exec touch -d '2026-02-11 09:00:00' {} + 2>/dev/null
+  touch -d '2026-02-12 08:31:00' "$dir/web/uploads/avatar.php.txt" 2>/dev/null
+  _play_gate 'flag{newest_file_names_the_intruder}' && _PLAY_PLANTED+=('flag{newest_file_names_the_intruder}')
   return 0
 }
 
@@ -1070,6 +1233,7 @@ _sandbox_exec() {
     --bind "$SANDBOX_DIR" /sandbox
     --chdir /sandbox
     --unshare-all
+    --cap-drop ALL
     --die-with-parent
     --new-session
     --dev /dev
@@ -6116,24 +6280,18 @@ _practice_menu() {
 #     mission card on entry so arriving here isn't a blank prompt with no idea what to do.
 # Tab explains what YOU typed (not a question's answer).
 _play_card() {
-  local _f=$1
+  local -n _fl=$1
   printf '%s\e[2J\e[H%s\n\n' "$_SY" "${M}${B}${_H3} PLAYGROUND ${_H3}${N}"
-  printf '%s\n' "${D}a real shell in a sandbox. every command actually runs. nothing is graded,${N}" \
-                "${D}nothing can touch your machine, and you cannot break anything that matters.${N}" ''
-  printf '%s\n\n' "${W}the box:${N} ${D}someone got in. the mess is still on disk.${N}"
-  printf '%s %s\n' "${Y}${B}3 flags${N}" "${D}are hidden in the tree, each looks like ${C}flag{...}${D} - found ${W}${_f}${D}/3${N}"
-  printf '  %s  %s\n' "${W}1${N}" "${D}a file that isn't text        ${C}samples/${N}"
-  printf '  %s  %s\n' "${W}2${N}" "${D}encoded, not encrypted        ${C}vault/${N}"
-  printf '  %s  %s\n\n' "${W}3${N}" "${D}packed, not deleted           ${C}archive/${N}"
+  printf '%s\n' "${D}a real shell in a sandbox. every command runs; nothing is graded; nothing${N}" \
+                "${D}can touch your machine. this is a frozen crime scene - take it apart.${N}" ''
+  printf '%s\n' "${W}the box:${N} ${D}someone got in, used it, then tried to tidy up - history -c, an${N}" \
+                "${D}rm, a note 'encrypted'. they failed; every move left a mark on disk.${N}" ''
+  printf '%s %s\n\n' "${Y}${B}${#_fl[@]}/${_PLAY_FLAG_TOTAL} flags${N}" "${D}each proves one technique. more of the box unlocks as you clear levels.${N}"
   printf '%s\n' "${W}start here:${N}"
-  printf '  %-34s %s\n' "${C}ls -la${N}" "${D}dotfiles are where it starts${N}"
-  printf '  %-34s %s\n' "${C}cat .bash_history${N}" "${D}what the intruder typed${N}"
-  printf '  %-34s %s\n' "${C}file * samples/*${N}" "${D}what am i even looking at${N}"
-  printf '  %-34s %s\n' "${C}grep -rn flag . 2>/dev/null${N}" "${D}the loud way (finds one of three)${N}"
-  printf '  %-34s %s\n\n' "${C}find . -perm -002 -type f${N}" "${D}what is world-writable and why${N}"
-  printf '%s\n' "${D}also here: ${C}incident/${D} (auth.log, crontab, passwd), ${C}vault/hashes.txt${D} + a${N}" \
-                "${D}wordlist, ${C}junk/${D} for find|xargs, ${C}big.log${D} for head/tail/wc, and a locked file.${N}" ''
-  printf '%s\n' "${D}${C}reset${D} restores the box   ${C}?${D} this card   ${C}Tab${D} explains your command   ${C}q${D} back${N}"
+  printf '  %-30s %s\n'   "${C}ls -la${N}"            "${D}dotfiles are where it starts${N}"
+  printf '  %-30s %s\n'   "${C}cat .bash_history${N}" "${D}the intruder's confession - it names the rest${N}"
+  printf '  %-30s %s\n\n' "${C}learn${N}"            "${D}the syllabus: every technique, why it lasts${N}"
+  printf '%s\n' "${D}${C}learn${D} syllabus  ${C}learn N${D} one module  ${C}hint${D} nudge  ${C}reset${D} restores  ${C}Tab${D} explains  ${C}q${D} back${N}"
   _pause
 }
 
@@ -6150,6 +6308,7 @@ play() {
   printf '%s\e[2J\e[H%s\n\n%s%s' "$_SY" "${M}${B}${_H3} PLAYGROUND ${_H3}${N}" "${D}building the box...${N}" "$_SN"
   _PLAY_DIR=$(mktemp -d "${TMPDIR:-/tmp}/cmdchamp.XXXXXX" 2>/dev/null) || { printf '\n%s\n' "${R}no temp dir${N}"; _pause; return; }
   if ! _gen_play_files "$_PLAY_DIR" 2>/dev/null; then _play_cleanup; printf '\n%s\n' "${R}could not build the sandbox${N}"; _pause; return; fi
+  _PLAY_FLAG_TOTAL=${#_PLAY_PLANTED[@]}   # only flags that actually planted (unlock + tool-gated) count
   if _PLAY_PRISTINE=$(mktemp -d "${TMPDIR:-/tmp}/cmdchamp.XXXXXX" 2>/dev/null) && cp -a "$_PLAY_DIR/." "$_PLAY_PRISTINE/" 2>/dev/null; then
     SANDBOX_PRISTINE=$_PLAY_PRISTINE
   else
@@ -6160,7 +6319,7 @@ play() {
   _session_init; _mode_init play
   _PLAY_EXPLAIN=1
   local -A _flags=(); local _cwd="" _last _note=""
-  _play_card 0
+  _play_card _flags
   # Open on a real listing instead of a hand-kept file list: the fixture tree gets new
   # files, a hardcoded line does not, and it shows on arrival that what you type really
   # runs. TABSIZE=0 makes ls pad its columns with spaces, not tabs.
@@ -6168,9 +6327,9 @@ play() {
   _last="${D}\$ ls${N}"$'\n'"$(_sandbox_exec "TABSIZE=0 ls -CF -w $((REPLY > 20 ? REPLY - 1 : 79))" 5 2>&1 | head -n 8)"
   while true; do
     _REDRAW_HDR() {
-      local _fc=${#_flags[@]} _fcol=$D; ((_fc)) && _fcol=$G; ((_fc >= 3)) && _fcol="${G}${B}"
-      printf '%s\e[H%s %s  %s\e[K\n' "$_SY" "${M}${B}PLAYGROUND${N}" "${C}~${_cwd}${N}" "${_fcol}flags ${_fc}/3${N}"
-      printf '%s\e[K\n\e[K\n' "${D}${C}Tab${D} explains your command  ${C}?${D} mission  ${C}reset${D} restores  ${C}q${D} quits${N}"
+      local _fc=${#_flags[@]} _fcol=$D; ((_fc)) && _fcol=$G; ((_PLAY_FLAG_TOTAL && _fc >= _PLAY_FLAG_TOTAL)) && _fcol="${G}${B}"
+      printf '%s\e[H%s %s  %s\e[K\n' "$_SY" "${M}${B}PLAYGROUND${N}" "${C}~${_cwd}${N}" "${_fcol}flags ${_fc}/${_PLAY_FLAG_TOTAL}${N}"
+      printf '%s\e[K\n\e[K\n' "${D}${C}learn${D} syllabus  ${C}hint${D} nudge  ${C}Tab${D} explains  ${C}?${D} mission  ${C}reset${D} restores  ${C}q${D} quits${N}"
       printf '%s\e[K\n' "${D}--- output ---${N}"
       printf '\e[K\n%s\e[K\n' "$_last"
       [[ -n "$_note" ]] && printf '\e[K\n%s\e[K\n' "$_note"
@@ -6182,7 +6341,11 @@ play() {
     [[ -z "$input" ]] && continue
     case "$input" in
       q|quit|exit) break;;
-      '?'|help) _play_card "${#_flags[@]}"; continue;;
+      '?'|help) _play_card _flags; continue;;
+      learn) _play_learn _flags; continue;;
+      learn\ *) if _play_mod_detail _flags "${input#learn }"; then
+                  _last="${D}\$ ${input}${N}"$'\n'"${D}(module shown - ${C}learn${D} for the list)${N}"; _note=""; fi; continue;;
+      hint) _last="${D}\$ hint${N}"$'\n'"$(_play_next_hint _flags)"; _note=""; continue;;
       reset) _sandbox_reset && _play_lock "$SANDBOX_DIR"; _cwd=""; _note=""
              _last="${D}\$ reset${N}"$'\n'"${G}box restored${N} ${D}- every file back the way you found it (flags stay found)${N}"
              continue;;
@@ -6202,11 +6365,21 @@ play() {
     if [[ "$_newpwd" == /sandbox ]]; then _cwd=""
     elif [[ "$_newpwd" =~ ^/sandbox(/[A-Za-z0-9._-]+)+$ ]]; then _cwd="${_newpwd#/sandbox}"; fi
     # Flags count the moment they appear in output, however you got them there.
-    local _hit; while read -r _hit; do [[ -n "$_hit" ]] && _flags[$_hit]=1; done < <(grep -oa 'flag{[^}]*}' <<< "$_raw" 2>/dev/null)
+    local _hit _newflag=""
+    while read -r _hit; do
+      [[ -n "$_hit" ]] || continue
+      [[ -z "${_flags[$_hit]:-}" ]] && _newflag=$_hit
+      _flags[$_hit]=1
+    done < <(grep -oa 'flag{[^}]*}' <<< "$_raw" 2>/dev/null)
     local _nl=0; [[ -n "$_raw" ]] && _nl=$(grep -c '' <<< "$_raw")
     _last=$(head -n 12 <<< "$_raw")
     _note=""
     ((_nl > 12)) && _note="${D}... ${_nl} lines shown as 12 - pipe it: ${C}${input} | head${D} or ${C}| less${N}"
+    # A captured flag is the important event - its teaching line wins over the line-count note.
+    if [[ -n "$_newflag" && -n "${_PLAY_FLAG_MOD[$_newflag]:-}" ]]; then
+      local _mm=${_PLAY_FLAG_MOD[$_newflag]}
+      _note="${G}${_GOK} flag captured${N} ${D}- ${_PLAY_FLAG_TECH[$_newflag]}. module ${_mm} (${PLAY_MOD_NAME[$_mm]}) proven. ${C}learn ${_mm}${D} for why it matters.${N}"
+    fi
     _trim "$input"; local _c0=${REPLY%%[[:space:]]*}; _c0=${_c0##*/}
     # Full-screen programs need a terminal the sandbox deliberately lacks (stdin /dev/null,
     # --new-session), so they fail "failed tty get" etc. Detect that AFTER running (batch
@@ -6223,8 +6396,8 @@ play() {
     _last="${D}\$ ${input}${N}"$'\n'"$_last"   # the prompt line is cleared on Enter - keep
                                               # the command visible above what it printed
   done
-  if ((${#_flags[@]} >= 3)); then
-    printf '%s\e[2J\e[H%s\n\n%s\n\n' "$_SY" "${G}${B}${_H3} ALL 3 FLAGS ${_H3}${N}" "${D}you took the box apart with nothing but a shell.${N}"
+  if ((_PLAY_FLAG_TOTAL && ${#_flags[@]} >= _PLAY_FLAG_TOTAL)); then
+    printf '%s\e[2J\e[H%s\n\n%s\n\n' "$_SY" "${G}${B}${_H3} ALL ${_PLAY_FLAG_TOTAL} FLAGS ${_H3}${N}" "${D}you took the box apart with nothing but a shell.${N}"
     local _f; for _f in "${!_flags[@]}"; do printf '  %s\n' "${G}${_f}${N}"; done
     printf '\n%s' "$_SN"; _pause
   fi
@@ -6240,6 +6413,96 @@ _play_cleanup() {
   [[ -n "${_PLAY_PRISTINE:-}" ]] && rm -rf "$_PLAY_PRISTINE" 2>/dev/null
   _PLAY_DIR="" _PLAY_PRISTINE=""
   return 0
+}
+
+# ── playground syllabus renderers (the `learn` command + on-capture teaching) ────────────────
+# State of a module, derived from the flag registry (no separate unlock array):
+#   proven  - a mapped flag has been captured
+#   open    - a mapped flag is planted (unlocked this session) but not yet found
+#   task    - flagless module: a tasked exercise over an artifact, always available
+#   locked:L- no mapped flag is planted yet; L = the earliest mapped flag's unlock level
+_play_mod_state() {
+  local -n _f=$1; local m=$2 tok best=-1 planted=0 found=0
+  for tok in "${_PLAY_FLAG_ORDER[@]}"; do
+    [[ "${_PLAY_FLAG_MOD[$tok]:-0}" == "$m" ]] || continue
+    local u=${_PLAY_FLAG_UNLOCK[$tok]:-0}; (( best<0 || u<best )) && best=$u
+    [[ " ${_PLAY_PLANTED[*]} " == *" $tok "* ]] && planted=1
+    [[ -n "${_f[$tok]:-}" ]] && found=1
+  done
+  if   ((best<0)); then echo task
+  elif ((found));  then echo proven
+  elif ((planted));then echo open
+  else echo "locked:$best"; fi
+}
+
+# The interactive syllabus. Reuses _sel (no new menu engine); every module is READABLE (the lesson
+# never locks - only the hands-on flag gates), so a beginner can learn the concept before the box
+# hands them the fixture. Enter -> detail, q/esc -> back to the shell.
+_play_learn() {
+  local -n _fl=$1; local _SEL_CUR=0 i n=$PLAY_MOD_TOTAL prov=0 st
+  for ((i=1;i<=n;i++)); do [[ "$(_play_mod_state _fl "$i")" == proven ]] && ((prov++)); done
+  while true; do
+    local -a it=()
+    for ((i=1;i<=n;i++)); do
+      st=$(_play_mod_state _fl "$i"); local mark tail
+      case $st in
+        proven)   mark="${G}${_GOK}${N}";  tail="${D}${PLAY_MOD_CONCEPT[$i]}${N}";;
+        open)     mark="${Y}${_GDOT}${N}"; tail="${D}${PLAY_MOD_CONCEPT[$i]}${N}";;
+        task)     mark="${C}${_GDOT}${N}"; tail="${D}${PLAY_MOD_CONCEPT[$i]}${N}";;
+        locked:*) mark="${D}${_GNO}${N}";  tail="${D}beat L${st#locked:} to hunt the flag - lesson readable now${N}";;
+      esac
+      local row; printf -v row '%s %-28s %s' "$mark" "${PLAY_MOD_NAME[$i]}" "$tail"
+      it+=("$row")
+    done
+    _SEL_BACK=1
+    _sel "${M}${B}${_H3} SYLLABUS ${_H3}${N} ${D}applied security · crafted drills in Scenarios${N}  ${G}${prov}/${n}${N}" "${it[@]}" || return
+    _play_mod_detail _fl "$((REPLY+1))"
+  done
+}
+
+# One module's card: why-it-lasts, a tasked exercise + its payoff, attacker/defender, the flags it
+# proves (found -> location; open -> spoiler-free hint; locked -> beat L#), and the crafted scenario
+# that drills the same skill. This is the single module renderer; `?` and `learn` both reach it.
+_play_mod_detail() {
+  local -n _fl=$1; local m=$2
+  [[ "$m" =~ ^[0-9]+$ ]] && ((m>=1 && m<=PLAY_MOD_TOTAL)) || { _last="${D}\$ learn $m${N}"$'\n'"${R}no such module (1-${PLAY_MOD_TOTAL})${N}"; return 1; }
+  printf '%s\e[2J\e[H%s %s\n\n' "$_SY" "${M}${B}${_H3} MODULE ${m} ${_H3}${N}" "${W}${B}${PLAY_MOD_NAME[$m]}${N}"
+  printf '%s %s\n\n'   "${Y}why it lasts${N}" "${D}${PLAY_MOD_CONCEPT[$m]}${N}"
+  printf '%s\n  %s\n'  "${W}try${N}"          "${C}${PLAY_MOD_TRY[$m]}${N}"
+  printf '  %s %s\n\n' "${D}${_GAR}${N}"      "${D}${PLAY_MOD_FOUND[$m]}${N}"
+  printf '%s %s\n'     "${R}attacker${N}"     "${D}${PLAY_MOD_ATK[$m]}${N}"
+  printf '%s %s\n'     "${G}defender${N}"     "${D}${PLAY_MOD_DEF[$m]}${N}"
+  local tok shown=0
+  for tok in "${_PLAY_FLAG_ORDER[@]}"; do
+    [[ "${_PLAY_FLAG_MOD[$tok]:-0}" == "$m" ]] || continue
+    ((shown++)) || printf '\n'
+    if [[ -n "${_fl[$tok]:-}" ]]; then
+      printf '  %s %s  %s\n' "${G}${_GOK}${N}" "${G}${tok}${N}" "${D}${_PLAY_FLAG_LOC[$tok]}${N}"
+    elif [[ " ${_PLAY_PLANTED[*]} " == *" $tok "* ]]; then
+      printf '  %s %s\n' "${Y}?${N}" "${D}${_PLAY_FLAG_HINT[$tok]}${N}"
+    else
+      printf '  %s %s\n' "${D}${_GNO}${N}" "${D}locked - beat L${_PLAY_FLAG_UNLOCK[$tok]} to hunt this one${N}"
+    fi
+  done
+  local _scn=${PLAY_MOD_SCEN[$m]:-0}
+  ((_scn)) && printf '\n%s %s\n' "${W}drilled in${N}" "${D}scenario: ${SC_NAMES[$_scn]}${N}"
+  printf '\n%s' "$_SN"; _pause; return 0
+}
+
+# `hint`: nudge the easiest unfound flag that is actually huntable now (planted). Spoiler-free -
+# never a command, never the token. Shares the registry with _play_learn (one source of truth).
+_play_next_hint() {
+  local -n _f=$1; local tok
+  for tok in "${_PLAY_FLAG_ORDER[@]}"; do
+    [[ " ${_PLAY_PLANTED[*]} " == *" $tok "* ]] || continue
+    [[ -n "${_f[$tok]:-}" ]] && continue
+    local _mi=${_PLAY_FLAG_MOD[$tok]:-0}
+    printf '%s\n' "${Y}${B}hint${N} ${D}(module ${_mi}: ${PLAY_MOD_NAME[$_mi]})${N}" \
+                  "  ${W}${_PLAY_FLAG_HINT[$tok]}${N}" \
+                  "${D}${#_f[@]}/${_PLAY_FLAG_TOTAL} found · ${C}learn${D} for the full syllabus${N}"
+    return
+  done
+  printf '%s\n' "${G}${B}all ${_PLAY_FLAG_TOTAL} flags found.${N} ${D}nothing left to hunt - ${C}learn${D} still has every lesson.${N}"
 }
 
 
@@ -6309,8 +6572,11 @@ _sc_sel() {
     elif _sc_is_done "$i"; then it+=("${G}${_GOK}${N} ${SC_NAMES[$i]}")
     else it+=("${SC_NAMES[$i]}"); fi
   done
-  _SEL_BACK=1; _sel "${M}${B}${_H3} SCENARIOS ${_H3}${N}" "${it[@]}" || return
-  scenario "$((REPLY+1))"
+  # Free Play - the open box - always sits last, always enabled: the applied surface every player
+  # can reach even before a crafted scenario unlocks. It owns no _sc_is_done state (special index).
+  it+=("${C}Free Play${N} - open box  ${D}learn + hunt flags${N}")
+  _SEL_BACK=1; _sel "${M}${B}${_H3} SCENARIOS ${_H3}${N} ${D}crafted missions · or free-play the box${N}" "${it[@]}" || return
+  if ((REPLY==SC_TOTAL)); then play; else scenario "$((REPLY+1))"; fi
 }
 
 
@@ -6353,10 +6619,11 @@ _main_menu() {
       it+=("$((_n++)) Continue  ${D}Level $LVL Q$((QI+1))${N}"); act+=(cont)
     fi
     it+=("$((_n++)) New Game"); act+=(new)
-    local _any=0; for ((i=1;i<=SC_TOTAL;i++)); do ((BOSS_BEATEN>=${SC_UNLOCK[$i]:-$MAX_LEVEL})) && _any=1; done
-    if ((_any && SANDBOX_MODE)); then it+=("$((_n++)) Scenarios"); act+=(sc)
-    elif ((_any)); then it+=($'\x01'"$((_n++)) Scenarios (needs sandbox)"); act+=(x)
-    else it+=($'\x01'"$((_n++)) Scenarios"); act+=(x); fi
+    # Scenarios is the single gateway to all applied play - crafted missions AND the free-play
+    # box (Free Play sits at the bottom of the scenario list), so it shows whenever the sandbox
+    # is up, even before the first crafted scenario unlocks.
+    if ((SANDBOX_MODE)); then it+=("$((_n++)) Scenarios  ${D}crafted missions + free play${N}"); act+=(sc)
+    else it+=($'\x01'"$((_n++)) Scenarios (needs sandbox)"); act+=(x); fi
     if ((BOSS_BEATEN>=MAX_LEVEL)); then
       it+=("$((_n++)) Challenge"); act+=(challenge)
       local _dtag=""; [[ "$LAST_DAILY" == "$(printf '%(%Y%m%d)T' -1)" ]] && _dtag="  ${G}${_GOK}${N}"
@@ -6367,9 +6634,6 @@ _main_menu() {
     fi
     if [[ -n "$PLAYER_NAME" ]]; then it+=("$((_n++)) Practice"); act+=(practice)
     else it+=($'\x01'"$((_n++)) Practice"); act+=(x); fi
-    # The one row whose name does not say what it is — every other mode is its own label.
-    if ((SANDBOX_MODE)); then it+=("$((_n++)) Playground  ${D}any command, real files, nothing graded${N}"); act+=(play)
-    else it+=($'\x01'"$((_n++)) Playground (needs sandbox)"); act+=(x); fi
     # Stats/Options continue the numbering (every row is a digit hotkey; the list is
     # capped at 9 rows so a single read -rsn1 keypress always works). Quit is not a row —
     # q / esc / ctrl-d exit from the top menu (hint shown under the banner).
@@ -6923,6 +7187,77 @@ _selftest() {
     _tmpcheck=$(bwrap --size 1048576 --tmpfs /tmp --ro-bind /usr /usr --ro-bind /bin /bin --ro-bind /lib /lib --ro-bind /lib64 /lib64 /bin/bash -c 'touch /tmp/t && echo OK' 2>&1)
     _assert "sandbox /tmp is real tmpfs" "$_tmpcheck" "OK"
   fi
+
+  printf '%s\n' "${B}=== bwrap boundary ===${N}"
+  # The playground feeds RAW input straight to _sandbox_exec (no _can_sandbox filter), so the
+  # bwrap arg list is the ONLY safety boundary. Prove it - through the real _sandbox_exec, not a
+  # hand-rebuilt bwrap call. Guarded on a working userns so termux/restricted CI skip cleanly.
+  if command -v bwrap &>/dev/null && bwrap --dev-bind / / --unshare-all true 2>/dev/null; then
+    local _bx _sv_mode=${SANDBOX_MODE:-1} _sv_dir=${SANDBOX_DIR:-}
+    local _bxdir; _bxdir=$(mktemp -d "${TMPDIR:-/tmp}/cc-boundary.XXXXXX")
+    SANDBOX_MODE=1; SANDBOX_DIR=$_bxdir
+    # (a) /sandbox is the one writable+persistent path; writes elsewhere are confined + ephemeral
+    _sandbox_exec 'echo hi > /sandbox/.cc_probe' 5 &>/dev/null
+    _assert "(a) /sandbox write persists to host" "$([[ -e $_bxdir/.cc_probe ]] && echo yes || echo no)" "yes"
+    rm -f "$_bxdir/.cc_probe"
+    _sandbox_exec 'touch /etc/cc_leak /cc_leak 2>/dev/null' 5 &>/dev/null
+    _assert "(a) outside-/sandbox writes never reach host" "$([[ -e /etc/cc_leak || -e /cc_leak ]] && echo LEAK || echo clean)" "clean"
+    _bx=$(_sandbox_exec '[[ -e /etc/cc_leak ]] && echo persisted || echo ephemeral' 5 2>/dev/null)
+    _assert "(a) outside-/sandbox writes are ephemeral" "$_bx" "ephemeral"
+    # (b) ro-bind host files + root fs are read-only
+    _bx=$(_sandbox_exec 'echo x >> /etc/passwd 2>&1; echo rc=$?' 5 2>/dev/null)
+    _assert_match "(b) /etc/passwd is read-only" "$_bx" 'rc=1'
+    _bx=$(_sandbox_exec 'touch /usr/cc 2>&1; echo rc=$?' 5 2>/dev/null)
+    _assert_match "(b) /usr root fs is read-only" "$_bx" 'rc=1'
+    # (c) network egress refused - literal IP (no DNS -> no hang), fails fast under --unshare-all
+    _bx=$(_sandbox_exec 'timeout 3 bash -c "exec 3<>/dev/tcp/192.0.2.1/80" 2>&1; echo rc=$?' 5 2>/dev/null)
+    _assert_match "(c) network egress refused" "$_bx" 'rc=[1-9]'
+    # (d) fresh PID namespace: init is bwrap, only a handful of procs (no host PID/cmdline leak)
+    _bx=$(_sandbox_exec 'cat /proc/1/comm' 5 2>/dev/null)
+    _assert "(d) own PID namespace (pid1=bwrap)" "$_bx" "bwrap"
+    _bx=$(_sandbox_exec 'ls -d /proc/[0-9]* 2>/dev/null | wc -l' 5 2>/dev/null)
+    _assert "(d) no host PIDs visible" "$([[ ${_bx:-999} -lt 50 ]] && echo few || echo "${_bx:-?}")" "few"
+    # (e) host paths outside the binds are absent; HOME is /sandbox
+    _bx=$(_sandbox_exec 'printf %s "$HOME"' 5 2>/dev/null)
+    _assert "(e) HOME=/sandbox" "$_bx" "/sandbox"
+    _bx=$(_sandbox_exec 'if [[ -e /root || -e /home ]]; then echo present; else echo absent; fi' 5 2>/dev/null)
+    _assert "(e) host home dirs absent" "$_bx" "absent"
+    # (f) resource caps applied (assert <=, never == : a low host hard cap may block the raise)
+    _bx=$(_sandbox_exec 'ulimit -u' 5 2>/dev/null)
+    _assert "(f) ulimit -u capped <=256" "$([[ $_bx != unlimited && ${_bx:-0} -le 256 && ${_bx:-0} -gt 0 ]] && echo ok || echo "${_bx:-?}")" "ok"
+    _bx=$(_sandbox_exec 'ulimit -f' 5 2>/dev/null)
+    _assert "(f) ulimit -f capped <=65536" "$([[ $_bx != unlimited && ${_bx:-0} -le 65536 && ${_bx:-0} -gt 0 ]] && echo ok || echo "${_bx:-?}")" "ok"
+    # (g) /tmp is a 64MB size-capped tmpfs
+    _bx=$(_sandbox_exec 'df -k /tmp 2>/dev/null | awk "NR==2{print \$2}"' 5 2>/dev/null)
+    _assert "(g) /tmp is 64MB size-capped tmpfs" "$_bx" "65536"
+    # (h) all capabilities dropped (--cap-drop ALL; userns already zeroes them - belt+suspenders)
+    _bx=$(_sandbox_exec 'grep CapEff /proc/self/status' 5 2>/dev/null)
+    _assert_match "(h) all caps dropped" "$_bx" '0000000000000000'
+    SANDBOX_MODE=$_sv_mode; SANDBOX_DIR=$_sv_dir
+    rm -rf "$_bxdir"
+  fi
+
+  printf '%s\n' "${B}=== unlock prerequisite ===${N}"
+  # Nobody may reach a scenario/module before every tool in its easiest solution has been taught.
+  # _SCREQ = the max tool-level on each scenario's easiest passable path (prereq-audited). If a
+  # future SC_UNLOCK edit or a new step needing a later tool breaks the invariant, this fails loud.
+  local -a _SCREQ=("" 13 13 16 18 18 21 18 21 23 21 18 8 13)
+  local _pi
+  for ((_pi=1;_pi<=SC_TOTAL;_pi++)); do
+    _assert "SC$_pi taught-before-unlock" "$(( _SCREQ[_pi] <= ${SC_UNLOCK[_pi]:-999} ? 1 : 0 ))" "1"
+  done
+  # Playground: each flag's fixture unlocks at its hardest tool's level (playground-taught = 0).
+  # _FREQ is the independent audited requirement; the code gates on _PLAY_FLAG_UNLOCK - assert >=.
+  local -A _FREQ=(
+    ['flag{str1ngs_pull_the_truth}']=0 ['flag{gzip_hides_nothing_from_zcat}']=0
+    ['flag{rot_thirteen_spins_the_truth}']=6 ['flag{uid_zero_hides_in_plain_sight}']=7
+    ['flag{newest_file_names_the_intruder}']=13 ['flag{tar_it_up_and_look_inside}']=13
+    ['flag{base64_is_not_encryption}']=27 ['flag{crack_the_hash_then_open_the_vault}']=27)
+  local _ptok
+  for _ptok in "${_PLAY_FLAG_ORDER[@]}"; do
+    _assert "flag taught-before-unlock: ${_ptok}" "$(( ${_FREQ[$_ptok]:-0} <= ${_PLAY_FLAG_UNLOCK[$_ptok]:-0} ? 1 : 0 ))" "1"
+    _assert "flag mapped to a module: ${_ptok}" "$([[ -n ${_PLAY_FLAG_MOD[$_ptok]:-} ]] && echo 1 || echo 0)" "1"
+  done
 
   printf '%s\n' "${B}=== scoring ===${N}"
   local _test_data; _test_data=$(mktemp -d)

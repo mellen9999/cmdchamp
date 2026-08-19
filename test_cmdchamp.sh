@@ -906,6 +906,62 @@ fi
 # ═════════════════════════════════════════════════════════════════════════════
 # TEXT-MATCH ALTERNATE VERIFICATION - check() accepts every alternate
 # ═════════════════════════════════════════════════════════════════════════════
+# ═══════════════════════════════════════════════════════════════════════════════
+# PLAYGROUND CONTENT VERIFICATION — every planted flag is solvable in the sandbox
+# The missing verify-chains equivalent for _gen_play_files. Gens the play tree at max
+# unlock (BOSS_BEATEN=30 → all 8 flags planted), points SANDBOX_DIR at it, and proves
+# each flag is recoverable through the REAL _sandbox_exec. Isolated under $TDIR.
+# ═══════════════════════════════════════════════════════════════════════════════
+section "Playground Content Verification"
+
+if ((!HAS_BWRAP)); then
+  skip "playground content (bwrap not installed)"
+elif ! bwrap --dev-bind / / --unshare-all true 2>/dev/null; then
+  skip "playground content (no unprivileged userns)"
+else
+  PLAY_DIR="$TDIR/playtree"
+  if bash -c "
+      export DATA='$SB_DATA'
+      SANDBOX_PRISTINE='$SB_PRISTINE' SANDBOX_DIR='$SB_DIR'
+      source '$SB_SOURCE' 2>/dev/null
+      BOSS_BEATEN=30; _gen_play_files '$PLAY_DIR'
+    " 2>/dev/null && [[ -e "$PLAY_DIR/samples/target.bin" ]]; then
+    ok "_gen_play_files builds a tree"
+  else
+    fail "_gen_play_files" "tree generation failed"
+  fi
+
+  # desc | canonical command (runs INSIDE /sandbox) | expected flag token
+  _play_solve() {
+    local out
+    out=$(bash -c '
+      export DATA="'"$SB_DATA"'"
+      SANDBOX_MODE=1 SANDBOX_DIR="'"$PLAY_DIR"'"
+      source "'"$SB_SOURCE"'" 2>/dev/null
+      SANDBOX_MODE=1; SANDBOX_DIR="'"$PLAY_DIR"'"
+      _sandbox_exec "$1 | grep -oaE '"'"'flag[{][^}]+[}]'"'"' | head -n1" 5 2>/dev/null
+    ' _ "$2" 2>/dev/null)
+    if [[ "$out" == "$3" ]]; then ok "$1: $2"; else fail "$1" "got '$out' want '$3'"; fi
+  }
+
+  _play_solve "flag1 strings" "strings samples/target.bin"                   "flag{str1ngs_pull_the_truth}"
+  _play_solve "flag2 uid-0"   "cat .syscache/note.txt"                        "flag{uid_zero_hides_in_plain_sight}"
+  _play_solve "flag3 mtime"   "cat web/uploads/avatar.php.txt"                "flag{newest_file_names_the_intruder}"
+  _play_solve "flag4 base64"  "base64 -d vault/notes.b64"                     "flag{base64_is_not_encryption}"
+  _play_solve "flag5 rot13"   "tr A-Za-z N-ZA-Mn-za-m < vault/.stash"         "flag{rot_thirteen_spins_the_truth}"
+  _play_solve "flag6 gzip"    "zcat vault/core.gz"                            "flag{gzip_hides_nothing_from_zcat}"
+  _play_solve "flag7 tar"     "tar xzOf archive/site-backup.tar.gz web/config.php" "flag{tar_it_up_and_look_inside}"
+  _play_solve "flag8 crack"   "openssl enc -d -aes-256-cbc -pbkdf2 -in vault/backup.enc -k letmein" "flag{crack_the_hash_then_open_the_vault}"
+
+  # timeline is real: exactly one file is newer than .env (the intruder's drop)
+  _mtime_cnt=$(bash -c '
+    SANDBOX_MODE=1 SANDBOX_DIR="'"$PLAY_DIR"'"; source "'"$SB_SOURCE"'" 2>/dev/null
+    SANDBOX_MODE=1; SANDBOX_DIR="'"$PLAY_DIR"'"
+    _sandbox_exec "find . -type f -newer .env | wc -l" 5 2>/dev/null' 2>/dev/null)
+  if [[ "${_mtime_cnt//[[:space:]]/}" == "1" ]]; then ok "mtime: exactly one file newer than .env"
+  else fail "mtime uniqueness" "count='$_mtime_cnt' want 1"; fi
+fi
+
 section "Text-Match Alternate Verification"
 
 tm_pass=0 tm_fail=0 tm_skip=0 tm_total=0 tm_qcount=0
