@@ -1772,9 +1772,26 @@ declare -A MANPAGE=(
   [xargs]=$'build commands from stdin\n  \e[36m-I\e[0m\e[32m{}\e[0m      placeholder            \e[36m-0\e[0m        null delim\n  \e[36m-n\e[0m\e[33mN\e[0m       args per command       \e[36m-P\e[0m\e[33mN\e[0m       parallel\n  \e[36m-p\e[0m        confirm each           \e[36m-t\e[0m        trace (show cmd)\n  \e[2mfind . -print0 | xargs -0 rm    cat urls | xargs -P4 -I{} curl {}\e[0m'
   [tar]=$'archive tool\n  \e[36m-c\e[0m create   \e[36m-x\e[0m extract   \e[36m-t\e[0m list     \e[36m-f\e[0m \e[33mFILE\e[0m\n  \e[36m-z\e[0m gzip     \e[36m-v\e[0m verbose\n  \e[36m-C\e[0m \e[33mDIR\e[0m   change to DIR (works for create AND extract)\n  \e[2mtar czf archive.tar.gz dir/    tar xzf archive.tar.gz    tar tf archive.tar.gz\e[0m'
   [chmod]=$'change file permissions\n  \e[32m+x\e[0m        add execute            \e[32m755\e[0m       rwxr-xr-x\n  \e[32m644\e[0m       rw-r--r--              \e[32mg+w\e[0m       group write\n  \e[36m-R\e[0m        recursive              \e[36m--reference\e[0m=\e[33mFILE\e[0m copy perms\n  \e[2mchmod +x script.sh    chmod 755 script.sh    chmod -R a+r dir/\e[0m'
+  [setfacl]=$'set an access control list (getfacl reads it back)
+  \e[36m-m\e[0m \e[33mACL\e[0m   add or change an entry    \e[36m-x\e[0m \e[33mACL\e[0m   remove an entry
+  \e[36m-b\e[0m       strip every ACL           \e[36m-R\e[0m       recurse
+  \e[36m-d\e[0m       the DEFAULT acl a new file in this directory inherits
+  \e[33mu:NAME:rw\e[0m  a user  \e[33mg:NAME:rx\e[0m  a group  \e[33mo::r\e[0m  everyone else
+  \e[2msetfacl -m u:deploy:rw app.conf    setfacl -x u:deploy app.conf\e[0m'
+  [getfacl]=$'read the access control list: permissions beyond user/group/other
+  \e[33muser:NAME:rwx\e[0m   one named user      \e[33mgroup:NAME:rwx\e[0m   one named group
+  \e[33mmask::rwx\e[0m       the ceiling every named entry is capped by
+  \e[36m-R\e[0m   recurse into directories
+  \e[35mvs ls -l\e[0m   a trailing + on the mode column means an ACL is set
+  \e[2mgetfacl notes.txt    getfacl -R /srv/share\e[0m'
   [ps]=$'list processes\n  \e[32maux\e[0m       BSD: all users + detailed   \e[32m-ef\e[0m       POSIX: all procs, full format\n  \e[36m-u\e[0m \e[33mUSER\e[0m   by user                  \e[36mf\e[0m \e[2m(no dash)\e[0m forest tree\n  \e[36m--sort\e[0m=\e[33mFIELD\e[0m sort by field\n  \e[2mps aux    ps -ef    ps aux --sort=-%mem | head    ps auxf\e[0m'
   [du]=$'disk usage\n  \e[36m-h\e[0m        human readable         \e[36m-s\e[0m        summary only\n  \e[36m-d\e[0m \e[33mN\e[0m      max depth              \e[36m-a\e[0m        all files too\n  \e[2mdu -sh .    du -sh */    du -h --max-depth=1 /var\e[0m'
   [df]=$'disk free space\n  \e[36m-h\e[0m        human readable\n  \e[2mdf -h    df -h /home\e[0m'
+  [lsblk]=$'list block devices as a tree
+  \e[36m-f\e[0m   filesystem, label and UUID     \e[36m-o\e[0m \e[33mCOLS\e[0m   pick columns
+  \e[36m-p\e[0m   full device paths              \e[36m-a\e[0m        empty devices too
+  \e[36m-n\e[0m   no header, for scripts         \e[36m-J\e[0m        JSON out
+  \e[2mlsblk    lsblk -f    lsblk -o NAME,SIZE,TYPE,MOUNTPOINTS\e[0m'
   [ssh]=$'secure shell\n  \e[36m-p\e[0m \e[33mPORT\e[0m   remote port            \e[36m-L\e[0m \e[2mP:H:P\e[0m  local forward\n  \e[36m-R\e[0m \e[2mP:H:P\e[0m  remote forward         \e[36m-D\e[0m \e[33mPORT\e[0m   SOCKS proxy\n  \e[36m-J\e[0m \e[33mHOST\e[0m   jump host              \e[36m-N\e[0m        no command\n  \e[36m-f\e[0m        background             \e[36m-T\e[0m        no tty\n  \e[36m-A\e[0m        agent forwarding\n  \e[36m-o\e[0m \e[33mOPT=VAL\e[0m   any ssh_config setting (\e[33mConnectTimeout=2\e[0m)\n  \e[33muser@host CMD\e[0m   run one command instead of opening a shell\n  \e[2mssh -p 2222 user@host    ssh -L 8080:localhost:80 host    ssh -D 1080 host\e[0m'
   [curl]=$'HTTP client\n  \e[36m-X\e[0m \e[33mMETHOD\e[0m  GET/POST/PUT/DELETE   \e[36m-H\e[0m \e[2m\x27K: V\x27\e[0m  header\n  \e[36m-d\e[0m \e[33mDATA\e[0m    POST body             \e[36m-o\e[0m \e[33mFILE\e[0m   output file\n  \e[36m-L\e[0m         follow redirects      \e[36m-s\e[0m        silent\n  \e[36m-i\e[0m         show headers          \e[36m-O\e[0m        save original name\n  \e[36m-w\e[0m \e[33mFMT\e[0m     print after transfer (\e[33m%{http_code}\e[0m \e[33m%{time_total}\e[0m)\n  \e[36m--resolve\e[0m \e[33mHOST:PORT:IP\e[0m   send this request to IP, keep the hostname\n  \e[35mvs wget\e[0m     curl is for APIs (headers, POST, methods).\n              wget is for downloading files (auto-resume, recursive mirror)\n  \e[2mcurl -s url    curl -X POST -d "data" url    curl -O url/file.tar.gz\e[0m'
   [wget]=$'file downloader\n  \e[36m-c\e[0m        continue download      \e[36m-m\e[0m        mirror site\n  \e[36m-k\e[0m        convert links\n  \e[35mvs curl\e[0m    wget is for downloading files (auto-resume, recursive).\n          curl is for API work (headers, POST, methods)\n  \e[2mwget url    wget -c url    wget -mk url\e[0m'
@@ -1802,6 +1819,11 @@ declare -A MANPAGE=(
   [rev]=$'reverse each line of text\n  \e[2mrev file    echo hello | rev    rev <<< word\e[0m'
   [bc]=$'calculator\n  \e[2mbc <<< \x272+3\x27    echo \x27scale=2; 10/3\x27 | bc\e[0m'
   [jobs]=$'list background jobs\n  \e[36m-l\e[0m        show PIDs\n  \e[2mjobs    jobs -l\e[0m'
+  [ulimit]=$'shell limits on what a process may take
+  \e[36m-a\e[0m   show every limit       \e[36m-n\e[0m   open files       \e[36m-u\e[0m   processes
+  \e[36m-f\e[0m   file size (blocks)     \e[36m-v\e[0m   virtual memory   \e[36m-c\e[0m   core dump size
+  \e[36m-H\e[0m \e[36m-S\e[0m   the hard / soft limit (\e[36m-S\e[0m is the default)
+  \e[2mulimit -a    ulimit -n    ulimit -n 4096    ulimit -Hn\e[0m'
   [fg]=$'bring job to foreground\n  \e[2mfg    fg %1    fg %jobname\e[0m'
   [bg]=$'continue stopped job in background\n  \e[2mbg    bg %1\e[0m'
   [kill]=$'send signal to process\n  \e[36m-9\e[0m        SIGKILL (force)        \e[36m-15\e[0m       SIGTERM (graceful)\n  \e[2mkill PID    kill -9 PID    kill -15 PID\e[0m'
@@ -1812,12 +1834,35 @@ declare -A MANPAGE=(
   [set]=$'shell options\n  \e[36m-e\e[0m        exit on error          \e[36m-u\e[0m        error on undefined var\n  \e[36m-x\e[0m        trace commands         \e[36m-o\e[0m \e[32mpipefail\e[0m  fail on pipe error\n  \e[2mset -e    set -euo pipefail    set -x\e[0m'
   [trap]=$'handle signals\n  \e[33mCMD\e[0m \e[33mSIGNAL\e[0m            run CMD on SIGNAL\n  \e[36m-\e[0m \e[33mSIGNAL\e[0m              reset to default\n  \e[33mCMD\e[0m \e[32mEXIT\e[0m               run on script exit\n  \e[2mtrap \x27echo caught\x27 SIGINT    trap cleanup EXIT    trap - SIGINT\e[0m'
   [id]=$'show user/group identity\n  \e[36m-u\e[0m        UID only               \e[36m-g\e[0m        GID only\n  \e[36m-G\e[0m        all group IDs          \e[36m-n\e[0m        names instead of numbers\n  \e[2mid    id -u    id -Gn    id username\e[0m'
+  [last]=$'login history, read from /var/log/wtmp
+  \e[36m-n\e[0m \e[33mN\e[0m   only the last N     \e[36m-F\e[0m   full timestamps  \e[36m-i\e[0m   IPs not names
+  \e[33mreboot\e[0m   as a name, shows the boot history instead
+  \e[35mvs lastb\e[0m   lastb is the same for FAILED logins (needs root)
+  \e[2mlast    last -n 20    last reboot    last deploy\e[0m'
+  [w]=$'logged-in users and what each one is doing
+  shows login time, idle time, and the current process per session
+  \e[36m-h\e[0m   no header       \e[36m-s\e[0m   short form
+  \e[2mw    w -h\e[0m'
+  [who]=$'who is logged in right now
+  \e[36m-a\e[0m   everything      \e[36m-b\e[0m   last boot time      \e[36m-r\e[0m   runlevel
+  \e[35mvs w\e[0m      w adds what each session is running and how idle it is
+  \e[2mwho    who -b    w\e[0m'
+  [getent]=$'look a name up the way the system does, through NSS
+  \e[33mpasswd\e[0m \e[33mgroup\e[0m \e[33mhosts\e[0m \e[33mservices\e[0m \e[33mnetworks\e[0m   which database
+  \e[35mvs cat /etc/passwd\e[0m   getent also sees LDAP, SSSD and DNS,
+                     which a file read never will
+  \e[2mgetent passwd deploy    getent hosts example.com    getent group sudo\e[0m'
   [mount]=$'attach filesystem\n  \e[36m-o\e[0m \e[33mOPTS\e[0m   options (ro, loop, noexec, nosuid, remount)\n  \e[36m-t\e[0m \e[33mTYPE\e[0m   filesystem type\n  \e[2mmount /dev/sda1 /mnt    mount -o ro,loop img /mnt    mount -o remount,rw /\e[0m'
   [chroot]=$'change root directory\n  \e[2mchroot /mnt /bin/bash    chroot /mnt cmd\e[0m'
   [fsck]=$'filesystem check/repair\n  \e[36m-y\e[0m        auto-fix\n  \e[2mfsck /dev/sda1    fsck -y /dev/sda1\e[0m'
   [dd]=$'low-level block copy\n  \e[32mif=\e[0m       input file             \e[32mof=\e[0m       output file\n  \e[32mbs=\e[0m       block size             \e[32mcount=\e[0m    number of blocks\n  \e[32mstatus=progress\e[0m  show transfer rate\n  \e[32mconv=noerror,sync\e[0m  continue on errors\n  \e[2mdd if=/dev/sda of=disk.img bs=4M status=progress\e[0m'
   [lsof]=$'list open files\n  \e[36m-i\e[0m        network connections    \e[36m-t\e[0m        terse (PID only)\n  \e[2mlsof -i :80    lsof -ti :80    lsof /path/to/file\e[0m'
   [dmesg]=$'kernel ring buffer\n  \e[36m-T\e[0m        human timestamps       \e[36m-w\e[0m        follow live\n  \e[36m-l\e[0m \e[33mLEVEL\e[0m  filter by level (err, warn)\n  \e[2mdmesg -T    dmesg -Tw    dmesg -l err\e[0m'
+  [sysctl]=$'read and set kernel parameters (the same knobs as /proc/sys)
+  \e[36m-a\e[0m        every parameter        \e[36m-w\e[0m \e[33mK=V\e[0m    set one until reboot\n  \e[36m-n\e[0m        the value only, no name
+  \e[36m-p\e[0m \e[33mFILE\e[0m   load from a file, /etc/sysctl.conf by default
+  \e[35mforever\e[0m   -w is lost on reboot; write the line into /etc/sysctl.d/
+  \e[2msysctl net.ipv4.ip_forward    sysctl -w net.ipv4.ip_forward=1\e[0m'
   [cryptsetup]=$'LUKS disk encryption\n  \e[32mopen\e[0m       unlock volume   \e[2m(luksOpen is a legacy alias)\e[0m\n  \e[2mcryptsetup open /dev/sda2 crypt    cryptsetup luksOpen /dev/sda2 crypt\e[0m'
   [vol]=$'volatility3 memory forensics\n  \e[32mwindows.pslist\e[0m      process list\n  \e[32mwindows.netscan\e[0m     network connections\n  \e[32mwindows.cmdline\e[0m     command lines\n  \e[32mwindows.filescan\e[0m    file objects\n  \e[32mwindows.malfind\e[0m     injected code         \e[32mwindows.cachedump\e[0m   cached creds\n  \e[2mvol -f dump.raw windows.pslist    vol -f dump.raw windows.netscan\e[0m'
   [getcap]=$'show file capabilities\n  \e[36m-r\e[0m        recursive search\n  \e[2mgetcap -r / 2>/dev/null\e[0m'
@@ -1932,6 +1977,10 @@ declare -A MANPAGE=(
   [smartctl]=$'disk SMART health\n  \e[36m-a\e[0m  everything        \e[36m-H\e[0m  the health verdict only\n  \e[2msmartctl -a /dev/sda\e[0m'
   [setcap]=$'set file capabilities (getcap reads them back)\n  \e[36m-r\e[0m   remove every capability from the file\n  \e[33mcap_net_raw+ep\e[0m   a capability set: e=effective p=permitted\n  \e[2msetcap cap_net_raw+ep ./prog    setcap -r ./prog\e[0m'
   [renice]=$'change the priority of a process that is already running\n  \e[36m-n\e[0m \e[33mN\e[0m   niceness, -20 (greedy) to 19 (polite)   \e[36m-p\e[0m \e[33mPID\e[0m   which process\n  \e[2mrenice -n 10 -p 1234\e[0m'
+  [nice]=$'start a command at a different priority
+  \e[36m-n\e[0m \e[33mN\e[0m   niceness, -20 (greedy) to 19 (polite); default is 10
+  \e[35mvs renice\e[0m  nice starts a NEW process; renice moves a running one
+  \e[2mnice ./build.sh    nice -n 19 tar czf big.tgz /data\e[0m'
   [pgrep]=$'find process IDs by name\n  \e[36m-f\e[0m   match the whole command line, not just the program name\n  \e[36m-u\e[0m \e[33mUSER\e[0m   only that user\x27s processes\n  \e[2mpgrep sshd    pgrep -f "python3 app.py"\e[0m'
   [pkill]=$'signal processes by name (matches exactly like pgrep)\n  \e[36m-f\e[0m   match the whole command line      \e[36m-9\e[0m   SIGKILL\n  \e[2mpkill firefox    pkill -f "python3 app.py"\e[0m'
   [pidof]=$'print the PIDs of a named program\n  \e[2mpidof sshd    kill $(pidof myapp)\e[0m'
@@ -1990,6 +2039,18 @@ declare -A MANPAGE=(
   [sha256sum]=$'SHA-256 checksums\n  \e[36m-c\e[0m \e[33mFILE\e[0m   verify against a checksum list\n  \e[2msha256sum file    sha256sum -c sums.txt\e[0m'
   [md5sum]=$'MD5 checksums \e[2m(broken for security; fine for spotting duplicates)\e[0m\n  \e[36m-c\e[0m \e[33mFILE\e[0m   verify against a checksum list\n  \e[2mmd5sum file    find . -type f -exec md5sum {} + | sort | uniq -d -w32\e[0m'
   [comm]=$'compare two SORTED files, in three columns\n  col1 only in file1   col2 only in file2   col3 in both\n  \e[36m-1 -2 -3\e[0m hide that column: \e[36m-12\e[0m = only in both, \e[36m-23\e[0m = only in file1\n  \e[2mcomm -12 <(sort a) <(sort b)    comm -23 <(sort a) <(sort b)\e[0m'
+  [numfmt]=$'convert numbers to and from human units, inside a pipeline
+  \e[36m--to=iec\e[0m    1536 -> 1.5K        \e[36m--to=si\e[0m     1500 -> 1.5K
+  \e[36m--from=iec\e[0m  1.5K -> 1536        \e[36m--from=si\e[0m   1.5K -> 1500
+  \e[36m--field\e[0m\e[33m=N\e[0m  only that column    \e[36m--suffix\e[0m\e[33m=S\e[0m  append a unit
+  \e[36m--padding\e[0m\e[33m=N\e[0m  align to N columns (negative pads left)
+  \e[2mdu -sb * | numfmt --to=iec --field=1    numfmt --from=iec 4G\e[0m'
+  [join]=$'join two SORTED files on a shared field, like a database join
+  \e[36m-1\e[0m \e[33mN\e[0m \e[36m-2\e[0m \e[33mN\e[0m   which field to join on in file1 / file2
+  \e[36m-t\e[0m\e[33mC\e[0m       field separator        \e[36m-a\e[0m \e[33mN\e[0m      keep unmatched lines of file N
+  \e[36m-o\e[0m \e[33mFMT\e[0m    pick output fields     \e[36m-e\e[0m \e[33mTEXT\e[0m   fill in for a missing field
+  \e[35mvs comm\e[0m    comm compares whole LINES, join matches one FIELD
+  \e[2mjoin a.txt b.txt    join -t, -1 2 -2 1 a.csv b.csv\e[0m'
   [paste]=$'join lines side by side\n  \e[36m-d\e[0m\e[33mC\e[0m    delimiter    \e[36m-s\e[0m   serialise: one file per line, not columns\n  \e[2mpaste a b    paste -sd, file\e[0m'
   [vim]=$'text editor\n  \e[36m-c\e[0m \e[33mCMD\e[0m   run an ex command on startup      \e[36m+N\e[0m   open at line N\n  \e[33m:w\e[0m write  \e[33m:q\e[0m quit  \e[33m:q!\e[0m quit, discard  \e[33m:!CMD\e[0m run a shell command\n  \e[2mvim file    vim +10 file    vim -c \x27:!/bin/sh\x27\e[0m'
   [stty]=$'terminal line settings\n  \e[32mraw\e[0m  no line editing    \e[36m-echo\e[0m  stop echoing what is typed    \e[32msane\e[0m  reset\n  \e[2mstty raw -echo; fg    stty sane\e[0m'
@@ -2971,6 +3032,10 @@ gen_level11() {
   questions+=("Run sleep ${n} in the background|sleep ${n} &")
   questions+=("Run ${W}${script}${C} in the background|./${script} &|bash ${script} &|sh ${script} &")
   _fphrase "List" "Show" "View"; questions+=("${REPLY} background jobs|jobs|jobs -l")
+  questions+=("Run ${W}${script}${C} at a polite priority|nice ./${script}|nice -n 10 ./${script}|nice bash ${script}|nice -n 10 bash ${script}")
+  questions+=("Drop running process ${W}${n}${C} to niceness 10|renice -n 10 -p ${n}|renice 10 -p ${n}|sudo renice -n 10 -p ${n}|sudo renice 10 -p ${n}")
+  questions+=("Show every resource limit for this shell|ulimit -a")
+  questions+=("Show how many files this shell may open at once|ulimit -n")
   questions+=("Bring job ${n2} to foreground|fg %${n2}|fg ${n2}")
   _fphrase "Send" "Move" "Put"; questions+=("${REPLY} job ${n2} to background|bg %${n2}|bg ${n2}")
   questions+=("Kill job ${n2}|kill %${n2}|kill -TERM %${n2}|kill -15 %${n2}")
@@ -3047,6 +3112,9 @@ gen_level13() {
   local -n questions=${1:-CURRENT_QUESTIONS}; questions=(); eval "local $_QV"; _ctx
   local perm1=$((RANDOM % 8))$((RANDOM % 8))$((RANDOM % 8))
   _fphrase ERROR WARN INFO DEBUG; local searchterm=$REPLY
+  questions+=("Show the ACL on ${W}${txt}${C}|getfacl ${txt}")
+  questions+=("Give ${W}${user}${C} read+write on ${W}${txt}${C} with an ACL|setfacl -m u:${user}:rw ${txt}|setfacl -m user:${user}:rw ${txt}|setfacl -m u:${user}:rw- ${txt}")
+  questions+=("Take the ACL entry for ${W}${user}${C} off ${W}${txt}${C}|setfacl -x u:${user} ${txt}|setfacl -x user:${user} ${txt}")
   questions+=("Concatenate ${W}${txt}${C} and ${txt2} together|cat ${txt} ${txt2}|cat -- ${txt} ${txt2}")
   questions+=("List sorted by size, largest first|ls -lS|ls -Sl|ls -lhS|ls -lSh|ls -Slh|ls -Shl|ls -hlS|ls -hSl|eza -l --sort size -r|eza --long --sort size --reverse|eza -l --sort size --reverse|eza --long --sort size -r")
   questions+=("List sorted by time, newest first|ls -lt|ls -tl|ls -lth|ls -tlh|ls -hlt|ls -htl|ls -thl|ls -lht|eza -l --sort modified -r|eza --long --sort modified --reverse|eza -l --sort modified --reverse|eza --long --sort modified -r")
@@ -3123,6 +3191,14 @@ gen_level14() {
   questions+=("Show system uptime|uptime|uptime -p|uptime --pretty")
   questions+=("Show system info|uname -a|uname --all|hostnamectl")
   questions+=("Show CPU info|lscpu|cat /proc/cpuinfo")
+  questions+=("List block devices with their filesystems|lsblk -f|lsblk --fs")
+  questions+=("Show the current value of ${W}net.ipv4.ip_forward${C}|sysctl net.ipv4.ip_forward|sysctl -n net.ipv4.ip_forward|cat /proc/sys/net/ipv4/ip_forward")
+  questions+=("Turn on IP forwarding until reboot|sysctl -w net.ipv4.ip_forward=1|sudo sysctl -w net.ipv4.ip_forward=1")
+  questions+=("Look ${W}${user}${C} up in passwd the way the system does|getent passwd ${user}")
+  questions+=("Resolve ${W}${host}${C} the way the system does|getent hosts ${host}")
+  questions+=("Unmount ${W}/mnt/${dir}${C}|umount /mnt/${dir}|sudo umount /mnt/${dir}")
+  questions+=("Show who is logged in|who|w")
+  questions+=("Show the last 20 logins|last -n 20|last -20")
   questions+=("Show kernel messages|dmesg|dmesg -T|journalctl -k|journalctl --dmesg|sudo dmesg|sudo dmesg -T|sudo journalctl -k|sudo journalctl --dmesg")
   questions+=("Interactive process viewer|top|htop|btop")
   questions+=("Show top 10 memory-hungry processes§ps aux --sort=-%mem | head -11§ps aux --sort=-%mem | head -n 11§ps aux --sort=-%mem | head --lines=11§ps aux --sort=-%mem | head --lines 11§ps aux --sort -%mem | head -11§ps aux --sort -%mem | head -n 11")
@@ -3346,6 +3422,10 @@ gen_level18() {
   questions+=("Print ${W}${txt}${C} uppercased|tr 'a-z' 'A-Z' < ${txt}|tr '[:lower:]' '[:upper:]' < ${txt}|awk '{print toupper(\$0)}' ${txt}|sed 's/.*/\\U&/' ${txt}")
   questions+=("Show ${W}${txt}${C} with all whitespace removed|tr -d '[:space:]' < ${txt}|tr --delete '[:space:]' < ${txt}")
   questions+=("Print ${W}${txt}${C} with newlines as spaces|tr '\\n' ' ' < ${txt}|paste -sd' ' ${txt}|paste -s -d' ' ${txt}|paste -sd ' ' ${txt}")
+  local _j1=${SANDBOX_CSVS[0]} _j2=${SANDBOX_CSVS[1]}
+  questions+=("Join ${W}${_j1}${C} and ${W}${_j2}${C} on the first field, comma-separated§join -t, <(sort ${_j1}) <(sort ${_j2})§join -t, -1 1 -2 1 <(sort ${_j1}) <(sort ${_j2})#chal-skip")
+  questions+=("Print how many bytes ${Y}4G${C} is|numfmt --from=iec 4G#output:4294967296")
+  questions+=("Print the byte size of ${W}${dir}${C} in human units§du -sb ${dir} | numfmt --to=iec --field=1§du -sb ${dir} | numfmt --field=1 --to=iec")
   questions+=("Print ${W}${txt}${C} with tabs as spaces|tr '\\t' ' ' < ${txt}|expand ${txt}|expand < ${txt}")
   questions+=("Top ${n} most common lines in ${log}§sort ${log} | uniq -c | sort -rn | head -${n}§sort ${log} | uniq -c | sort -rn | head -n ${n}§sort ${log} | uniq -c | sort -nr | head -${n}§sort ${log} | uniq -c | sort -nr | head -n ${n}§sort ${log} | uniq --count | sort -rn | head -${n}§sort ${log} | uniq --count | sort -rn | head -n ${n}")
   questions+=("Count unique values in column ${col} in ${W}${csv}${C}§cut -d, -f${col} ${csv} | sort | uniq -c§awk -F, '{print \$${col}}' ${csv} | sort | uniq -c")
@@ -4038,6 +4118,7 @@ gen_level29() {
   questions+=("Find all SUID binaries|find / -perm -4000 -type f 2>/dev/null|find / -perm -u=s -type f 2>/dev/null|find / -perm /4000 -type f 2>/dev/null|find / -perm /u=s -type f 2>/dev/null|find / -type f -perm -4000 2>/dev/null|find / -type f -perm -u=s 2>/dev/null|find / -type f -perm /4000 2>/dev/null|find / -type f -perm /u=s 2>/dev/null")
   questions+=("Find SUID or SGID binaries|find / -perm /6000 -type f 2>/dev/null|find / -perm /u=s,g=s -type f 2>/dev/null|find / -type f -perm /6000 2>/dev/null|find / -type f -perm /u=s,g=s 2>/dev/null")
   questions+=("Find files with capabilities|getcap -r / 2>/dev/null|sudo getcap -r / 2>/dev/null")
+  questions+=("Grant ${Y}cap_setuid${C} to ${W}${bin}${C}|setcap cap_setuid+ep ${bin}|sudo setcap cap_setuid+ep ${bin}")
   questions+=("Show current user and groups|id|groups")
   questions+=("Show sudoers rules|sudo -l|sudo --list")
   questions+=("Check sudo version (CVE check)|sudo --version|sudo -V")
@@ -5080,6 +5161,7 @@ _can_sandbox() {
     zip2john|pdf2john|rar2john|ssh2john|office2john|unshadow|keepass2john) return 1 ;;
     docker|podman|kubectl|virsh|lxc|qemu*|vagrant) return 1 ;;
     vi|vim|nvim|nano|emacs|joe|less|more|view|man|info|top|htop|btop|atop|iotop|watch|bashtop) return 1 ;;
+    lsblk|blkid|sysctl|getent|getfacl|setfacl|getcap|setcap|who|w|last|lastb|renice|chattr|lsattr) return 1 ;;  # no /dev, no NSS, no utmp, no ACLs on a tmpfs
     tmux|screen|byobu) return 1 ;;
     dd) [[ "$1" == *"if=/dev/sd"* || "$1" == *"of=/dev/sd"* ]] && return 1 ;;
   esac

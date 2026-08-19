@@ -76,14 +76,14 @@ The menu holds continue, new game, scenarios, challenge, daily, practice, playgr
 | 8 | Logic Gates | &&, \|\| |
 | 9 | Variables | `$VAR`, assignment, expansion |
 | 10 | Special Variables | `$$`, `$?`, `$!`, `$#`, `$@`, `$0` |
-| 11 | Job Control | bg, fg, jobs, &, Ctrl+Z |
+| 11 | Job Control | bg, fg, jobs, &, Ctrl+Z, nice, ulimit |
 | 12 | Test Conditions | -f, -d, -z, -n, -eq, -lt |
-| 13 | Core File Tools | cp, mv, ln, chmod, du, tar, diff |
-| 14 | System Admin | ping, df, free, ss, systemctl, ip |
+| 13 | Core File Tools | cp, mv, ln, chmod, ACLs, du, tar, diff |
+| 14 | System Admin | ping, df, free, ss, systemctl, ip, sysctl, lsblk, getent |
 | 15 | Multiplexers | tmux: sessions, windows, panes |
 | 16 | Text Search | grep, ripgrep, regex |
 | 17 | File Finding | find, fd, by name/size/time/type |
-| 18 | Data Processing | sort, uniq, cut, awk, tr, comm |
+| 18 | Data Processing | sort, uniq, cut, awk, tr, comm, join, numfmt |
 | 19 | String & Arrays | parameter expansion, arrays |
 | 20 | Control Flow | if/else, loops, case, functions |
 | 21 | Batch Ops | find -exec, xargs, sed -i, crontab |
@@ -95,7 +95,7 @@ The menu holds continue, new game, scenarios, challenge, daily, practice, playgr
 | 26 | WiFi & RF | aircrack-ng, netcat, tcpdump, wireless recon |
 | 27 | Hash Cracking | hashcat, john, hydra, encoding |
 | 28 | Forensics | strings, readelf, binwalk, volatility, exiftool |
-| 29 | Privilege Escalation | SUID, GTFOBins, enumeration |
+| 29 | Privilege Escalation | SUID, capabilities, GTFOBins, enumeration |
 | 30 | ROOT | emergency recovery, chroot, offline survival |
 
 ## Scenarios
