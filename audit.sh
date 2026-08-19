@@ -993,7 +993,29 @@ phase10_render_smoke() {
     for ((i=1; i<=PLAY_MOD_TOTAL; i++)); do _render_check "module $i" "_play_mod_detail _flags $i" "$t"; ((screens++)); done
     for d in "${!_DISK_DESC[@]}"; do _render_check "disk $d" "DISKS_FOUND=; _disk_found $d" "$t"; ((screens++)); done
   done
-  printf '  screens drawn: %d   broken: %d\n' "$screens" "$((FAIL - before))"
+  # The four timed modes (boss, gauntlet, scenario, placement) draw their own header
+  # instead of going through qdisp, and each one printed the prompt raw — so a prompt
+  # past the terminal width hard-wrapped mid-word in exactly the modes with no manpage
+  # to fall back on. They share _pfmt now; both halves of that are checked here because
+  # a live drive only sees the long prompts its random boss round happens to pick.
+  local _longest="" _lp _w2
+  for ((i=1; i<=MAX_LEVEL; i++)); do
+    local -a _lq=(); "gen_level$i" _lq 2>/dev/null
+    for _lp in "${_lq[@]}"; do
+      [[ -z "$_lp" ]] && continue
+      _qparse "$_lp"; _strip_ansi "$_qprompt"
+      ((${#REPLY} > ${#_longest})) && _longest=$REPLY
+    done
+  done
+  for _w2 in 79 40 20; do
+    _render_check "pfmt at $_w2 cols" "COLUMNS=$_w2; _pfmt \"$_longest\"; printf '%s\\n' \"\$REPLY\""
+    ((screens++))
+  done
+  if grep -q '\${C}\${prompt}\${N}' "$CMDCHAMP"; then
+    _fail "render: a timed-mode header still prints the prompt unwrapped (use _pfmt)"
+  else _ok; fi
+
+  printf '  screens drawn: %d   longest prompt: %d cols   broken: %d\n' "$screens" "${#_longest}" "$((FAIL - before))"
 }
 
 # ═══════════════════════════════════════════════════════════════════
@@ -1488,6 +1510,181 @@ phase13_hostile_env() {
   printf '  hostile checks: %d   locales built: %d   broken: %d\n' "$checks" "$locales" "$((FAIL - before))"
 }
 
+
+# ═══════════════════════════════════════════════════════════════════
+# PHASE 14: FULL PLAYTHROUGH
+#
+# Every other phase checks a part in isolation. This one plays the game: a blank
+# profile, level 1, and a bot that answers each question with that question's own
+# canonical answer, all the way to the victory screen — then challenge, daily, all
+# 13 scenarios, practice and the placement test. It is the only thing that touches
+# run(), the boss round, level unlock, and the save/reload spine at all.
+#
+# It has already earned its keep. The first full drive never finished: level 23's
+# git questions answered with a raw regex, which check() cannot match, so the
+# practice loop repeated one question forever — a real hard-lock for anyone playing
+# without bwrap. The transcript then showed a 149-column progress bar (one cell per
+# question, and level 30 has 149) and 83-column prompts in the boss round, which
+# prints its prompt unwrapped. All three were invisible to 7000 other tests.
+#
+# The bot drives _read_line, not the keyboard: keystroke handling is phase 12's job.
+# ═══════════════════════════════════════════════════════════════════
+_AD_SRC="$XDG_DATA_HOME/ad_src.sh"
+_AD_RUN="$XDG_DATA_HOME/ad_run.sh"
+_AD_DIR="$XDG_DATA_HOME/ad_data"
+_AD_OUT="$XDG_DATA_HOME/ad_out"
+_AD_ERR="$XDG_DATA_HOME/ad_err"
+
+_ad_prepare() {
+  sed -e 's/^_tty().*/\_tty() { :; }/' -e '/^# ═══ CLI ENTRYPOINT ═══/,$d' "$CMDCHAMP" > "$_AD_SRC"
+  printf '%s\n' 'SANDBOX_MODE=0' >> "$_AD_SRC"
+  cat > "$_AD_RUN" <<'RUNNER'
+source "$1"
+PLAYER_NAME=driver
+_pause() { :; }
+sleep() { :; }
+# AD_MAX is a runaway guard, not a scenario: the gauntlet never ends for a bot that
+# never misses, so each mode gets its own budget. AD_WRONG misses on purpose.
+AD_WRONG=0 AD_MAX=4000 AD_N=0
+_ad_budget() { AD_N=0; AD_MAX=$1; AD_WRONG=${2:-0}; _QUIT=0; }
+_read_line() {
+  input="$_qans"
+  ((AD_WRONG > 0)) && { input="nonsense not-an-answer"; ((AD_WRONG--)); }
+  ((++AD_N)); ((AD_N > AD_MAX)) && { _QUIT=1; input=""; return 2; }
+  return 0
+}
+eval "$2"
+RUNNER
+}
+
+# _ad_drive <name> <key fed to blocking reads> <code>. Fails on a hang, a bash error,
+# a dirty stderr, or a line wider than 79 columns anywhere in the transcript.
+_ad_drive() {
+  local name=$1 key=$2 code=$3 rc wide
+  : > "$_AD_ERR"
+  yes "$key" 2>/dev/null | COLUMNS=79 XDG_DATA_HOME="$_AD_DIR" timeout 300 \
+    bash "$_AD_RUN" "$_AD_SRC" "$code" >"$_AD_OUT" 2>"$_AD_ERR"
+  rc=${PIPESTATUS[1]}
+  if ((rc == 124)); then _fail "playthrough $name: hung (300s)"; return 1; fi
+  if [[ -s "$_AD_ERR" ]]; then _fail "playthrough $name: stderr — $(head -c 100 "$_AD_ERR")"; return 1; fi
+  wide=$(sed -e 's/\x1b\[[0-9;?]*[a-zA-Z]//g' -e 's/\x1b[()][A-Z0-9]//g' -e 's/\x1b[=>78]//g' "$_AD_OUT" \
+    | awk 'length($0) > 79 { print length($0) ": " substr($0,1,60); exit }')
+  if [[ -n "$wide" ]]; then _fail "playthrough $name: line past 79 cols — $wide"; return 1; fi
+  return 0
+}
+
+# Grep the transcript with the escapes gone.
+_ad_seen() { sed -e 's/\x1b\[[0-9;?]*[a-zA-Z]//g' "$_AD_OUT" | grep -acF "$1"; }
+_ad_expect() { # <name> <marker> <want-count-or-min:N>
+  local n; n=$(_ad_seen "$2")
+  if [[ "$3" == min:* ]]; then ((n >= ${3#min:})) && { _ok; return; }
+  elif ((n == $3)); then _ok; return; fi
+  _fail "playthrough $1: saw '$2' $n times, wanted $3"
+}
+
+phase14_playthrough() {
+  printf '\n%s\n' "═══ PHASE 14: Full Playthrough ═══"
+  local before=$FAIL i lv beaten
+  _ad_prepare
+  rm -rf "$_AD_DIR"; mkdir -p "$_AD_DIR"
+
+  # ── 1. level 1 to ROOT, answering everything right ───────────────
+  if _ad_drive "1→30" '' '
+      _load_profile; BOSS_BEATEN=0; LVL=1; QI=0
+      _session_init; _QUIT=0; _NEXT_BOSS=0
+      _ad_budget 20000
+      while :; do
+        _lv=$LVL; run "$LVL" "$_NEXT_BOSS"; _rc=$?
+        printf "\n@LVL %d beaten=%d rc=%d\n" "$_lv" "$BOSS_BEATEN" "$_rc"
+        ((_rc != 0)) && break; ((_QUIT)) && break; LVL=$_NEXT_LV
+      done'; then
+    # Every level in order, each one leaving BOSS_BEATEN at its own number.
+    local -a got=()
+    while read -r lv beaten; do got+=("$lv:$beaten"); done < <(
+      sed 's/\x1b\[[0-9;?]*[a-zA-Z]//g' "$_AD_OUT" | sed -n 's/^@LVL \([0-9]*\) beaten=\([0-9]*\).*/\1 \2/p')
+    if ((${#got[@]} == MAX_LEVEL)); then _ok
+    else _fail "playthrough: drove ${#got[@]} levels, wanted $MAX_LEVEL"; fi
+    local ok=1
+    for ((i=0; i<${#got[@]}; i++)); do [[ "${got[$i]}" == "$((i+1)):$((i+1))" ]] || { ok=0; _fail "playthrough: level $((i+1)) left ${got[$i]}"; break; }; done
+    ((ok)) && _ok
+    _ad_expect "victory" "The daemons are silent." 1
+    _ad_expect "bosses"  "DEFEATED" "min:$MAX_LEVEL"
+    _ad_expect "no boss loss" "PREVAILS" 0
+    # And it has to be on disk, not just in memory.
+    beaten=$(sed -n 's/^BOSS_BEATEN=//p' "$_AD_DIR/cmdchamp/profile")
+    [[ "$beaten" == "$MAX_LEVEL" ]] && _ok || _fail "playthrough: profile says BOSS_BEATEN=$beaten after ROOT"
+    (( $(grep -c . "$_AD_DIR/cmdchamp/scores" 2>/dev/null || echo 0) > 500 )) && _ok \
+      || _fail "playthrough: scores file did not fill in ($(wc -l < "$_AD_DIR/cmdchamp/scores" 2>/dev/null) lines)"
+  fi
+
+  # ── 2. missing on purpose ────────────────────────────────────────
+  # A miss must cost a tier, reset the streak, and repeat the question — and the
+  # level must still be completable afterwards.
+  if _ad_drive "wrong answers" '' '
+      _load_profile; LVL=5; QI=0; _session_init; _QUIT=0
+      _ad_budget 400 3
+      _mode_init 5; _sset "probe question" 2; _sget "probe question"; printf "@TIER-BEFORE %s\n" "$REPLY"
+      run 5 0; printf "@RUN rc=%d beaten=%d\n" "$?" "$BOSS_BEATEN"'; then
+    _ad_expect "wrong path completes" "@RUN rc=0" 1
+  fi
+
+  # ── 3. losing the boss ───────────────────────────────────────────
+  # Every boss answer wrong, then q at the retry prompt: the level must not unlock.
+  if _ad_drive "boss loss" 'q' '
+      _load_profile; BOSS_BEATEN=0; LVL=2; QI=0; _session_init; _QUIT=0
+      _ad_budget 200 200
+      run 2 1; printf "@BOSS rc=%d beaten=%d\n" "$?" "$BOSS_BEATEN"'; then
+    _ad_expect "boss loss keeps the level locked" "@BOSS rc=0 beaten=0" 1
+    _ad_expect "boss loss says so" "PREVAILS" 1
+  fi
+
+  # ── 4. the post-ROOT modes ───────────────────────────────────────
+  if _ad_drive "challenge + daily" '' '
+      _load_profile
+      _ad_budget 40; challenge; printf "@CHAL best=%d\n" "$BEST_CHALLENGE"
+      _ad_budget 40; daily;     printf "@DAILY last=%s streak=%d\n" "$LAST_DAILY" "$DAILY_STREAK"
+      _ad_budget 40; daily;     printf "@AGAIN last=%s streak=%d\n" "$LAST_DAILY" "$DAILY_STREAK"
+      _sv=$DAILY_STREAK
+      _ad_budget 40; daily 2026-01-01; printf "@REPLAY same=%d\n" "$((DAILY_STREAK == _sv))"'; then
+    _ad_expect "challenge scores"        "@CHAL best=" 1
+    _ad_expect "daily starts a streak"   "streak=1" 2
+    _ad_expect "a replay leaves it alone" "@REPLAY same=1" 1
+  fi
+
+  # ── 5. every scenario, start to finish ───────────────────────────
+  # Scenarios refuse to run without a sandbox, so this is the one block that needs it.
+  if ((SANDBOX_MODE)); then
+    if _ad_drive "scenarios" '' '
+        SANDBOX_MODE=1; _check_bwrap; _load_profile; SC_DONE=""
+        for i in $(seq 1 $SC_TOTAL); do _ad_budget 60; scenario "$i"; printf "@SC %d rc=%d\n" "$i" "$?"; done
+        printf "@SCDONE %d\n" "$(tr , "\n" <<< "$SC_DONE" | grep -c .)"'; then
+      _ad_expect "13 scenarios run clean" "rc=0" "min:$SC_TOTAL"
+      _ad_expect "13 scenarios recorded"  "@SCDONE $SC_TOTAL" 1
+    fi
+  else
+    _warn "playthrough: no bwrap — the scenario engine was not driven"
+  fi
+
+  # ── 6. practice must not move the main game ──────────────────────
+  if _ad_drive "practice" '' '
+      _load_profile; _b=$BOSS_BEATEN; _l=${LVL:-1}
+      _ad_budget 600; drill 3
+      printf "@PRACTICE same=%d\n" "$((BOSS_BEATEN == _b))"'; then
+    _ad_expect "practice leaves progress alone" "@PRACTICE same=1" 1
+  fi
+
+  # ── 7. the placement test ────────────────────────────────────────
+  if _ad_drive "placement" '' '
+      _load_profile; BOSS_BEATEN=0; PLACED_THROUGH=0; _session_init; _QUIT=0
+      _ad_budget 200; place
+      printf "@PLACE beaten=%d placed=%d\n" "$BOSS_BEATEN" "$PLACED_THROUGH"'; then
+    _ad_expect "placement places" "@PLACE beaten=$MAX_LEVEL placed=$MAX_LEVEL" 1
+  fi
+
+  printf '  playthrough: %d levels + %d scenarios + challenge/daily/practice/placement   broken: %d\n' \
+    "$MAX_LEVEL" "$SC_TOTAL" "$((FAIL - before))"
+}
+
 # ═══════════════════════════════════════════════════════════════════
 # MAIN
 # ═══════════════════════════════════════════════════════════════════
@@ -1495,7 +1692,7 @@ main() {
   local _want="${1:-}"
   printf '%s\n' "╔══════════════════════════════════════════╗"
   printf '%s\n' "║   CmdChamp Omega Audit                   ║"
-  printf '%s\n' "║   30 levels × 13 phases                  ║"
+  printf '%s\n' "║   30 levels × 14 phases                  ║"
   printf '%s\n' "╚══════════════════════════════════════════╝"
 
   if ! ((SANDBOX_MODE)); then
@@ -1508,7 +1705,7 @@ main() {
   local -a _phases=(phase1_syntax phase2_positive phase3_confusable phase4_generic
     phase5_crosscheck phase6_scenarios phase7_scenario_negatives phase8_panel_coverage
     phase9_manpage_grid phase10_render_smoke phase11_playground_trail phase12_line_editor
-    phase13_hostile_env)
+    phase13_hostile_env phase14_playthrough)
   local _p _n
   for _p in "${_phases[@]}"; do
     _n=${_p#phase}; _n=${_n%%_*}

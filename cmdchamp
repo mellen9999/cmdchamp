@@ -1892,7 +1892,7 @@ declare -A MANPAGE=(
   [git bisect]=$'binary search for the commit that broke something\n  \e[32mstart\e[0m begin  \e[32mbad\e[0m mark broken  \e[32mgood\e[0m mark working  \e[32mreset\e[0m finish\n  \e[2mgit bisect start    git bisect bad    git bisect good    git bisect reset\e[0m'
   [git submodule]=$'repositories nested inside this one\n  \e[32mupdate\e[0m sync them  \e[36m--init\e[0m set up new ones  \e[36m--recursive\e[0m nested ones too\n  \e[2mgit submodule update --init --recursive\e[0m'
   [git remote]=$'manage remotes\n  \e[36m-v\e[0m   show their URLs\n  \e[2mgit remote -v    git remote add origin URL\e[0m'
-  [git tag]=$'mark a release\n  \e[33mNAME\e[0m   lightweight tag on the current commit\n  \e[36m-a\e[0m \e[33mNAME\e[0m \e[36m-m\e[0m \e[33mMSG\e[0m   annotated tag (has an author, date and message)\n  \e[36m-s\e[0m   signed - an annotated tag, signed with your GPG key\n  \e[2mgit tag v1.1    git tag -a v1.1 -m "release"    git push --tags\e[0m'
+  [git tag]=$'mark a release\n  \e[33mNAME\e[0m   lightweight tag on the current commit\n  \e[36m-a\e[0m \e[33mNAME\e[0m \e[36m-m\e[0m \e[33mMSG\e[0m   annotated tag (has an author, date and message)\n  \e[36m-s\e[0m   signed - an annotated tag, signed with your GPG key\n  \e[36m-d\e[0m \e[33mNAME\e[0m   delete a tag  \e[2m(\e[0m\e[36m--delete\e[0m\e[2m is the long form)\e[0m\n  \e[2mgit tag v1.1    git tag -a v1.1 -m "release"    git push --tags\e[0m'
   [git blame]=$'who last changed each line\n  \e[2mgit blame notes.txt\e[0m'
   [git init]=$'turn this directory into a repository\n  \e[2mgit init\e[0m'
   [git reflog]=$'every position HEAD has held - how you recover a "lost" commit\n  \e[2mgit reflog    git reset --hard HEAD@{2}\e[0m'
@@ -3643,8 +3643,8 @@ gen_level23() {
   # "diff between main and 'main'" and the answer is a no-op.
   local sbranch=$branch; [[ $sbranch == main || $sbranch == master ]] && sbranch=feature/auth
   questions+=("Initialize new git repo|git init|git init .")
-  questions+=("Clone repo from URL§~^git clone (https?://|git@)\\S+$")
-  questions+=("Clone repo to specific dir§~^git clone (https?://|git@)\\S+ \\S+$")
+  questions+=("Clone repo from URL§git clone https://github.com/acme/${dir}.git§~^git clone (https?://|git@)\\S+$")
+  questions+=("Clone repo to specific dir§git clone https://github.com/acme/${dir}.git ${dir2}§~^git clone (https?://|git@)\\S+ \\S+$")
   questions+=("Check repo status|git status|git status -s|git status --short")
   questions+=("Show current branch|git branch --show-current|git rev-parse --abbrev-ref HEAD")
   questions+=("Stage file '${txt}' for commit|git add ${txt}|git stage ${txt}")
@@ -3663,7 +3663,7 @@ gen_level23() {
   questions+=("Force delete local branch '${branch}'|git branch -D ${branch}|git branch --delete --force ${branch}")
   questions+=("Delete remote branch '${branch}'|git push origin --delete ${branch}|git push origin :${branch}|git push origin -d ${branch}|git push --delete origin ${branch}")
   questions+=("Rename current branch to '${branch}'|git branch -m ${branch}|git branch --move ${branch}")
-  questions+=("Add remote origin|~^git remote add origin .+$")
+  questions+=("Add remote origin|git remote add origin git@github.com:acme/${dir}.git|~^git remote add origin .+$")
   questions+=("List remotes|git remote -v|git remote --verbose|git remote")
   questions+=("Fetch from remote|git fetch origin|git fetch|git fetch --all")
   questions+=("Pull branch '${branch}' from remote|git pull origin ${branch}")
@@ -3696,23 +3696,23 @@ gen_level23() {
   questions+=("Rebase current onto main|git rebase main")
   questions+=("Continue rebase after conflict|git rebase --continue")
   questions+=("Abort rebase|git rebase --abort")
-  questions+=("Cherry-pick a commit|~^git cherry-pick [0-9a-f]+$")
+  questions+=("Cherry-pick a commit|git cherry-pick a1b2c3d|~^git cherry-pick [0-9a-f]+$")
   questions+=("Squash last ${n} commits|git rebase -i HEAD~${n}|git rebase --interactive HEAD~${n}")
   questions+=("List tags|git tag|git tag -l|git tag --list")
-  questions+=("Create lightweight tag|~^git tag v[0-9][^ ]*$")
-  questions+=("Create annotated tag|~^git tag -a v[0-9].* -m .+$")
+  questions+=("Create lightweight tag|git tag v1.2.0|~^git tag v[0-9][^ ]*$")
+  questions+=("Create annotated tag|git tag -a v1.2.0 -m 'release 1.2.0'|~^git tag -a v[0-9].* -m .+$")
   questions+=("Push tags to remote|git push --tags|git push origin --tags")
-  questions+=("Delete a tag§~^git tag (-d|--delete) v[0-9][^ ]*$")
-  questions+=("Set user name globally|~^git config --global user\\.name .+$")
-  questions+=("Set user email globally|~^git config --global user\\.email .+@.+$")
+  questions+=("Delete a tag§git tag -d v1.2.0§~^git tag (-d|--delete) v[0-9][^ ]*$")
+  questions+=("Set user name globally|git config --global user.name '${user}'|~^git config --global user\\.name .+$")
+  questions+=("Set user email globally|git config --global user.email ${user}@example.com|~^git config --global user\\.email .+@.+$")
   questions+=("List all config|git config --list|git config -l")
   questions+=("Set default branch name|git config --global init.defaultBranch main")
-  questions+=("Find commit that introduced bug|~^git bisect start$")
+  questions+=("Find commit that introduced bug|git bisect start|~^git bisect start$")
   questions+=("Clean untracked files (dry run)|git clean -n|git clean --dry-run")
   questions+=("Clean untracked files|git clean -f|git clean --force")
   questions+=("Clean untracked files and dirs|git clean -fd|git clean -df|git clean -f -d|git clean --force -d|git clean -d --force")
   questions+=("Show reflog|git reflog|git reflog show")
-  questions+=("Recover deleted branch from reflog§~^git (checkout -b|switch -c|switch --create|branch) \\S+ ([0-9a-f]+|HEAD@\\{[0-9]+\\})\$#boss-skip")
+  questions+=("Recover deleted branch from reflog§git checkout -b ${sbranch} HEAD@{1}§~^git (checkout -b|switch -c|switch --create|branch) \\S+ ([0-9a-f]+|HEAD@\\{[0-9]+\\})\$#boss-skip")
   questions+=("Mark current commit as bad (bisect)|git bisect bad|git bisect bad HEAD")
   questions+=("Mark current commit as good (bisect)|git bisect good|git bisect good HEAD")
   questions+=("End bisect session|git bisect reset")
@@ -3720,7 +3720,7 @@ gen_level23() {
   questions+=("Add a worktree at ../wt for branch '${branch}'|git worktree add ../wt ${branch}")
   questions+=("Show commits by ${user} on current branch|git log --author=${user}|git log --author ${user}|git log --author='${user}'")
   questions+=("Search commit messages for '${term}'|git log --grep=${term}|git log --grep ${term}|git log --grep='${term}'")
-  questions+=("Create signed annotated tag|~^git tag -s v[0-9].* -m .+\$#boss-skip")
+  questions+=("Create signed annotated tag|git tag -s v1.2.0 -m 'release 1.2.0'|~^git tag -s v[0-9].* -m .+\$#boss-skip")
   questions+=("Force-push '${branch}' safely with --force-with-lease + --force-if-includes (git 2.30+)|git push --force-with-lease --force-if-includes origin ${branch}|git push --force-if-includes --force-with-lease origin ${branch}")
   questions+=("Rebase onto main or '${sbranch}' or HEAD~${n}, updating dependent refs (git 2.38+, stacked-branch workflow)|git rebase --update-refs main|git rebase --update-refs ${sbranch}|git rebase -i --update-refs HEAD~${n}|git rebase --update-refs -i HEAD~${n}")
   questions+=("Mark commit as fixup of HEAD~${n}|git commit --fixup=HEAD~${n}|git commit --fixup HEAD~${n}")
@@ -5454,12 +5454,25 @@ _wrap() {
   REPLY="$out$line"
 }
 _QD_KEY="" _QD_VAL=""   # redraws repeat the same prompt; wrap it once
+_PF_KEY="" _PF_VAL=""
+# Fold + wrap a prompt to the live width, with a clear-to-EOL on every row it takes.
+# The boss, gauntlet, scenario and placement headers printed the raw string, so any
+# prompt past the terminal width hard-wrapped mid-word in exactly the four modes that
+# run without a manpage — while the practice loop wrapped it properly.
+_pfmt() {
+  local _c; _COLS; _c=$REPLY; ((_c > 4)) || _c=80
+  if [[ "$1|$_c" != "$_PF_KEY" ]]; then
+    _ascii_fold "$1"; _wrap "$REPLY" "$_c"
+    _PF_VAL="${REPLY//$'\n'/$'\e[K\n'}"; _PF_KEY="$1|$_c"
+  fi
+  REPLY=$_PF_VAL
+}
 qdisp() {
-  bar
   # Trust the real width down to a tiny floor — a narrow terminal must wrap to ITS
   # width, not jump up to 80 (which hard-wraps and shears every line). 80 is only the
   # fallback when _COLS couldn't detect at all (it returns 80 in that case anyway).
   local _c; _COLS; _c=$REPLY; ((_c > 4)) || _c=80
+  bar "$_c"
   if [[ "$1|$_c" != "$_QD_KEY" ]]; then
     _ascii_fold "$1"; _wrap "$REPLY" "$_c"; _QD_VAL=$REPLY; _QD_KEY="$1|$_c"
   fi
@@ -5475,7 +5488,19 @@ _wrong_show() { _wrong_feedback
   printf '%s  %s\n%s%s\n\n' "${R}x${N}" "${D}expected:${N}" "${D}${PROMPT_CHAR}${N}" "${Y}${REPLY}${N}"; }
 _sc() { [[ -n "$input" ]] && { HIST+=("$input"); HIST_IDX=${#HIST[@]}; HIST_SAVE=""; }; ((_S_ANSWERED++)); ((_S_CORRECT++)); ((_S_STREAK++)); ((_S_STREAK > _S_BEST_STREAK)) && _S_BEST_STREAK=$_S_STREAK; }
 _sw() { ((_S_ANSWERED++)); _S_STREAK=0; _wrong_show; }
-bar() { local f e p=$((qi<TOT?qi:TOT)); _rep "$_RBK" "$p"; f=$REPLY; _rep "$_RSH" "$((TOT-p))"; e=$REPLY; printf "${B}[${G}%s${D}%s${B}]${N}" "$f" "$e"; }
+# Progress bar, scaled to $1 columns. One cell per question overflowed hard: level 30
+# has 149 of them, so the bar ran 149 columns wide, wrapped on every terminal narrower
+# than that and sheared the header it sits in for more than half the game.
+bar() {
+  local p=$((qi<TOT?qi:TOT)) w=$(( ${1:-80} - 4 )) f e
+  ((w < 8)) && w=8
+  ((TOT > 0)) || { printf "${B}[]${N}"; return; }
+  ((TOT < w)) && w=$TOT
+  f=$(( p * w / TOT )); ((p > 0 && f == 0)) && f=1   # any progress shows as progress
+  e=$((w - f))
+  _rep "$_RBK" "$f"; local _f=$REPLY; _rep "$_RSH" "$e"
+  printf "${B}[${G}%s${D}%s${B}]${N}" "$_f" "$REPLY"
+}
 _draw_buf() {
   _DB=$'\e[?25l\r\e[K'
   ((VI_MODE)) && [[ $mode != insert ]] && _DB+="${R}${PROMPT_CHAR}${N}" || _DB+="${W}${PROMPT_CHAR}${N}"
@@ -5837,7 +5862,7 @@ _read_line() {
   draw
   while true; do
     if ((_rl_resized)); then  # SIGWINCH since last iteration: re-wrap to the new width
-      _rl_resized=0; _COLS; _RL_W=$REPLY; _QD_KEY=""
+      _rl_resized=0; _COLS; _RL_W=$REPLY; _QD_KEY="" _PF_KEY=""   # both prompt-wrap caches
       printf '\e[2J'; _REDRAW_HDR; draw
     fi
     if ((_rl_deadline)); then
@@ -6124,7 +6149,8 @@ run() {
     _REDRAW_HDR() {
       local _t=$_bt
       if ((${_rl_deadline:-0})); then _rl_rem; _t=$REPLY; fi
-      printf '%s\e[H%s  %s\e[K\n\e[K\n%s\e[K\n\e[K\n%s' "$_SY" "${M}${B}${_H3} BOSS ${U}$((bi+1))/${boss_total}${M} ${_H3}${N}" "${W}${_t}s${N}" "${C}${prompt}${N}" "$_SN"
+      _pfmt "$prompt"
+      printf '%s\e[H%s  %s\e[K\n\e[K\n%s\e[K\n\e[K\n%s' "$_SY" "${M}${B}${_H3} BOSS ${U}$((bi+1))/${boss_total}${M} ${_H3}${N}" "${W}${_t}s${N}" "${C}${REPLY}${N}" "$_SN"
     }
     printf '\e[2J'; _REDRAW_HDR
     if _read_line 0 0 "$_bt"; then
@@ -6288,7 +6314,8 @@ _gauntlet_loop() {
     _REDRAW_HDR() {
       local _t=30
       if ((${_rl_deadline:-0})); then _rl_rem; _t=$REPLY; fi
-      printf '%s\e[H%s  %s  %s\e[K\n\e[K\n%s\e[K\n\e[K\n%s' "$_SY" "${M}${B}${_hdr}${N}" "${U}Score: ${score}${N}" "${W}${_t}s${N}" "${C}${prompt}${N}" "$_SN"
+      _pfmt "$prompt"
+      printf '%s\e[H%s  %s  %s\e[K\n\e[K\n%s\e[K\n\e[K\n%s' "$_SY" "${M}${B}${_hdr}${N}" "${U}Score: ${score}${N}" "${W}${_t}s${N}" "${C}${REPLY}${N}" "$_SN"
     }
     printf '\e[2J'; _REDRAW_HDR
     _preq_reset
@@ -7045,7 +7072,8 @@ scenario() {
     _sc_snap_save
 
     _REDRAW_HDR() {
-      printf '%s\e[H%s  %s\e[K\n\e[K\n%s\e[K\n\e[K\n\e[J%s' "$_SY" "${M}${B}${SC_NAMES[$sc_id]}${N}" "${U}[Step $((si+1))/${total}]${N}" "${C}${prompt}${N}" "$_SN"
+      _pfmt "$prompt"
+      printf '%s\e[H%s  %s\e[K\n\e[K\n%s\e[K\n\e[K\n\e[J%s' "$_SY" "${M}${B}${SC_NAMES[$sc_id]}${N}" "${U}[Step $((si+1))/${total}]${N}" "${C}${REPLY}${N}" "$_SN"
     }
     printf '\e[2J'; _REDRAW_HDR
     HIST=()
@@ -7793,7 +7821,8 @@ place() {
       _REDRAW_HDR() {
         local _t=30
         if ((${_rl_deadline:-0})); then _rl_rem; _t=$REPLY; fi
-        printf '%s\e[H%s  %s  %s\e[K\n\e[K\n%s\e[K\n\e[K\n%s' "$_SY" "${U}Level ${lv}${N}" "${U}Q${qi}/2${N}" "${W}${_t}s${N}" "${C}${prompt}${N}" "$_SN"
+        _pfmt "$prompt"
+        printf '%s\e[H%s  %s  %s\e[K\n\e[K\n%s\e[K\n\e[K\n%s' "$_SY" "${U}Level ${lv}${N}" "${U}Q${qi}/2${N}" "${W}${_t}s${N}" "${C}${REPLY}${N}" "$_SN"
       }
       printf '\e[2J'; _REDRAW_HDR
       if _read_line 0 0 30; then
