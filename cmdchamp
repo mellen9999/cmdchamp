@@ -481,6 +481,18 @@ declare -A _PLAY_FLAG_LOC=(
   ['flag{tar_it_up_and_look_inside}']="web/config.php inside archive/site-backup.tar.gz"
   ['flag{newest_file_names_the_intruder}']="web/uploads/avatar.php.txt (newest file)"
   ['flag{crack_the_hash_then_open_the_vault}']="vault/backup.enc (opened with svc_backup's cracked password)")
+# The exact solve, cwd-root relative - the last tier of `hint` when a beginner is truly stuck.
+# Showing the command still leaves the flag to read out of the output; it teaches the mechanic
+# rather than stranding the player. Kept in sync with the fixtures + the content-validation test.
+declare -A _PLAY_FLAG_CMD=(
+  ['flag{str1ngs_pull_the_truth}']="strings samples/target.bin"
+  ['flag{uid_zero_hides_in_plain_sight}']="awk -F: '\$3==0{print \$6}' incident/passwd  ->  cat .syscache/note.txt"
+  ['flag{base64_is_not_encryption}']="base64 -d vault/notes.b64"
+  ['flag{rot_thirteen_spins_the_truth}']="tr 'A-Za-z' 'N-ZA-Mn-za-m' < vault/.stash"
+  ['flag{gzip_hides_nothing_from_zcat}']="zcat vault/core.gz"
+  ['flag{tar_it_up_and_look_inside}']="tar xzOf archive/site-backup.tar.gz web/config.php"
+  ['flag{newest_file_names_the_intruder}']="find . -type f -newer .env  ->  cat the file it names"
+  ['flag{crack_the_hash_then_open_the_vault}']="md5sum each word in vault/wordlist.txt vs svc_backup -> letmein  ->  openssl enc -d -aes-256-cbc -pbkdf2 -in vault/backup.enc -k letmein")
 
 _victory() {
   printf '%s\e[2J\e[H' "$_SY"
@@ -590,6 +602,8 @@ _PLAY_DIR=""        # the playground owns its own compromised-box tree, never th
 _PLAY_PRISTINE=""   # that tree's pristine, so the playground's `reset` restores THOSE fixtures
 _PLAY_PLANTED=()     # flag tokens actually planted this build (drives the dynamic total)
 _PLAY_FLAG_TOTAL=0   # ${#_PLAY_PLANTED[@]} after gen; replaces the old hardcoded 3
+declare -gA _PLAY_HINT_SEEN=()   # per-session hint depth per flag: `hint` escalates where->tool->command
+_PLAY_HINT_OUT=""             # last-rendered hint text (set by _play_next_hint, read by play)
 _play_have(){ command -v "$1" >/dev/null 2>&1; }  # host PATH == sandbox PATH (bwrap ro-binds /usr,/bin)
 # playground flag registry. ORDER = difficulty (easiest first, drives `hint`). UNLOCK = the
 # BOSS_BEATEN a player needs before the flag's fixture is planted == the level that teaches the
@@ -6291,7 +6305,7 @@ _play_card() {
   printf '  %-30s %s\n'   "${C}ls -la${N}"            "${D}dotfiles are where it starts${N}"
   printf '  %-30s %s\n'   "${C}cat .bash_history${N}" "${D}the intruder's confession - it names the rest${N}"
   printf '  %-30s %s\n\n' "${C}learn${N}"            "${D}the syllabus: every technique, why it lasts${N}"
-  printf '%s\n' "${D}${C}learn${D} syllabus  ${C}learn N${D} one module  ${C}hint${D} nudge  ${C}reset${D} restores  ${C}Tab${D} explains  ${C}q${D} back${N}"
+  printf '%s\n' "${D}${C}learn${D} syllabus  ${C}learn N${D} one module  ${C}hint${D} nudge (repeat = deeper)  ${C}reset${D} restores  ${C}Tab${D} explains  ${C}q${D} back${N}"
   _pause
 }
 
@@ -6318,6 +6332,7 @@ play() {
   _play_lock "$SANDBOX_DIR"
   _session_init; _mode_init play
   _PLAY_EXPLAIN=1
+  _PLAY_HINT_SEEN=()   # fresh escalation state each session
   local -A _flags=(); local _cwd="" _last _note=""
   _play_card _flags
   # Open on a real listing instead of a hand-kept file list: the fixture tree gets new
@@ -6345,7 +6360,7 @@ play() {
       learn) _play_learn _flags; continue;;
       learn\ *) if _play_mod_detail _flags "${input#learn }"; then
                   _last="${D}\$ ${input}${N}"$'\n'"${D}(module shown - ${C}learn${D} for the list)${N}"; _note=""; fi; continue;;
-      hint) _last="${D}\$ hint${N}"$'\n'"$(_play_next_hint _flags)"; _note=""; continue;;
+      hint) _play_next_hint _flags; _last="${D}\$ hint${N}"$'\n'"$_PLAY_HINT_OUT"; _note=""; continue;;
       reset) _sandbox_reset && _play_lock "$SANDBOX_DIR"; _cwd=""; _note=""
              _last="${D}\$ reset${N}"$'\n'"${G}box restored${N} ${D}- every file back the way you found it (flags stay found)${N}"
              continue;;
@@ -6377,8 +6392,9 @@ play() {
     ((_nl > 12)) && _note="${D}... ${_nl} lines shown as 12 - pipe it: ${C}${input} | head${D} or ${C}| less${N}"
     # A captured flag is the important event - its teaching line wins over the line-count note.
     if [[ -n "$_newflag" && -n "${_PLAY_FLAG_MOD[$_newflag]:-}" ]]; then
-      local _mm=${_PLAY_FLAG_MOD[$_newflag]}
-      _note="${G}${_GOK} flag captured${N} ${D}- ${_PLAY_FLAG_TECH[$_newflag]}. module ${_mm} (${PLAY_MOD_NAME[$_mm]}) proven. ${C}learn ${_mm}${D} for why it matters.${N}"
+      local _mm=${_PLAY_FLAG_MOD[$_newflag]} _fwd=""
+      ((${#_flags[@]} < _PLAY_FLAG_TOTAL)) && _fwd=" ${C}hint${D} for the next trail."
+      _note="${G}${_GOK} flag captured${N} ${D}- ${_PLAY_FLAG_TECH[$_newflag]}. module ${_mm} (${PLAY_MOD_NAME[$_mm]}) proven. ${C}learn ${_mm}${D} for why it matters.${_fwd}${N}"
     fi
     _trim "$input"; local _c0=${REPLY%%[[:space:]]*}; _c0=${_c0##*/}
     # Full-screen programs need a terminal the sandbox deliberately lacks (stdin /dev/null,
@@ -6491,18 +6507,32 @@ _play_mod_detail() {
 
 # `hint`: nudge the easiest unfound flag that is actually huntable now (planted). Spoiler-free -
 # never a command, never the token. Shares the registry with _play_learn (one source of truth).
+# Renders the next hint into the global _PLAY_HINT_OUT (NOT echoed): the caller runs it directly,
+# never in $(...), so the escalation counter _PLAY_HINT_SEEN survives - a command-substitution
+# subshell would swallow the write and pin every hint at tier 1.
 _play_next_hint() {
   local -n _f=$1; local tok
   for tok in "${_PLAY_FLAG_ORDER[@]}"; do
     [[ " ${_PLAY_PLANTED[*]} " == *" $tok "* ]] || continue
     [[ -n "${_f[$tok]:-}" ]] && continue
-    local _mi=${_PLAY_FLAG_MOD[$tok]:-0}
-    printf '%s\n' "${Y}${B}hint${N} ${D}(module ${_mi}: ${PLAY_MOD_NAME[$_mi]})${N}" \
-                  "  ${W}${_PLAY_FLAG_HINT[$tok]}${N}" \
-                  "${D}${#_f[@]}/${_PLAY_FLAG_TOTAL} found · ${C}learn${D} for the full syllabus${N}"
+    # Escalate on repeat: run `hint` again on the same still-unfound target and it goes deeper.
+    # tier 1 where to look -> tier 2 the tool -> tier 3 the exact command. Nobody stays stuck,
+    # and each `hint` only gives as much as the last one wasn't enough to unstick.
+    local _mi=${_PLAY_FLAG_MOD[$tok]:-0} _lvl=$(( ${_PLAY_HINT_SEEN[$tok]:-0} + 1 ))
+    ((_lvl>3)) && _lvl=3; _PLAY_HINT_SEEN[$tok]=$_lvl
+    local _body _foot
+    case $_lvl in
+      1) _body="${_PLAY_FLAG_HINT[$tok]}";                     _foot="${C}hint${D} again names the tool";;
+      2) _body="the tool: ${W}${_PLAY_FLAG_TECH[$tok]}${N}${D}"; _foot="${C}hint${D} again shows the command";;
+      *) _body="run: ${W}${_PLAY_FLAG_CMD[$tok]}${N}${D}";       _foot="then read the ${W}flag{...}${D} out of the output";;
+    esac
+    printf -v _PLAY_HINT_OUT '%s\n%s\n%s' \
+      "${Y}${B}hint${N} ${D}(module ${_mi}: ${PLAY_MOD_NAME[$_mi]}) · tier ${_lvl}/3${N}" \
+      "  ${W}${_body}${N}" \
+      "${D}${#_f[@]}/${_PLAY_FLAG_TOTAL} found · ${_foot} · ${C}learn${D} for the syllabus${N}"
     return
   done
-  printf '%s\n' "${G}${B}all ${_PLAY_FLAG_TOTAL} flags found.${N} ${D}nothing left to hunt - ${C}learn${D} still has every lesson.${N}"
+  printf -v _PLAY_HINT_OUT '%s' "${G}${B}all ${_PLAY_FLAG_TOTAL} flags found.${N} ${D}nothing left to hunt - ${C}learn${D} still has every lesson.${N}"
 }
 
 
@@ -7257,6 +7287,8 @@ _selftest() {
   for _ptok in "${_PLAY_FLAG_ORDER[@]}"; do
     _assert "flag taught-before-unlock: ${_ptok}" "$(( ${_FREQ[$_ptok]:-0} <= ${_PLAY_FLAG_UNLOCK[$_ptok]:-0} ? 1 : 0 ))" "1"
     _assert "flag mapped to a module: ${_ptok}" "$([[ -n ${_PLAY_FLAG_MOD[$_ptok]:-} ]] && echo 1 || echo 0)" "1"
+    # Every graduated-hint tier must have content, or `hint` would escalate into a blank.
+    _assert "flag has tech+hint+cmd: ${_ptok}" "$([[ -n ${_PLAY_FLAG_TECH[$_ptok]:-} && -n ${_PLAY_FLAG_HINT[$_ptok]:-} && -n ${_PLAY_FLAG_CMD[$_ptok]:-} ]] && echo 1 || echo 0)" "1"
   done
 
   printf '%s\n' "${B}=== scoring ===${N}"
