@@ -997,6 +997,58 @@ phase10_render_smoke() {
 }
 
 # ═══════════════════════════════════════════════════════════════════
+# PHASE 11: PLAYGROUND TRAIL INTEGRITY
+# Every file path the playground TEXT names has to exist in the tree it builds.
+# The hints, the tier-3 solve commands, the module exercises and the kill-chain
+# map all point the player at named artifacts; one renamed fixture turns a
+# lesson into a dead end that no other phase would notice.
+#
+# Two artifacts are absent ON PURPOSE — that IS the lesson (module 3: what was
+# deleted still lives in the backup). Those are declared below and checked the
+# other way round: gone from disk, still whole inside the archive.
+# ═══════════════════════════════════════════════════════════════════
+declare -A _PLAY_DELETED=(
+  ['web/config.php']='archive/site-backup.tar.gz'   # rm'd from disk, intact in the tarball
+)
+
+phase11_playground_trail() {
+  printf '\n%s\n' "═══ PHASE 11: Playground Trail Integrity ═══"
+  local tree="$XDG_DATA_HOME/playtrail" before=$FAIL
+  rm -rf "$tree"
+  local _save_bb=$BOSS_BEATEN; BOSS_BEATEN=$MAX_LEVEL   # max unlock = every flag planted
+  if ! _gen_play_files "$tree" >/dev/null 2>&1; then
+    _fail "playground: tree generation failed"; BOSS_BEATEN=$_save_bb; return
+  fi
+  if ((${#_PLAY_PLANTED[@]} == ${#_PLAY_FLAG_ORDER[@]})); then _ok
+  else _fail "playground: only ${#_PLAY_PLANTED[@]}/${#_PLAY_FLAG_ORDER[@]} flags planted at max unlock"; fi
+
+  # Every string the player is shown, in one stream.
+  local copy="" t i
+  for t in "${_PLAY_FLAG_ORDER[@]}"; do
+    copy+="${_PLAY_FLAG_LOC[$t]}"$'\n'"${_PLAY_FLAG_HINT[$t]}"$'\n'"${_PLAY_FLAG_CMD[$t]}"$'\n'
+  done
+  for ((i=1; i<=PLAY_MOD_TOTAL; i++)); do copy+="${PLAY_MOD_TRY[$i]}"$'\n'"${PLAY_MOD_FOUND[$i]}"$'\n'; done
+  for ((i=1; i<=PLAY_PHASE_TOTAL; i++)); do copy+="${PLAY_PHASE_ART[$i]}"$'\n'; done
+
+  local path checked=0
+  while IFS= read -r path; do
+    path=${path#/sandbox/}
+    [[ "$path" == /* ]] && continue                     # absolute: a real system path (/dev/null), not a fixture
+    ((checked++))
+    if [[ -n "${_PLAY_DELETED[$path]:-}" ]]; then
+      [[ -e "$tree/$path" ]] && { _fail "playground: $path should be deleted from disk (that is the lesson)"; continue; }
+      local arc="${_PLAY_DELETED[$path]}"
+      if tar tzf "$tree/$arc" 2>/dev/null | grep -qx "$path"; then _ok
+      else _fail "playground: $path is deleted and NOT in $arc — the lesson has no payoff"; fi
+    elif [[ -e "$tree/$path" ]]; then _ok
+    else _fail "playground: text points at $path, which the tree does not have"; fi
+  done < <(printf '%s' "$copy" | grep -oE '/?[A-Za-z0-9_.][A-Za-z0-9_./-]*/[A-Za-z0-9_.-]+' | sort -u)
+
+  rm -rf "$tree"; BOSS_BEATEN=$_save_bb
+  printf '  paths checked: %d   dead ends: %d\n' "$checked" "$((FAIL - before))"
+}
+
+# ═══════════════════════════════════════════════════════════════════
 # PHASE 7: SCENARIO WRONG-ANSWER REJECTION
 # Similar-but-wrong answers for scenario steps should be rejected
 # ═══════════════════════════════════════════════════════════════════
@@ -1087,7 +1139,7 @@ main() {
   local _want="${1:-}"
   printf '%s\n' "╔══════════════════════════════════════════╗"
   printf '%s\n' "║   CmdChamp Omega Audit                   ║"
-  printf '%s\n' "║   30 levels × 10 phases                  ║"
+  printf '%s\n' "║   30 levels × 11 phases                  ║"
   printf '%s\n' "╚══════════════════════════════════════════╝"
 
   if ! ((SANDBOX_MODE)); then
@@ -1099,7 +1151,7 @@ main() {
   # enough that iterating on one phase otherwise means waiting on nine others.
   local -a _phases=(phase1_syntax phase2_positive phase3_confusable phase4_generic
     phase5_crosscheck phase6_scenarios phase7_scenario_negatives phase8_panel_coverage
-    phase9_manpage_grid phase10_render_smoke)
+    phase9_manpage_grid phase10_render_smoke phase11_playground_trail)
   local _p _n
   for _p in "${_phases[@]}"; do
     _n=${_p#phase}; _n=${_n%%_*}
