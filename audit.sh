@@ -896,6 +896,107 @@ phase9_manpage_grid() {
 }
 
 # ═══════════════════════════════════════════════════════════════════
+# PHASE 10: RENDER SMOKE
+# Draws every static screen in a clean subshell and demands two things of it:
+# an EMPTY stderr, and no line wider than 79 visible columns.
+#
+# This is the phase that would have caught the circular nameref in `learn` —
+# `_play_learn` passed its own nameref name down, so bash fell back to scalar
+# expansion, sprayed warnings mid-render and evaluated a flag token as
+# arithmetic. Every other phase here checks the question pool; none of them
+# ever drew a screen, so a fully broken renderer shipped twice.
+#
+# Not covered (and deliberately): the in-game loops (run/challenge/daily/
+# scenario) need a live sandbox and a keyboard, and the manpage panels have
+# their own phases (8, 9).
+# ═══════════════════════════════════════════════════════════════════
+_RENDER_SRC="$XDG_DATA_HOME/render_src.sh"
+_RENDER_RUN="$XDG_DATA_HOME/render_run.sh"
+
+_render_prepare() {
+  sed -e 's/^_tty().*/\_tty() { :; }/' \
+      -e '/^# ═══ CLI ENTRYPOINT ═══/,$d' \
+      "$CMDCHAMP" > "$_RENDER_SRC"
+  printf '%s\n' 'SANDBOX_MODE=0' >> "$_RENDER_SRC"
+  # The stubs stand in for a terminal and a human: no blocking reads, no sleeps,
+  # and a selector that prints what it was handed instead of waiting on a keypress.
+  cat > "$_RENDER_RUN" <<'RUNNER'
+source "$1"
+PLAYER_NAME=auditor BOSS_BEATEN=30 LVL=30 QI=0 streak=0 qi=1 TOT=10
+_pause() { :; }
+sleep() { :; }
+# SEL_ONCE=1 lets the FIRST selection through (picking row 0) before quitting, so a
+# menu's own dispatch runs once — that is the code path where `learn` handed its
+# nameref name to the detail renderer and bash silently fell back to scalar expansion.
+_sel() { printf '%s\n' "$1" "${@:2}"; REPLY=0
+  [[ "${SEL_ONCE:-0}" == 1 ]] && { SEL_ONCE=0; return 0; }
+  return 1; }
+_PLAY_PLANTED=("${_PLAY_FLAG_ORDER[@]}"); _PLAY_FLAG_TOTAL=${#_PLAY_PLANTED[@]}
+declare -A _flags=(); _PLAY_HINT_SEEN=()
+eval "$2"
+RUNNER
+}
+
+# One screen. Fails loud on a non-empty stderr, a hard error exit, a timeout,
+# an over-wide line, or a screen that drew nothing at all.
+_render_check() {
+  local name=$1 code=$2 tier=${3:-} out err rc line n=0
+  [[ -n "$tier" ]] && name="$name [${tier%%=*}]"
+  out=$(env ${tier:+"$tier"} COLUMNS=79 timeout 20 bash "$_RENDER_RUN" "$_RENDER_SRC" "$code" 2>"$XDG_DATA_HOME/render_err" </dev/null)
+  rc=$?
+  err=$(<"$XDG_DATA_HOME/render_err")
+  ((rc == 124)) && { _fail "render $name: timed out"; return; }
+  ((rc > 1))    && { _fail "render $name: exit $rc"; return; }
+  [[ -n "$err" ]] && { _fail "render $name: stderr — ${err%%$'\n'*}"; return; }
+  [[ -n "${out//[[:space:]]/}" ]] || { _fail "render $name: drew nothing"; return; }
+  while IFS= read -r line; do
+    _strip_ansi "$line"
+    ((${#REPLY} > 79)) && { _fail "render $name: line ${n} is ${#REPLY} cols (max 79) — |${REPLY:0:60}|"; return; }
+    ((n++))
+  done < <(printf '%s\n' "$out" | sed -e 's/\x1b\[[0-9;?]*[a-zA-Z]//g' -e 's/\x1b[()][A-Z0-9]//g' -e 's/\x1b[=>]//g')
+  _ok
+}
+
+phase10_render_smoke() {
+  printf '\n%s\n' "═══ PHASE 10: Render Smoke ═══"
+  local before=$FAIL i d screens=0
+  _render_prepare
+  local -a checks=(
+    "intro|_intro nopause"
+    "tutorial|_tutorial"
+    "victory|_victory nopause"
+    "stats|stats"
+    "main menu|_main_menu"
+    "options menu|_options_menu"
+    "practice menu|_practice_menu"
+    "playground card|_play_card _flags"
+    "kill-chain map|_play_map _flags"
+    "syllabus|SEL_ONCE=1 _play_learn _flags"
+    "hint tier 1|_play_next_hint _flags; printf '%s\n' \"\$_PLAY_HINT_OUT\""
+    "hint tier 3|for _i in 1 2 3; do _play_next_hint _flags; done; printf '%s\n' \"\$_PLAY_HINT_OUT\""
+    "hint exhausted|for _t in \"\${_PLAY_FLAG_ORDER[@]}\"; do _flags[\$_t]=1; done; _play_next_hint _flags; printf '%s\n' \"\$_PLAY_HINT_OUT\""
+    "question header|hdr 30 5 10"
+    "question prompt|qdisp \"\$(printf 'Find every file under %s changed in the last 7 days and hand the list to tar' /sandbox/very/deep/path)\""
+    "wrong answer|ans='find . -type f -newer .env -print0 | xargs -0 grep -l secret | sort -u | head -20'; _wrong_show"
+  )
+  # Both render tiers: unicode, and the ASCII fold legacy terminals get. The fold
+  # swaps glyphs for ASCII of a different length, so a frame that fits in one tier
+  # can shear in the other — each has to be measured on its own.
+  local c t
+  for t in "" "CMDCHAMP_ASCII=1"; do
+    for c in "${checks[@]}"; do _render_check "${c%%|*}" "${c#*|}" "$t"; ((screens++)); done
+    for ((i=1; i<=MAX_LEVEL; i++)); do
+      _render_check "boss splash $i" "_boss_splash $i" "$t"
+      _render_check "field manual $i" "OPT_BRIEF=1; _S_BRIEFED=(); _brief_show $i" "$t"
+      ((screens+=2))
+    done
+    for ((i=1; i<=PLAY_MOD_TOTAL; i++)); do _render_check "module $i" "_play_mod_detail _flags $i" "$t"; ((screens++)); done
+    for d in "${!_DISK_DESC[@]}"; do _render_check "disk $d" "DISKS_FOUND=; _disk_found $d" "$t"; ((screens++)); done
+  done
+  printf '  screens drawn: %d   broken: %d\n' "$screens" "$((FAIL - before))"
+}
+
+# ═══════════════════════════════════════════════════════════════════
 # PHASE 7: SCENARIO WRONG-ANSWER REJECTION
 # Similar-but-wrong answers for scenario steps should be rejected
 # ═══════════════════════════════════════════════════════════════════
@@ -983,9 +1084,10 @@ phase7_scenario_negatives() {
 # MAIN
 # ═══════════════════════════════════════════════════════════════════
 main() {
+  local _want="${1:-}"
   printf '%s\n' "╔══════════════════════════════════════════╗"
   printf '%s\n' "║   CmdChamp Omega Audit                   ║"
-  printf '%s\n' "║   30 levels × 8 phases                   ║"
+  printf '%s\n' "║   30 levels × 10 phases                  ║"
   printf '%s\n' "╚══════════════════════════════════════════╝"
 
   if ! ((SANDBOX_MODE)); then
@@ -993,15 +1095,16 @@ main() {
     printf '     Install bwrap for full coverage: paru -S bubblewrap\n\n'
   fi
 
-  phase1_syntax
-  phase2_positive
-  phase3_confusable
-  phase4_generic
-  phase5_crosscheck
-  phase6_scenarios
-  phase7_scenario_negatives
-  phase8_panel_coverage
-  phase9_manpage_grid
+  # `./audit.sh 10` (or `1,10`) runs just those phases — the full sweep is slow
+  # enough that iterating on one phase otherwise means waiting on nine others.
+  local -a _phases=(phase1_syntax phase2_positive phase3_confusable phase4_generic
+    phase5_crosscheck phase6_scenarios phase7_scenario_negatives phase8_panel_coverage
+    phase9_manpage_grid phase10_render_smoke)
+  local _p _n
+  for _p in "${_phases[@]}"; do
+    _n=${_p#phase}; _n=${_n%%_*}
+    [[ -z "$_want" || ",$_want," == *",$_n,"* ]] && "$_p"
+  done
 
   printf '\n%s\n' "═══════════════════════════════════════════"
   printf '  TOTAL: %d tests  PASS: %d  FAIL: %d  WARN: %d\n' "$TOTAL" "$PASS" "$FAIL" "$WARN"
