@@ -448,6 +448,28 @@ PLAY_MOD_DEF=("" \
   "one uid-0 only; baseline crontabs and authorized_keys" "the same pipeline is your detector")
 PLAY_MOD_SCEN=("" 5 0 2 11 0 11 12 3)   # crafted scenario that drills this module (0 = none)
 
+# ── the kill chain: the box as one break-in, in the order it happened ────────────────────────
+# `map` renders this - the meta-lesson that outlasts every tool: an intrusion is a sequence of
+# phases (recon -> access -> escalation -> persistence -> loot -> cleanup), and the flags are just
+# the checkpoints along it. Two phases carry NO flag on purpose (access, persistence): they are
+# pure reading, which is where the richest IR skill lives. Vendor-neutral stage names, true in 20y.
+PLAY_PHASE_TOTAL=6
+PLAY_PHASE_NAME=("" "recon" "access" "escalation" "persistence" "loot" "cleanup")
+PLAY_PHASE_DID=("" \
+  "orient the box - read the config and the intruder's own shell history" \
+  "brute force, then one stolen key, got them a shell as deploy" \
+  "deploy sudo'd to root and parked a second uid-0 account to keep it" \
+  "a cron beacon, an extra ssh key, a hidden root home - ways back in" \
+  "creds and data: encoded, compressed, archived, or locked behind a crackable key" \
+  "history -c, a timestomp, an rm - they tried to erase the trail and missed")
+PLAY_PHASE_ART=("" \
+  ".env  .bash_history  samples/target.bin" \
+  "incident/auth.log  .ssh/authorized_keys  .ssh/known_hosts" \
+  "incident/passwd  .syscache/" \
+  "incident/crontab  bin/collect.sh  .ssh/authorized_keys" \
+  "vault/  archive/site-backup.tar.gz  web/config.php" \
+  "web/uploads/avatar.php.txt  .bash_history (history -c)")
+
 # ── playground flag metadata (parallel to _PLAY_FLAG_ORDER/_PLAY_FLAG_UNLOCK above) ──────────
 declare -A _PLAY_FLAG_MOD=(
   ['flag{str1ngs_pull_the_truth}']=1        ['flag{uid_zero_hides_in_plain_sight}']=7
@@ -493,6 +515,12 @@ declare -A _PLAY_FLAG_CMD=(
   ['flag{tar_it_up_and_look_inside}']="tar xzOf archive/site-backup.tar.gz web/config.php"
   ['flag{newest_file_names_the_intruder}']="find . -type f -newer .env  ->  cat the file it names"
   ['flag{crack_the_hash_then_open_the_vault}']="md5sum each word in vault/wordlist.txt vs svc_backup -> letmein  ->  openssl enc -d -aes-256-cbc -pbkdf2 -in vault/backup.enc -k letmein")
+# which kill-chain phase each flag belongs to (1..PLAY_PHASE_TOTAL) - drives the `map` view.
+declare -A _PLAY_FLAG_PHASE=(
+  ['flag{str1ngs_pull_the_truth}']=1        ['flag{uid_zero_hides_in_plain_sight}']=3
+  ['flag{base64_is_not_encryption}']=5      ['flag{rot_thirteen_spins_the_truth}']=5
+  ['flag{gzip_hides_nothing_from_zcat}']=5  ['flag{tar_it_up_and_look_inside}']=5
+  ['flag{newest_file_names_the_intruder}']=6 ['flag{crack_the_hash_then_open_the_vault}']=5)
 
 _victory() {
   printf '%s\e[2J\e[H' "$_SY"
@@ -6302,10 +6330,11 @@ _play_card() {
                 "${D}rm, a note 'encrypted'. they failed; every move left a mark on disk.${N}" ''
   printf '%s %s\n\n' "${Y}${B}${#_fl[@]}/${_PLAY_FLAG_TOTAL} flags${N}" "${D}each proves one technique. more of the box unlocks as you clear levels.${N}"
   printf '%s\n' "${W}start here:${N}"
+  printf '  %-30s %s\n'   "${C}map${N}"               "${D}the whole break-in at a glance - start here${N}"
   printf '  %-30s %s\n'   "${C}ls -la${N}"            "${D}dotfiles are where it starts${N}"
   printf '  %-30s %s\n'   "${C}cat .bash_history${N}" "${D}the intruder's confession - it names the rest${N}"
   printf '  %-30s %s\n\n' "${C}learn${N}"            "${D}the syllabus: every technique, why it lasts${N}"
-  printf '%s\n' "${D}${C}learn${D} syllabus  ${C}learn N${D} one module  ${C}hint${D} nudge (repeat = deeper)  ${C}reset${D} restores  ${C}Tab${D} explains  ${C}q${D} back${N}"
+  printf '%s\n' "${D}${C}map${D} the break-in  ${C}learn${D} syllabus  ${C}hint${D} nudge (repeat=deeper)  ${C}reset${D} restores  ${C}Tab${D} explains  ${C}q${D} back${N}"
   _pause
 }
 
@@ -6344,7 +6373,7 @@ play() {
     _REDRAW_HDR() {
       local _fc=${#_flags[@]} _fcol=$D; ((_fc)) && _fcol=$G; ((_PLAY_FLAG_TOTAL && _fc >= _PLAY_FLAG_TOTAL)) && _fcol="${G}${B}"
       printf '%s\e[H%s %s  %s\e[K\n' "$_SY" "${M}${B}PLAYGROUND${N}" "${C}~${_cwd}${N}" "${_fcol}flags ${_fc}/${_PLAY_FLAG_TOTAL}${N}"
-      printf '%s\e[K\n\e[K\n' "${D}${C}learn${D} syllabus  ${C}hint${D} nudge  ${C}Tab${D} explains  ${C}?${D} mission  ${C}reset${D} restores  ${C}q${D} quits${N}"
+      printf '%s\e[K\n\e[K\n' "${D}${C}map${D} chain  ${C}learn${D} syllabus  ${C}hint${D} nudge  ${C}Tab${D} explains  ${C}reset${D} restores  ${C}q${D} quits${N}"
       printf '%s\e[K\n' "${D}--- output ---${N}"
       printf '\e[K\n%s\e[K\n' "$_last"
       [[ -n "$_note" ]] && printf '\e[K\n%s\e[K\n' "$_note"
@@ -6361,6 +6390,7 @@ play() {
       learn\ *) if _play_mod_detail _flags "${input#learn }"; then
                   _last="${D}\$ ${input}${N}"$'\n'"${D}(module shown - ${C}learn${D} for the list)${N}"; _note=""; fi; continue;;
       hint) _play_next_hint _flags; _last="${D}\$ hint${N}"$'\n'"$_PLAY_HINT_OUT"; _note=""; continue;;
+      map) printf '%s\e[2J\e[H%s\n\n' "$_SY" "${M}${B}${_H3} KILL CHAIN ${_H3}${N}"; _play_map _flags; printf '\n%s' "$_SN"; _pause; continue;;
       reset) _sandbox_reset && _play_lock "$SANDBOX_DIR"; _cwd=""; _note=""
              _last="${D}\$ reset${N}"$'\n'"${G}box restored${N} ${D}- every file back the way you found it (flags stay found)${N}"
              continue;;
@@ -6413,8 +6443,8 @@ play() {
                                               # the command visible above what it printed
   done
   if ((_PLAY_FLAG_TOTAL && ${#_flags[@]} >= _PLAY_FLAG_TOTAL)); then
-    printf '%s\e[2J\e[H%s\n\n%s\n\n' "$_SY" "${G}${B}${_H3} ALL ${_PLAY_FLAG_TOTAL} FLAGS ${_H3}${N}" "${D}you took the box apart with nothing but a shell.${N}"
-    local _f; for _f in "${!_flags[@]}"; do printf '  %s\n' "${G}${_f}${N}"; done
+    printf '%s\e[2J\e[H%s\n\n%s\n\n' "$_SY" "${G}${B}${_H3} KILL CHAIN COMPLETE ${_H3}${N}" "${D}you reconstructed the whole break-in with nothing but a shell.${N}"
+    _play_map _flags
     printf '\n%s' "$_SN"; _pause
   fi
   _PLAY_EXPLAIN=0
@@ -6533,6 +6563,42 @@ _play_next_hint() {
     return
   done
   printf -v _PLAY_HINT_OUT '%s' "${G}${B}all ${_PLAY_FLAG_TOTAL} flags found.${N} ${D}nothing left to hunt - ${C}learn${D} still has every lesson.${N}"
+}
+
+# `map`: the box as one break-in, phase by phase. The orientation view a lost player reaches for -
+# it shows the SHAPE (recon->access->escalation->persistence->loot->cleanup) so the tree stops
+# being files-in-a-dir and becomes a story to reconstruct. Prints the body only; callers frame it
+# (the `map` command clears + pauses, the win screen wraps it in a banner). Reuses the flag
+# registry - no state of its own.
+_play_map() {
+  local -n _f=$1; local p tok found_here planted_here
+  for ((p=1;p<=PLAY_PHASE_TOTAL;p++)); do
+    found_here=0 planted_here=0
+    for tok in "${_PLAY_FLAG_ORDER[@]}"; do
+      [[ "${_PLAY_FLAG_PHASE[$tok]:-0}" == "$p" ]] || continue
+      [[ " ${_PLAY_PLANTED[*]} " == *" $tok "* ]] && ((planted_here++))
+      [[ -n "${_f[$tok]:-}" ]] && ((found_here++))
+    done
+    local gcol=$C   # cyan = a pure-reading phase (no flag)
+    if ((planted_here)); then ((found_here>=planted_here)) && gcol=$G || { ((found_here)) && gcol=$Y || gcol=$D; }; fi
+    printf '%s   %s\n' "${gcol}${_GTRI} ${p} ${PLAY_PHASE_NAME[$p]}${N}" "${D}${PLAY_PHASE_DID[$p]}${N}"
+    printf '    %s %s\n' "${D}examine${N}" "${C}${PLAY_PHASE_ART[$p]}${N}"
+    local any=0
+    for tok in "${_PLAY_FLAG_ORDER[@]}"; do
+      [[ "${_PLAY_FLAG_PHASE[$tok]:-0}" == "$p" ]] || continue
+      any=1
+      if [[ -n "${_f[$tok]:-}" ]]; then
+        printf '    %s %s\n' "${G}${_GOK}${N}" "${G}${tok}${N}"
+      elif [[ " ${_PLAY_PLANTED[*]} " == *" $tok "* ]]; then
+        printf '    %s %s\n' "${Y}${_GDOT}${N}" "${D}${_PLAY_FLAG_TECH[$tok]}${N}"
+      else
+        printf '    %s %s\n' "${D}${_GNO}${N}" "${D}beat L${_PLAY_FLAG_UNLOCK[$tok]} - ${_PLAY_FLAG_TECH[$tok]}${N}"
+      fi
+    done
+    ((any)) || printf '    %s\n' "${D}${_GDOT} no flag - the skill is the reading${N}"
+    printf '\n'
+  done
+  printf '%s\n' "${D}${#_f[@]}/${_PLAY_FLAG_TOTAL} flags · ${C}learn N${D} = the technique · ${C}hint${D} = a nudge${N}"
 }
 
 
@@ -7289,6 +7355,8 @@ _selftest() {
     _assert "flag mapped to a module: ${_ptok}" "$([[ -n ${_PLAY_FLAG_MOD[$_ptok]:-} ]] && echo 1 || echo 0)" "1"
     # Every graduated-hint tier must have content, or `hint` would escalate into a blank.
     _assert "flag has tech+hint+cmd: ${_ptok}" "$([[ -n ${_PLAY_FLAG_TECH[$_ptok]:-} && -n ${_PLAY_FLAG_HINT[$_ptok]:-} && -n ${_PLAY_FLAG_CMD[$_ptok]:-} ]] && echo 1 || echo 0)" "1"
+    # Every flag must sit in a real kill-chain phase, or the `map` view would drop it.
+    _assert "flag has a kill-chain phase: ${_ptok}" "$(( ${_PLAY_FLAG_PHASE[$_ptok]:-0} >= 1 && ${_PLAY_FLAG_PHASE[$_ptok]:-0} <= PLAY_PHASE_TOTAL ? 1 : 0 ))" "1"
   done
 
   printf '%s\n' "${B}=== scoring ===${N}"
