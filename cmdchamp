@@ -1797,9 +1797,10 @@ _SB_LAST_OUT="" _SB_LAST_RC=0 _SB_LAST_SET=0 _SB_LAST_ERR=""   # what the player
 
 # Top-level pipe stages, by _opskel's lexer rules: quotes, backslashes, backticks, $( ),
 # (( )) and [[ ]] are structure, so a | inside any of them is not a stage boundary. Fills
-# the array named by $2 with successive PREFIXES (stage 1, stages 1-2, ...) - that shape is
-# what makes a per-stage line count one sandbox run each. Returns 1 for anything where
-# running a prefix would not mean what it looks like: redirects, &&, ||, ;, background.
+# the array named by $2 with successive PREFIXES (stage 1, stages 1-2, ..., the whole
+# command) - that shape is what makes a per-stage line count one sandbox run each, and its
+# length is the stage count. Returns 1 only for a command where running a prefix would not
+# mean what it looks like: redirects, &&, ||, ;, background.
 # shellcheck disable=SC1003  # '\' is a literal backslash, not a botched quote escape
 _pipe_stages() {
   local s=$1; local -n _ps_out=$2; _ps_out=()
@@ -1823,7 +1824,9 @@ _pipe_stages() {
     case $c in '>'|'<'|'&'|';') _ps_out=(); return 1 ;; esac
     ((i++))
   done
-  ((${#_ps_out[@]})) || return 1
+  # A command with no pipe is ONE stage, not an error: callers that count stages need that,
+  # and the caller that dissects them already requires two or more. A genuine "cannot
+  # analyse this" - a redirect, &&, ;, background - still returns 1 above.
   _ps_out+=("$s")
   return 0
 }
@@ -6013,15 +6016,45 @@ _show_alts() {
   _fnorm "$inp"; local ninp=$REPLY
   local -a opts shown=()
   IFS="$delim" read -ra opts <<< "$answers"
-  local a b max=3
+  local a b max=3 _short="" _slen=0
   for a in "${opts[@]}"; do
     _trim "$a"; b=$REPLY
     [[ -z "$b" || "$b" == ~* ]] && continue
+    # Shortest-accepted is tracked over EVERY alternate, including ones that normalise to
+    # what was typed. `cat f | grep -c X` and `grep -c X f` are the same answer to _fnorm,
+    # and that pair is the single most worthwhile thing this line can say.
+    if [[ "$inp" != "$b" ]] && { [[ -z "$_short" ]] || (( ${#b} < _slen )); }; then _short=$b; _slen=${#b}; fi
     _fnorm "$b"
     [[ "$inp" == "$b" || "$ninp" == "$REPLY" ]] && continue
     shown+=("$b")
     ((${#shown[@]} >= max)) && break
   done
+  # Worth saying when it saves a real amount of typing, OR when it does the same work in
+  # fewer pipeline stages - `cat f | grep X` -> `grep X f` saves six characters and one
+  # process, and the process is the lesson. A two-character win is noise, and printing one
+  # after every correct answer teaches the player to stop reading this line.
+  local _worth=0
+  if [[ -n "$_short" ]]; then
+    (( ${#inp} - _slen >= 8 && _slen * 4 < ${#inp} * 3 )) && _worth=1
+    if ((!_worth)) && (( ${#inp} > _slen )); then
+      # _sa_ prefixed, not _pi/_ps: _play_next_hint already owns a scalar _ps, and a
+      # 9,000-line file makes every short name a collision waiting to be found by shellcheck
+      # (or, worse, by a player).
+      local -a _sa_mine=() _sa_alt=()
+      if _pipe_stages "$inp" _sa_mine && _pipe_stages "$_short" _sa_alt; then
+        (( ${#_sa_mine[@]} > ${#_sa_alt[@]} )) && _worth=1
+      fi
+    fi
+  fi
+  if ((_worth)); then
+    local _c; _COLS; _c=$REPLY; ((_c > 8)) || _c=80
+    _wrap "$_short" "$((_c - 4))"
+    printf '  %s\n' "${D}Shorter:${N}"
+    local _sl; while IFS= read -r _sl; do printf '    %s\n' "${G}${_sl}${N}"; done <<< "$REPLY"
+    # Do not then repeat it in the Also list below.
+    local -a _rest=(); for a in "${shown[@]}"; do [[ "$a" == "$_short" ]] || _rest+=("$a"); done
+    shown=("${_rest[@]+"${_rest[@]}"}")
+  fi
   ((${#shown[@]})) || return 0
   printf '  %s\n' "${D}Also:${N}"
   # Wrap each alternate to width (4-space indent): long answers would otherwise shear
