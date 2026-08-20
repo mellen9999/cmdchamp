@@ -1002,6 +1002,7 @@ phase10_render_smoke() {
   local -a checks=(
     "intro|_intro nopause"
     "tutorial|_tutorial"
+    "help card|_help"
     "victory|_victory nopause"
     "stats|stats"
     "main menu|_main_menu"
@@ -1013,6 +1014,9 @@ phase10_render_smoke() {
     "session summary|_S_ANSWERED=8 _S_CORRECT=6 _S_BEST_STREAK=4 _S_MASTERED=2 _S_START=0; _quit"
     "playground card|_play_card _flags"
     "kill-chain map|_play_map _flags"
+    "playground hunt line|_play_hunt_line _flags; printf '%s\n' \"\$REPLY\""
+    "playground hunt line cleared|for _t in \"\${_PLAY_FLAG_ORDER[@]}\"; do _flags[\$_t]=1; done; _play_hunt_line _flags; printf '%s\n' \"\$REPLY\""
+    "playground nudge|_play_next_hint _flags peek; _pfmt \"\$_PLAY_HINT_ONE\"; printf '%s\n' \"\$REPLY\""
     "syllabus|SEL_ONCE=1 _play_learn _flags"
     "hint tier 1|_play_next_hint _flags; printf '%s\n' \"\$_PLAY_HINT_OUT\""
     "hint tier 3|for _i in 1 2 3; do _play_next_hint _flags; done; printf '%s\n' \"\$_PLAY_HINT_OUT\""

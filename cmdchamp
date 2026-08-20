@@ -537,6 +537,94 @@ _tutorial() {
   _pause "go back"
 }
 
+# ═══ HELP ═══
+# Slot 9 used to replay _tutorial - a first-run onboarding screen, so the one door marked
+# "help" answered none of the questions a player actually has after level three. This is the
+# reference: what every key does, what every mode costs, how an answer is judged, and what
+# the marks on the Stats screen mean. The tutorial is still one keypress away on page 3.
+# Three pages rather than one scroll: 22 content lines is what an 80x24 VT can hold.
+_help() {
+  # Two/four-column row, padded in DISPLAY columns. Never printf '%-Ns' here - that field
+  # counts bytes, and every cell below carries colour.
+  _hrow() {
+    local _r=""
+    _cell "${C}$1${N}" 11; _r+=$REPLY
+    _cell "$2" 27;         _r+=$REPLY
+    if (($# > 2)); then _cell "${C}$3${N}" 11; _r+=$REPLY; _cell "$4" 26; _r+=$REPLY; fi
+    printf '  %s\n' "${_r%"${_r##*[![:space:]]}"}"
+  }
+  _hwide() {   # label + one wide description, plus an optional right-hand tag
+    local _r=""
+    _cell "${C}$1${N}" 15; _r+=$REPLY
+    _cell "$2" 49;         _r+=$REPLY
+    (($# > 2)) && { _cell "${D}$3${N}" 11; _r+=$REPLY; }
+    printf '  %s\n' "${_r%"${_r##*[![:space:]]}"}"
+  }
+  _hsec() { local _t="${U}$1${N}"; [[ -n "${2:-}" ]] && _t+=" ${D}$2${N}"; printf '\n  %s\n' "$_t"; }
+
+  # ── page 1: keys ──
+  printf '%s\e[2J\e[H%s %s\n' "$_SY" "${M}${B}${_H3} HELP ${_H3}${N}" "${D}1/3 keys${N}"
+  _hsec "answering"
+  _hrow "Enter"   "submit"              "Tab"      "the manpage panel"
+  _hrow "${_GUP} ${_GDN}" "history"     "Ctrl+d"   "quit + session summary"
+  _hrow "Ctrl+w"  "delete the word"     "Ctrl+u"   "delete the line"
+  _hrow "Esc"     "vi normal mode"      "?"        "every vi key + inputrc"
+  _hsec "menus"
+  _hrow "j k"     "move"                "Enter l"  "select"
+  _hrow "1-9 0"   "jump to that row"    "h"        "back out"
+  _hrow "q Esc"   "quit"
+  _hsec "vi normal mode" "(toggle in options)"
+  _vi_keymap "  "
+  printf '\n%s' "$_SN"; _pause
+
+  # ── page 2: what the game is doing ──
+  printf '%s\e[2J\e[H%s %s\n' "$_SY" "${M}${B}${_H3} HELP ${_H3}${N}" "${D}2/3 modes + scoring${N}"
+  _hsec "modes"
+  _hwide "continue"   "the campaign - a level, then its boss"
+  _hwide "scenarios"  "13 missions, state persists between steps"
+  _hwide "playground" "a compromised box, real shell, nothing graded"
+  _hwide "challenge"  "the gauntlet - chains, 30s each, one life"    "post-ROOT"
+  _hwide "daily"      "one seeded run, the same for everyone"        "post-ROOT"
+  _hwide "practice"   "drill any reached level, no timer, no boss"
+  _hwide "placement"  "offered once, after the tutorial - skip ahead"
+  _hsec "scoring"
+  printf '  %s\n' \
+    "${D}every prompt is a card: tier 0 unseen, 1 learning, 2 mastered${N}" \
+    "${D}right promotes one tier (once a session), wrong demotes one${N}" \
+    "${D}a boss is 5 questions, 4 to pass, 30s + level/3, no manpage${N}" \
+    "${D}a card unseen for 30 days decays a tier; tier 0 is forgotten${N}" \
+    "${D}each level mixes in 2 questions per earlier level, weakest first${N}"
+  _hsec "stats marks"
+  printf '  %s\n' "${G}${_GOK}${N}${D} mastered   ${N}${Y}~${N}${D} learning   ${N}${R}${_GNO}${N}${D} weak   ${N}${D}${_GDOT} not reached   ${C}p${D} skipped by placement${N}"
+  printf '\n%s' "$_SN"; _pause
+
+  # ── page 3: how an answer is judged, and the knobs ──
+  printf '%s\e[2J\e[H%s %s\n' "$_SY" "${M}${B}${_H3} HELP ${_H3}${N}" "${D}3/3 grading + environment${N}"
+  _hsec "grading"
+  printf '  %s\n' \
+    "${D}answers RUN for real in a sandbox and are judged on their output,${N}" \
+    "${D}so ${N}${C}sort -u${N}${D} and ${N}${C}sort | uniq${N}${D} both pass. ${N}${C}(in place)${N}${D} checks the file on disk.${N}" \
+    "${D}network, wifi and cracking tools cannot run here - those match on text.${N}"
+  _hsec "playground words"
+  printf '  %s\n' "${C}map${N}${D}  the break-in   ${N}${C}learn N${N}${D}  the syllabus   ${N}${C}hint${N}${D}  a nudge   ${N}${C}reset${N}${D}  restore${N}"
+  _hsec "command line"
+  _hwide "daily [DATE]" "today's gauntlet, or replay a YYYY-MM-DD"
+  _hwide "play"         "the playground, straight in"
+  _hwide "reset"        "wipe all progress"
+  _hwide "--no-sandbox" "grade on text only"
+  _hsec "environment"
+  _hwide "NO_COLOR"     "also TERM=dumb and COLUMNS - all honoured"
+  _hwide "CMDCHAMP_*"   "_ASCII / _UNICODE force a render tier"
+  _hwide "CMD_VI"       "vi mode on/off; CMD_PROMPT sets the prompt"
+  _hwide "XDG_DATA_HOME" "where progress is saved"
+  printf '\n%s' "$_SN"
+  # A one-key pause, not _pause: the last page offers the tutorial as well as the way out.
+  # Defined at top level beside _pause so a harness can stub it the same way.
+  _pausekey "go back"; printf '\n'
+  [[ "$REPLY" == [tT] ]] && _tutorial
+  return 0
+}
+
 # ═══ BOSSES & LEVELS ═══
 BOSS_NAMES=("" "n00b" "CopyPasta" "Clobber" "CatMan" "PipeWrench" "Murmur" "DevNull" "AndOr" "\$VARIABLE" "\$\$"
   "BackgroundNoise" "TestCase" "Gatekeeper" "Daemon" "Mux" "Needle" "Globber" "Sieve" "Indexer" "TheFork"
@@ -812,6 +900,9 @@ _PLAY_PLANTED=()     # flag tokens actually planted this build (drives the dynam
 _PLAY_FLAG_TOTAL=0   # ${#_PLAY_PLANTED[@]} after gen; replaces the old hardcoded 3
 declare -gA _PLAY_HINT_SEEN=()   # per-session hint depth per flag: `hint` escalates where->tool->command
 _PLAY_HINT_OUT=""             # last-rendered hint text (set by _play_next_hint, read by play)
+_PLAY_HINT_ONE=""             # the same hint as ONE wrapped paragraph, for the header nudge
+_PLAY_T_TOK="" _PLAY_T_PHASE=0   # the flag currently being hunted (see _play_target)
+declare -gA _PLAY_NUDGED=()   # targets the auto-nudge has already fired on: never twice
 _play_have(){ command -v "$1" >/dev/null 2>&1; }  # host PATH == sandbox PATH (bwrap ro-binds /usr,/bin)
 # playground flag registry. ORDER = difficulty (easiest first, drives `hint`). UNLOCK = the
 # BOSS_BEATEN a player needs before the flag's fixture is planted == the level that teaches the
@@ -1844,6 +1935,9 @@ _fshuffle() { local -n _a=$1; local i j t; for ((i=${#_a[@]}-1; i>0; i--)); do j
 # shellcheck disable=SC2178
 _fshuffle_n() { _fshuffle "$1"; local -n _a=$1; (($2 < ${#_a[@]})) && _a=("${_a[@]:0:$2}"); }
 _pause() { read -rsp "${2:-}${D}Press Enter to ${1:-continue}...${N}"; }
+# _pause's sibling for a screen that also offers a choice: reads ONE key into REPLY, so
+# Enter means "$1" and anything else is the caller's to interpret.
+_pausekey() { REPLY=""; read -rsn1 -p "  ${D}Press Enter to ${1:-continue}, or ${N}${C}t${D} to replay the tutorial...${N}" REPLY || REPLY=""; }
 
 _QV='log cfg cfg2 txt txt2 csv dir dir2 ext ext2 script archive bin img pcap hash photo wordlist ip subnet port port2 mac url user host term term2 term3 field key old new size iface proc svc branch n n1 n2 n3 col'
 # shellcheck disable=SC2034  # vars consumed by caller's eval scope
@@ -6066,21 +6160,33 @@ _vi_normal() {
     $'\x04') _quit;;
     q) _quit;;
     :) ;;
-    \?) ((_rl_hints)) && { printf '\n%s\n%s\n%s\n%s\n%s\n\n%s\n%s\n%s\n%s\n%s\n%s\n' \
-      "${C}hl${N} move  ${C}kj${N} history  ${C}wb${N} word  ${C}fFtT${N}+char find  ${C};,${N} repeat find  ${C}0\$^/gg/G${N} line" \
-      "${C}x/X${N} del char  ${C}dw/db/de/dd${N} del  ${C}cw/cb/ce/cc${N} change  ${C}r${N} replace  ${C}~${N} case" \
-      "${C}y${N}+motion yank  ${C}p/P${N} paste  ${C}s/S${N} subst  ${C}i/a/I/A${N} insert  ${C}u${N} undo(stack)" \
-      "${C}v${N} visual  ${C}V${N} whole line  ${C}o${N} swap ends  ${D}then${N} ${C}d y c x s r ~ p${N}  ${C}Esc${N} cancel" \
-      "${C}Tab${N} man  ${C}Ctrl+d${N} menu  ${C}Ctrl+w${N} del word  ${C}Ctrl+u${N} del line  ${C}[num]cmd${N} repeat" \
-      "${U}vi mode for your shell${N} ${D}(~/.inputrc):${N}" \
-      "${D}  set editing-mode vi${N}" \
-      "${D}  set show-mode-in-prompt on${N}" \
-      "${D}  set keyseq-timeout 50${N}" \
-      "${D}  set vi-ins-mode-string \\1\\e[97m\\2\$\\1\\e[0m\\2 ${N}" \
-      "${D}  set vi-cmd-mode-string \\1\\e[91m\\2\$\\1\\e[0m\\2 ${N}"; _pause; printf '\e[2J'; _REDRAW_HDR; draw; };;
+    \?) ((_rl_hints)) && { printf '\n'; _vi_keymap; printf '\n'; _vi_inputrc; _pause; printf '\e[2J'; _REDRAW_HDR; draw; };;
     '') ((_man_open)) && printf '%s\e7\n\e[J\e8%s' "$_SY" "$_SN"; _man_open=0; echo; return 0;;
   esac
   return 1
+}
+
+# The line editor's own reference. Lifted out of the `?` case so the Help screen can print
+# the SAME five lines: a keymap that drifts from the editor it documents is worse than none.
+_vi_keymap() {
+  local _i=${1:-}
+  printf "${_i}%s\n${_i}%s\n${_i}%s\n${_i}%s\n${_i}%s\n" \
+    "${C}hl${N} move  ${C}kj${N} history  ${C}wb${N} word  ${C}fFtT${N}+char find  ${C};,${N} repeat find  ${C}0\$^/gg/G${N} line" \
+    "${C}x/X${N} del char  ${C}dw/db/de/dd${N} del  ${C}cw/cb/ce/cc${N} change  ${C}r${N} replace  ${C}~${N} case" \
+    "${C}y${N}+motion yank  ${C}p/P${N} paste  ${C}s/S${N} subst  ${C}i/a/I/A${N} insert  ${C}u${N} undo(stack)" \
+    "${C}v${N} visual  ${C}V${N} whole line  ${C}o${N} swap ends  ${D}then${N} ${C}d y c x s r ~ p${N}  ${C}Esc${N} cancel" \
+    "${C}Tab${N} man  ${C}Ctrl+d${N} menu  ${C}Ctrl+w${N} del word  ${C}Ctrl+u${N} del line  ${C}[num]cmd${N} repeat"
+}
+# The take-it-with-you half: same keys in your own shell. Only `?` prints this - the Help
+# screen points at it rather than carrying a second copy.
+_vi_inputrc() {
+  printf '%s\n%s\n%s\n%s\n%s\n%s\n' \
+    "${U}vi mode for your shell${N} ${D}(~/.inputrc):${N}" \
+    "${D}  set editing-mode vi${N}" \
+    "${D}  set show-mode-in-prompt on${N}" \
+    "${D}  set keyseq-timeout 50${N}" \
+    "${D}  set vi-ins-mode-string \\1\\e[97m\\2\$\\1\\e[0m\\2 ${N}" \
+    "${D}  set vi-cmd-mode-string \\1\\e[91m\\2\$\\1\\e[0m\\2 ${N}"
 }
 
 _rl_rem() { local _n; printf -v _n '%(%s)T' -1; REPLY=$((_rl_deadline - _n)); ((REPLY < 0)) && REPLY=0; }
@@ -6793,7 +6899,10 @@ _play_card() {
                 "${D}can touch your machine. this is a frozen crime scene - take it apart.${N}" ''
   printf '%s\n' "${W}the box:${N} ${D}someone got in, used it, then tried to tidy up - history -c, an${N}" \
                 "${D}rm, a note 'encrypted'. they failed; every move left a mark on disk.${N}" ''
-  printf '%s %s\n\n' "${Y}${B}${#_fl[@]}/${_PLAY_FLAG_TOTAL} flags${N}" "${D}each proves one technique ${_GDOT} the box grows as you clear levels${N}"
+  printf '%s %s\n' "${Y}${B}${#_fl[@]}/${_PLAY_FLAG_TOTAL} flags${N}" "${D}each proves one technique ${_GDOT} the box grows as you clear levels${N}"
+  # Capture is a grep over whatever your command printed. Obvious if you have played a CTF,
+  # invisible if you have not - and the box is unplayable until you know what you are after.
+  printf '%s\n\n' "${D}a flag is a token like ${N}${G}flag{...}${N}${D} hidden in the tree - print one to the${N}"$'\n'"${D}screen any way you like and it counts the moment it appears.${N}"
   printf '%s\n' "${W}start here:${N}"
   # _cell, not %-30s: that field counts bytes, so these four rows only lined up because
   # they happened to share one ${C}...${N} pair. A different colour on any row broke it.
@@ -6854,7 +6963,7 @@ play() {
   _session_init; _mode_init play
   _PLAY_EXPLAIN=1
   _PLAY_HINT_SEEN=()   # fresh escalation state each session
-  local -A _flags=(); local _cwd="" _last _note=""
+  local -A _flags=(); local _cwd="" _last _note="" _play_since=0
   _play_card _flags
   # Open on a real listing instead of a hand-kept file list: the fixture tree gets new
   # files, a hardcoded line does not, and it shows on arrival that what you type really
@@ -6865,6 +6974,11 @@ play() {
     _REDRAW_HDR() {
       local _fc=${#_flags[@]} _fcol=$D; ((_fc)) && _fcol=$G; ((_PLAY_FLAG_TOTAL && _fc >= _PLAY_FLAG_TOTAL)) && _fcol="${G}${B}"
       printf '%s\e[H%s %s  %s\e[K\n' "$_SY" "${M}${B}PLAYGROUND${N}" "${C}~${_cwd}${N}" "${_fcol}flags ${_fc}/${_PLAY_FLAG_TOTAL}${N}"
+      # "flags 2/8" is a scoreboard, not an objective - on its own it left a first-time player
+      # with nowhere to point a command. This line names the phase being hunted and the files
+      # that phase left behind: orientation, never the technique (that stays behind `hint`).
+      # Same target `hint` picks, so the header, the map marker and the hint cannot disagree.
+      _play_hunt_line _flags; printf '%s\e[K\n' "$REPLY"
       printf '%s\e[K\n\e[K\n' "${D}${C}map${D} the break-in   ${C}learn${D} the syllabus   ${C}hint${D} nudge   ${C}Tab${D} explains   ${C}reset${D} restores   ${C}q${D} back${N}"
       printf '%s\e[K\n' "${D}--- output ---${N}"
       printf '\e[K\n%s\e[K\n' "$_last"
@@ -6910,6 +7024,7 @@ play() {
       [[ -z "${_flags[$_hit]:-}" ]] && _newflag=$_hit
       _flags[$_hit]=1
     done < <(grep -oa 'flag{[^}]*}' <<< "$_raw" 2>/dev/null)
+    ((_play_since++))
     local _nl=0; [[ -n "$_raw" ]] && _nl=$(grep -c '' <<< "$_raw")
     _last=$(head -n 12 <<< "$_raw")
     _note=""
@@ -6917,8 +7032,18 @@ play() {
     # A captured flag is the important event - its teaching line wins over the line-count note.
     if [[ -n "$_newflag" && -n "${_PLAY_FLAG_MOD[$_newflag]:-}" ]]; then
       local _mm=${_PLAY_FLAG_MOD[$_newflag]} _fwd=""
-      ((${#_flags[@]} < _PLAY_FLAG_TOTAL)) && _fwd=" ${C}hint${D} for the next trail."
+      # Name where the next one lives, so a capture hands you the following move instead of
+      # dropping you back at a prompt with a bumped counter and no direction.
+      _play_since=0
+      _play_target _flags && _fwd=" next: ${W}phase ${_PLAY_T_PHASE} ${PLAY_PHASE_NAME[$_PLAY_T_PHASE]}${N}${D} ${_GDOT} ${C}hint${D} for the trail."
       _note="${G}${_GOK} flag captured${N} ${D}- ${_PLAY_FLAG_TECH[$_newflag]}. module ${_mm} (${PLAY_MOD_NAME[$_mm]}) proven. ${C}learn ${_mm}${D} for why it matters.${_fwd}${N}"
+    elif ((_play_since >= 6 && _PLAY_FLAG_TOTAL)) && _play_target _flags \
+         && [[ -z "${_PLAY_NUDGED[$_PLAY_T_TOK]:-}" && -z "${_PLAY_HINT_SEEN[$_PLAY_T_TOK]:-}" ]]; then
+      # Six commands, nothing found, and `hint` never typed. The player who is stuck is exactly
+      # the one who does not know `hint` exists, so it comes to them - once per target, tier 1
+      # only, and it never spends an escalation step they were saving for when they do ask.
+      _PLAY_NUDGED[$_PLAY_T_TOK]=1; _play_since=0
+      _play_next_hint _flags peek; _note=$_PLAY_HINT_ONE
     fi
     _trim "$input"; local _c0=${REPLY%%[[:space:]]*}; _c0=${_c0##*/}
     # Full-screen programs need a terminal the sandbox deliberately lacks (stdin /dev/null,
@@ -7040,21 +7165,66 @@ _play_mod_detail() {
   printf '\n%s' "$_SN"; _pause; return 0
 }
 
+# The header's objective line, in REPLY. Lifted out of play()'s _REDRAW_HDR so the render
+# audit can draw it on its own - a line only reachable from inside the REPL loop is a line
+# no phase-10 check ever measures, and this one is width-sensitive.
+_play_hunt_line() {
+  if ((_PLAY_FLAG_TOTAL)) && _play_target "$1"; then
+    local _pn=$_PLAY_T_PHASE _plain
+    _plain="hunting  phase ${_pn} ${PLAY_PHASE_NAME[$_pn]}  examine  "
+    _COLS; local _bud=$((REPLY - ${#_plain} - 1)); ((_bud < 12)) && _bud=12
+    local _art=${PLAY_PHASE_ART[$_pn]}
+    # Clip on a path boundary, not mid-word: "web/config" reads as a file that isn't there.
+    # "..." rather than a single glyph, so the marker costs three columns on every tier.
+    _vwidth "$_art"
+    if ((REPLY > _bud)); then
+      _vclip "$_art" $((_bud - 3)); _art=$REPLY
+      [[ "$_art" == *" "* ]] && _art=${_art% *}
+      _art="${_art% }..."
+    fi
+    REPLY=$_art
+    REPLY="${Y}hunting${N}  ${D}phase${N} ${W}${_pn} ${PLAY_PHASE_NAME[$_pn]}${N}  ${D}examine${N}  ${C}${REPLY}${N}"
+  elif ((_PLAY_FLAG_TOTAL)); then
+    REPLY="${G}${B}all ${_PLAY_FLAG_TOTAL} flags found${N}  ${D}${C}learn${D} still has every lesson ${_GDOT} ${C}map${D} the whole break-in${N}"
+  else
+    REPLY="${D}no flags planted on this box yet ${_GDOT} ${C}map${D} lays the break-in out phase by phase${N}"
+  fi
+}
+
+# The next thing to hunt: the easiest planted-but-unfound flag, in _PLAY_FLAG_ORDER (difficulty)
+# order - the SAME target `hint` nudges toward, so the header line, the `map` marker and the hint
+# can never point three different ways. Sets _PLAY_T_TOK/_PLAY_T_PHASE; returns 1 when the box is
+# cleared, so a caller can drop the "hunting" line rather than point at nothing.
+_play_target() {
+  local -n _tf=$1; local tok
+  _PLAY_T_TOK="" _PLAY_T_PHASE=0
+  for tok in "${_PLAY_FLAG_ORDER[@]}"; do
+    [[ " ${_PLAY_PLANTED[*]} " == *" $tok "* ]] || continue
+    [[ -n "${_tf[$tok]:-}" ]] && continue
+    _PLAY_T_TOK=$tok; _PLAY_T_PHASE=${_PLAY_FLAG_PHASE[$tok]:-0}; return 0
+  done
+  return 1
+}
+
 # `hint`: nudge the easiest unfound flag that is actually huntable now (planted). Spoiler-free -
 # never a command, never the token. Shares the registry with _play_learn (one source of truth).
 # Renders the next hint into the global _PLAY_HINT_OUT (NOT echoed): the caller runs it directly,
 # never in $(...), so the escalation counter _PLAY_HINT_SEEN survives - a command-substitution
 # subshell would swallow the write and pin every hint at tier 1.
+# $2 = "peek": render tier 1 WITHOUT consuming an escalation step, for the automatic nudge. A
+# nudge the player never asked for must not spend the depth they were saving for when they ask.
 _play_next_hint() {
-  local -n _f=$1; local tok
+  local -n _f=$1; local _peek=${2:-} tok
+  _PLAY_HINT_ONE=""
   for tok in "${_PLAY_FLAG_ORDER[@]}"; do
     [[ " ${_PLAY_PLANTED[*]} " == *" $tok "* ]] || continue
     [[ -n "${_f[$tok]:-}" ]] && continue
     # Escalate on repeat: run `hint` again on the same still-unfound target and it goes deeper.
     # tier 1 where to look -> tier 2 the tool -> tier 3 the exact command. Nobody stays stuck,
     # and each `hint` only gives as much as the last one wasn't enough to unstick.
-    local _mi=${_PLAY_FLAG_MOD[$tok]:-0} _lvl=$(( ${_PLAY_HINT_SEEN[$tok]:-0} + 1 ))
-    ((_lvl>3)) && _lvl=3; _PLAY_HINT_SEEN[$tok]=$_lvl
+    local _mi=${_PLAY_FLAG_MOD[$tok]:-0} _lvl
+    if [[ -n "$_peek" ]]; then _lvl=1
+    else _lvl=$(( ${_PLAY_HINT_SEEN[$tok]:-0} + 1 )); ((_lvl>3)) && _lvl=3; _PLAY_HINT_SEEN[$tok]=$_lvl; fi
     local _body _foot
     case $_lvl in
       1) _body="${_PLAY_FLAG_HINT[$tok]}";                     _foot="${C}hint${D} again names the tool";;
@@ -7066,6 +7236,8 @@ _play_next_hint() {
       "${Y}${B}hint${N} ${D}(module ${_mi}: ${PLAY_MOD_NAME[$_mi]}) ${_GDOT} tier ${_lvl}/3${N}" \
       "  ${W}${REPLY//$'\n'/$'\n'  }${N}" \
       "${D}${#_f[@]}/${_PLAY_FLAG_TOTAL} found ${_GDOT} ${_foot} ${_GDOT} ${C}learn${D} for the syllabus${N}"
+    [[ -n "$_peek" ]] && printf -v _PLAY_HINT_ONE '%s' \
+      "${Y}${B}stuck?${N} ${D}${_PLAY_FLAG_HINT[$tok]} ${_GDOT} ${C}hint${D} to go deeper.${N}"
     return
   done
   printf -v _PLAY_HINT_OUT '%s' "${G}${B}all ${_PLAY_FLAG_TOTAL} flags found.${N} ${D}nothing left to hunt - ${C}learn${D} still has every lesson.${N}"
@@ -7078,6 +7250,9 @@ _play_next_hint() {
 # registry - no state of its own.
 _play_map() {
   local -n _f=$1; local p tok found_here planted_here
+  # Mark the phase currently being hunted. The map answered "what happened" but never
+  # "where am I", so a lost player read six phases and still had nowhere to point a command.
+  _play_target "$1" || true
   for ((p=1;p<=PLAY_PHASE_TOTAL;p++)); do
     found_here=0 planted_here=0
     for tok in "${_PLAY_FLAG_ORDER[@]}"; do
@@ -7102,6 +7277,7 @@ _play_map() {
       fi
     done
     ((any)) || printf '    %s\n' "${D}${_GDOT} no flag - the skill is the reading${N}"
+    ((p == _PLAY_T_PHASE)) && printf '    %s %s\n' "${Y}${B}${_GAR} you are here${N}" "${D}- ${C}hint${D} nudges you at this one${N}"
     printf '\n'
   done
   printf '%s\n' "${D}${#_f[@]}/${_PLAY_FLAG_TOTAL} flags ${_GDOT} ${C}learn N${D} = the technique ${_GDOT} ${C}hint${D} = a nudge${N}"
@@ -7255,7 +7431,7 @@ _main_menu() {
     it+=("8 Options"); act+=(opts)
     # The controls reference already existed - it was shown once during first run and was
     # then unreachable for the rest of the game. Slot 9 is its permanent door.
-    it+=("9 Help  ${D}controls + vi keys${N}"); act+=(help)
+    it+=("9 Help  ${D}keys, modes, scoring, grading${N}"); act+=(help)
     it+=("0 Quit"); act+=(quit)
     local _banner
     if ((_CAP_UNI)); then
@@ -7301,7 +7477,7 @@ _main_menu() {
       cont) _run_loop;;
       daily) daily;;
       practice) _practice_menu;;
-      help) _tutorial;;
+      help) _help;;
       quit) _CLEANING=1; exit 0;;
       new) if [[ -n "$PLAYER_NAME" ]] && { ((LVL>1||QI>0||BOSS_BEATEN>0||PLACED_THROUGH>0)) || [[ -s "$DATA/scores" ]]; }; then
           printf '\n'; read -rp "  ${R}Reset all progress? [y/N]${N} " yn
