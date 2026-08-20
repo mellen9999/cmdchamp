@@ -3208,6 +3208,12 @@ explain() {
 #
 # Level generators use nameref: local -n questions=${1:-CURRENT_QUESTIONS}; questions=(); eval "local $_QV"; _ctx
 #   $_QV declares ~40 local vars, _ctx() populates them via _fpick from pools
+# _qparse's output contract, declared here so it EXISTS before the first parse.
+# Under `set -u` a reader that runs before any question was parsed - stats page 2 from a
+# cold menu, for one - died on `_qoutput: unbound variable`. Assigning them only inside
+# _qparse made "has a question been parsed yet" an invisible precondition of every reader.
+_qoutput="" _qstate="" _qtext=0 _qrequire="" _qdelim='|' _qboss_skip=0 _qchal_skip=0
+_qsvc="" _qprompt="" _qanswers="" _qans=""
 _qparse() {
   local q=$1
   _qoutput="" _qstate="" _qtext=0 _qrequire="" _qdelim='|' _qboss_skip=0 _qchal_skip=0 _qsvc=""
@@ -6537,7 +6543,7 @@ _cmd_mastery() {
   # stats() is only ever a menu action today, but relying on that is a trap for whoever
   # calls this from somewhere else - so put them back.
   local _sv_o=$_qoutput _sv_s=$_qstate _sv_t=$_qtext _sv_r=$_qrequire _sv_d=$_qdelim
-  local _sv_p=$_qprompt _sv_a=$_qanswers _sv_n=$_qans _sv_v=${_qsvc:-}
+  local _sv_p=$_qprompt _sv_a=$_qanswers _sv_n=$_qans _sv_v=$_qsvc
   local _sv_bs=$_qboss_skip _sv_cs=$_qchal_skip
   local _upto=$(( BOSS_BEATEN + 1 )); ((_upto > MAX_LEVEL)) && _upto=$MAX_LEVEL
   local lv _line _c _tier

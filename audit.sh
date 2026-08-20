@@ -1019,6 +1019,12 @@ phase10_render_smoke() {
     "victory|_victory nopause"
     "stats|stats"
     "stats by command|BOSS_BEATEN=8; declare -A _gt=([grep]=9 [awk]=4 [systemd-analyze]=1 [echo]=54 [cut]=2) _gm=([grep]=3 [echo]=20 [cut]=2); _cmd_grid _gt _gm"
+    # Page 2 of stats is behind `((_cm_seen)) || return 0`, so with the empty save dir every
+    # other check runs against, half of stats was never drawn. Seed one score into a private
+    # DATA so the page renders — and reach it WITHOUT parsing a question first, because
+    # _cmd_mastery reads the _q* globals on entry and a cold process is the one state that
+    # exposed them as unset. Both halves of that are the point of this check.
+    'stats page 2 cold|BOSS_BEATEN=2; DATA=$(mktemp -d); { echo "#v1"; echo "zz|2|lv1|100"; } > "$DATA/scores"; stats; rm -rf "$DATA"'
     "main menu|_main_menu"
     "options menu|_options_menu"
     "practice menu|_practice_menu"
