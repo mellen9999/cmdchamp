@@ -6533,6 +6533,12 @@ _calc_mastery() {
 _cmd_mastery() {
   local -n _cmx_t=$1 _cmx_m=$2; _cmx_t=() _cmx_m=()
   local -n _cmx_src=$3
+  # It walks every level through _qparse, which writes the _q* globals the run loop reads.
+  # stats() is only ever a menu action today, but relying on that is a trap for whoever
+  # calls this from somewhere else - so put them back.
+  local _sv_o=$_qoutput _sv_s=$_qstate _sv_t=$_qtext _sv_r=$_qrequire _sv_d=$_qdelim
+  local _sv_p=$_qprompt _sv_a=$_qanswers _sv_n=$_qans _sv_v=${_qsvc:-}
+  local _sv_bs=$_qboss_skip _sv_cs=$_qchal_skip
   local _upto=$(( BOSS_BEATEN + 1 )); ((_upto > MAX_LEVEL)) && _upto=$MAX_LEVEL
   local lv _line _c _tier
   local -a _q=()
@@ -6552,6 +6558,9 @@ _cmd_mastery() {
       done
     done
   done
+  _qoutput=$_sv_o _qstate=$_sv_s _qtext=$_sv_t _qrequire=$_sv_r _qdelim=$_sv_d
+  _qprompt=$_sv_p _qanswers=$_sv_a _qans=$_sv_n _qsvc=$_sv_v
+  _qboss_skip=$_sv_bs _qchal_skip=$_sv_cs
 }
 
 # The grid: three cells a row, weakest first, so the top-left of the screen is the answer to
