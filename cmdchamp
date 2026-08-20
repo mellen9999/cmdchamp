@@ -6045,14 +6045,17 @@ _show_alts() {
   _fnorm "$inp"; local ninp=$REPLY
   local -a opts shown=()
   IFS="$delim" read -ra opts <<< "$answers"
+  # Only the CANONICAL answer is ever proposed as the shorter way. The accepted list holds
+  # deprecated-but-still-shipped spellings on purpose - ifconfig, netstat, route, egrep, and
+  # the modern tool is always the taught one - and four of them are literally shorter than
+  # the canonical (`route` beats `ip route`, `iwconfig wlan1` beats `iw dev wlan1 link`).
+  # Picking the shortest ACCEPTED answer would have recommended those as the better way.
   local a b max=3 _short="" _slen=0
+  _trim "${opts[0]:-}"; local _canon=$REPLY
+  if [[ -n "$_canon" && "$_canon" != ~* && "$_canon" != "$inp" ]]; then _short=$_canon; _slen=${#_canon}; fi
   for a in "${opts[@]}"; do
     _trim "$a"; b=$REPLY
     [[ -z "$b" || "$b" == ~* ]] && continue
-    # Shortest-accepted is tracked over EVERY alternate, including ones that normalise to
-    # what was typed. `cat f | grep -c X` and `grep -c X f` are the same answer to _fnorm,
-    # and that pair is the single most worthwhile thing this line can say.
-    if [[ "$inp" != "$b" ]] && { [[ -z "$_short" ]] || (( ${#b} < _slen )); }; then _short=$b; _slen=${#b}; fi
     _fnorm "$b"
     [[ "$inp" == "$b" || "$ninp" == "$REPLY" ]] && continue
     shown+=("$b")
@@ -9109,6 +9112,27 @@ _selftest() {
 
   DATA="$_save_data"
   rm -rf "$_test_data"
+
+  printf '%s\n' "${B}=== show alts ===${N}"
+  # "Shorter:" must only ever propose the CANONICAL answer. The accepted list deliberately
+  # holds deprecated-but-shipped spellings, and four of them are shorter than the modern
+  # tool they stand in for - `route` beats `ip route`, `iwconfig wlan1` beats `iw dev
+  # wlan1 link` - so picking the shortest ACCEPTED answer recommended the deprecated one.
+  _sa() { OPT_ALTS=1 _show_alts "$1" "$2" "${3:-|}" 2>/dev/null; }
+  local _sao
+  # Assert on the FIRST WORD of the Shorter line, colour stripped: "does the block mention
+  # ip route" would pass even while the line itself said `route`.
+  _sao=$(_sa 'ip route show table main and more' 'ip route|route|netstat -rn')
+  _strip_ansi "$_sao"
+  _assert "alts: shorter proposes the canonical tool, never a deprecated alternate" \
+    "$(printf '%s\n' "$REPLY" | awk '/Shorter/{f=1;next} /Also/{f=0} f&&NF{print $1; exit}')" "ip"
+  _sao=$(_sa 'grep ERROR app.log | wc -l' $'grep -c ERROR app.log\xc2\xa7grep ERROR app.log | wc -l' '§')
+  _assert "alts: fewer stages counts as shorter" \
+    "$([[ "$_sao" == *Shorter* ]] && echo 1 || echo 0)" "1"
+  _sao=$(_sa 'ls -a -l' 'ls -la|ls -al')
+  _assert "alts: a two-character win is not worth saying" \
+    "$([[ "$_sao" == *Shorter* ]] && echo 1 || echo 0)" "0"
+  unset -f _sa
 
   printf '%s\n' "${B}=== _ap_cmds ===${N}"
   # Feeds the autopsy's curriculum map AND the by-command stats grid, so a gap here is a
