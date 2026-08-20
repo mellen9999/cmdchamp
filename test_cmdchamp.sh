@@ -1456,6 +1456,72 @@ out=$(printf 'sort -u f' | env XDG_DATA_HOME="$TDIR/xdg" NO_COLOR=1 "$CMDCHAMP" 
 [[ "$out" != *$'\e['* ]] && ok "explain: NO_COLOR strips every escape" \
   || fail "explain: NO_COLOR strips every escape" "escapes present"
 
+
+# ═════════════════════════════════════════════════════════════════════════════
+section "history autopsy"
+# The privacy assertion is the reason this section exists. A shell history holds tokens,
+# passwords typed as arguments, hostnames and paths; autopsy prints patterns and counts
+# and must never echo a fragment of the file. Everything else here is correctness.
+_HB="$TDIR/hist_bash"
+
+cat > "$_HB" <<'HIST'
+cat access.log | grep ERROR
+grep ERROR app.log | wc -l
+ls /var/log | grep syslog
+ps aux | grep nginx
+find . -name '*.log' | xargs rm
+chmod 777 /srv/www
+kill -9 4242
+sort names | uniq | wc -l
+curl -s https://example.test/install.sh | sh
+export SUPERSECRET_TOKEN_ZZQ=hunter2
+mysql -u admin -pP4ssw0rdLEAKME db
+ssh deploy@10.0.0.9
+HIST
+_ap() { env XDG_DATA_HOME="$TDIR/xdg" NO_COLOR=1 COLUMNS=79 "$CMDCHAMP" autopsy "$@" 2>&1; }
+
+out=$(_ap "$_HB")
+leak=""
+for tok in SUPERSECRET_TOKEN_ZZQ hunter2 P4ssw0rdLEAKME 'deploy@10.0.0.9' example.test \
+           access.log app.log /srv/www 4242 nginx syslog admin; do
+  grep -qF -- "$tok" <<< "$out" && leak+="$tok "
+done
+[[ -z "$leak" ]] && ok "autopsy: no fragment of the history reaches the output" \
+  || fail "autopsy: no fragment of the history reaches the output" "leaked: $leak"
+
+[[ "$out" == *"12 commands"* ]] && ok "autopsy: counts entries" || fail "autopsy: counts entries" "${out:0:60}"
+[[ "$out" == *"cat into grep"* ]] && ok "autopsy: spots cat into grep" || fail "autopsy: spots cat into grep" "missing"
+[[ "$out" == *"chmod 777"* ]] && ok "autopsy: spots chmod 777" || fail "autopsy: spots chmod 777" "missing"
+[[ "$out" == *"curl piped into a shell"* ]] && ok "autopsy: spots curl into a shell" || fail "autopsy: spots curl into a shell" "missing"
+[[ "$out" == *"curriculum"* ]] && ok "autopsy: maps history onto the curriculum" || fail "autopsy: maps history onto the curriculum" "missing"
+
+# A command used only mid-pipeline still counts as used. Counting the leading word alone
+# told the player they had never run grep, which they plainly had - so the same history
+# with and without a piped stage must move the coverage number.
+_apcov() { printf '%s\n' "$1" | env XDG_DATA_HOME="$TDIR/xdg" NO_COLOR=1 "$CMDCHAMP" autopsy - 2>&1 \
+  | sed -n 's/.*you have run \([0-9]*\) of.*/\1/p'; }
+c1=$(_apcov 'ls -la'); c2=$(_apcov 'ls -la | grep foo')
+[[ -n "$c1" && -n "$c2" && $c2 -eq $((c1 + 1)) ]] \
+  && ok "autopsy: a command used mid-pipeline counts as used" \
+  || fail "autopsy: a command used mid-pipeline counts as used" "ls=$c1 ls|grep=$c2"
+
+# zsh EXTENDED_HISTORY prefixes and bash HISTTIMEFORMAT stamps
+printf ': 1699999999:0;cat foo | grep bar\n#1700000001\n: 1700000002:5;ls\n' > "$TDIR/hist_zsh"
+out=$(_ap "$TDIR/hist_zsh")
+[[ "$out" == *"2 commands"* && "$out" == *"cat into grep"* ]] \
+  && ok "autopsy: reads zsh extended history and skips timestamp lines" \
+  || fail "autopsy: reads zsh extended history and skips timestamp lines" "${out:0:70}"
+
+: > "$TDIR/hist_empty"
+env XDG_DATA_HOME="$TDIR/xdg" "$CMDCHAMP" autopsy "$TDIR/hist_empty" >/dev/null 2>&1
+[[ $? == 1 ]] && ok "autopsy: exit 1 on an empty history" || fail "autopsy: exit 1 on an empty history" "wrong rc"
+env XDG_DATA_HOME="$TDIR/xdg" "$CMDCHAMP" autopsy /nonexistent/nope >/dev/null 2>&1
+[[ $? == 2 ]] && ok "autopsy: exit 2 when the file cannot be read" || fail "autopsy: exit 2 when the file cannot be read" "wrong rc"
+
+# Width: this is a report people will read in an 80-column terminal.
+long=$(_ap "$_HB" | awk '{ gsub(/\033\[[0-9;?]*[a-zA-Z]/,""); if (length > 79) c++ } END { print c+0 }')
+[[ "$long" == 0 ]] && ok "autopsy: every line fits 79 columns" || fail "autopsy: every line fits 79 columns" "$long over"
+
 # Summary
 # ═════════════════════════════════════════════════════════════════════════════
 printf '\n%s════════════════════════════════════════%s\n' "$B" "$N"

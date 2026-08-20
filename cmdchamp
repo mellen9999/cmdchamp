@@ -5333,6 +5333,8 @@ _sc_setup_9() {
   command -v git &>/dev/null || return 1
   # Hermetic git: host config (gpgsign policies, hooksPath, templates) must not
   # touch the seeded history — a failed commit here would silently break every step.
+  # shellcheck disable=SC2030  # scoping HOME to this subshell is the point: the seeded
+  # history must not read the player's gitconfig, and must not touch their HOME either
   ( cd "$d" || exit 1
     export HOME=$d GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_SYSTEM=/dev/null GIT_CONFIG_NOSYSTEM=1
     git init -q -b main 2>/dev/null || git init -q
@@ -6052,6 +6054,286 @@ save() {
     && mv "$DATA/session.json.tmp" "$DATA/session.json" || rm -f "$DATA/session.json.tmp"
   exec {fd}>&-
 }
+# ═══ HISTORY AUTOPSY ═══
+# The transfer problem, which no amount of in-game content fixes: you master `awk -F:` here
+# and still do not reach for it on a real box at 2am. The one thing that knows what you
+# actually type is your own history file, and it is sitting right there.
+#
+# `cmdchamp autopsy` reads it, entirely locally, and maps it onto the curriculum: which of
+# the commands the game teaches you already use, which you have never once run, the level
+# that teaches each of those, and the habits worth unlearning with a count beside each.
+#
+# PRIVACY IS THE DESIGN CONSTRAINT, not a footnote. A shell history holds tokens, passwords
+# typed as arguments, hostnames, paths. So this prints PATTERNS AND COUNTS ONLY - never a
+# line, never a fragment, never an "example". Nothing leaves the machine and there is no
+# flag to make it echo your history, because that flag is the whole risk.
+
+# One awk pass over the file: normalise each entry, count leading commands, count habit
+# hits. POSIX-safe patterns only - `\<` is a gawk extension and Debian's awk is mawk.
+# Emits KIND<TAB>KEY<TAB>COUNT.
+_ap_scan() {
+  awk '
+    { line = $0 }
+    # zsh EXTENDED_HISTORY: ": 1699999999:0;the command"
+    line ~ /^: [0-9]+:[0-9]*;/ { sub(/^: [0-9]+:[0-9]*;/, "", line) }
+    # bash HISTTIMEFORMAT stamps
+    /^#[0-9]+$/ { next }
+    {
+      gsub(/^[ \t]+/, "", line); gsub(/[ \t]+$/, "", line)
+      if (line == "") next
+      total++
+      # Every command POSITION, not only the first word. `ls | grep x` uses grep, and
+      # counting the leading word alone reported that the player had never once run it -
+      # a report the player knows is false is worth less than no report.
+      nseg = split(line, seg, /\|\||&&|;|\||&/)
+      for (sx = 1; sx <= nseg; sx++) {
+        n = split(seg[sx], w, /[ \t]+/)
+        cmd = ""
+        for (i = 1; i <= n; i++) {
+          t = w[i]
+          if (t == "sudo" || t == "doas" || t == "env" || t == "time" || t == "nice" || t == "command") continue
+          if (t ~ /^[A-Za-z_][A-Za-z0-9_]*=/) continue
+          if (t ~ /^-/) continue
+          sub(/^.*\//, "", t)
+          if (t == "" || t !~ /^[A-Za-z]/) continue
+          cmd = t; break
+        }
+        if (cmd == "") continue
+        used[cmd]++                 # anywhere in the line: "have you ever run this"
+        if (sx == 1) cnt[cmd]++     # leading: "what do you reach for"
+      }
+
+      # ── habits. Each one is a thing the tool already does better, not a style opinion. ──
+      if (line ~ /(^|[ \t;|&(])cat[ \t][^|]*\|[ \t]*(grep|egrep|fgrep|rg)([ \t]|$)/) h["catgrep"]++
+      else if (line ~ /(^|[ \t;|&(])cat[ \t][^|]*\|[ \t]*(awk|sed|sort|head|tail|cut|tr|wc|uniq|nl|rev)([ \t]|$)/) h["catpipe"]++
+      if (line ~ /(grep|egrep|rg)[^|]*\|[ \t]*wc[ \t]+-l([ \t]|$)/) h["grepwc"]++
+      if (line ~ /(^|[ \t;|&(])ls[^|]*\|[ \t]*(grep|egrep|rg)([ \t]|$)/) h["lsgrep"]++
+      if (line ~ /(^|[ \t;|&(])ps[ \t][^|]*\|[ \t]*(grep|egrep|rg)([ \t]|$)/) h["psgrep"]++
+      if (line ~ /(^|[ \t;|&(])find[ \t]/ && line ~ /\|[ \t]*xargs([ \t]|$)/ && line !~ /-print0/) h["xargs0"]++
+      if (line ~ /for[ \t]+[A-Za-z_][A-Za-z0-9_]*[ \t]+in[ \t]+.?\$\(ls/) h["forls"]++
+      if (line ~ /chmod[ \t]+(-[A-Za-z]+[ \t]+)*777([ \t]|$)/) h["chmod777"]++
+      if (line ~ /kill[ \t]+(-9|-KILL|-s[ \t]*KILL)([ \t]|$)/) h["kill9"]++
+      if (line ~ /sort[^|]*\|[ \t]*uniq[ \t]*\|[ \t]*wc/) h["sortuniqwc"]++
+      if (line ~ /(^|[ \t;|&(])echo[ \t][^|]*\|[ \t]*(sed|cut|tr|awk)([ \t]|$)/) h["echopipe"]++
+      if (line ~ /(curl|wget)[^|]*\|[ \t]*(sudo[ \t]+)?(ba)?sh([ \t]|$)/) h["curlsh"]++
+      if (line ~ /(^|[ \t;])cd[ \t]+\.\.[ \t]*;[ \t]*cd[ \t]+\.\./) h["cdcd"]++
+      if (line ~ /(^|[ \t;|&(])(grep|egrep|rg)[ \t]/ && line ~ /\|[ \t]*head[ \t]+-1([ \t]|$)/) h["grephead"]++
+
+      # things worth NOTICING the absence of
+      if (line ~ /!\$|!!|![0-9]/) u["histexp"]++
+      if (line ~ /(^|[ \t;|&(])(pushd|popd)([ \t]|$)/) u["dirstack"]++
+      if (line ~ /(^|[ \t;|&(])xargs([ \t]|$)/) u["xargs"]++
+      if (line ~ /-exec[ \t]/) u["findexec"]++
+      if (line ~ /\$\(|`/) u["cmdsub"]++
+      if (line ~ /\$\{[A-Za-z_#!]/) u["paramexp"]++
+    }
+    END {
+      printf "TOTAL\t-\t%d\n", total
+      for (c in cnt)  printf "CMD\t%s\t%d\n",  c, cnt[c]
+      for (c in used) printf "SEEN\t%s\t%d\n", c, used[c]
+      for (k in h)   printf "HAB\t%s\t%d\n", k, h[k]
+      for (k in u)   printf "USE\t%s\t%d\n", k, u[k]
+    }
+  ' "$1"
+}
+
+# What the game teaches, and where. Walks every level generator once and records the
+# EARLIEST level each command appears in, so "never used" can be ordered by how
+# fundamental a thing is and pointed at the level that drills it. ~1s, once, on demand.
+_ap_curriculum() {
+  local -n _ap_lvl=$1; _ap_lvl=()
+  local lv _line _tok _c
+  local -a _q=()
+  for ((lv = 1; lv <= MAX_LEVEL; lv++)); do
+    _q=(); "gen_level$lv" _q
+    for _line in "${_q[@]}"; do
+      [[ -z "$_line" ]] && continue
+      _qparse "$_line"
+      # The answer's commands, resolved the way the Tab panel resolves them - through
+      # pipes, wrappers, substitutions - so `sudo timeout 5 awk ...` records awk.
+      _ap_cmds "$_qans"
+      for _c in $REPLY; do
+        [[ -n "${_ap_lvl[$_c]:-}" ]] || _ap_lvl[$_c]=$lv
+      done
+    done
+  done
+}
+
+# The command words a single answer runs. Deliberately simpler than explain()'s resolver:
+# this only needs the names, and it must stay fast enough to run over ~1400 answers.
+_ap_cmds() {
+  local -a _w=(); local t out="" cp=1
+  set -f; read -ra _w <<< "$1"; set +f
+  for t in "${_w[@]}"; do
+    case "$t" in
+      '|'|'|&'|'&&'|'||'|';'|'&') cp=1; continue ;;
+      -exec|-execdir|-ok|-okdir) cp=1; continue ;;
+      '<'*|'>'*|'2>'*|'&>'*|'1>'*) cp=0; continue ;;
+    esac
+    ((cp)) || continue
+    case "$t" in
+      sudo|doas|env|time|nice|ionice|timeout|watch|xargs|command) out+="${t##*/} "; continue ;;
+      -*|[0-9]*|'{}'|*=*|'\;'|'[['|']]'|'('|')'|'{'|'}') continue ;;
+      if|then|else|elif|fi|for|while|do|done|case|'esac'|in|function) continue ;;
+    esac
+    t=${t#'$('}; t=${t#'<('}; t=${t#'`'}; t=${t##*/}
+    # Documented-or-not is the filter: phase 8 guarantees every command an answer runs has
+    # a MANPAGE or EXP entry, so this misses nothing - and `backup.sh`, `notes.txt` and
+    # `WARN` stop being reported as commands the player has never learned.
+    [[ -n "${MANPAGE[$t]:-}${EXP[$t]:-}" ]] && out+="$t "
+    cp=0
+  done
+  REPLY=$out
+}
+
+# label§fix. The separator is § and not | because half of these labels ARE pipelines.
+declare -A _AP_HABIT=(
+  [catgrep]="cat into grep§grep reads files: grep PATTERN FILE"
+  [catpipe]="cat into a text tool§awk/sed/sort/cut all take a filename"
+  [grepwc]="grep piped into wc -l§grep -c counts matches itself"
+  [lsgrep]="ls piped into grep§a glob or find matches names properly"
+  [psgrep]="ps piped into grep§pgrep -f finds it without matching itself"
+  [xargs0]="find into xargs, no -print0§a filename with a space breaks it: -print0 | xargs -0"
+  [forls]="for f in \$(ls ...)§word splitting eats spaces: for f in *"
+  [chmod777]="chmod 777§world-writable is a privesc primitive, not a fix"
+  [kill9]="kill -9 first§TERM lets it clean up; KILL is the last resort"
+  [sortuniqwc]="sort | uniq | wc§sort -u | wc -l does it in one pass"
+  [echopipe]="echo piped into sed/cut§parameter expansion does it with no fork"
+  [curlsh]="curl piped into a shell§you are running code you never read"
+  [cdcd]="cd .. ; cd ..§cd ../.. - and cd - goes back"
+  [grephead]="grep | head -1§grep -m1 stops at the first match"
+)
+declare -A _AP_UNUSED=(
+  [histexp]="history expansion§!\$ is the last argument, !! the last command"
+  [dirstack]="pushd / popd§a directory stack beats retyping paths"
+  [xargs]="xargs§turns a list of names into a command line"
+  [findexec]="find -exec§runs something per match without a second tool"
+  [cmdsub]="\$( )§puts a command's output inside another command"
+  [paramexp]="\${var...}§strip, default and replace without calling out"
+)
+
+autopsy() {
+  # shellcheck disable=SC2031  # the only other HOME write is _sc_setup_9's hermetic-git
+  # subshell, which is deliberately scoped and cannot reach here
+  local _file=${1:-} _home=${HOME:-}
+  if [[ -z "$_file" ]]; then
+    for _file in "${HISTFILE:-}" "$_home/.bash_history" "$_home/.zsh_history" ""; do
+      [[ -n "$_file" && -r "$_file" && -s "$_file" ]] && break
+    done
+  fi
+  if [[ "$_file" == "-" ]]; then _file=/dev/stdin
+  elif [[ -z "$_file" ]]; then
+    printf '%s\n' "no history file found. pass one: cmdchamp autopsy ~/.bash_history" >&2; return 2
+  elif [[ ! -r "$_file" ]]; then
+    printf '%s\n' "cannot read: $_file" >&2; return 2
+  fi
+
+  local -A _cmd=() _seen=() _hab=() _use=(); local _total=0
+  local _k _v _kind
+  while IFS=$'\t' read -r _kind _k _v; do
+    case "$_kind" in
+      TOTAL) _total=$_v ;;
+      CMD)   _cmd[$_k]=$_v ;;
+      SEEN)  _seen[$_k]=$_v ;;
+      HAB)   _hab[$_k]=$_v ;;
+      USE)   _use[$_k]=$_v ;;
+    esac
+  done < <(_ap_scan "$_file" 2>/dev/null)
+
+  if ((_total == 0)); then
+    printf '%s\n' "nothing to read in that file." >&2; return 1
+  fi
+
+  local _c; _COLS; _c=$REPLY; ((_c > 40)) || _c=40
+  printf '%s %s\n' "${M}${B}${_H3} AUTOPSY ${_H3}${N}" "${D}${_total} commands from your own history${N}"
+  printf '%s\n\n' "${D}patterns and counts only - no line of your history is printed, and${N}"$'\n'"${D}nothing leaves this machine${N}"
+
+  # ── what you reach for ──
+  local -a _top=()
+  for _k in "${!_cmd[@]}"; do _top+=("$(printf '%08d %s' "${_cmd[$_k]}" "$_k")"); done
+  mapfile -t _top < <(printf '%s\n' "${_top[@]}" | sort -rn)
+  printf '  %s\n' "${U}you reach for${N}"
+  local _i _n _nm _max=0 _bar
+  for ((_i = 0; _i < ${#_top[@]} && _i < 8; _i++)); do
+    _n=$((10#${_top[$_i]%% *})); ((_n > _max)) && _max=$_n
+  done
+  for ((_i = 0; _i < ${#_top[@]} && _i < 8; _i++)); do
+    _n=$((10#${_top[$_i]%% *})); _nm=${_top[$_i]#* }
+    local _bw=$(( _max > 0 ? _n * 22 / _max : 0 )); ((_bw < 1)) && _bw=1
+    _rep "$_RBK" "$_bw"; _bar=$REPLY
+    _cell "${C}${_nm}${N}" 13; local _lab=$REPLY
+    _cell "${W}${_bar}${N}" 23
+    printf '    %s%s %s\n' "$_lab" "$REPLY" "${D}${_n}${N}"
+  done
+  printf '\n'
+
+  # ── habits: the thing the tool already does better, with your own count beside it ──
+  local -a _hits=()
+  for _k in "${!_hab[@]}"; do
+    [[ -n "${_AP_HABIT[$_k]:-}" ]] && _hits+=("$(printf '%08d %s' "${_hab[$_k]}" "$_k")")
+  done
+  if ((${#_hits[@]})); then
+    mapfile -t _hits < <(printf '%s\n' "${_hits[@]}" | sort -rn)
+    printf '  %s\n' "${U}habits worth dropping${N}"
+    for ((_i = 0; _i < ${#_hits[@]} && _i < 10; _i++)); do
+      _n=$((10#${_hits[$_i]%% *})); _k=${_hits[$_i]#* }
+      local _e=${_AP_HABIT[$_k]}
+      _cell "${Y}${_e%%§*}${N}" 30
+      printf '    %s %s\n' "$REPLY" "${D}x${_n}${N}"
+      _pfmt "${D}${_e#*§}${N}"; printf '      %s\n' "${REPLY//$'\n'/$'\n'      }"
+    done
+    ((${#_hits[@]} > 10)) && printf '    %s\n' "${D}and $(( ${#_hits[@]} - 10 )) more${N}"
+    printf '\n'
+  fi
+
+  # ── the curriculum, against what you have actually run ──
+  local -A _lvlof=(); _ap_curriculum _lvlof
+  local _taught=0 _known=0 _cmdname
+  local -a _gap=()
+  for _cmdname in "${!_lvlof[@]}"; do
+    ((_taught++))
+    if [[ -n "${_seen[$_cmdname]:-}" ]]; then ((_known++))
+    else _gap+=("$(printf '%03d %s' "${_lvlof[$_cmdname]}" "$_cmdname")"); fi
+  done
+  local _pct=0; ((_taught)) && _pct=$((_known * 100 / _taught))
+  printf '  %s %s\n' "${U}curriculum${N}" \
+    "${D}you have run ${N}${G}${_known}${N}${D} of the ${N}${W}${_taught}${N}${D} commands cmdchamp teaches (${_pct}%)${N}"
+  if ((${#_gap[@]})); then
+    mapfile -t _gap < <(printf '%s\n' "${_gap[@]}" | sort -n)
+    # Grouped by the level that teaches them, earliest first: the earliest level with a gap
+    # is the one to drill, and that is the whole point of running this.
+    local _curlv=-1 _row="" _shown=0 _lv
+    for ((_i = 0; _i < ${#_gap[@]}; _i++)); do
+      _lv=$((10#${_gap[$_i]%% *})); _cmdname=${_gap[$_i]#* }
+      if ((_lv != _curlv)); then
+        [[ -n "$_row" ]] && { _cell "${D}L${_curlv} ${LEVEL_NAMES[$_curlv]:-}${N}" 24; printf '    %s%s\n' "$REPLY" "$_row"; }
+        ((++_shown > 5)) && { _row=""; break; }
+        _curlv=$_lv; _row=""
+      fi
+      _row+="${C}${_cmdname}${N} "
+    done
+    [[ -n "$_row" ]] && { _cell "${D}L${_curlv} ${LEVEL_NAMES[$_curlv]:-}${N}" 24; printf '    %s%s\n' "$REPLY" "$_row"; }
+    printf '\n'
+  fi
+
+  # ── shell forms you never used once ──
+  local -a _never=()
+  for _k in histexp dirstack xargs findexec cmdsub paramexp; do
+    [[ -z "${_use[$_k]:-}" ]] && _never+=("$_k")
+  done
+  if ((${#_never[@]})); then
+    printf '  %s %s\n' "${U}never used once${N}" "${D}in ${_total} commands${N}"
+    for _k in "${_never[@]}"; do
+      local _e=${_AP_UNUSED[$_k]}
+      _cell "${Y}${_e%%§*}${N}" 22
+      printf '    %s%s\n' "$REPLY" "${D}${_e#*§}${N}"
+    done
+    printf '\n'
+  fi
+  ((${#_gap[@]})) && printf '  %s\n' "${D}practice the earliest level above - it is the cheapest ground you have left${N}"
+  return 0
+}
+
 # ═══ SCORING & UI ═══
 declare -gA _HASH_CACHE=()
 _hash() {
@@ -8995,6 +9277,12 @@ Options:
                 without actually executing them)
 
 Commands:
+  autopsy [F]   Read your shell history (default \$HISTFILE, then ~/.bash_history,
+                then ~/.zsh_history; - for stdin) and map it onto the curriculum:
+                what you reach for, habits worth dropping, the commands the game
+                teaches that you have never run, and the level that teaches them.
+                Prints patterns and counts only - never a line of your history -
+                and nothing leaves the machine
   x|explain CMD Explain a command: every flag, and the shell syntax around
                 it. Offline, no network. Reads stdin when given no argument,
                 so \`history | tail -1 | cmdchamp x\` explains what you just ran
@@ -9034,6 +9322,11 @@ Tips:
     bwrap. Type the command precisely.
 EOF
     ;;
+  autopsy)
+    # Read-only, local, and it never echoes a line of your history - see the comment on
+    # autopsy(). No _tty: this is a report you may well want to pipe into a file.
+    autopsy "${2:-}"; exit $?
+    ;;
   x|explain)
     # The Tab panel, out of the game and onto the command line. cmdchamp already carries a
     # hand-written page for every command its questions use plus the shell syntax around
@@ -9065,5 +9358,5 @@ EOF
   daily) _tty; _load_profile; _apply_opts; ((SANDBOX_MODE)) && _check_bwrap; daily "${2:-}";;
   play) _tty; _load_profile; _apply_opts; ((SANDBOX_MODE)) && _check_bwrap; play;;
   "") _tty; _load_profile; _apply_opts; ((SANDBOX_MODE)) && _check_bwrap; _main_menu;;
-  *) echo "Usage: cmdchamp [--no-sandbox] [explain|reset|test|version|help|daily|play]"; echo "Run with no arguments for the game menu."; exit 1;;
+  *) echo "Usage: cmdchamp [--no-sandbox] [explain|autopsy|reset|test|version|help|daily|play]"; echo "Run with no arguments for the game menu."; exit 1;;
 esac

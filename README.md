@@ -50,6 +50,7 @@ cd cmdchamp && make install
 ```bash
 cmdchamp                # Launch the game menu
 cmdchamp explain 'CMD'  # Explain any command - every flag, plus the shell syntax around it
+cmdchamp autopsy        # Read your own shell history and map it onto the curriculum
 cmdchamp daily          # Play today's daily gauntlet (same run for everyone)
 cmdchamp daily 2026-02-16   # Replay a specific day's run (race a friend)
 cmdchamp play           # Free-play sandbox: type any command, see it run
@@ -61,6 +62,8 @@ cmdchamp help           # Show help
 ```
 
 `cmdchamp explain` (or `cmdchamp x`) is the Tab panel as a standalone tool: hand-written pages for ~300 commands plus the shell syntax around them, offline, no network, no dependencies. It takes a quoted command or the bare words, and reads stdin when given neither — so `history | tail -1 | cmdchamp x` explains what you just ran. Exit 0 when it knows the command, 1 when it doesn't.
+
+`cmdchamp autopsy` reads your shell history — `$HISTFILE`, then `~/.bash_history`, then `~/.zsh_history`, or a file you name, or `-` for stdin — and maps it onto the 30 levels: what you actually reach for, habits worth dropping with your own count beside each (`cat` into `grep`, `find` into `xargs` with no `-print0`, `chmod 777`, `curl | sh`), how many of the commands the game teaches you have ever run, and the earliest level with a gap. It prints **patterns and counts only** — never a line, a fragment, or an "example" from your history, because a history holds tokens and passwords typed as arguments. Nothing leaves the machine, and there is no flag to make it echo your history.
 
 The menu holds continue, new game, scenarios, challenge, daily, practice, stats, options, help and quit on fixed hotkeys `1`-`9` and `0`. A row you haven't unlocked is greyed rather than hidden, so the digit beside a label never moves as you progress. `j`/`k` or arrows move, Enter selects, and `q` (or Esc) quits. The playground lives at the top of the **Scenarios** list — it's the one entry that is never locked. **Help** is the reference, three pages: every key, what each mode costs and unlocks at, how scoring and decay work, what the Stats marks mean, how an answer is judged, and every environment variable. The first-run tutorial is still one keypress away on the last page.
 
