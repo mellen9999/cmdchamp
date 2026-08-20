@@ -1034,6 +1034,8 @@ phase10_render_smoke() {
     "question header|hdr 30 5 10"
     "question prompt|qdisp \"\$(printf 'Find every file under %s changed in the last 7 days and hand the list to tar' /sandbox/very/deep/path)\""
     "wrong answer|ans='find . -type f -newer .env -print0 | xargs -0 grep -l secret | sort -u | head -20'; _wrong_show"
+    "wrong answer diagnosis|_qoutput='root' _qanswers='grep -rn TODO .|grep -Rn TODO .' _qdelim='|' input='grep -r TODO .' ans='grep -rn TODO .'; _wrong_show"
+    "wrong answer token diff|_TD_BEST='grep -rn TODO .' _TD_MISS='-n' _TD_EXTRA='-i'; _wd_row closest \"\$_TD_BEST\"; _wd_row missing \"\$_TD_MISS\"; _wd_row extra \"\$_TD_EXTRA\""
   )
   # Both render tiers: unicode, and the ASCII fold legacy terminals get. The fold
   # swaps glyphs for ASCII of a different length, so a frame that fits in one tier

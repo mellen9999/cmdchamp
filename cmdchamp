@@ -1787,6 +1787,213 @@ eval "$1"'
   return "$_rc"
 }
 
+# ═══ WRONG-ANSWER DIAGNOSIS ═══
+# A miss printed "expected: <answer>" and stopped. But the sandbox had already RUN what the
+# player typed and thrown the result away - so the game knew exactly how their command
+# differed from one that works, and said nothing. Everything here turns that discarded
+# information into the teaching half of the loop. Display only: nothing below changes a
+# verdict, and the only command it ever runs is one the grader would have run anyway.
+_SB_LAST_OUT="" _SB_LAST_RC=0 _SB_LAST_SET=0 _SB_LAST_ERR=""   # what the player's command did, per question
+
+# Top-level pipe stages, by _opskel's lexer rules: quotes, backslashes, backticks, $( ),
+# (( )) and [[ ]] are structure, so a | inside any of them is not a stage boundary. Fills
+# the array named by $2 with successive PREFIXES (stage 1, stages 1-2, ...) - that shape is
+# what makes a per-stage line count one sandbox run each. Returns 1 for anything where
+# running a prefix would not mean what it looks like: redirects, &&, ||, ;, background.
+_pipe_stages() {
+  local s=$1; local -n _ps_out=$2; _ps_out=()
+  local n=${#s} i=0 c depth=0 bdepth=0
+  while ((i < n)); do
+    c=${s:i:1}
+    if   [[ $c == "'" ]]; then ((i++)); while ((i < n)) && [[ ${s:i:1} != "'" ]]; do ((i++)); done; ((i++)); continue
+    elif [[ $c == '"' ]]; then ((i++)); while ((i < n)) && [[ ${s:i:1} != '"' ]]; do [[ ${s:i:1} == '\' ]] && ((i++)); ((i++)); done; ((i++)); continue
+    elif [[ $c == '`' ]]; then ((i++)); while ((i < n)) && [[ ${s:i:1} != '`' ]]; do ((i++)); done; ((i++)); continue
+    elif [[ $c == '\' ]]; then ((i += 2)); continue
+    elif [[ $c == '(' ]]; then ((depth++)); ((i++)); continue
+    elif [[ $c == ')' ]]; then ((depth > 0)) && ((depth--)); ((i++)); continue
+    elif [[ ${s:i:2} == '[[' ]]; then ((bdepth++)); ((i += 2)); continue
+    elif [[ ${s:i:2} == ']]' ]]; then ((bdepth > 0)) && ((bdepth--)); ((i += 2)); continue
+    elif ((depth || bdepth)); then ((i++)); continue
+    fi
+    if [[ $c == '|' ]]; then
+      [[ ${s:i+1:1} == '|' ]] && { _ps_out=(); return 1; }
+      _ps_out+=("${s:0:i}"); ((i++)); [[ ${s:i:1} == '&' ]] && ((i++)); continue
+    fi
+    case $c in '>'|'<'|'&'|';') _ps_out=(); return 1 ;; esac
+    ((i++))
+  done
+  ((${#_ps_out[@]})) || return 1
+  _ps_out+=("$s")
+  return 0
+}
+
+# The command word a stage is really about, for the compact stage row: `sudo -n awk ...`
+# is an awk stage. Takes the stage's OWN text - never re-split on `|` here, `paste -sd'|'`
+# holds one inside quotes and reported itself as a stage named "'". Sets REPLY.
+_stage_name() {
+  local -a _sn_w; read -ra _sn_w <<< "$1"
+  local t
+  for t in "${_sn_w[@]}"; do
+    case "$t" in sudo|doas|env|time|nice|ionice|timeout|xargs|-*|*=*) continue ;; esac
+    REPLY=${t##*/}; return 0
+  done
+  REPLY="?"
+}
+
+# Which tokens the closest accepted answer has that yours does not, and the other way round.
+# A multiset difference over _fnorm'd tokens rather than an LCS: the sentence worth printing
+# is "you left out -n", and token ORDER never carries that. Sets _TD_BEST/_TD_MISS/_TD_EXTRA.
+_tok_diff() {
+  local inp=$1 answers=$2 delim=$3
+  _TD_MISS="" _TD_EXTRA="" _TD_BEST=""
+  local best=999 a b t
+  _fnorm "$inp"; local -a mine=(); read -ra mine <<< "$REPLY"
+  ((${#mine[@]})) || return 1
+  local -a opts=(); IFS="$delim" read -ra opts <<< "$answers"
+  for a in "${opts[@]}"; do
+    _trim "$a"; b=$REPLY
+    [[ -z "$b" || "$b" == ~* ]] && continue
+    _fnorm "$b"; local -a theirs=(); read -ra theirs <<< "$REPLY"
+    ((${#theirs[@]})) || continue
+    local -A have=() want=(); local miss="" extra="" d=0
+    for t in "${mine[@]}";   do have[$t]=$(( ${have[$t]:-0} + 1 )); done
+    for t in "${theirs[@]}"; do want[$t]=$(( ${want[$t]:-0} + 1 )); done
+    for t in "${theirs[@]}"; do
+      if (( ${want[$t]:-0} > ${have[$t]:-0} )); then want[$t]=$(( want[$t] - 1 )); miss+="$t "; ((d++)); fi
+    done
+    for t in "${mine[@]}"; do
+      if (( ${have[$t]:-0} > ${want[$t]:-0} )); then have[$t]=$(( have[$t] - 1 )); extra+="$t "; ((d++)); fi
+    done
+    # An answer sharing nothing is not "close", it is a different approach - listing every
+    # one of its tokens as missing teaches nothing at all.
+    (( d >= ${#theirs[@]} + ${#mine[@]} )) && continue
+    if ((d < best)); then best=$d; _TD_BEST=$b; _TD_MISS=${miss% }; _TD_EXTRA=${extra% }; fi
+  done
+  ((best < 999 && best > 0))
+}
+
+# One line of a possibly-multi-line output, folded, clipped, and tagged with its line count.
+_out_line() {
+  local o=$1 w=$2 n
+  [[ -n "$o" ]] || { REPLY="${D}(nothing)${N}"; return 0; }
+  n=$(grep -c '' <<< "$o")
+  _ascii_fold "${o%%$'\n'*}"; _vclip "$REPLY" "$w"
+  REPLY="${Y}${REPLY}${N}"
+  ((n > 1)) && REPLY+=" ${D}(${n} lines)${N}"
+  return 0
+}
+
+_WD_LAB=10
+_wd_row() { _cell "${D}$1${N}" "$_WD_LAB"; printf '     %s%s\n' "$REPLY" "$2"; }
+
+# The diagnosis. At most five lines, printed above the revealed answer. $1 is what the
+# player typed; everything else comes from the question already parsed into _q*.
+_wrong_diag() {
+  local inp=$1
+  [[ -n "$inp" ]] || return 0
+  local _c; _COLS; _c=$REPLY; ((_c > 30)) || return 0
+  local _w=$((_c - _WD_LAB - 7)); ((_w < 16)) && _w=16
+
+  if [[ -n "${_qoutput:-}" ]] && ((SANDBOX_MODE)); then
+    # The skeleton gate can reject an answer before the grader ever runs it - which is
+    # exactly when the player most needs to see what theirs did. Run it once here, unless
+    # it writes: a display is not worth mutating the tree for.
+    if ((!_SB_LAST_SET)) && ! _is_destructive "$inp" && _can_sandbox "$inp"; then
+      local _dto=5 _errf="$SANDBOX_DIR/.stderr"
+      [[ -n "${_qsvc:-}" ]] && _dto=12
+      _SB_LAST_OUT=$(_sandbox_exec "$inp" "$_dto" "${_qsvc:-}" 2>"$_errf" | tr -d '\000'); _SB_LAST_SET=1
+      _SB_LAST_ERR=""; [[ -s "$_errf" ]] && IFS= read -r _SB_LAST_ERR < "$_errf"
+    fi
+    if ((_SB_LAST_SET)); then
+      local _want
+      case "${_qoutput:0:1}" in
+        '~') _vclip "${_qoutput:1}" "$_w"; _want="${D}any output matching${N} ${Y}${REPLY}${N}" ;;
+        '@') _want="${D}exactly ${_qoutput:1} lines${N}" ;;
+        '*') _want="${D}any output at all${N}" ;;
+        *)   _out_line "$_qoutput" "$_w"; _want=$REPLY ;;
+      esac
+      # An empty stdout with a message on stderr is the most useful line on the screen:
+      # "grep: invalid option" says more than "(nothing)" ever can.
+      if [[ -z "$_SB_LAST_OUT" && -n "$_SB_LAST_ERR" ]]; then
+        _ascii_fold "$_SB_LAST_ERR"; _vclip "$REPLY" "$_w"; _wd_row "error" "${R}${REPLY}${N}"
+      else
+        _out_line "$_SB_LAST_OUT" "$_w"; _wd_row "you got" "$REPLY"
+      fi
+      _wd_row "wanted" "$_want"
+      _wd_diag_stages "$inp" "$_c"
+      return 0
+    fi
+  fi
+
+  # Text-matched, or nothing ran: say which accepted answer yours is nearest and what it is
+  # missing. "expected: <answer>" alone leaves the player to spot a dropped -n by eye.
+  if _tok_diff "$inp" "${_qanswers:-}" "${_qdelim:-|}"; then
+    _fnorm "$inp"; local _nin=$REPLY; _fnorm "$_TD_BEST"
+    [[ "$_nin" == "$REPLY" ]] && return 0     # equivalent spelling; the miss was elsewhere
+    _ascii_fold "$_TD_BEST"; _vclip "$REPLY" "$_w"; _wd_row "closest" "${Y}${REPLY}${N}"
+    [[ -n "$_TD_MISS"  ]] && { _vclip "$_TD_MISS"  "$_w"; _wd_row "missing" "${G}${REPLY}${N}"; }
+    [[ -n "$_TD_EXTRA" ]] && { _vclip "$_TD_EXTRA" "$_w"; _wd_row "extra"   "${R}${REPLY}${N}"; }
+  fi
+  return 0
+}
+
+# Where a pipeline died, as a row of per-stage line counts. Each prefix costs one sandbox
+# run (~30ms), so it is capped at eight stages - long enough for a gauntlet chain, short
+# enough that a miss never feels slow - and skipped when the terminal has no room.
+_wd_diag_stages() {
+  local inp=$1 cols=$2
+  ((SANDBOX_MODE)) || return 0
+  _LINES; ((REPLY >= 20)) || return 0
+  _is_destructive "$inp" && return 0
+  local -a _pfx=()
+  _pipe_stages "$inp" _pfx || return 0
+  ((${#_pfx[@]} >= 2 && ${#_pfx[@]} <= 8)) || return 0
+  _can_sandbox "$inp" || return 0
+  local _dto=5; [[ -n "${_qsvc:-}" ]] && _dto=12
+  local -a _cell=(); local _dead="" _deadi=-1 _p _o _n _nm _prev="" _seg _i=0
+  for _p in "${_pfx[@]}"; do
+    _seg=${_p#"$_prev"}; _seg=${_seg#|}; _prev=$_p
+    _o=$(_sandbox_exec "$_p" "$_dto" "${_qsvc:-}" 2>/dev/null | tr -d '\000')
+    if [[ -z "$_o" ]]; then _n=0; else _n=$(grep -c '' <<< "$_o"); fi
+    _stage_name "$_seg"; _nm=$REPLY
+    if ((_n == 0)); then
+      _cell+=("${R}${_nm}${N} ${D}${_GAR}${N} ${R}0${N}")
+      ((_deadi < 0)) && { _deadi=$_i; _dead=$_nm; }
+    else
+      _cell+=("${C}${_nm}${N} ${D}${_GAR}${N} ${W}${_n}${N}")
+    fi
+    ((_i++))
+  done
+  # A seven-stage chain does not fit one row. Keep the half that carries the lesson: up to
+  # and including the stage where it went to zero, or the tail when nothing died.
+  local _budget=$((cols - _WD_LAB - 7)) _row
+  _wd_join _cell 0 $((${#_cell[@]} - 1)) ""; _row=$REPLY
+  if ! _wd_fits "$_row" "$_budget"; then
+    if ((_deadi >= 0)); then _wd_join _cell 0 "$_deadi" "tail"
+    else _wd_join _cell $((${#_cell[@]} - 3)) $((${#_cell[@]} - 1)) "head"; fi
+    _row=$REPLY
+    _wd_fits "$_row" "$_budget" || return 0
+  fi
+  _wd_row "stages" "$_row"
+  [[ -n "$_dead" ]] && _wd_row "" "${D}nothing survived ${N}${R}${_dead}${N}"
+  return 0
+}
+
+# Join stage cells [$2..$3] of the array named $1 with the dot separator; $4 puts an ellipsis
+# on the "head" or "tail" side to show the row was trimmed. Sets REPLY.
+_wd_join() {
+  local -n _wj=$1; local a=$2 b=$3 side=$4 i out=""
+  ((a < 0)) && a=0
+  for ((i = a; i <= b; i++)); do
+    [[ -n "$out" ]] && out+=" ${D}${_GDOT}${N} "
+    out+="${_wj[$i]}"
+  done
+  [[ "$side" == tail && $b -lt $(( ${#_wj[@]} - 1 )) ]] && out+=" ${D}${_GDOT} ...${N}"
+  [[ "$side" == head && $a -gt 0 ]] && out="${D}... ${_GDOT}${N} $out"
+  REPLY=$out
+}
+_wd_fits() { _strip_ansi "$1"; _vwidth "$REPLY"; ((REPLY <= $2)); }
+
 _SANDBOX_DESTRUCTIVE=0
 _is_destructive() {
   local cmd="$1"
@@ -5653,6 +5860,12 @@ _sandbox_validate() {
   # answer even runs, so it gets its own ceiling. Everything else keeps the 5s it always had.
   local _to=5; [[ -n "${_qsvc:-}" ]] && _to=12
   output=$(_sandbox_exec "$inp" "$_to" "${_qsvc:-}" 2>"$SANDBOX_DIR/.stderr" | tr -d '\000'); _sb_rc=${PIPESTATUS[0]}
+  # Kept for the wrong-answer panel. The command has already run; throwing the output away
+  # and then telling the player only what the ANSWER was is the difference between a quiz
+  # and a teacher. _SB_LAST_SET distinguishes "ran and printed nothing" from "never ran".
+  _SB_LAST_OUT=$output _SB_LAST_RC=$_sb_rc _SB_LAST_SET=1
+  _SB_LAST_ERR=""
+  [[ -s "$SANDBOX_DIR/.stderr" ]] && IFS= read -r _SB_LAST_ERR < "$SANDBOX_DIR/.stderr"
   _is_destructive "$inp" && _SANDBOX_DESTRUCTIVE=1
   # Reject command-not-found (127) and cannot-execute (126)
   ((_sb_rc == 127 || _sb_rc == 126)) && { ((_req_fail)) && _SANDBOX_REQUIRE_FAIL=1; return 1; }
@@ -5780,7 +5993,7 @@ _text_match() {
 
 check() {
   _trim "$1"; local inp=$REPLY; _fnorm "$inp"; local ninp=$REPLY
-  _SANDBOX_REQUIRE_FAIL=0
+  _SANDBOX_REQUIRE_FAIL=0; _SB_LAST_SET=0 _SB_LAST_OUT="" _SB_LAST_RC=0 _SB_LAST_ERR=""
   ((SANDBOX_MODE && !_qtext)) && _skel_ok "$inp" "$2" "$_qdelim" && _sandbox_validate "$inp" && return 0
   [[ -n "${_qrequire:-}" && "${inp// /}" != *"${_qrequire// /}"* ]] && return 1  # whitespace-insensitive (see _sandbox_validate)
   _text_match "$inp" "$ninp" "$2" "$_qdelim"
@@ -6053,7 +6266,12 @@ _wrong_show() { _wrong_feedback
   # unwrapped reveal hard-wraps and shears the frame on an 80-column VT.
   local _c; _COLS; _c=$REPLY; ((_c > 4)) || _c=80
   _wrap "$ans" "$((_c - 2))"
-  printf '%s  %s\n%s%s\n\n' "${R}${_GNO}${N}" "${D}expected:${N}" "${D}${PROMPT_CHAR}${N}" "${Y}${REPLY}${N}"; }
+  printf '%s  %s\n%s%s\n' "${R}${_GNO}${N}" "${D}expected:${N}" "${D}${PROMPT_CHAR}${N}" "${Y}${REPLY}${N}"
+  # Then WHY yours was not it. Every caller of _wrong_show gets this, so the boss round and
+  # the gauntlet teach the same way the practice loop does. `input` is dynamically scoped
+  # from the read loop; guard it under set -u for the callers that never set one.
+  _wrong_diag "${input:-}"
+  printf '\n'; }
 _sc() { [[ -n "$input" ]] && { HIST+=("$input"); HIST_IDX=${#HIST[@]}; HIST_SAVE=""; }; ((_S_ANSWERED++)); ((_S_CORRECT++)); ((_S_STREAK++)); ((_S_STREAK > _S_BEST_STREAK)) && _S_BEST_STREAK=$_S_STREAK; }
 _sw() { ((_S_ANSWERED++)); _S_STREAK=0; _wrong_show; }
 # Progress bar, scaled to $1 columns. One cell per question overflowed hard: level 30
