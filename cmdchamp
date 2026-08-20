@@ -978,6 +978,8 @@ _sandbox_etc() {
   _SBX_ETC="$DATA/etc"
   [[ -f "$_SBX_ETC/.gen${_ETC_GEN}" ]] && return 0
   mkdir -p "$_SBX_ETC" 2>/dev/null || { _SBX_ETC="/nonexistent"; return 1; }
+  # .$$. suffixes below: two first-run instances writing the same staging name meant one of
+  # them renamed the other's half-written file away and then failed its own mv.
   rm -f "$_SBX_ETC"/.gen* 2>/dev/null
   {
     printf '%s\n' 'root:x:0:0:root:/root:/bin/bash' \
@@ -988,13 +990,13 @@ _sandbox_etc() {
       'sshd:x:74:74:sshd:/var/empty:/usr/sbin/nologin' \
       'nobody:x:65534:65534:nobody:/nonexistent:/usr/sbin/nologin' \
       'sandbox:x:1000:1000:sandbox:/sandbox:/bin/bash'
-  } > "$_SBX_ETC/passwd.tmp" && mv "$_SBX_ETC/passwd.tmp" "$_SBX_ETC/passwd" || rm -f "$_SBX_ETC/passwd.tmp"
+  } > "$_SBX_ETC/passwd.$$.tmp" && mv "$_SBX_ETC/passwd.$$.tmp" "$_SBX_ETC/passwd" || rm -f "$_SBX_ETC/passwd.$$.tmp"
   {
     printf '%s\n' 'root:x:0:' 'daemon:x:1:' 'bin:x:2:' 'sys:x:3:' 'adm:x:4:sandbox' \
       'sudo:x:27:sandbox' 'www-data:x:33:' 'sshd:x:74:' 'nobody:x:65534:' 'sandbox:x:1000:'
-  } > "$_SBX_ETC/group.tmp" && mv "$_SBX_ETC/group.tmp" "$_SBX_ETC/group" || rm -f "$_SBX_ETC/group.tmp"
+  } > "$_SBX_ETC/group.$$.tmp" && mv "$_SBX_ETC/group.$$.tmp" "$_SBX_ETC/group" || rm -f "$_SBX_ETC/group.$$.tmp"
   printf '%s\n' 'BOOT_IMAGE=/boot/vmlinuz root=/dev/sda1 rw quiet' \
-    > "$_SBX_ETC/cmdline.tmp" && mv "$_SBX_ETC/cmdline.tmp" "$_SBX_ETC/cmdline" || rm -f "$_SBX_ETC/cmdline.tmp"
+    > "$_SBX_ETC/cmdline.$$.tmp" && mv "$_SBX_ETC/cmdline.$$.tmp" "$_SBX_ETC/cmdline" || rm -f "$_SBX_ETC/cmdline.$$.tmp"
   # Without this, `localhost` does not resolve inside the sandbox and only the literal
   # 127.0.0.1 reaches a #svc: listener - so the spelling everyone actually types would be
   # the one spelling that failed. Fixed content, so it resolves the same on every machine.
@@ -1004,7 +1006,7 @@ _sandbox_etc() {
   {
     printf '%s\n' '127.0.0.1  localhost' '127.0.1.1  sandbox' \
       '::1  ip6-localhost ip6-loopback'
-  } > "$_SBX_ETC/hosts.tmp" && mv "$_SBX_ETC/hosts.tmp" "$_SBX_ETC/hosts" || rm -f "$_SBX_ETC/hosts.tmp"
+  } > "$_SBX_ETC/hosts.$$.tmp" && mv "$_SBX_ETC/hosts.$$.tmp" "$_SBX_ETC/hosts" || rm -f "$_SBX_ETC/hosts.$$.tmp"
   # Stamped last: the marker's presence means every file above landed, so a run interrupted
   # halfway regenerates rather than binding a half-written passwd into the sandbox.
   [[ -f "$_SBX_ETC/passwd" && -f "$_SBX_ETC/group" && -f "$_SBX_ETC/cmdline" && -f "$_SBX_ETC/hosts" ]] \
@@ -1046,7 +1048,7 @@ _svc_init() {
   # hardcoded #output values quietly stop matching. The sandbox tree has _SANDBOX_GEN for
   # exactly this reason; this is cheap enough not to need one.
   {
-    cat > "$DATA/svc.py.tmp" <<'CC_SVC_PY'
+    cat > "$DATA/svc.py.$$.tmp" <<'CC_SVC_PY'
 # cmdchamp sandbox responder. Deterministic by construction: fixed Date, fixed Server, fixed
 # bodies. Nothing here reads the clock, the filesystem or the environment, so the same request
 # returns the same bytes on every machine and every day - which is what lets a question be
@@ -1144,8 +1146,8 @@ def main():
 
 main()
 CC_SVC_PY
-    mv "$DATA/svc.py.tmp" "$_SVC_PY" 2>/dev/null || { rm -f "$DATA/svc.py.tmp"; return 1; }
-  } || { rm -f "$DATA/svc.py.tmp"; return 1; }
+    mv "$DATA/svc.py.$$.tmp" "$_SVC_PY" 2>/dev/null || { rm -f "$DATA/svc.py.$$.tmp"; return 1; }
+  } || { rm -f "$DATA/svc.py.$$.tmp"; return 1; }
   _SVC_OK=1; return 0
 }
 
@@ -1731,8 +1733,6 @@ _sandbox_exec() {
     --setenv TERM "${TERM:-xterm-256color}"
     --ro-bind /usr /usr
     --ro-bind /bin /bin
-    --ro-bind /etc/passwd /etc/passwd
-    --ro-bind /etc/group /etc/group
     --bind "$SANDBOX_DIR" /sandbox
     --chdir /sandbox
     --unshare-all
@@ -1762,6 +1762,12 @@ _sandbox_exec() {
   #              might be sharing. The playground runs whatever you type.
   #   grading  - the same commands now answer the same on every machine, so a question
   #              can be graded on their output instead of only text-matched.
+  # The HOST /etc/passwd and /etc/group are no longer bound at all. They used to be, with
+  # the synthetic pair bound afterwards to win - which is fine until a generation fails
+  # (out of space, a concurrent first run, a read-only data dir): then the override is
+  # skipped and the host file is what a `cat /etc/passwd` in the playground prints. Binding
+  # only the synthetic one means the worst case is no passwd file inside the sandbox, where
+  # `ls -l` shows numeric ids. Missing beats leaking.
   _sandbox_etc
   [[ -f "$_SBX_ETC/passwd"  ]] && bwrap_args+=(--ro-bind "$_SBX_ETC/passwd" /etc/passwd)
   [[ -f "$_SBX_ETC/group"   ]] && bwrap_args+=(--ro-bind "$_SBX_ETC/group" /etc/group)
@@ -9006,6 +9012,17 @@ _selftest() {
       "sandbox 1000 sandbox root,daemon,bin,sys,www-data,sshd,nobody,sandbox,"
     _bx=$(_sandbox_exec 'grep -c "rd.luks\|cryptdevice\|resume=UUID" /proc/cmdline' 5 2>/dev/null)
     _assert "(j) kernel command line is synthetic" "${_bx:-?}" "0"
+    # And if the synthetic identity ever fails to generate, the sandbox must end up with NO
+    # passwd rather than the host's. This used to bind the host file first and override it,
+    # so a failed generation silently printed every real account into the playground.
+    # The REAL failure path, not a stub: an unwritable data dir makes _sandbox_etc give up
+    # and leave _SBX_ETC pointing at nowhere. (Stubbing the function would work too, but
+    # `unset -f` afterwards deletes it outright rather than restoring the original.)
+    local _svetc=$_SBX_ETC _svdata=$DATA
+    DATA=/proc/cc-cannot-mkdir-here; _SBX_ETC=""
+    _bx=$(_sandbox_exec 'cut -d: -f1 /etc/passwd 2>/dev/null | tr "\n" ","' 5 2>/dev/null)
+    _assert "(j) no synthetic identity means NO passwd, never the host's" "${_bx:-empty}" "empty"
+    DATA=$_svdata; _SBX_ETC=$_svetc
     SANDBOX_MODE=$_sv_mode; SANDBOX_DIR=$_sv_dir
     rm -rf "$_bxdir"
   fi
