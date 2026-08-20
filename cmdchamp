@@ -3022,6 +3022,7 @@ _ecmd_add() {
   [[ "$_seen" == *"|$_c|"* ]] && return
   cmds+=("$_c"); _seen+="|$_c|"
 }
+_EXP_KNOWN=0   # did explain() actually recognise anything, or is it echoing the input back
 explain() {
   local tok n=0 exp tcol cmds=() _ap=1 _t
   _EBUF=""
@@ -3100,7 +3101,7 @@ explain() {
     _syn_legend "$1"; ((_ml += REPLY))
     _esc_legend "$1"; ((_ml += REPLY))
     printf -v _t '%s\n' "${D}${_H40}${N}"; _EBUF+=$_t
-    _EXP_LINES=$((_ml + 2))
+    _EXP_LINES=$((_ml + 2)); _EXP_KNOWN=1
     [[ -z "${2:-}" ]] && printf '%s' "$_EBUF"
     return
   fi
@@ -3131,6 +3132,10 @@ explain() {
     case "$tok" in '|'|'|&'|'&&'|'||'|';'|'&'|'>'|'>>'|'<'|'<<<'|'2>'|'&>'|'2>&1') ;; *) _cp=0 ;; esac
   done
   _syn_legend "$1"; ((n += REPLY))
+  # Neither a manpage nor a piece of shell syntax matched, so the panel is about to echo
+  # the input back. A caller outside the game (`cmdchamp explain`) has to tell that apart
+  # from a real page; say so rather than making it count lines.
+  ((n)) && _EXP_KNOWN=1 || _EXP_KNOWN=0
   if ((n == 0)); then
     # No token had a manpage or explanation (unknown tool, or a regex-only answer): fall
     # back to echoing the answer. Wrap it — long level-26-30 commands and regex patterns
@@ -8990,6 +8995,9 @@ Options:
                 without actually executing them)
 
 Commands:
+  x|explain CMD Explain a command: every flag, and the shell syntax around
+                it. Offline, no network. Reads stdin when given no argument,
+                so \`history | tail -1 | cmdchamp x\` explains what you just ran
   daily [DATE]  Today's date-seeded gauntlet (post-ROOT); DATE replays a run
   play          Free-play sandbox: type any command and see it run
   r|reset       Reset all progress (also removes sandbox cache)
@@ -9026,9 +9034,36 @@ Tips:
     bwrap. Type the command precisely.
 EOF
     ;;
+  x|explain)
+    # The Tab panel, out of the game and onto the command line. cmdchamp already carries a
+    # hand-written page for every command its questions use plus the shell syntax around
+    # them - 300-odd of them, offline, no network, no deps - and until now the only way to
+    # read one was to be mid-question. This is the half of the tool you reach for at 2am.
+    shift
+    _ex=""
+    if (($#)); then
+      # Both spellings work: one quoted string, or the words as typed. Someone who forgets
+      # the quotes should still get their answer rather than a usage line.
+      _ex="$*"
+    elif [[ ! -t 0 ]]; then
+      IFS= read -r _ex || _ex=""      # first line of a pipe: `history | tail -1 | cmdchamp x`
+    fi
+    _trim "$_ex"; _ex=$REPLY
+    # A recalled history line often still carries its number - ` 1042  tar xzf x.tgz`.
+    [[ "$_ex" =~ ^[0-9]+[[:space:]]+(.*)$ ]] && _ex="${BASH_REMATCH[1]}"
+    if [[ -z "$_ex" ]]; then
+      printf '%s\n' "usage: cmdchamp explain '<command>'" \
+        "       history | tail -1 | cmdchamp explain" >&2
+      exit 2
+    fi
+    explain "$_ex"
+    # "I have never heard of this" is a real answer, and a caller scripting this deserves
+    # to hear it in the exit code rather than reading the echo-back as if it were a page.
+    ((_EXP_KNOWN)) || exit 1
+    ;;
   v|version|-v|--version) printf '%s\n' "$VERSION";;
   daily) _tty; _load_profile; _apply_opts; ((SANDBOX_MODE)) && _check_bwrap; daily "${2:-}";;
   play) _tty; _load_profile; _apply_opts; ((SANDBOX_MODE)) && _check_bwrap; play;;
   "") _tty; _load_profile; _apply_opts; ((SANDBOX_MODE)) && _check_bwrap; _main_menu;;
-  *) echo "Usage: cmdchamp [--no-sandbox] [reset|test|version|help|daily|play]"; echo "Run with no arguments for the game menu."; exit 1;;
+  *) echo "Usage: cmdchamp [--no-sandbox] [explain|reset|test|version|help|daily|play]"; echo "Run with no arguments for the game menu."; exit 1;;
 esac

@@ -1407,6 +1407,55 @@ echo "$r" | grep -q '^done$' && ok "sc: done after mark" || fail "sc mark" "$r"
 echo "$r" | grep -q 'sc=1$' && ok "sc: no duplicate mark" || fail "sc dedup" "$r"
 
 # ═════════════════════════════════════════════════════════════════════════════
+
+# ═════════════════════════════════════════════════════════════════════════════
+section "explain CLI"
+# `cmdchamp explain` is the Tab panel as a standalone tool, so it is the one surface
+# reached by running the real binary rather than sourcing it: argv handling, stdin, and
+# the exit code are the contract, and none of them exist in the sourced form.
+_x() { env XDG_DATA_HOME="$TDIR/xdg" NO_COLOR=1 "$CMDCHAMP" "$@" 2>&1; }
+_xrc() { env XDG_DATA_HOME="$TDIR/xdg" NO_COLOR=1 "$CMDCHAMP" "$@" >/dev/null 2>&1; echo $?; }
+
+out=$(_x explain 'sort -u f')
+[[ "$out" == *"sort"* && "$out" == *"unique"* ]] && ok "explain: renders a page for a known command" \
+  || fail "explain: renders a page for a known command" "got: ${out:0:80}"
+
+out=$(_x x tar xzf release.tar.gz)
+[[ "$out" == *"archive tool"* ]] && ok "explain: unquoted words are joined" \
+  || fail "explain: unquoted words are joined" "got: ${out:0:80}"
+
+out=$(printf ' 1042  grep -rn TODO .\n' | env XDG_DATA_HOME="$TDIR/xdg" NO_COLOR=1 "$CMDCHAMP" explain 2>&1)
+[[ "$out" == *"line numbers"* ]] && ok "explain: reads stdin and drops a history number" \
+  || fail "explain: reads stdin and drops a history number" "got: ${out:0:80}"
+
+# Every pipeline stage gets named, not just the first — that is the whole point of the panel.
+out=$(_x explain "awk -F: '{print \$1}' /etc/passwd | sort -u | head -3")
+[[ "$out" == *"pattern scanning"* && "$out" == *"sort lines"* && "$out" == *"first N lines"* ]] \
+  && ok "explain: names every command in a pipeline" \
+  || fail "explain: names every command in a pipeline" "got: ${out:0:120}"
+
+# Shell syntax the command leans on is named too (the _syn_legend half).
+out=$(_x explain 'n=$(wc -l < f)')
+[[ "$out" == *'$('* ]] && ok "explain: names the shell syntax" \
+  || fail "explain: names the shell syntax" "got: ${out:0:100}"
+
+[[ "$(_xrc explain 'sort -u f')" == 0 ]] && ok "explain: exit 0 when it knows the command" \
+  || fail "explain: exit 0 when it knows the command" "got $(_xrc explain 'sort -u f')"
+[[ "$(_xrc explain 'zzzfrobnicate --wat')" == 1 ]] && ok "explain: exit 1 when it knows nothing" \
+  || fail "explain: exit 1 when it knows nothing" "got $(_xrc explain 'zzzfrobnicate --wat')"
+[[ "$(env XDG_DATA_HOME="$TDIR/xdg" "$CMDCHAMP" explain </dev/null >/dev/null 2>&1; echo $?)" == 2 ]] \
+  && ok "explain: exit 2 with no command at all" || fail "explain: exit 2 with no command at all" "wrong rc"
+
+# It must not need a terminal: this is a tool you pipe.
+out=$(printf 'ls -la\n' | env XDG_DATA_HOME="$TDIR/xdg" NO_COLOR=1 "$CMDCHAMP" explain </dev/stdin 2>&1)
+[[ "$out" == *"list directory contents"* ]] && ok "explain: works with no tty" \
+  || fail "explain: works with no tty" "got: ${out:0:80}"
+
+# NO_COLOR is honoured on this surface too, or piping it into a file is unreadable.
+out=$(printf 'sort -u f' | env XDG_DATA_HOME="$TDIR/xdg" NO_COLOR=1 "$CMDCHAMP" explain 2>&1)
+[[ "$out" != *$'\e['* ]] && ok "explain: NO_COLOR strips every escape" \
+  || fail "explain: NO_COLOR strips every escape" "escapes present"
+
 # Summary
 # ═════════════════════════════════════════════════════════════════════════════
 printf '\n%s════════════════════════════════════════%s\n' "$B" "$N"
