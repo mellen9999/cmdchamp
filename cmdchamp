@@ -969,10 +969,16 @@ _SBX_ETC=""
 # Written once per data dir, never regenerated: nothing in here depends on the host.
 # If the data dir is unwritable the binds are simply skipped and the host files show
 # through, which is the old behaviour rather than a broken sandbox.
+# Bump when any file below changes, or existing installs keep the old synthetic identity -
+# and the questions graded on `id`/`hostname`/`cat /etc/passwd` output start failing for
+# them alone. Same contract as _SANDBOX_GEN; this one cannot just always-write because
+# _sandbox_exec calls it once per graded answer.
+_ETC_GEN=1
 _sandbox_etc() {
   _SBX_ETC="$DATA/etc"
-  [[ -f "$_SBX_ETC/hosts" ]] && return 0   # last file written: its presence means the set is complete
+  [[ -f "$_SBX_ETC/.gen${_ETC_GEN}" ]] && return 0
   mkdir -p "$_SBX_ETC" 2>/dev/null || { _SBX_ETC="/nonexistent"; return 1; }
+  rm -f "$_SBX_ETC"/.gen* 2>/dev/null
   {
     printf '%s\n' 'root:x:0:0:root:/root:/bin/bash' \
       'daemon:x:1:1:daemon:/usr/sbin:/usr/sbin/nologin' \
@@ -999,6 +1005,10 @@ _sandbox_etc() {
     printf '%s\n' '127.0.0.1  localhost' '127.0.1.1  sandbox' \
       '::1  ip6-localhost ip6-loopback'
   } > "$_SBX_ETC/hosts.tmp" && mv "$_SBX_ETC/hosts.tmp" "$_SBX_ETC/hosts" || rm -f "$_SBX_ETC/hosts.tmp"
+  # Stamped last: the marker's presence means every file above landed, so a run interrupted
+  # halfway regenerates rather than binding a half-written passwd into the sandbox.
+  [[ -f "$_SBX_ETC/passwd" && -f "$_SBX_ETC/group" && -f "$_SBX_ETC/cmdline" && -f "$_SBX_ETC/hosts" ]] \
+    && : > "$_SBX_ETC/.gen${_ETC_GEN}"
   return 0
 }
 
@@ -1030,7 +1040,12 @@ _svc_init() {
   ((_SVC_OK)) && return 0
   command -v python3 >/dev/null 2>&1 || return 1
   _SVC_PY="$DATA/svc.py"
-  if [[ ! -s "$_SVC_PY" ]]; then
+  # Written EVERY time, not cached on existence. _svc_init runs once per process, the file
+  # is 3KB, and a cache with no version marker is a bug waiting for the next release: edit
+  # the responder and every existing install keeps serving the old payloads, so its
+  # hardcoded #output values quietly stop matching. The sandbox tree has _SANDBOX_GEN for
+  # exactly this reason; this is cheap enough not to need one.
+  {
     cat > "$DATA/svc.py.tmp" <<'CC_SVC_PY'
 # cmdchamp sandbox responder. Deterministic by construction: fixed Date, fixed Server, fixed
 # bodies. Nothing here reads the clock, the filesystem or the environment, so the same request
@@ -1130,7 +1145,7 @@ def main():
 main()
 CC_SVC_PY
     mv "$DATA/svc.py.tmp" "$_SVC_PY" 2>/dev/null || { rm -f "$DATA/svc.py.tmp"; return 1; }
-  fi
+  } || { rm -f "$DATA/svc.py.tmp"; return 1; }
   _SVC_OK=1; return 0
 }
 
@@ -6200,34 +6215,64 @@ _ap_curriculum() {
   done
 }
 
-# The command words a single answer runs. Deliberately simpler than explain()'s resolver:
-# this only needs the names, and it must stay fast enough to run over ~1400 answers.
+# The command words a single answer runs. Deliberately simpler than explain()'s resolver -
+# this only needs the names - but it reuses explain's OWN keyword tables (_CMDKW, _CMDKWX,
+# _CMDWRAP), because a second hand-rolled list of shell keywords is a second list to get
+# wrong. Hand-rolled, it silently lost the body of every loop and every assignment:
+# `for f in *.log; do gzip $f; done` reported nothing at all, and so the stats grid and the
+# autopsy quietly under-counted the levels that teach control flow.
 _ap_cmds() {
-  local -a _w=(); local t out="" cp=1
-  set -f; read -ra _w <<< "$1"; set +f
-  for t in "${_w[@]}"; do
+  local -a _apw=(); local t out=" " cp=1 sub nap tt
+  set -f; read -ra _apw <<< "$1"; set +f
+  for t in "${_apw[@]}"; do
+    # Commands nested in a substitution are never in command position and still count:
+    # `n=$(wc -l < f)` is a wc question however the assignment is spelled.
+    sub=$t
+    while [[ $sub == *'$('* || $sub == *'<('* || $sub == *'>('* || $sub == *'`'* ]]; do
+      case $sub in
+        *'$('*) sub=${sub#*'$('} ;;
+        *'<('*) sub=${sub#*'<('} ;;
+        *'>('*) sub=${sub#*'>('} ;;
+        *)      sub=${sub#*'`'} ;;
+      esac
+      tt=${sub%%[ )\`]*}; tt=${tt##*/}
+      [[ "$tt" =~ ^[A-Za-z][A-Za-z0-9_.+-]*$ && -n "${MANPAGE[$tt]:-}${EXP[$tt]:-}" && "$out" != *" $tt "* ]] && out+="$tt "
+    done
+    [[ $t == '\;' ]] && { cp=1; continue; }      # ends find -exec, is not a separator
+    # A glued separator - `f);` or `done;` - still ends the command, and the word after it
+    # starts a new one.
+    nap=0; while [[ $t == *';' ]]; do t=${t%;}; nap=1; done
     case "$t" in
-      '|'|'|&'|'&&'|'||'|';'|'&') cp=1; continue ;;
-      -exec|-execdir|-ok|-okdir) cp=1; continue ;;
-      '<'*|'>'*|'2>'*|'&>'*|'1>'*) cp=0; continue ;;
+      '|'|'|&'|'&&'|'||'|';'|'&'|'') cp=1; continue ;;
+      -exec|-execdir|-ok|-okdir)     cp=1; continue ;;
+      '<'*|'>'*|'2>'*|'&>'*|'1>'*)   cp=0; continue ;;
     esac
-    ((cp)) || continue
-    case "$t" in
-      sudo|doas|env|time|nice|ionice|timeout|watch|xargs|command) out+="${t##*/} "; continue ;;
-      -*|[0-9]*|'{}'|*=*|'\;'|'[['|']]'|'('|')'|'{'|'}') continue ;;
-      if|then|else|elif|fi|for|while|do|done|case|'esac'|in|function) continue ;;
-    esac
-    t=${t#'$('}; t=${t#'<('}; t=${t#'`'}; t=${t##*/}
-    # Documented-or-not is the filter: phase 8 guarantees every command an answer runs has
-    # a MANPAGE or EXP entry, so this misses nothing - and `backup.sh`, `notes.txt` and
-    # `WARN` stop being reported as commands the player has never learned.
-    [[ "$t" =~ ^[A-Za-z][A-Za-z0-9_.+-]*$ && -n "${MANPAGE[$t]:-}${EXP[$t]:-}" ]] && out+="$t "
-    cp=0
+    # Same three-line shape explain() uses. A keyword with a page of its own is itself a
+    # thing the game teaches - level 20 IS for/while/case - so it is recorded before the
+    # command-position rule is applied, or the autopsy can never say "you have never
+    # written a loop".
+    if [[ $_CMDKW == *" $t "* || $_CMDKWX == *" $t "* ]]; then
+      if [[ $_CMDKWMAN == *" $t "* && "$out" != *" $t "* ]]; then out+="$t "; fi
+      [[ $_CMDKW == *" $t "* ]] && cp=1 || cp=$nap
+      continue
+    fi
+    if ((cp)); then
+      case "$t" in
+        -*|[0-9]*|'{}'|*=*) ;;
+        *)
+          tt=${t##*/}
+          # Once per answer: `diff <(sort a) <(sort b)` is one sort question, not two.
+          [[ "$tt" =~ ^[A-Za-z][A-Za-z0-9_.+-]*$ && -n "${MANPAGE[$tt]:-}${EXP[$tt]:-}" && "$out" != *" $tt "* ]] && out+="$tt "
+          # A wrapper keeps the next word in command position: `sudo timeout 5 nmap` is nmap.
+          [[ $_CMDWRAP == *" $tt "* ]] || cp=0
+          ;;
+      esac
+    fi
+    ((nap)) && cp=1
   done
-  REPLY=$out
+  REPLY=${out# }
 }
 
-# label§fix. The separator is § and not | because half of these labels ARE pipelines.
 declare -A _AP_HABIT=(
   [catgrep]="cat into grep§grep reads files: grep PATTERN FILE"
   [catpipe]="cat into a text tool§awk/sed/sort/cut all take a filename"
@@ -9039,6 +9084,29 @@ _selftest() {
 
   DATA="$_save_data"
   rm -rf "$_test_data"
+
+  printf '%s\n' "${B}=== _ap_cmds ===${N}"
+  # Feeds the autopsy's curriculum map AND the by-command stats grid, so a gap here is a
+  # silent under-count on two screens rather than a visible failure. Hand-rolled, it lost
+  # the body of every loop and every assignment.
+  _apc() { _ap_cmds "$1"; REPLY=${REPLY% }; }
+  _apc 'grep -rn TODO .';                        _assert "_ap_cmds: plain"          "$REPLY" "grep"
+  _apc 'sudo timeout 5 nmap -n -p80 localhost';  _assert "_ap_cmds: wrappers"       "$REPLY" "sudo timeout nmap"
+  _apc 'find . -type f -exec grep -l TODO {} +'; _assert "_ap_cmds: find -exec"     "$REPLY" "find grep"
+  _apc 'n=$(wc -l < f); echo $n';                _assert "_ap_cmds: assignment+subst" "$REPLY" "wc echo"
+  _apc 'for f in *.log; do gzip $f; done';       _assert "_ap_cmds: loop body"      "$REPLY" "for gzip"
+  _apc 'while read -r l; do echo $l; done < f';  _assert "_ap_cmds: while body"     "$REPLY" "while read echo"
+  _apc 'if [[ -f x ]]; then cat x; fi';          _assert "_ap_cmds: if body"        "$REPLY" "if cat"
+  _apc 'diff <(sort a) <(sort b)';               _assert "_ap_cmds: once per answer" "$REPLY" "diff sort"
+  _apc 'echo hi > out.txt';                      _assert "_ap_cmds: redirect target" "$REPLY" "echo"
+  _apc 'notes.txt WARN backup.sh';               _assert "_ap_cmds: not-a-command"  "$REPLY" ""
+  # Whatever it names must be a thing the game can explain, or the grid lists a tool with
+  # no page behind it.
+  local _apok=1 _apc1
+  _ap_cmds 'sudo timeout 5 nmap -n -p80 localhost | jq -r .a'
+  for _apc1 in $REPLY; do [[ -n "${MANPAGE[$_apc1]:-}${EXP[$_apc1]:-}" ]] || _apok=0; done
+  _assert "_ap_cmds: every name has a page" "$_apok" "1"
+  unset -f _apc
 
   printf '%s\n' "${B}=== canonical cmd ===${N}"
   _canonical_cmd vol3;        _assert "vol3 → vol"          "$REPLY" "vol"
