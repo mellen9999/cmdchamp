@@ -1800,6 +1800,7 @@ _SB_LAST_OUT="" _SB_LAST_RC=0 _SB_LAST_SET=0 _SB_LAST_ERR=""   # what the player
 # the array named by $2 with successive PREFIXES (stage 1, stages 1-2, ...) - that shape is
 # what makes a per-stage line count one sandbox run each. Returns 1 for anything where
 # running a prefix would not mean what it looks like: redirects, &&, ||, ;, background.
+# shellcheck disable=SC1003  # '\' is a literal backslash, not a botched quote escape
 _pipe_stages() {
   local s=$1; local -n _ps_out=$2; _ps_out=()
   local n=${#s} i=0 c depth=0 bdepth=0
@@ -1847,26 +1848,26 @@ _tok_diff() {
   local inp=$1 answers=$2 delim=$3
   _TD_MISS="" _TD_EXTRA="" _TD_BEST=""
   local best=999 a b t
-  _fnorm "$inp"; local -a mine=(); read -ra mine <<< "$REPLY"
-  ((${#mine[@]})) || return 1
-  local -a opts=(); IFS="$delim" read -ra opts <<< "$answers"
-  for a in "${opts[@]}"; do
+  _fnorm "$inp"; local -a _td_mine=(); read -ra _td_mine <<< "$REPLY"
+  ((${#_td_mine[@]})) || return 1
+  local -a _td_opts=(); IFS="$delim" read -ra _td_opts <<< "$answers"
+  for a in "${_td_opts[@]}"; do
     _trim "$a"; b=$REPLY
     [[ -z "$b" || "$b" == ~* ]] && continue
-    _fnorm "$b"; local -a theirs=(); read -ra theirs <<< "$REPLY"
-    ((${#theirs[@]})) || continue
-    local -A have=() want=(); local miss="" extra="" d=0
-    for t in "${mine[@]}";   do have[$t]=$(( ${have[$t]:-0} + 1 )); done
-    for t in "${theirs[@]}"; do want[$t]=$(( ${want[$t]:-0} + 1 )); done
-    for t in "${theirs[@]}"; do
-      if (( ${want[$t]:-0} > ${have[$t]:-0} )); then want[$t]=$(( want[$t] - 1 )); miss+="$t "; ((d++)); fi
+    _fnorm "$b"; local -a _td_them=(); read -ra _td_them <<< "$REPLY"
+    ((${#_td_them[@]})) || continue
+    local -A _td_h=() _td_w=(); local miss="" extra="" d=0
+    for t in "${_td_mine[@]}"; do _td_h[$t]=$(( ${_td_h[$t]:-0} + 1 )); done
+    for t in "${_td_them[@]}"; do _td_w[$t]=$(( ${_td_w[$t]:-0} + 1 )); done
+    for t in "${_td_them[@]}"; do
+      if (( ${_td_w[$t]:-0} > ${_td_h[$t]:-0} )); then _td_w[$t]=$(( _td_w[$t] - 1 )); miss+="$t "; ((d++)); fi
     done
-    for t in "${mine[@]}"; do
-      if (( ${have[$t]:-0} > ${want[$t]:-0} )); then have[$t]=$(( have[$t] - 1 )); extra+="$t "; ((d++)); fi
+    for t in "${_td_mine[@]}"; do
+      if (( ${_td_h[$t]:-0} > ${_td_w[$t]:-0} )); then _td_h[$t]=$(( _td_h[$t] - 1 )); extra+="$t "; ((d++)); fi
     done
     # An answer sharing nothing is not "close", it is a different approach - listing every
     # one of its tokens as missing teaches nothing at all.
-    (( d >= ${#theirs[@]} + ${#mine[@]} )) && continue
+    (( d >= ${#_td_them[@]} + ${#_td_mine[@]} )) && continue
     if ((d < best)); then best=$d; _TD_BEST=$b; _TD_MISS=${miss% }; _TD_EXTRA=${extra% }; fi
   done
   ((best < 999 && best > 0))
@@ -1892,7 +1893,7 @@ _wrong_diag() {
   local inp=$1
   [[ -n "$inp" ]] || return 0
   local _c; _COLS; _c=$REPLY; ((_c > 30)) || return 0
-  local _w=$((_c - _WD_LAB - 7)); ((_w < 16)) && _w=16
+  local _dw=$((_c - _WD_LAB - 7)); ((_dw < 16)) && _dw=16
 
   if [[ -n "${_qoutput:-}" ]] && ((SANDBOX_MODE)); then
     # The skeleton gate can reject an answer before the grader ever runs it - which is
@@ -1907,17 +1908,17 @@ _wrong_diag() {
     if ((_SB_LAST_SET)); then
       local _want
       case "${_qoutput:0:1}" in
-        '~') _vclip "${_qoutput:1}" "$_w"; _want="${D}any output matching${N} ${Y}${REPLY}${N}" ;;
+        '~') _vclip "${_qoutput:1}" "$_dw"; _want="${D}any output matching${N} ${Y}${REPLY}${N}" ;;
         '@') _want="${D}exactly ${_qoutput:1} lines${N}" ;;
         '*') _want="${D}any output at all${N}" ;;
-        *)   _out_line "$_qoutput" "$_w"; _want=$REPLY ;;
+        *)   _out_line "$_qoutput" "$_dw"; _want=$REPLY ;;
       esac
       # An empty stdout with a message on stderr is the most useful line on the screen:
       # "grep: invalid option" says more than "(nothing)" ever can.
       if [[ -z "$_SB_LAST_OUT" && -n "$_SB_LAST_ERR" ]]; then
-        _ascii_fold "$_SB_LAST_ERR"; _vclip "$REPLY" "$_w"; _wd_row "error" "${R}${REPLY}${N}"
+        _ascii_fold "$_SB_LAST_ERR"; _vclip "$REPLY" "$_dw"; _wd_row "error" "${R}${REPLY}${N}"
       else
-        _out_line "$_SB_LAST_OUT" "$_w"; _wd_row "you got" "$REPLY"
+        _out_line "$_SB_LAST_OUT" "$_dw"; _wd_row "you got" "$REPLY"
       fi
       _wd_row "wanted" "$_want"
       _wd_diag_stages "$inp" "$_c"
@@ -1930,9 +1931,9 @@ _wrong_diag() {
   if _tok_diff "$inp" "${_qanswers:-}" "${_qdelim:-|}"; then
     _fnorm "$inp"; local _nin=$REPLY; _fnorm "$_TD_BEST"
     [[ "$_nin" == "$REPLY" ]] && return 0     # equivalent spelling; the miss was elsewhere
-    _ascii_fold "$_TD_BEST"; _vclip "$REPLY" "$_w"; _wd_row "closest" "${Y}${REPLY}${N}"
-    [[ -n "$_TD_MISS"  ]] && { _vclip "$_TD_MISS"  "$_w"; _wd_row "missing" "${G}${REPLY}${N}"; }
-    [[ -n "$_TD_EXTRA" ]] && { _vclip "$_TD_EXTRA" "$_w"; _wd_row "extra"   "${R}${REPLY}${N}"; }
+    _ascii_fold "$_TD_BEST"; _vclip "$REPLY" "$_dw"; _wd_row "closest" "${Y}${REPLY}${N}"
+    [[ -n "$_TD_MISS"  ]] && { _vclip "$_TD_MISS"  "$_dw"; _wd_row "missing" "${G}${REPLY}${N}"; }
+    [[ -n "$_TD_EXTRA" ]] && { _vclip "$_TD_EXTRA" "$_dw"; _wd_row "extra"   "${R}${REPLY}${N}"; }
   fi
   return 0
 }
@@ -1950,27 +1951,27 @@ _wd_diag_stages() {
   ((${#_pfx[@]} >= 2 && ${#_pfx[@]} <= 8)) || return 0
   _can_sandbox "$inp" || return 0
   local _dto=5; [[ -n "${_qsvc:-}" ]] && _dto=12
-  local -a _cell=(); local _dead="" _deadi=-1 _p _o _n _nm _prev="" _seg _i=0
+  local -a _scell=(); local _dead="" _deadi=-1 _p _o _n _nm _prev="" _seg _i=0
   for _p in "${_pfx[@]}"; do
     _seg=${_p#"$_prev"}; _seg=${_seg#|}; _prev=$_p
     _o=$(_sandbox_exec "$_p" "$_dto" "${_qsvc:-}" 2>/dev/null | tr -d '\000')
     if [[ -z "$_o" ]]; then _n=0; else _n=$(grep -c '' <<< "$_o"); fi
     _stage_name "$_seg"; _nm=$REPLY
     if ((_n == 0)); then
-      _cell+=("${R}${_nm}${N} ${D}${_GAR}${N} ${R}0${N}")
+      _scell+=("${R}${_nm}${N} ${D}${_GAR}${N} ${R}0${N}")
       ((_deadi < 0)) && { _deadi=$_i; _dead=$_nm; }
     else
-      _cell+=("${C}${_nm}${N} ${D}${_GAR}${N} ${W}${_n}${N}")
+      _scell+=("${C}${_nm}${N} ${D}${_GAR}${N} ${W}${_n}${N}")
     fi
     ((_i++))
   done
   # A seven-stage chain does not fit one row. Keep the half that carries the lesson: up to
   # and including the stage where it went to zero, or the tail when nothing died.
   local _budget=$((cols - _WD_LAB - 7)) _row
-  _wd_join _cell 0 $((${#_cell[@]} - 1)) ""; _row=$REPLY
+  _wd_join _scell 0 $((${#_scell[@]} - 1)) ""; _row=$REPLY
   if ! _wd_fits "$_row" "$_budget"; then
-    if ((_deadi >= 0)); then _wd_join _cell 0 "$_deadi" "tail"
-    else _wd_join _cell $((${#_cell[@]} - 3)) $((${#_cell[@]} - 1)) "head"; fi
+    if ((_deadi >= 0)); then _wd_join _scell 0 "$_deadi" "tail"
+    else _wd_join _scell $((${#_scell[@]} - 3)) $((${#_scell[@]} - 1)) "head"; fi
     _row=$REPLY
     _wd_fits "$_row" "$_budget" || return 0
   fi
