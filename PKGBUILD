@@ -8,7 +8,7 @@ license=('MIT')
 depends=('bash>=4.4')
 optdepends=('bubblewrap: sandbox mode for real command execution')
 source=("$pkgname-$pkgver.tar.gz::$url/archive/v$pkgver.tar.gz")
-sha256sums=('5233848f1af03c3718383edc425a88f7ea9763cf461cff9bb20cbb7b33ad4226')
+sha256sums=('2acafe2dbebf5c778f80e8b54f7b44e209ecce305684398aa6fb116d15e1bd68')
 
 check() {
   cd "$pkgname-$pkgver"
