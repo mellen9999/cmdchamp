@@ -57,7 +57,7 @@ cmdchamp version        # Print version
 cmdchamp help           # Show help
 ```
 
-The menu holds continue, new game, scenarios, challenge, daily, practice, playground, stats, and options. Every row is a number hotkey; `j`/`k` or arrows move, Enter selects, and `q` (or Esc) quits.
+The menu holds continue, new game, scenarios, challenge, daily, practice, stats, options, help and quit on fixed hotkeys `1`-`9` and `0`. A row you haven't unlocked is greyed rather than hidden, so the digit beside a label never moves as you progress. `j`/`k` or arrows move, Enter selects, and `q` (or Esc) quits. The playground lives at the top of the **Scenarios** list — it's the one entry that is never locked.
 
 **Daily** (post-ROOT) is a date-seeded gauntlet run — the seed drives both the chains and the randomized sandbox, so everyone everywhere gets byte-identical questions *and* data that day, one scored attempt, a consecutive-day streak, and a copyable score you can share. **Practice** drills any reached level (shown with its mastery %) with hints and no timer, without touching your main progress. **Playground** is a compromised box you take apart with a real shell: someone got in, used it, then tried to tidy up, and every move left a mark on disk. Commands run for real in the sandbox and nothing is graded. Up to 8 `flag{...}` tokens are planted across the tree (more unlock as you clear levels), `map` lays the break-in out phase by phase, `learn` is the 8-module security syllabus behind it, `hint` goes a tier deeper each time you ask, and Tab explains what you typed.
 
@@ -100,7 +100,7 @@ The menu holds continue, new game, scenarios, challenge, daily, practice, playgr
 
 ## Scenarios
 
-Multi-step sandbox challenges — state persists between steps. Available from the **Scenarios** menu once you clear the unlock boss.
+Multi-step sandbox challenges — state persists between steps. Available from the **Scenarios** menu once you clear the unlock boss, which lists them in unlock order under the playground. The numbers below are scenario ids, which never change.
 
 | # | Name | Unlocks at | Steps |
 |---|------|-----------|-------|

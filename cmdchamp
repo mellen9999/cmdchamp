@@ -5585,7 +5585,8 @@ _calc_mastery() {
 
 stats() {
   local -A sc; _scores_load sc
-  printf '%s\n' "${W}${B}${PLAYER_NAME:-anon}${N}"
+  # Every other full screen names itself; this one opened on a bare handle.
+  printf '%s %s\n' "${M}${B}${_H3} STATS ${_H3}${N}" "${W}${B}${PLAYER_NAME:-anon}${N}"
   printf '%s\n\n' "${D}Stats show unique prompts seen${N}"
   local -A lv_total lv_mastered; _calc_mastery sc
   printf 'Total: %s  %s learning  %s mastered\n\n' "${B}${_cm_seen}${N}" "${Y}${_cm_t1}${N}" "${G}${_cm_t2}${N}"
@@ -5657,7 +5658,7 @@ declare -a UNDO_STACK=()  # Multi-level undo
 VI_VIS=-1                 # visual-mode anchor index; -1 = not selecting
 hdr() {
   local fire=""; ((streak>=FIRE_STREAK)) && fire="  ${Y}${B}* ON FIRE${N}"
-  printf '\e[H%s\e[K\n%s\e[K\n%s\e[K\n' "${W}${B}${PLAYER_NAME:-anon}${N}${fire}" "${U}Level $1${N}: ${LEVEL_NAMES[$1]:-}" "${U}[$2/$3]${N}  ${C}Tab${N}${D}=manpage${N}"
+  printf '\e[H%s\e[K\n%s\e[K\n%s\e[K\n' "${W}${B}${PLAYER_NAME:-anon}${N}${fire}" "${U}Level $1${N}: ${LEVEL_NAMES[$1]:-}" "${U}[$2/$3]${N}  ${D}${C}Tab${D} manpage${N}"
 }
 # Word-wrap to the real screen width. 80-column terminals hard-wrap mid-word otherwise,
 # and ~1.5% of the prompt pool is longer than that. Wrapping here rather than shortening
@@ -5680,6 +5681,19 @@ _PF_KEY="" _PF_VAL=""
 # The boss, gauntlet, scenario and placement headers printed the raw string, so any
 # prompt past the terminal width hard-wrapped mid-word in exactly the four modes that
 # run without a manpage — while the practice loop wrapped it properly.
+# One timed-mode header. Boss, challenge/gauntlet, scenario and placement each drew this
+# same four-line shape by hand: a title, a set of right-hand fields, a blank, the wrapped
+# prompt, a blank. They disagreed on the title's colour and on whether to clear to end of
+# screen (only the scenario did, so the other three could leave stale text below). $1 is
+# the title, the rest are right-hand fields; the prompt comes from the caller's $prompt.
+_qhdr() {
+  local _title=$1; shift
+  local _right="" _f
+  for _f in "$@"; do [[ -n "$_f" ]] && _right+="  ${_f}"; done
+  _pfmt "$prompt"
+  printf '%s\e[H%s%s\e[K\n\e[K\n%s\e[K\n\e[K\n\e[J%s' "$_SY" "$_title" "$_right" "${C}${REPLY}${N}" "$_SN"
+}
+
 _pfmt() {
   local _c; _COLS; _c=$REPLY; ((_c > 4)) || _c=80
   if [[ "$1|$_c" != "$_PF_KEY" ]]; then
@@ -6370,8 +6384,7 @@ run() {
     _REDRAW_HDR() {
       local _t=$_bt
       if ((${_rl_deadline:-0})); then _rl_rem; _t=$REPLY; fi
-      _pfmt "$prompt"
-      printf '%s\e[H%s  %s\e[K\n\e[K\n%s\e[K\n\e[K\n%s' "$_SY" "${M}${B}${_H3} BOSS ${U}$((bi+1))/${boss_total}${M} ${_H3}${N}" "${W}${_t}s${N}" "${C}${REPLY}${N}" "$_SN"
+      _qhdr "${M}${B}${_H3} BOSS ${U}$((bi+1))/${boss_total}${M} ${_H3}${N}" "${W}${_t}s${N}"
     }
     printf '\e[2J'; _REDRAW_HDR
     if _read_line 0 0 "$_bt"; then
@@ -6429,7 +6442,7 @@ run() {
   else
     printf '%s\n' "${R}${B}${_H2} ${M}${B}${boss}${R} PREVAILS ${_H2}${N}"
     printf '%s\n\n' "${R}${boss_correct}/${boss_total}${N} - need $_boss_thresh to pass"
-    printf '%s\n' "${B}r${N} ${D}retry boss${N}    ${B}p${N} ${D}practice level${N}    ${B}q${N} ${D}back to menu${N}"
+    printf '%s\n' "${D}${C}r${D} retry boss   ${C}p${D} practice level   ${C}q${D} back to menu${N}"
     printf '%s' "$_SN"
     read -rsn1 choice
     case "$choice" in
@@ -6535,8 +6548,7 @@ _gauntlet_loop() {
     _REDRAW_HDR() {
       local _t=30
       if ((${_rl_deadline:-0})); then _rl_rem; _t=$REPLY; fi
-      _pfmt "$prompt"
-      printf '%s\e[H%s  %s  %s\e[K\n\e[K\n%s\e[K\n\e[K\n%s' "$_SY" "${M}${B}${_hdr}${N}" "${U}Score: ${score}${N}" "${W}${_t}s${N}" "${C}${REPLY}${N}" "$_SN"
+      _qhdr "${M}${B}${_hdr}${N}" "${U}Score: ${score}${N}" "${W}${_t}s${N}"
     }
     printf '\e[2J'; _REDRAW_HDR
     _preq_reset
@@ -6720,7 +6732,7 @@ _practice_menu() {
       printf -v _row '%-3s%-20s %s%3d%%%s' "$lv" "${LEVEL_NAMES[$lv]}" "$_pc" "$pct" "$N"
       it+=("$_row")
     done
-    _SEL_BACK=1; _sel "${U}${_H3} PRACTICE ${_H3}${N}" "${it[@]}" || return
+    _SEL_BACK=1; _sel "${M}${B}${_H3} PRACTICE ${_H3}${N}" "${it[@]}" || return
     drill "$((REPLY + 1))"
   done
 }
@@ -6805,7 +6817,7 @@ play() {
     _REDRAW_HDR() {
       local _fc=${#_flags[@]} _fcol=$D; ((_fc)) && _fcol=$G; ((_PLAY_FLAG_TOTAL && _fc >= _PLAY_FLAG_TOTAL)) && _fcol="${G}${B}"
       printf '%s\e[H%s %s  %s\e[K\n' "$_SY" "${M}${B}PLAYGROUND${N}" "${C}~${_cwd}${N}" "${_fcol}flags ${_fc}/${_PLAY_FLAG_TOTAL}${N}"
-      printf '%s\e[K\n\e[K\n' "${D}${C}map${D} chain  ${C}learn${D} syllabus  ${C}hint${D} nudge  ${C}Tab${D} explains  ${C}reset${D} restores  ${C}q${D} quits${N}"
+      printf '%s\e[K\n\e[K\n' "${D}${C}map${D} the break-in   ${C}learn${D} the syllabus   ${C}hint${D} nudge   ${C}Tab${D} explains   ${C}reset${D} restores   ${C}q${D} back${N}"
       printf '%s\e[K\n' "${D}--- output ---${N}"
       printf '\e[K\n%s\e[K\n' "$_last"
       # The note is prose the game wrote, not command output, so it wraps. A captured
@@ -7149,7 +7161,7 @@ _options_menu() {
     _opt_tag OPT_VI;    it+=("Vi Mode           $REPLY")
     _opt_tag OPT_ALTS;   it+=("Show Alternates   $REPLY")
     _opt_tag OPT_BRIEF;  it+=("Level Briefings   $REPLY")
-    _SEL_BACK=1; _SEL_CUR=$_c; _sel "${U}${_H3} OPTIONS ${_H3}${N}" "${it[@]}" || break
+    _SEL_BACK=1; _SEL_CUR=$_c; _sel "${M}${B}${_H3} OPTIONS ${_H3}${N}" "${it[@]}" || break
     _c=$REPLY
     case "$REPLY" in
       0) ((OPT_VI=!OPT_VI)); _apply_opts;;
@@ -7347,8 +7359,7 @@ scenario() {
     _sc_snap_save
 
     _REDRAW_HDR() {
-      _pfmt "$prompt"
-      printf '%s\e[H%s  %s\e[K\n\e[K\n%s\e[K\n\e[K\n\e[J%s' "$_SY" "${M}${B}${SC_NAMES[$sc_id]}${N}" "${U}[Step $((si+1))/${total}]${N}" "${C}${REPLY}${N}" "$_SN"
+      _qhdr "${M}${B}${SC_NAMES[$sc_id]}${N}" "${U}[Step $((si+1))/${total}]${N}"
     }
     printf '\e[2J'; _REDRAW_HDR
     HIST=()
@@ -8120,8 +8131,7 @@ place() {
       _REDRAW_HDR() {
         local _t=30
         if ((${_rl_deadline:-0})); then _rl_rem; _t=$REPLY; fi
-        _pfmt "$prompt"
-        printf '%s\e[H%s  %s  %s\e[K\n\e[K\n%s\e[K\n\e[K\n%s' "$_SY" "${U}Level ${lv}${N}" "${U}Q${qi}/2${N}" "${W}${_t}s${N}" "${C}${REPLY}${N}" "$_SN"
+        _qhdr "${M}${B}${_H3} PLACEMENT ${_H3}${N}" "${U}Level ${lv}${N}" "${U}Q${qi}/2${N}" "${W}${_t}s${N}"
       }
       printf '\e[2J'; _REDRAW_HDR
       if _read_line 0 0 30; then

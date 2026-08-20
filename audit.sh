@@ -1200,7 +1200,14 @@ _ed_type() {
   { local _w=0
     while [[ ! -e "$_ED_RDY" ]] && ((_w < 500)); do read -rt 0.01 _ 2>/dev/null; ((_w++)); done
     sleep 0.05
-    local p; for p in "$@"; do printf '%s' "$p"; sleep 0.03; done; } \
+    # A chunk carrying ESC needs a gap comfortably wider than _read_line's 10ms
+    # disambiguation window, or the next chunk lands in the pipe while that window is
+    # still open and Esc-then-x is read as an escape SEQUENCE. That is the whole race
+    # behind this phase's intermittent failures, and it only ever involves ESC.
+    local p; for p in "$@"; do
+      printf '%s' "$p"
+      case "$p" in *$'\e'*) sleep 0.12;; *) sleep 0.03;; esac
+    done; } \
     | COLUMNS=79 timeout 10 bash "$_ED_RUN" "$_ED_SRC" "$vi" "$_ED_OUT" "$_ED_RDY" >/dev/null 2>"$_ED_ERR"
   _ED_RC=$?
   REPLY=$(<"$_ED_OUT")
@@ -1228,13 +1235,15 @@ _ed_signal() { # <name> <signal> <expected>
 
 _ed_case() { # <name> <vi> <expected> <chunk...>
   local name=$1 vi=$2 exp=$3; shift 3
-  # One retry, because feeding a pipe has no flow control. If the reader is
-  # descheduled the feeder gets ahead of it, so ESC and the next chunk end up in the
-  # pipe together and the 10ms ESC-disambiguation window sees data that has "already
-  # arrived" — the same reason vim has a timeoutlen. A real defect fails both passes;
-  # only a scheduling artefact passes the second.
+  # Retries, because feeding a pipe has no flow control. If the reader is descheduled
+  # the feeder gets ahead of it, so ESC and the next chunk end up in the pipe together
+  # and the 10ms ESC-disambiguation window sees data that has "already arrived" — the
+  # same reason vim has a timeoutlen. A real defect fails every pass; only a scheduling
+  # artefact passes a later one. Three, not two: at two this phase still cried wolf on
+  # roughly one full audit run in three, which is the fastest way to teach someone to
+  # stop reading the output.
   local try
-  for try in 1 2; do
+  for try in 1 2 3; do
     _ed_type "$vi" "$@"
     ((_ED_RC == 124)) && continue
     [[ -s "$_ED_ERR" ]] && continue
