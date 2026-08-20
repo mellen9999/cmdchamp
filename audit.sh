@@ -1548,7 +1548,7 @@ _he_locale() {
 
 phase13_hostile_env() {
   printf '\n%s\n' "═══ PHASE 13: Hostile Environment ═══"
-  local before=$FAIL checks=0 locales=0 nm gen want got err rc s p e a l
+  local before=$FAIL checks=0 locales=0 nm gen want got err rc s p e a l _HE_HIST
   _he_prepare
 
   # ── A. save files a player can actually end up with ──────────────
@@ -1599,6 +1599,11 @@ phase13_hostile_env() {
 
   # ── B. locales ───────────────────────────────────────────────────
   printf '%s\n' "$_HE_PROFILE" | _he_profile
+  # A history salted with a secret, so every locale run also re-asserts that the autopsy
+  # prints patterns and counts and never a fragment of the file it read.
+  _HE_HIST="$_HE_DIR/hist"
+  printf '%s\n' 'cat access.log | grep ERROR' 'ls -la' 'export SUPERSECRET_TOKEN=hunter2' \
+    'find . -name x | xargs rm' > "$_HE_HIST"
   local -a locs=("C" "POSIX")
   for s in "tr_TR.UTF-8:tr_TR" "de_DE.UTF-8:de_DE"; do
     _he_locale "${s%%:*}" "${s##*:}" && { locs+=("${s%%:*}"); ((locales++)); }
@@ -1615,6 +1620,14 @@ phase13_hostile_env() {
       _he_case "locale $v=$l: ranges"    "$e" \
         'r=; for k in PROFILE_VER DISKS_FOUND OPT_VI DAILY_BEST; do [[ "$k" =~ ^[A-Z_]+$ ]] && r+=1 || r+=0; done; printf "%s" "$r"' "1111"; ((checks++))
       _he_case "locale $v=$l: graded strings stay 7-bit" "$e" "source '$_HE_GRADED'" "ok"; ((checks++))
+      # explain and autopsy shell out to awk and sort, whose character ranges are the
+      # thing tr_TR broke in the profile loader. And the autopsy must not start printing
+      # someone's history because a locale changed how a pattern matched.
+      _he_case "locale $v=$l: explain" "$e" \
+        'explain "grep -rn TODO ." >/dev/null; printf "%s" "$_EXP_KNOWN"' "1"; ((checks++))
+      _he_case "locale $v=$l: autopsy" "$e" \
+        "o=\$(autopsy '$_HE_HIST'); [[ \"\$o\" == *'cat into grep'* && \"\$o\" != *SUPERSECRET* && \"\$o\" != *hunter2* ]] && printf ok || printf bad" \
+        "ok"; ((checks++))
     done
   done
 
@@ -1636,7 +1649,8 @@ phase13_hostile_env() {
   done
 
   # ── D. arguments a user or a script can hand it ──────────────────
-  for a in "--badflag" "daily 9999-99-99" "daily ../../etc/passwd" "daily \$(id)" "daily 0" "nonsense" "play extra"; do
+  for a in "--badflag" "daily 9999-99-99" "daily ../../etc/passwd" "daily \$(id)" "daily 0" "nonsense" "play extra" \
+           "explain" "explain grep -rn TODO ." "x zzzfrobnicate" "autopsy /nonexistent/nope" "autopsy $_HE_HIST"; do
     # shellcheck disable=SC2086
     got=$(env -i PATH="/usr/bin:/bin" XDG_DATA_HOME="$_HE_DIR" timeout 20 "$CMDCHAMP" $a </dev/null 2>"$XDG_DATA_HOME/he_err"); rc=$?
     err=$(<"$XDG_DATA_HOME/he_err")
