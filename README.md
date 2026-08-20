@@ -8,7 +8,7 @@ Every question asks you to type a real command — get instant feedback, move on
 
 Each level ends with a boss round — no manpages, 30s timer, 4/5 to pass. Fail and you can retry the boss immediately or go back to practice. Beat all 30 and **challenge mode** unlocks — the endgame gauntlet: multi-command chains that compose the tools from across the whole game into one pipeline. 30s each, one life, no manpages, your best score is the record. Every chain is graded on its real output in the sandbox, so *any* correct pipeline passes. Each run also builds a **fresh randomized sandbox** — different IPs, counts, hosts, and log data — and draws from 50+ chain templates with rotating delimiters, sort order, and aggregates, so the busiest IP, the top URL, the highest count are never the same twice. First run includes a short tutorial and a placement test that lets you skip levels you already know.
 
-With [bubblewrap](https://github.com/containers/bubblewrap), commands run in a real sandboxed filesystem and are graded on their actual output. The box inside is synthetic - user `sandbox`, host `sandbox`, its own `/etc/passwd` and kernel command line - so nothing you type can print your real username, machine name or disk layout to the screen, and `id`, `whoami` and `hostname` answer the same everywhere. This now reaches the forensics tier too: level 28 hands you a real sample binary (`samples/target.bin`) and grades whether you actually pulled the flag, the exfil domain, and the leaked API key out of it — same for the `jq` questions on real JSON. The endgame gauntlet composes those extractions into timed chains. Only the tools that genuinely can't run in a sandbox — live network/wifi/nmap and large memory/disk forensics — stay text-matched. Search levels (16-17) accept both `rg`/`fd` and `grep`/`find` syntax. Vi line editing is built in — motions, operators, counts, registers, undo and visual mode (`v`/`V`, `o` to swap ends), with `?` for the full map.
+With [bubblewrap](https://github.com/containers/bubblewrap), commands run in a real sandboxed filesystem and are graded on their actual output. The box inside is synthetic - user `sandbox`, host `sandbox`, its own `/etc/passwd` and kernel command line - so nothing you type can print your real username, machine name or disk layout to the screen, and `id`, `whoami` and `hostname` answer the same everywhere. This now reaches the forensics tier too: level 28 hands you a real sample binary (`samples/target.bin`) and grades whether you actually pulled the flag, the exfil domain, and the leaked API key out of it — same for the `jq` questions on real JSON. The endgame gauntlet composes those extractions into timed chains. Levels 24-25 now run for real too: a small HTTP service starts on `localhost:8080` inside the sandbox's own network namespace while your answer runs, with three ports listening, so `curl`, `jq` over HTTP, `ss` and `nmap` are graded on what they actually returned. Nothing is exposed to your machine — the namespace still blocks every outbound connection, and the port is invisible from outside. Only the tools that genuinely can't run in a sandbox — wifi/RF, live capture and large memory/disk forensics — stay text-matched. Search levels (16-17) accept both `rg`/`fd` and `grep`/`find` syntax. Vi line editing is built in — motions, operators, counts, registers, undo and visual mode (`v`/`V`, `o` to swap ends), with `?` for the full map.
 
 ## Install
 
@@ -38,6 +38,8 @@ cd cmdchamp && make install
 **macOS:** Ships with bash 3.2 — install bash 4.4+ first: `brew install bash`
 
 **Optional:** [bubblewrap](https://github.com/containers/bubblewrap) (`bwrap`) for sandbox mode (Linux only) — most desktop distros include it. Without it, answers are text-matched only
+
+**Optional:** `python3` — serves the sandbox's localhost HTTP service, so the `live api` / `live box` questions on levels 24-25 are graded on real output. Without it those questions fall back to text-matching; nothing else changes
 
 **Accessibility:** Honors `NO_COLOR` and `TERM=dumb`. Layout adapts to `COLUMNS` / `tput cols`. Mastery bars carry both color and a `✓` / `~` / `x` symbol — readable without color.
 
@@ -90,8 +92,8 @@ The menu holds continue, new game, scenarios, challenge, daily, practice, stats,
 | 22 | Advanced Regex | lookahead, sed, awk |
 | | **DevOps & Security** | |
 | 23 | Git | branches, remotes, rebasing, stashing, bisect |
-| 24 | Network Tools | tshark, curl, jq, ssh tunnels, openssl, SMB |
-| 25 | Network Scanning | nmap, service detection, scripts |
+| 24 | Network Tools | tshark, curl, jq, ssh tunnels, openssl, SMB, a live HTTP endpoint |
+| 25 | Network Scanning | nmap, service detection, scripts, a live target |
 | 26 | WiFi & RF | aircrack-ng, netcat, tcpdump, wireless recon |
 | 27 | Hash Cracking | hashcat, john, hydra, encoding |
 | 28 | Forensics | strings, readelf, binwalk, volatility, exiftool |

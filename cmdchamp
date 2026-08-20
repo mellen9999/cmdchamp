@@ -971,7 +971,7 @@ _SBX_ETC=""
 # through, which is the old behaviour rather than a broken sandbox.
 _sandbox_etc() {
   _SBX_ETC="$DATA/etc"
-  [[ -f "$_SBX_ETC/cmdline" ]] && return 0
+  [[ -f "$_SBX_ETC/hosts" ]] && return 0   # last file written: its presence means the set is complete
   mkdir -p "$_SBX_ETC" 2>/dev/null || { _SBX_ETC="/nonexistent"; return 1; }
   {
     printf '%s\n' 'root:x:0:0:root:/root:/bin/bash' \
@@ -989,7 +989,149 @@ _sandbox_etc() {
   } > "$_SBX_ETC/group.tmp" && mv "$_SBX_ETC/group.tmp" "$_SBX_ETC/group" || rm -f "$_SBX_ETC/group.tmp"
   printf '%s\n' 'BOOT_IMAGE=/boot/vmlinuz root=/dev/sda1 rw quiet' \
     > "$_SBX_ETC/cmdline.tmp" && mv "$_SBX_ETC/cmdline.tmp" "$_SBX_ETC/cmdline" || rm -f "$_SBX_ETC/cmdline.tmp"
+  # Without this, `localhost` does not resolve inside the sandbox and only the literal
+  # 127.0.0.1 reaches a #svc: listener - so the spelling everyone actually types would be
+  # the one spelling that failed. Fixed content, so it resolves the same on every machine.
+  # localhost maps to v4 ONLY: the responder binds 127.0.0.1, and a ::1 entry sent wget to
+  # an address nothing was listening on, so `wget -qO- http://localhost:8080/...` came back
+  # empty while the identical curl worked.
+  {
+    printf '%s\n' '127.0.0.1  localhost' '127.0.1.1  sandbox' \
+      '::1  ip6-localhost ip6-loopback'
+  } > "$_SBX_ETC/hosts.tmp" && mv "$_SBX_ETC/hosts.tmp" "$_SBX_ETC/hosts" || rm -f "$_SBX_ETC/hosts.tmp"
   return 0
+}
+
+# ── localhost services: the one thing the sandbox could always do and never did ──────────────
+# --unshare-all already hands the sandbox its own network namespace with loopback UP, so a
+# listener started INSIDE it answers from inside and from nowhere else - the egress the
+# selftest forbids stays forbidden, and `ss -ltn` on the host shows nothing. Without anything
+# listening, every network question on levels 24-26 was graded by string comparison; with one,
+# curl / ss / nmap / jq are graded on the output they actually produce, like the rest of the
+# game.
+#
+# python3 is the only backend, deliberately. It is the one thing on a stock box that can serve
+# HTTP with FIXED headers, and a fixed Date/Server line is exactly what makes the answer
+# gradable. It is never REQUIRED: no python3 and the question falls back to text-match, the
+# same way a missing bwrap does - nothing regresses, the guarantee just gets weaker.
+#
+# Every payload lives inside the responder, never on disk. A docroot in the sandbox tree would
+# make `cat srv/users.json` a shortcut past the question that asks you to curl it.
+_SVC_OK=0        # python3 present AND the responder written: services can be booted
+_SVC_PY=""       # host path to the responder, ro-bound into the sandbox at /run/cc_svc.py
+# 8080 answers HTTP; the other two only listen (nmap/ss fodder). The values are deliberate:
+# as text "10443" sorts BEFORE "8080", so a question that asks for them in order can only be
+# answered with `sort -n` - the classic lexical-sort trap, graded rather than described.
+_SVC_PORTS="8080 9000 10443"
+
+# Writes the responder once, into $DATA (never into the tree). Returns 1 when services are
+# unavailable, so callers can fall through to text-matching without a special case.
+_svc_init() {
+  ((_SVC_OK)) && return 0
+  command -v python3 >/dev/null 2>&1 || return 1
+  _SVC_PY="$DATA/svc.py"
+  if [[ ! -s "$_SVC_PY" ]]; then
+    cat > "$DATA/svc.py.tmp" <<'CC_SVC_PY'
+# cmdchamp sandbox responder. Deterministic by construction: fixed Date, fixed Server, fixed
+# bodies. Nothing here reads the clock, the filesystem or the environment, so the same request
+# returns the same bytes on every machine and every day - which is what lets a question be
+# graded on `curl` output instead of on how the player spelled the command.
+import socket, sys, threading
+from http.server import BaseHTTPRequestHandler, HTTPServer
+
+USERS = (
+    '[\n'
+    '  {"name": "ana",   "role": "admin",  "active": true,  "logins": 42},\n'
+    '  {"name": "bo",    "role": "dev",    "active": true,  "logins": 17},\n'
+    '  {"name": "cyd",   "role": "dev",    "active": false, "logins": 3},\n'
+    '  {"name": "dev",   "role": "ops",    "active": true,  "logins": 91},\n'
+    '  {"name": "eli",   "role": "viewer", "active": false, "logins": 8}\n'
+    ']\n'
+)
+STATUS = ('{"service": "api", "version": "2.4.1", "uptime": 86400, '
+          '"healthy": true, "region": "eu-west"}\n')
+INDEX = ('<html><head><title>staging api</title></head>\n'
+         '<body><h1>staging api</h1><p>see /api/status.json</p></body></html>\n')
+METRICS = ('requests_total 1284\n'
+           'requests_failed 37\n'
+           'cache_hits 902\n'
+           'cache_misses 382\n')
+ACCESS = ('10.0.0.7 GET /api/users.json 200 512\n'
+          '10.0.0.9 GET /admin 401 173\n'
+          '10.0.0.7 GET /api/status.json 200 96\n'
+          '10.0.0.4 GET /missing 404 10\n'
+          '10.0.0.7 POST /api/users.json 201 64\n')
+
+ROUTES = {
+    '/':                  (200, INDEX,   'text/html'),
+    '/index.html':        (200, INDEX,   'text/html'),
+    '/health':            (200, 'ok\n',  'text/plain'),
+    '/metrics':           (200, METRICS, 'text/plain'),
+    '/api/users.json':    (200, USERS,   'application/json'),
+    '/api/status.json':   (200, STATUS,  'application/json'),
+    '/logs/access.log':   (200, ACCESS,  'text/plain'),
+    '/admin':             (401, 'unauthorized\n', 'text/plain'),
+}
+
+class H(BaseHTTPRequestHandler):
+    server_version = 'cchttpd/1.0'
+    sys_version = ''
+    protocol_version = 'HTTP/1.0'
+
+    def log_message(self, *a):
+        pass
+
+    # A real Date header would make every response a different byte string, and no exact
+    # #output could ever match. Pin it.
+    def date_time_string(self, timestamp=None):
+        return 'Mon, 01 Jan 2026 00:00:00 GMT'
+
+    def _respond(self, code, body, ctype, extra=()):
+        raw = body.encode()
+        self.send_response(code)
+        self.send_header('Content-Type', ctype)
+        self.send_header('Content-Length', str(len(raw)))
+        for k, v in extra:
+            self.send_header(k, v)
+        self.end_headers()
+        if self.command != 'HEAD':
+            self.wfile.write(raw)
+
+    def _route(self):
+        path = self.path.split('?', 1)[0]
+        if path == '/old':
+            self._respond(301, 'moved\n', 'text/plain',
+                          (('Location', '/api/status.json'),))
+            return
+        if path in ROUTES:
+            code, body, ctype = ROUTES[path]
+            extra = (('WWW-Authenticate', 'Basic realm="admin"'),) if code == 401 else ()
+            self._respond(code, body, ctype, extra)
+            return
+        self._respond(404, 'not found\n', 'text/plain')
+
+    do_GET = do_HEAD = do_POST = _route
+
+def silent(port):
+    # Listening but never accepting is enough to answer a connect scan: the kernel completes
+    # the handshake from the backlog. Two extra ports so `nmap` and `ss` have something to
+    # count that is not the web server.
+    s = socket.socket()
+    s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    s.bind(('127.0.0.1', port))
+    s.listen(8)
+    return s
+
+def main():
+    held = [silent(9000), silent(10443)]
+    srv = HTTPServer(('127.0.0.1', 8080), H)
+    srv.serve_forever()
+
+main()
+CC_SVC_PY
+    mv "$DATA/svc.py.tmp" "$_SVC_PY" 2>/dev/null || { rm -f "$DATA/svc.py.tmp"; return 1; }
+  fi
+  _SVC_OK=1; return 0
 }
 
 _BWRAP=""   # absolute path, resolved once (see _sandbox_exec: env -i cannot use PATH)
@@ -1557,8 +1699,12 @@ _sandbox_reset() {
 }
 
 _sandbox_exec() {
-  local cmd="$1" timeout_sec="${2:-$SANDBOX_TIMEOUT}"
+  local cmd="$1" timeout_sec="${2:-$SANDBOX_TIMEOUT}" svc="${3:-}"
   ((SANDBOX_MODE)) || return 1
+  # A service name is our own DSL content, never player input - but it is interpolated into a
+  # shell string below, so it is still checked. Anything unexpected runs with no service
+  # rather than running something unexpected.
+  [[ "$svc" =~ ^[a-z]+$ ]] || svc=""
   local -a bwrap_args=(
     --clearenv
     --setenv PATH /usr/bin:/bin
@@ -1604,7 +1750,22 @@ _sandbox_exec() {
   _sandbox_etc
   [[ -f "$_SBX_ETC/passwd"  ]] && bwrap_args+=(--ro-bind "$_SBX_ETC/passwd" /etc/passwd)
   [[ -f "$_SBX_ETC/group"   ]] && bwrap_args+=(--ro-bind "$_SBX_ETC/group" /etc/group)
+  [[ -f "$_SBX_ETC/hosts"   ]] && bwrap_args+=(--ro-bind "$_SBX_ETC/hosts" /etc/hosts)
   [[ -f "$_SBX_ETC/cmdline" ]] && bwrap_args+=(--ro-bind "$_SBX_ETC/cmdline" /proc/cmdline)  # after --proc, or the mount hides it
+
+  # The responder is bound OUTSIDE /sandbox, so it is invisible to an `ls` of the tree and to
+  # any question that counts files. Only bound when a service was actually asked for.
+  local _payload='ulimit -u 256 2>/dev/null; ulimit -f 65536 2>/dev/null; eval "$1"'
+  if [[ -n "$svc" ]] && _svc_init; then
+    bwrap_args+=(--ro-bind "$_SVC_PY" /run/cc_svc.py)
+    # Boot, then WAIT for the bind before the answer runs - starting a server and racing it is
+    # how a correct curl intermittently scores as wrong. 40 x 50ms is a 2s ceiling on a cold
+    # interpreter; the loop exits the moment the port answers, so the usual cost is one tick.
+    _payload='ulimit -u 256 2>/dev/null; ulimit -f 65536 2>/dev/null
+python3 /run/cc_svc.py >/dev/null 2>&1 &
+_i=0; while ((_i++ < 40)); do (exec 3<>/dev/tcp/127.0.0.1/8080) 2>/dev/null && break; sleep 0.05; done
+eval "$1"'
+  fi
 
   local _rc
   # ulimit -u caps processes inside the sandbox so a fork bomb can't pin a core
@@ -1621,7 +1782,7 @@ _sandbox_exec() {
   #   env -i      belt and braces: bwrap itself starts with nothing to leak either way.
   # The namespace still dies with its PID 1, so nothing survives the command.
   [[ -n "$_BWRAP" ]] || { _BWRAP=$(command -v bwrap 2>/dev/null) || _BWRAP=/usr/bin/bwrap; }
-  timeout "$timeout_sec" env -i "$_BWRAP" --as-pid-1 "${bwrap_args[@]}" /bin/bash -c 'ulimit -u 256 2>/dev/null; ulimit -f 65536 2>/dev/null; eval "$1"' -- "$cmd" </dev/null; _rc=$?
+  timeout "$timeout_sec" env -i "$_BWRAP" --as-pid-1 "${bwrap_args[@]}" /bin/bash -c "$_payload" -- "$cmd" </dev/null; _rc=$?
   ((_rc >= 125)) && printf '%s\n' "${R}sandbox error (exit ${_rc})${N}" >&2
   return "$_rc"
 }
@@ -2018,7 +2179,7 @@ declare -A MANPAGE=(
   \e[36m-n\e[0m   no header, for scripts         \e[36m-J\e[0m        JSON out
   \e[2mlsblk    lsblk -f    lsblk -o NAME,SIZE,TYPE,MOUNTPOINTS\e[0m'
   [ssh]=$'secure shell\n  \e[36m-p\e[0m \e[33mPORT\e[0m   remote port            \e[36m-L\e[0m \e[2mP:H:P\e[0m  local forward\n  \e[36m-R\e[0m \e[2mP:H:P\e[0m  remote forward         \e[36m-D\e[0m \e[33mPORT\e[0m   SOCKS proxy\n  \e[36m-J\e[0m \e[33mHOST\e[0m   jump host              \e[36m-N\e[0m        no command\n  \e[36m-f\e[0m        background             \e[36m-T\e[0m        no tty\n  \e[36m-A\e[0m        agent forwarding\n  \e[36m-o\e[0m \e[33mOPT=VAL\e[0m   any ssh_config setting (\e[33mConnectTimeout=2\e[0m)\n  \e[33muser@host CMD\e[0m   run one command instead of opening a shell\n  \e[2mssh -p 2222 user@host    ssh -L 8080:localhost:80 host    ssh -D 1080 host\e[0m'
-  [curl]=$'HTTP client\n  \e[36m-X\e[0m \e[33mMETHOD\e[0m  GET/POST/PUT/DELETE   \e[36m-H\e[0m \e[2m\x27K: V\x27\e[0m  header\n  \e[36m-d\e[0m \e[33mDATA\e[0m    POST body             \e[36m-o\e[0m \e[33mFILE\e[0m   output file\n  \e[36m-L\e[0m         follow redirects      \e[36m-s\e[0m        silent\n  \e[36m-i\e[0m         show headers          \e[36m-O\e[0m        save original name\n  \e[36m-w\e[0m \e[33mFMT\e[0m     print after transfer (\e[33m%{http_code}\e[0m \e[33m%{time_total}\e[0m)\n  \e[36m--resolve\e[0m \e[33mHOST:PORT:IP\e[0m   send this request to IP, keep the hostname\n  \e[35mvs wget\e[0m     curl is for APIs (headers, POST, methods).\n              wget is for downloading files (auto-resume, recursive mirror)\n  \e[2mcurl -s url    curl -X POST -d "data" url    curl -O url/file.tar.gz\e[0m'
+  [curl]=$'HTTP client\n  \e[36m-X\e[0m \e[33mMETHOD\e[0m  GET/POST/PUT/DELETE   \e[36m-H\e[0m \e[2m\x27K: V\x27\e[0m  header\n  \e[36m-d\e[0m \e[33mDATA\e[0m    POST body             \e[36m-o\e[0m \e[33mFILE\e[0m   output file\n  \e[36m-L\e[0m         follow redirects      \e[36m-s\e[0m        silent\n  \e[36m-i\e[0m         show headers          \e[36m-O\e[0m        save original name\n  \e[36m-I\e[0m         headers only (HEAD)   \e[36m-D\e[0m \e[33mFILE\e[0m   dump headers to file\n  \e[36m-w\e[0m \e[33mFMT\e[0m     print after transfer (\e[33m%{http_code}\e[0m \e[33m%{time_total}\e[0m)\n  \e[36m--resolve\e[0m \e[33mHOST:PORT:IP\e[0m   send this request to IP, keep the hostname\n  \e[35mvs wget\e[0m     curl is for APIs (headers, POST, methods).\n              wget is for downloading files (auto-resume, recursive mirror)\n  \e[2mcurl -s url    curl -X POST -d "data" url    curl -O url/file.tar.gz\e[0m'
   [wget]=$'file downloader\n  \e[36m-c\e[0m        continue download      \e[36m-m\e[0m        mirror site\n  \e[36m-k\e[0m        convert links\n  \e[35mvs curl\e[0m    wget is for downloading files (auto-resume, recursive).\n          curl is for API work (headers, POST, methods)\n  \e[2mwget url    wget -c url    wget -mk url\e[0m'
   [git]=$'version control\n  \e[32madd\e[0m     stage      \e[32mcommit\e[0m  save       \e[32mpush\e[0m    upload\n  \e[32mpull\e[0m    download   \e[32mstatus\e[0m  changes    \e[32mdiff\e[0m    compare\n  \e[32mlog\e[0m     history    \e[32mbranch\e[0m  branches   \e[32mmerge\e[0m   combine\n  \e[32mrebase\e[0m  replay     \e[32mstash\e[0m   shelve     \e[32mreset\e[0m   undo\n  \e[32mswitch\e[0m  branch     \e[32mrestore\e[0m undo file  \e[32mclone\e[0m   copy repo\n  \e[32mshow\e[0m    inspect    \e[32mworktree\e[0m 2nd tree  \e[32mclean\e[0m   untracked\n  \e[32mrevert\e[0m  undo+commit  \e[32mbisect\e[0m find bug  \e[32mtag\e[0m     release\n  \e[32mconfig\e[0m  settings   \e[32mremote\e[0m  remotes    \e[32mreflog\e[0m  ref history\n  \e[32minit\e[0m    new repo   \e[32mfetch\e[0m   download   \e[32mblame\e[0m   line authors\n  \e[33mHEAD\e[0m last commit  \e[33mHEAD~N\e[0m N before it  \e[33mstash@{n}\e[0m nth stash\n  \e[2mgit add .    git commit -m "msg"    git log --oneline    git stash\e[0m'
   [ss]=$'socket statistics\n  \e[36m-t\e[0m        TCP                    \e[36m-u\e[0m        UDP\n  \e[36m-l\e[0m        listening              \e[36m-n\e[0m        numeric ports\n  \e[36m-p\e[0m        show process           \e[36m-a\e[0m        all sockets\n  \e[35mvs netstat\e[0m ss is faster and the modern replacement.\n          netstat is deprecated but still on older systems\n  \e[2mss -tlnp    ss -tunap    ss -t state established\e[0m'
@@ -2026,7 +2187,7 @@ declare -A MANPAGE=(
   [journalctl]=$'systemd logs\n  \e[36m-u\e[0m \e[33mUNIT\e[0m   service logs           \e[36m-f\e[0m        follow live\n  \e[36m-n\e[0m \e[33mN\e[0m      last \e[33mN\e[0m lines           \e[36m-b\e[0m        current boot\n  \e[36m-p\e[0m \e[33mLEVEL\e[0m  priority (err/warn)    \e[36m-k\e[0m        kernel messages\n  \e[36m-o\e[0m \e[33mFMT\e[0m    output format          \e[36m--since\e[0m   time filter\n  \e[36m--disk-usage\e[0m   journal size      \e[36m--no-pager\e[0m   no less/more\n  \e[36m--vacuum-size=\e[0m\e[33mN\e[0m  shrink to       \e[36m--vacuum-time=\e[0m\e[33mT\e[0m  drop older than T\n  \e[35mvs dmesg\e[0m  journalctl indexes all system logs (structured, filterable).\n          dmesg is kernel ring buffer only\n  \e[2mjournalctl -u nginx -f    journalctl -b -p err    journalctl --disk-usage\e[0m'
   [crontab]=$'scheduled tasks\n  \e[36m-e\e[0m        edit crontab           \e[36m-l\e[0m        list jobs\n  \e[36m-r\e[0m        remove all jobs\n  \e[33mmin hr dom mon dow  CMD\e[0m   5 time fields, \e[33m*\e[0m = every\n  \e[33m*/5 * * * *\e[0m every 5 min  \e[33m0 * * * *\e[0m hourly  \e[33m0 3 * * *\e[0m 03:00 daily\n  \e[33m@reboot\e[0m at boot   \e[33m@daily @hourly @weekly @monthly\e[0m   named schedules\n  \e[2mcrontab -e    crontab -l    */5 * * * * /path/job.sh >> /var/log/job.log\e[0m'
   [tmux]=$'terminal multiplexer\n  \e[32mnew\e[0m \e[36m-s\e[0m \e[33mNAME\e[0m  new session  \e[32mattach\e[0m \e[36m-t\e[0m \e[33mNAME\e[0m  reattach  \e[32mls\e[0m  list\n  \e[32mnew-window\e[0m \e[36m-n\e[0m \e[33mNAME\e[0m  new window   \e[32mselect-window\e[0m \e[36m-t\e[0m \e[33mN\e[0m  go to it\n  \e[32msplit-window\e[0m \e[36m-h\e[0m|\e[36m-v\e[0m  split pane   \e[32mselect-pane\e[0m \e[36m-U -D -L -R\e[0m  focus\n  \e[32mresize-pane\e[0m \e[36m-U -D -L -R\e[0m \e[33mN\e[0m  resize      \e[36m-Z\e[0m  zoom toggle\n  \e[32mswap-pane\e[0m \e[36m-U -D\e[0m   \e[32mswap-window\e[0m \e[36m-t\e[0m \e[33mN\e[0m   \e[32mrename-session\e[0m \e[36m-t\e[0m \e[33mOLD NEW\e[0m\n  \e[32mlist-panes\e[0m   \e[32mlist-windows\e[0m   \e[32mlist-sessions\e[0m\n  \e[32mkill-pane\e[0m   \e[32mkill-session\e[0m \e[36m-t\e[0m \e[33mNAME\e[0m   \e[32mkill-server\e[0m  kill everything\n  \e[32mcapture-pane\e[0m \e[36m-p\e[0m  print pane text   \e[32mpipe-pane\e[0m \e[36m-t\e[0m \e[33mNAME CMD\e[0m  stream it\n  \e[32msend-keys\e[0m \e[36m-t\e[0m \e[33mNAME\e[0m \e[33m\x27text\x27 Enter\e[0m   type into a pane\n  \e[2mtmux new -s work   tmux split-window -h   tmux capture-pane -p\e[0m'
-  [nmap]=$'network scanner\n  \e[36m-sS\e[0m       SYN scan \e[2m(root)\e[0m        \e[36m-sT\e[0m       TCP connect \e[2m(any user)\e[0m\n  \e[36m-sU\e[0m       UDP scan \e[2m(root)\e[0m        \e[36m-sV\e[0m       version detect\n  \e[36m-sC\e[0m       default scripts        \e[36m-O\e[0m        OS detection \e[2m(root)\e[0m\n  \e[36m-A\e[0m        aggressive (all)       \e[36m-F\e[0m        fast (top 100)\n  \e[36m-p\e[0m \e[33mPORTS\e[0m  specific ports         \e[36m-p-\e[0m       all 65535 ports\n  \e[36m-Pn\e[0m       skip discovery         \e[36m-sn\e[0m       ping sweep\n  \e[36m-sL\e[0m       list targets           \e[36m-PR\e[0m       ARP scan\n  \e[36m-oA\e[0m \e[33mPFX\e[0m   all output formats     \e[36m-oG\e[0m \e[33mFILE\e[0m  greppable output\n  \e[36m-oN\e[0m \e[33mFILE\e[0m  normal output          \e[36m-oX\e[0m \e[33mFILE\e[0m  XML output\n  \e[36m-T1\e[0m       slow (evasion)         \e[36m-T4\e[0m       fast timing\n  \e[36m--top-ports\e[0m \e[33mN\e[0m  top N ports       \e[36m--script\e[0m \e[33mNAME\e[0m  NSE script\n  \e[2mnmap -sV -sC host    nmap -A -p- host    nmap -sn 192.168.1.0/24\e[0m'
+  [nmap]=$'network scanner\n  \e[36m-sS\e[0m       SYN scan \e[2m(root)\e[0m        \e[36m-sT\e[0m       TCP connect \e[2m(any user)\e[0m\n  \e[36m-sU\e[0m       UDP scan \e[2m(root)\e[0m        \e[36m-sV\e[0m       version detect\n  \e[36m-sC\e[0m       default scripts        \e[36m-O\e[0m        OS detection \e[2m(root)\e[0m\n  \e[36m-A\e[0m        aggressive (all)       \e[36m-F\e[0m        fast (top 100)\n  \e[36m-p\e[0m \e[33mPORTS\e[0m  specific ports         \e[36m-p-\e[0m       all 65535 ports\n  \e[36m-Pn\e[0m       skip discovery         \e[36m-sn\e[0m       ping sweep\n  \e[36m-n\e[0m        no DNS resolution      \e[36m-R\e[0m        always resolve\n  \e[36m-sL\e[0m       list targets           \e[36m-PR\e[0m       ARP scan\n  \e[36m-oA\e[0m \e[33mPFX\e[0m   all output formats     \e[36m-oG\e[0m \e[33mFILE\e[0m  greppable output\n  \e[36m-oN\e[0m \e[33mFILE\e[0m  normal output          \e[36m-oX\e[0m \e[33mFILE\e[0m  XML output\n  \e[36m-T1\e[0m       slow (evasion)         \e[36m-T4\e[0m       fast timing\n  \e[36m--top-ports\e[0m \e[33mN\e[0m  top N ports       \e[36m--script\e[0m \e[33mNAME\e[0m  NSE script\n  \e[2mnmap -sV -sC host    nmap -A -p- host    nmap -sn 192.168.1.0/24\e[0m'
   [hashcat]=$'GPU hash cracker\n  \e[36m-m\e[0m \e[33mTYPE\e[0m   hash type (0=MD5 100=SHA1 1000=NTLM 1800=sha512crypt)\n  \e[36m-a\e[0m \e[33mMODE\e[0m   0=dict 3=brute         \e[36m--show\e[0m    show cracked\n  \e[36m-r\e[0m \e[33mFILE\e[0m   rules file             \e[36m--left\e[0m    hashes not yet cracked\n  \e[36m-w\e[0m \e[33mN\e[0m      workload 1-4           \e[36m-O\e[0m        optimised (shorter pw only)\n  \e[36m-I\e[0m        list devices           \e[36m--example-hashes\e[0m  what a -m looks like\n  \e[36m--session=\e[0m\e[33mNAME\e[0m  name the run     \e[36m--restore\e[0m  resume it by that name\n  \e[36m--runtime=\e[0m\e[33mSEC\e[0m  stop after SEC    \e[36m--stdout\e[0m  print candidates, do not crack\n  \e[35mvs john\e[0m   hashcat uses GPU (fast for large lists).\n          john is CPU-based, better auto-format detection\n  \e[2mhashcat -m 0 hash.txt wordlist.txt    hashcat -m 1000 -a 3 hash ?a?a?a?a\e[0m'
   [john]=$'password cracker\n  \e[36m--wordlist\e[0m=\e[33mFILE\e[0m   dictionary attack\n  \e[36m--show\e[0m        display cracked    \e[36m--list\e[0m=formats  list types\n  \e[35mvs hashcat\e[0m john is CPU-based with smart auto-format detection.\n          hashcat uses GPU for massive throughput\n  \e[2mjohn --wordlist=rockyou.txt hash.txt    john --show hash.txt\e[0m'
   [tshark]=$'terminal packet analyzer\n  \e[36m-i\e[0m \e[33mIFACE\e[0m  capture live           \e[36m-r\e[0m \e[33mFILE\e[0m   read pcap\n  \e[36m-w\e[0m \e[33mFILE\e[0m   write pcap             \e[36m-c\e[0m \e[33mN\e[0m      capture N packets\n  \e[36m-Y\e[0m \e[33mFILTER\e[0m display filter         \e[36m-T\e[0m fields output format\n  \e[36m-e\e[0m \e[33mFIELD\e[0m  extract field          \e[36m-q\e[0m        quiet (stats only)\n  \e[36m-z\e[0m \e[33mSTAT\e[0m   statistics\n  \e[35mvs tcpdump\e[0m tshark has deep protocol dissection and display filters.\n          tcpdump is lightweight and available everywhere\n  \e[2mtshark -i eth0 -w cap.pcap    tshark -r cap.pcap -Y http\e[0m'
@@ -2790,6 +2951,10 @@ explain() {
 #   #output:@N       stdout must be exactly N lines
 #   #state:CHECKS    comma-separated: exists:F, !exists:F, contains:F:S,
 #                    !contains:F:S, lines:F:N, perm:F:M, !perm:F:M
+#   #svc:NAME       boot a localhost service in the sandbox before the answer runs, so
+#                    curl/nmap/nc are graded on real output. Only "web" today: HTTP on
+#                    127.0.0.1:8080 with fixed headers, plus 9000 and 10443 listening.
+#                    No python3 on the box -> the question falls back to text-match.
 #   #require:STRING  input must contain STRING (prevents shortcut cheats)
 #   #text:           command is interactive (less/vi) — skip sandbox exec
 #   #boss-skip       exclude from boss-fight draws (too obscure for no-manpage memory)
@@ -2799,7 +2964,7 @@ explain() {
 #   $_QV declares ~40 local vars, _ctx() populates them via _fpick from pools
 _qparse() {
   local q=$1
-  _qoutput="" _qstate="" _qtext=0 _qrequire="" _qdelim='|' _qboss_skip=0 _qchal_skip=0
+  _qoutput="" _qstate="" _qtext=0 _qrequire="" _qdelim='|' _qboss_skip=0 _qchal_skip=0 _qsvc=""
 
   # Boolean tags: deleted in-place so they can sit anywhere without breaking value-tag strips
   if [[ $q == *"#boss-skip"* ]]; then _qboss_skip=1; q="${q//#boss-skip/}"; fi
@@ -2823,6 +2988,11 @@ _qparse() {
     _qrequire="${q##*#require:}"
     _qrequire="${_qrequire%%#*}"
     q="${q%%#require:*}"
+  fi
+  if [[ $q == *"#svc:"* ]]; then
+    _qsvc="${q##*#svc:}"
+    _qsvc="${_qsvc%%#*}"
+    q="${q%%#svc:*}"
   fi
 
   if [[ $q == *§* ]]; then
@@ -2869,8 +3039,8 @@ declare -A BRIEF=(
   [21]=$'\e[36mthe idea\e[0m\n  Apply ONE operation across MANY targets. \e[33mfind -exec\e[0m and \e[33mxargs\e[0m run a\n  command per match; \e[33msed -i\e[0m edits in place. \e[33m-print0\e[0m/\e[33m-0\e[0m survives spaces.\n\n\e[36mthe moves\e[0m\n  \e[33mfind . -name \e[0m\e[37m\x27*.log\x27\e[0m\e[33m -exec gzip {} \\;\e[0m  act on each match\n  \e[33mfind ... -print0 | xargs -0 \e[0m\e[37mcmd\e[0m  safe with spaces\n  \e[33mxargs -I{} \e[0m\e[37mcmd\e[0m\e[33m {}\e[0m  {} = placeholder for each item\n  \e[33mxargs -P\e[0m\e[37mN\e[0m\e[37m / \e[0m\e[33m-r\e[0m     run N in parallel / skip if input empty\n  \e[33msed -i \e[0m\e[37m\x27s/a/b/\x27 f\e[0m  edit the file itself (replace)\n  \e[33msed -i \e[0m\e[37m\x27/pat/d\x27 f\e[0m  delete matching lines in place'
   [22]=$'\e[36mthe idea\e[0m\n  Regex beyond basics: quantifiers, anchors, classes, capture groups, and\n  LOOKAROUND - match only when something is (or isn\x27t) next to it. \e[33m-P\e[0m is\n  Perl regex; \e[33msed\e[0m captures with \e[33m\\( \\)\e[0m and reuses them as \e[33m\\1 \\2\e[0m.\n\n\e[36mthe moves\e[0m\n  \e[33m\\d \\w \\s\e[0m        digit / word char / whitespace \e[2m(-P)\e[0m\n  \e[33m+ * ? {n,m}\e[0m     how many times to repeat\n  \e[33m^ $\e[0m             start / end of line  \e[2m(\e[0m\e[33m\\b\e[0m\e[2m word boundary)\e[0m\n  \e[33m(?=x)\e[0m\e[37m / \e[0m\e[33m(?<=x)\e[0m  lookahead / lookbehind (context, not consumed)\n  \e[33m.*?\e[0m             non-greedy: match as little as possible\n  \e[33msed -E \e[0m\e[37m\x27s/(a)(b)/\\2\\1/\x27\e[0m  swap two captured groups'
   [23]=$'\e[36mthe idea\e[0m\n  \e[33mgit\e[0m tracks SNAPSHOTS (commits) on branches. Core loop: edit, \e[33madd\e[0m\n  (stage), \e[33mcommit\e[0m, \e[33mpush\e[0m. Branches diverge; \e[33mmerge\e[0m/\e[33mrebase\e[0m rejoin them.\n\n\e[36mthe moves\e[0m\n  \e[33mgit status\e[0m           what changed, what\x27s staged\n  \e[33mgit add \e[0m\e[37mf\e[0m\e[37m / \e[0m\e[33m-A\e[0m       stage one file / everything\n  \e[33mgit commit -m \e[0m\e[37m"msg"\e[0m  save a snapshot\n  \e[33mgit log --oneline --graph\e[0m  history\n  \e[33mgit switch -c \e[0m\e[37mname\e[0m   make + switch to a branch  \e[2m(\e[0m\e[33mmerge\e[0m\e[2m, \e[0m\e[33mrebase\e[0m\e[2m)\e[0m\n  \e[33mgit pull\e[0m\e[37m / \e[0m\e[33mpush -u origin \e[0m\e[37mname\e[0m  sync with the remote\n  \e[33mgit stash\e[0m\e[37m / \e[0m\e[33mreset\e[0m\e[37m / \e[0m\e[33mrevert\e[0m  shelve / undo staged / undo commit'
-  [24]=$'\e[36mthe idea\e[0m\n  Talk to other machines and inspect the wire. \e[33mcurl\e[0m does HTTP, \e[33mssh\e[0m/\e[33mscp\e[0m\n  run and copy over an encrypted link, \e[33mdig\e[0m resolves DNS, \e[33mtcpdump\e[0m sniffs.\n\n\e[36mthe moves\e[0m\n  \e[33mcurl \e[0m\e[37murl\e[0m              fetch a URL  \e[2m(\e[0m\e[33m-L\e[0m\e[2m follow, \e[0m\e[33m-O\e[0m\e[2m save, \e[0m\e[33m-s\e[0m\e[2m silent)\e[0m\n  \e[33mcurl -H \e[0m\e[37m\x27K: V\x27\e[0m\e[33m -X POST -d \e[0m\e[37mdata\e[0m  header / method / body\n  \e[33mssh \e[0m\e[37muser@host\e[0m         log in       \e[2m(\e[0m\e[33m-p N\e[0m\e[2m port)\e[0m\n  \e[33mscp \e[0m\e[37mf\e[0m\e[33m \e[0m\e[37muser@host:/path\e[0m  copy a file across\n  \e[33mdig \e[0m\e[37mhost\e[0m\e[33m +short\e[0m       resolve a name to an IP\n  \e[33mtcpdump -i \e[0m\e[37meth0\e[0m\e[33m -w \e[0m\e[37mf\e[0m  capture packets to a file'
-  [25]=$'\e[36mthe idea\e[0m\n  Map what\x27s reachable: which hosts are up, which ports open, what\n  services run. Knobs: scan type, port set, timing, NSE scripts.\n  \e[2mOnly scan systems you are authorized to test.\e[0m\n\n\e[36mthe moves\e[0m\n  \e[33mnmap \e[0m\e[37mhost\e[0m       default scan\n  \e[33m-p-\e[0m\e[37m / \e[0m\e[33m-p 22,80\e[0m\e[37m / \e[0m\e[33m--top-ports \e[0m\e[37mN\e[0m  which ports\n  \e[33m-sV\e[0m\e[37m / \e[0m\e[33m-sC\e[0m\e[37m / \e[0m\e[33m-A\e[0m  versions / default scripts / aggressive\n  \e[33m-sS\e[0m\e[37m / \e[0m\e[33m-sU\e[0m       SYN scan / UDP scan\n  \e[33m-Pn\e[0m\e[37m / \e[0m\e[33m-sn\e[0m       skip host discovery / ping sweep only\n  \e[33m-T4\e[0m\e[37m / \e[0m\e[33m-oA \e[0m\e[37mout\e[0m   faster timing / save all output formats'
+  [24]=$'\e[36mthe idea\e[0m\n  Talk to other machines and inspect the wire. \e[33mcurl\e[0m does HTTP, \e[33mssh\e[0m/\e[33mscp\e[0m\n  run and copy over an encrypted link, \e[33mdig\e[0m resolves DNS, \e[33mtcpdump\e[0m sniffs.\n\n\e[36mthe moves\e[0m\n  \e[33mcurl \e[0m\e[37murl\e[0m              fetch a URL  \e[2m(\e[0m\e[33m-L\e[0m\e[2m follow, \e[0m\e[33m-O\e[0m\e[2m save, \e[0m\e[33m-s\e[0m\e[2m silent)\e[0m\n  \e[33mcurl -H \e[0m\e[37m\x27K: V\x27\e[0m\e[33m -X POST -d \e[0m\e[37mdata\e[0m  header / method / body\n  \e[33mssh \e[0m\e[37muser@host\e[0m         log in       \e[2m(\e[0m\e[33m-p N\e[0m\e[2m port)\e[0m\n  \e[33mscp \e[0m\e[37mf\e[0m\e[33m \e[0m\e[37muser@host:/path\e[0m  copy a file across\n  \e[33mdig \e[0m\e[37mhost\e[0m\e[33m +short\e[0m       resolve a name to an IP\n  \e[33mtcpdump -i \e[0m\e[37meth0\e[0m\e[33m -w \e[0m\e[37mf\e[0m  capture packets to a file\n\n\e[36mthe live one\e[0m\n  Questions marked \e[37mlive api\e[0m talk to a real HTTP service running inside the\n  sandbox on \e[33mlocalhost:8080\e[0m. They are graded on what came back, so any\n  pipeline that prints the right answer passes.\n  \e[2m/health  /metrics  /old  /api/users.json  /api/status.json  /logs/access.log\e[0m'
+  [25]=$'\e[36mthe idea\e[0m\n  Map what\x27s reachable: which hosts are up, which ports open, what\n  services run. Knobs: scan type, port set, timing, NSE scripts.\n  \e[2mOnly scan systems you are authorized to test.\e[0m\n\n\e[36mthe moves\e[0m\n  \e[33mnmap \e[0m\e[37mhost\e[0m       default scan\n  \e[33m-p-\e[0m\e[37m / \e[0m\e[33m-p 22,80\e[0m\e[37m / \e[0m\e[33m--top-ports \e[0m\e[37mN\e[0m  which ports\n  \e[33m-sV\e[0m\e[37m / \e[0m\e[33m-sC\e[0m\e[37m / \e[0m\e[33m-A\e[0m  versions / default scripts / aggressive\n  \e[33m-sS\e[0m\e[37m / \e[0m\e[33m-sU\e[0m       SYN scan / UDP scan\n  \e[33m-Pn\e[0m\e[37m / \e[0m\e[33m-sn\e[0m       skip host discovery / ping sweep only\n  \e[33m-T4\e[0m\e[37m / \e[0m\e[33m-oA \e[0m\e[37mout\e[0m   faster timing / save all output formats\n\n\e[36mthe live one\e[0m\n  Questions marked \e[37mlive box\e[0m scan a target that is really listening: three\n  ports are open inside the sandbox while your answer runs, so nmap and\n  \e[33mss\e[0m are graded on what they found. \e[33m-n\e[0m skips DNS and keeps a scan quick.'
   [26]=$'\e[36mthe idea\e[0m\n  Wireless auditing: put the card in MONITOR mode, watch APs and clients,\n  capture the WPA handshake (or PMKID), crack it offline.\n  \e[2mAuthorized testing only.\e[0m\n\n\e[36mthe moves\e[0m\n  \e[33mairmon-ng start \e[0m\e[37mwlan0\e[0m        enable monitor mode\n  \e[33miw dev\e[0m\e[37m / \e[0m\e[33miw \e[0m\e[37mwlan0\e[0m\e[33m scan\e[0m       list interfaces / nearby APs\n  \e[33mairodump-ng \e[0m\e[37mwlan0mon\e[0m         survey the air\n  \e[33mairodump-ng --bssid \e[0m\e[37mX\e[0m\e[33m -c 6 -w \e[0m\e[37mcap\e[0m  target + capture\n  \e[33maireplay-ng --deauth \e[0m\e[37mN\e[0m       nudge a client to re-handshake\n  \e[33maircrack-ng \e[0m\e[37mcap\e[0m\e[33m -w \e[0m\e[37mwordlist\e[0m  crack the handshake'
   [27]=$'\e[36mthe idea\e[0m\n  Recover passwords from HASHES offline (\e[33mhashcat\e[0m/\e[33mjohn\e[0m) or by guessing a\n  live service (\e[33mhydra\e[0m). Mode picks the hash type; attack is list/rules/mask.\n  \e[2mAuthorized testing only.\e[0m\n\n\e[36mthe moves\e[0m\n  \e[33mhashcat -m \e[0m\e[37m0\e[0m\e[33m \e[0m\e[37mhashes list\e[0m  \e[2m0=MD5, 1000=NTLM, 22000=WPA\e[0m\n  \e[33mhashcat -a 3 \e[0m\e[37m...\e[0m\e[33m ?l?d?d\e[0m   mask (brute-force a pattern)\n  \e[33mhashcat --show\e[0m            list already-cracked\n  \e[33mjohn --wordlist=\e[0m\e[37mW\e[0m\e[33m \e[0m\e[37mf\e[0m\e[37m / \e[0m\e[33m--show \e[0m\e[37mf\e[0m  crack / reveal\n  \e[33mhydra -l \e[0m\e[37muser\e[0m\e[33m -P \e[0m\e[37mlist host\e[0m\e[33m ssh\e[0m  online guess\n  \e[33mbase64\e[0m\e[37m / \e[0m\e[33msha256sum\e[0m\e[37m / \e[0m\e[33mxxd\e[0m  encode / hash / hexdump'
   [28]=$'\e[36mthe idea\e[0m\n  Pull evidence out of binaries, images, and memory dumps: readable\n  strings, embedded files, metadata, deleted files, process state.\n  Read-only - you extract and inspect, you don\x27t execute.\n\n\e[36mthe moves\e[0m\n  \e[33mstrings \e[0m\e[37mf\e[0m            readable text in a binary  \e[2m(\e[0m\e[33m-n 10\e[0m\e[2m min len)\e[0m\n  \e[33mbinwalk \e[0m\e[37mf\e[0m\e[37m / \e[0m\e[33m-e\e[0m       find / extract embedded files\n  \e[33mexiftool \e[0m\e[37mf\e[0m           all metadata (incl. GPS)\n  \e[33mfile \e[0m\e[37mf\e[0m\e[37m / \e[0m\e[33mxxd \e[0m\e[37mf\e[0m       type / hex + magic bytes\n  \e[33mforemost -i \e[0m\e[37mimg\e[0m      carve deleted files back out\n  \e[33mvol3 -f \e[0m\e[37mdump\e[0m\e[33m \e[0m\e[37mplugin\e[0m  analyze a memory dump'
@@ -4122,6 +4292,23 @@ gen_level24() {
   questions+=("SSH with agent forwarding to ${W}${user}@${host}${C}|ssh -A ${user}@${host}")
   questions+=("curl: override DNS for ${W}${host}:${port}${C} -> ${W}${ip}${C}|curl --resolve ${host}:${port}:${ip} https://${host}|curl --resolve ${host}:${port}:${ip} http://${host}")
   questions+=("curl: print HTTP status code only for ${W}${url}${C}|curl -sw '%{http_code}\\n' -o /dev/null ${url}|curl -s -w '%{http_code}\\n' -o /dev/null ${url}|curl -o /dev/null -sw '%{http_code}\\n' ${url}")
+  # ── the live endpoint ─────────────────────────────────────────────────────────────────────
+  # Everything above this line is text-matched: there is no host on the other side of a random
+  # URL, so the grader can only compare spellings. These run for real. #svc:web starts an HTTP
+  # responder on 127.0.0.1:8080 inside the sandbox's own network namespace (nothing is exposed
+  # to the machine, and the selftest's no-egress probe still holds), so ANY pipeline that
+  # prints the right answer passes - the same contract the rest of the game runs on. No
+  # python3 on the box and these fall back to text-match, exactly like a missing bwrap.
+  questions+=("live api: print the body of ${W}/health${C} on ${W}localhost:8080${C}|curl -s http://localhost:8080/health|curl -s http://127.0.0.1:8080/health|wget -qO- http://localhost:8080/health|curl http://localhost:8080/health#svc:web#require:/health#output:ok")
+  questions+=("live api: print only the HTTP status code for ${W}localhost:8080/nope${C}|curl -s -o /dev/null -w '%{http_code}' http://localhost:8080/nope|curl -so /dev/null -w '%{http_code}' http://localhost:8080/nope|curl -o /dev/null -s -w '%{http_code}' http://localhost:8080/nope#svc:web#require:/nope#output:404")
+  questions+=("live api: how many users does ${W}/api/users.json${C} return§curl -s http://localhost:8080/api/users.json | jq length§curl -s http://localhost:8080/api/users.json | jq '. | length'§curl -s http://localhost:8080/api/users.json | jq -r '.[].name' | wc -l§wget -qO- http://localhost:8080/api/users.json | jq length#svc:web#require:users.json#output:5")
+  questions+=("live api: names of the ${W}active${C} users in /api/users.json, comma-joined§curl -s http://localhost:8080/api/users.json | jq -r '.[] | select(.active) | .name' | paste -sd,§curl -s http://localhost:8080/api/users.json | jq -r '.[] | select(.active == true) | .name' | paste -sd,§curl -s http://localhost:8080/api/users.json | jq -r '[.[] | select(.active) | .name] | join(\",\")'§curl -s http://localhost:8080/api/users.json | jq -r '.[] | select(.active) | .name' | paste -sd, -#svc:web#require:users.json#output:ana,bo,dev#boss-skip#chal-skip")
+  questions+=("live api: the ${W}version${C} field of /api/status.json, unquoted§curl -s http://localhost:8080/api/status.json | jq -r .version§curl -s http://localhost:8080/api/status.json | jq -r '.version'§curl -s http://localhost:8080/api/status.json | jq '.version' | tr -d '\"'#svc:web#require:status.json#output:2.4.1")
+  questions+=("live api: the name of the user with the most ${W}logins${C}§curl -s http://localhost:8080/api/users.json | jq -r 'max_by(.logins).name'§curl -s http://localhost:8080/api/users.json | jq -r 'sort_by(.logins) | last | .name'§curl -s http://localhost:8080/api/users.json | jq -r 'sort_by(-.logins)[0].name'#svc:web#require:users.json#output:dev#boss-skip#chal-skip")
+  questions+=("live api: the value of the ${W}Server${C} response header§curl -sI http://localhost:8080/health | awk '/^Server:/{print \$2}'§curl -sI http://localhost:8080/health | grep -i '^server:' | awk '{print \$2}'§curl -s -D - -o /dev/null http://localhost:8080/health | awk '/^Server:/{print \$2}'#svc:web#require:8080#output:cchttpd/1.0#boss-skip#chal-skip")
+  questions+=("live api: follow the redirect at ${W}/old${C} and print the ${W}region${C}§curl -sL http://localhost:8080/old | jq -r .region§curl -s -L http://localhost:8080/old | jq -r '.region'§curl -Ls http://localhost:8080/old | jq -r .region#svc:web#require:/old#output:eu-west#chal-skip")
+  questions+=("live api: the ${W}requests_total${C} value from /metrics§curl -s http://localhost:8080/metrics | awk '/^requests_total/{print \$2}'§curl -s http://localhost:8080/metrics | grep '^requests_total' | cut -d' ' -f2§curl -s http://localhost:8080/metrics | awk '\$1==\"requests_total\"{print \$2}'#svc:web#require:/metrics#output:1284#boss-skip#chal-skip")
+  questions+=("live api: how many ${W}4xx and up${C} responses are in /logs/access.log§curl -s http://localhost:8080/logs/access.log | awk '\$4>=400' | wc -l§curl -s http://localhost:8080/logs/access.log | awk '\$4>=400{c++} END{print c}'§curl -s http://localhost:8080/logs/access.log | awk '\$4>399' | wc -l#svc:web#require:access.log#output:2#boss-skip#chal-skip")
 }
 
 # Level 25: Network Scanning (nmap)
@@ -4142,6 +4329,12 @@ gen_level25() {
   questions+=("TCP connect scan on ${W}${ip}${C} (full handshake)|nmap -sT ${ip}|sudo nmap -sT ${ip}")
   questions+=("TCP SYN scan on ${W}${ip}${C} (half-open)|nmap -sS ${ip}|sudo nmap -sS ${ip}")
   questions+=("Scan ${W}${ip}${C}, skip host discovery (treat as up)|nmap -Pn ${ip}|sudo nmap -Pn ${ip}|nmap -P0 ${ip}|sudo nmap -P0 ${ip}")
+  # ── the live box ──────────────────────────────────────────────────────────────────────────
+  # Three ports really are listening inside the sandbox while these run (see #svc: in the DSL
+  # doc), so nmap and ss are graded on what they found, not on how the scan was spelled.
+  questions+=("live box: the open ports in ${W}8000-11000${C} on localhost, comma-joined§nmap -n -p8000-11000 localhost | awk '/open/{print \$1}' | paste -sd,§nmap -n -p 8000-11000 127.0.0.1 | awk '/open/{print \$1}' | paste -sd,§nmap -n -p8000-11000 localhost | grep open | awk '{print \$1}' | paste -sd,#svc:web#require:nmap#output:8080/tcp,9000/tcp,10443/tcp#boss-skip#chal-skip")
+  questions+=("live box: how many ports are open in ${W}8000-11000${C} on localhost§nmap -n -p8000-11000 localhost | grep -c open§nmap -n -p8000-11000 127.0.0.1 | awk '/open/' | wc -l#svc:web#require:nmap#output:3#chal-skip")
+  questions+=("live box: the listening TCP ports, ascending, comma-joined§ss -ltn | awk 'NR>1{split(\$4,a,\":\"); print a[2]}' | sort -n | paste -sd,§ss -ltn | awk 'NR>1{sub(/.*:/,\"\",\$4); print \$4}' | sort -n | paste -sd,§ss -ltn | grep -oE '127.0.0.1:[0-9]+' | cut -d: -f2 | sort -n | paste -sd,#svc:web#require:ss#output:8080,9000,10443#boss-skip#chal-skip")
   questions+=("Ping sweep ${subnet} (find live hosts)|nmap -sn ${subnet}|nmap -sP ${subnet}|sudo nmap -sn ${subnet}|sudo nmap -sP ${subnet}|fping -ag ${subnet} 2>/dev/null|fping -a -g ${subnet} 2>/dev/null|sudo fping -ag ${subnet} 2>/dev/null|sudo fping -a -g ${subnet} 2>/dev/null|fping -ag ${subnet}|fping -a -g ${subnet}")
   questions+=("List targets in ${subnet} without scanning|nmap -sL ${subnet}|sudo nmap -sL ${subnet}")
   questions+=("ARP scan local network ${subnet}|nmap -PR -sn ${subnet}|sudo nmap -PR -sn ${subnet}|nmap -sn -PR ${subnet}|sudo nmap -sn -PR ${subnet}|arp-scan ${subnet}|sudo arp-scan ${subnet}|arp-scan -l|sudo arp-scan -l|arp-scan --localnet|sudo arp-scan --localnet")
@@ -5422,7 +5615,11 @@ _can_sandbox() {
   # `sudo` alone (no following command) — can't run anyway
   [[ -z "$_c" || "$_c" == "sudo" ]] && return 1
   case "$_c" in
-    ssh|scp|sftp|rsync|curl|wget|nc|ncat|ping|ping6|traceroute|tracepath|tracert|mtr|dig|nslookup|host|drill|whois|ftp|telnet|smbclient|nmap|masscan|enum4linux) return 1 ;;
+    # Real the moment a #svc: question boots a listener, and only then. Without one there is
+    # nothing on the other end, and grading a correct answer against "connection refused"
+    # would be worse than not running it at all - so they stay text-matched.
+    curl|wget|nc|ncat|nmap) [[ -n "${_qsvc:-}" ]] && return 0 || return 1 ;;
+    ssh|scp|sftp|rsync|ping|ping6|traceroute|tracepath|tracert|mtr|dig|nslookup|host|drill|whois|ftp|telnet|smbclient|masscan|enum4linux) return 1 ;;
     sudo|systemctl|service|useradd|userdel|usermod|passwd|groupadd|groupdel|groupmod|chown|chgrp|mount|umount|iptables|ip6tables|nft|ufw|fail2ban-client|crontab|systemd-run|at|atq|atrm|batch) return 1 ;;
     hashcat|john|hydra|medusa|nikto|gobuster|wpscan|sqlmap|aircrack-ng|airodump-ng|aireplay-ng|reaver|wifite|wash|kismet|airmon-ng|airbase-ng|hostapd|bettercap|mdk4|gatttool|hcxdumptool|hcxpcapngtool|bully) return 1 ;;
     foremost|scalpel|photorec|volatility|vol|vol3|vol.py|vol3.py|fls|mactime|tsk_recover|exiftool|tshark|tcpdump|tcpreplay|wireshark|binwalk|bulk_extractor|stegseek|stegoveritas|steghide) return 1 ;;
@@ -5452,7 +5649,10 @@ _sandbox_validate() {
   # forensics sample, say) otherwise makes the command substitution print "ignored null
   # byte in input" onto the question screen. Expected outputs are text, so dropping them
   # cannot change a verdict. PIPESTATUS, or the exit code would be tr's.
-  output=$(_sandbox_exec "$inp" 5 2>"$SANDBOX_DIR/.stderr" | tr -d '\000'); _sb_rc=${PIPESTATUS[0]}
+  # A service question pays for a python interpreter starting inside the namespace before the
+  # answer even runs, so it gets its own ceiling. Everything else keeps the 5s it always had.
+  local _to=5; [[ -n "${_qsvc:-}" ]] && _to=12
+  output=$(_sandbox_exec "$inp" "$_to" "${_qsvc:-}" 2>"$SANDBOX_DIR/.stderr" | tr -d '\000'); _sb_rc=${PIPESTATUS[0]}
   _is_destructive "$inp" && _SANDBOX_DESTRUCTIVE=1
   # Reject command-not-found (127) and cannot-execute (126)
   ((_sb_rc == 127 || _sb_rc == 126)) && { ((_req_fail)) && _SANDBOX_REQUIRE_FAIL=1; return 1; }
@@ -8037,6 +8237,27 @@ _selftest() {
     # (c) network egress refused - literal IP (no DNS -> no hang), fails fast under --unshare-all
     _bx=$(_sandbox_exec 'timeout 3 bash -c "exec 3<>/dev/tcp/192.0.2.1/80" 2>&1; echo rc=$?' 5 2>/dev/null)
     _assert_match "(c) network egress refused" "$_bx" 'rc=[1-9]'
+    # (c2) a #svc: listener is reachable from INSIDE and from nowhere else. Serving HTTP is a
+    # new capability, so it gets its own probe on both halves: the sandbox must answer, and
+    # the host must never see the port. Skipped, not failed, when python3 is absent - that is
+    # the documented degraded mode, not a broken one.
+    if _svc_init; then
+      _bx=$(_sandbox_exec 'curl -s http://127.0.0.1:8080/health' 12 web 2>/dev/null)
+      _assert "(c2) #svc: listener answers inside the sandbox" "$_bx" "ok"
+      _bx=$(_sandbox_exec 'curl -s http://127.0.0.1:8080/health' 5 2>/dev/null)
+      _assert "(c2) no listener without #svc:" "${_bx:-none}" "none"
+      # The host side: run the service and probe 8080 from OUT here at the same time. bash's
+      # own /dev/tcp is used so the check needs nothing installed.
+      _sandbox_exec 'curl -s http://127.0.0.1:8080/health >/dev/null; sleep 1' 12 web &>/dev/null &
+      local _svcpid=$!
+      local _hostsee=clean
+      local _hi; for _hi in 1 2 3 4 5 6; do
+        (exec 3<>/dev/tcp/127.0.0.1/8080) 2>/dev/null && { _hostsee=LEAK; break; }
+        sleep 0.1
+      done
+      wait "$_svcpid" 2>/dev/null
+      _assert "(c2) the port is invisible to the host" "$_hostsee" "clean"
+    fi
     # (d) fresh PID namespace: pid 1 IS the sandboxed shell (--as-pid-1, see (i)), and
     # only a handful of procs are visible — no host PID or cmdline leak
     _bx=$(_sandbox_exec 'cat /proc/1/comm' 5 2>/dev/null)

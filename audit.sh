@@ -182,6 +182,10 @@ phase2_positive() {
 
       # Skip questions without sandbox markers
       [[ -z "$_qoutput" && -z "$_qstate" ]] && { ((skipped++)); continue; }
+      # A #svc: question needs a listener, and the listener needs python3. On a box without
+      # it the game degrades to text-match by design, so the sandbox check has nothing to say
+      # here - skip it rather than report the documented degraded mode as a failure.
+      [[ -n "${_qsvc:-}" ]] && ! _svc_init && { ((skipped++)); continue; }
 
       ((tested++))
 
@@ -194,7 +198,8 @@ phase2_positive() {
       local ans="$_qans"
       local output="" _sb_rc=0
       if ((SANDBOX_MODE)); then
-        { output=$(_sandbox_exec "$ans" 5 2>"$SANDBOX_DIR/.stderr"); } 2>/dev/null; _sb_rc=$?
+        local _svc_to=5; [[ -n "${_qsvc:-}" ]] && _svc_to=12
+        { output=$(_sandbox_exec "$ans" "$_svc_to" "${_qsvc:-}" 2>"$SANDBOX_DIR/.stderr"); } 2>/dev/null; _sb_rc=$?
       fi
 
       # Skip if command not found (tools not installed)
@@ -216,7 +221,7 @@ phase2_positive() {
           # For state checks, need to re-execute after reset
           if _is_destructive "$ans"; then
             _sandbox_reset 2>/dev/null
-            { _sandbox_exec "$ans" 5 &>/dev/null; } 2>/dev/null
+            { _sandbox_exec "$ans" 5 "${_qsvc:-}" &>/dev/null; } 2>/dev/null
           fi
           _sandbox_check_state "$_qstate" || state_ok=0
         fi
@@ -676,12 +681,17 @@ phase6_scenarios() {
 
       # Skip if no markers
       [[ -z "$_qoutput" && -z "$_qstate" ]] && { ((skipped++)); continue; }
+      # A #svc: question needs a listener, and the listener needs python3. On a box without
+      # it the game degrades to text-match by design, so the sandbox check has nothing to say
+      # here - skip it rather than report the documented degraded mode as a failure.
+      [[ -n "${_qsvc:-}" ]] && ! _svc_init && { ((skipped++)); continue; }
 
       ((tested++))
 
       # Execute canonical answer in sandbox
       local output="" _sb_rc=0
-      { output=$(_sandbox_exec "$_qans" 5 2>"$SANDBOX_DIR/.stderr"); } 2>/dev/null; _sb_rc=$?
+      local _svc_to=5; [[ -n "${_qsvc:-}" ]] && _svc_to=12
+      { output=$(_sandbox_exec "$_qans" "$_svc_to" "${_qsvc:-}" 2>"$SANDBOX_DIR/.stderr"); } 2>/dev/null; _sb_rc=$?
 
       if ((_sb_rc == 127 || _sb_rc == 126)); then
         ((skipped++)); ((tested--)); continue
