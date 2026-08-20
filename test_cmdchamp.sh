@@ -1150,7 +1150,9 @@ echo "$r" | grep -q 'alt=1' && ok "OPT_ALTS garbage→1" || fail "alt validate" 
 echo "$r" | grep -q 'pt=0' && ok "PLACED_THROUGH garbage→0" || fail "pt validate" "$r"
 
 # PLACED_THROUGH doesn't gate levels — it only marks placed levels 'p' in stats
-# (cmdchamp: `((lv <= PLACED_THROUGH)) && boss_mark="p"`, else '+' if beaten, '·' if not).
+# (cmdchamp: `((lv <= PLACED_THROUGH)) && boss_mark="p"`, else $_GOK if beaten, $_GDOT if
+# not - the marks are glyph vars, so they are the tick on a unicode terminal and '+' on a
+# legacy one; match either rather than pinning the test to one render tier).
 r=$(bash -c "
   export DATA='$TDIR/data_pt_stats'; mkdir -p \"\$DATA\"; touch \"\$DATA/scores\"
   source '$SOURCE_FILE' 2>/dev/null
@@ -1159,7 +1161,7 @@ r=$(bash -c "
   stats
 " 2>/dev/null | sed -e 's/\x1b\[[0-9;]*m//g')
 echo "$r" | grep -qE '^ +p +5 ' && ok "stats marks L5 placed (PT=5)" || fail "stats placed mark" "no 'p' on L5"
-echo "$r" | grep -qE '^ +\+ +6 ' && ok "stats marks L6 beaten-not-placed" || fail "stats beaten mark" "no '+' on L6"
+echo "$r" | grep -qE '^ +(✓|\+) +6 ' && ok "stats marks L6 beaten-not-placed" || fail "stats beaten mark" "no beaten mark on L6"
 echo "$r" | grep -qE '^ +· +11 ' && ok "stats marks L11 unbeaten" || fail "stats unbeaten mark" "no '·' on L11"
 
 # PLACED_THROUGH clamps to MAX_LEVEL on load

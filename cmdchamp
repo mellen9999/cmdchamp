@@ -153,6 +153,7 @@ _GUB="${_A0}${_RUB}${_A1}" _GLB="${_A0}${_RLB}${_A1}"
 _rep() { local _c _s=''; (($2 > 0)) || { REPLY=''; return; }; printf -v _c '%*s' "$2" ''; _s="${_c// /$1}"; REPLY="${_A0}${_s}${_A1}"; }
 _rep "$_RH" 3; _H3=$REPLY          # ═══ section rules
 _rep "$_RH" 2; _H2=$REPLY
+_rep "$_RH" 40; _H40=$REPLY        # the Tab panel / session-summary divider
 _rep "$_RSH" 70; _SH70=$REPLY      # intro-box frame
 _rep "$_RSH" 66; _SH66=$REPLY
 _rep "$_RSH" 2;  _SH2=$REPLY
@@ -771,7 +772,7 @@ EOF
   echo
   printf '%s' "$_SN"
   [[ "${1:-}" == nopause ]] && return
-  read -rsp "                          Press Enter to exit..."
+  _center "Press Enter to exit..." 74; _pause exit "$REPLY"
   echo
 }
 
@@ -793,8 +794,7 @@ _boss_splash() {
   echo
   [[ "$mode" == nopause ]] && return
   printf '%s' "$_SN"
-  _center "Press Enter to continue..." "$cols"
-  read -rsp "${REPLY}Press Enter to continue..."
+  _center "Press Enter to continue..." "$cols"; _pause continue "$REPLY"
   echo
 }
 
@@ -1843,7 +1843,7 @@ _ord() { local _o=th; case $(($1 % 100)) in 11|12|13) ;; *) case $(($1 % 10)) in
 _fshuffle() { local -n _a=$1; local i j t; for ((i=${#_a[@]}-1; i>0; i--)); do j=$((RANDOM % (i+1))); t="${_a[$i]}"; _a[$i]="${_a[$j]}"; _a[$j]="$t"; done; }
 # shellcheck disable=SC2178
 _fshuffle_n() { _fshuffle "$1"; local -n _a=$1; (($2 < ${#_a[@]})) && _a=("${_a[@]:0:$2}"); }
-_pause() { read -rsp "${D}Press Enter to ${1:-continue}...${N}"; }
+_pause() { read -rsp "${2:-}${D}Press Enter to ${1:-continue}...${N}"; }
 
 _QV='log cfg cfg2 txt txt2 csv dir dir2 ext ext2 script archive bin img pcap hash photo wordlist ip subnet port port2 mac url user host term term2 term3 field key old new size iface proc svc branch n n1 n2 n3 col'
 # shellcheck disable=SC2034  # vars consumed by caller's eval scope
@@ -2235,6 +2235,9 @@ _mp_show() {
 }
 
 declare -A EXP=(
+  # end-of-options. It reads as punctuation, but it is the whole defence against a file
+  # named like a flag - which is exactly the trick L29 and SC12 teach.
+  ['--']="end of options - everything after this is a filename, never a flag"
   [rmdir]="remove empty directory"
   [which]="find command location" [type]="describe command"
   ['--sort=-%cpu']="sort by CPU% descending (- = descending)"
@@ -2559,7 +2562,7 @@ _ecmd_add() {
 explain() {
   local tok n=0 exp tcol cmds=() _ap=1 _t
   _EBUF=""
-  printf -v _t '%s\n' "${D}----------------------------------------${N}"; _EBUF+=$_t
+  printf -v _t '%s\n' "${D}${_H40}${N}"; _EBUF+=$_t
   local _etoks; set -f; read -ra _etoks <<< "$1"; set +f
   # Once each. `grep -q X f && grep X f` names grep twice, and the panel used to
   # print the whole grep manpage twice with it — two screens of identical text.
@@ -2622,6 +2625,7 @@ explain() {
       case "$tok" in
         '>'|'>>'|'<'|'<<<'|'2>'|'&>'|'2>&1'|'>&2'|'1>&2'|'|'|'|&'|'&&'|'||'|';'|'&') ;;
         '$?'|'$$'|'$!'|'$#'|'$@'|'$0'|'!!'|'!$'|'!^'|'!*'|'{}'|'\;'|'2>/dev/null'|'/dev/null') ;;
+        '--') ;;   # belongs to no manpage, and it is the point of the L29/SC12 answers
         *) continue ;;
       esac
       [[ "$_oseen" == *"|$tok|"* ]] && continue
@@ -2632,7 +2636,7 @@ explain() {
     done
     _syn_legend "$1"; ((_ml += REPLY))
     _esc_legend "$1"; ((_ml += REPLY))
-    printf -v _t '%s\n' "${D}----------------------------------------${N}"; _EBUF+=$_t
+    printf -v _t '%s\n' "${D}${_H40}${N}"; _EBUF+=$_t
     _EXP_LINES=$((_ml + 2))
     [[ -z "${2:-}" ]] && printf '%s' "$_EBUF"
     return
@@ -2673,7 +2677,7 @@ explain() {
     while IFS= read -r _ln; do printf -v _t '  %s\n' "${Y}${_ln}${N}"; _EBUF+=$_t; ((++n)); done <<< "$REPLY"
   fi
   _esc_legend "$1"; ((n += REPLY))
-  printf -v _t '%s\n' "${D}----------------------------------------${N}"; _EBUF+=$_t
+  printf -v _t '%s\n' "${D}${_H40}${N}"; _EBUF+=$_t
   _EXP_LINES=$((n + 2))
   [[ -z "${2:-}" ]] && printf '%s' "$_EBUF"
 }
@@ -5590,7 +5594,7 @@ stats() {
     local lt=${lv_total[$lv]:-0} lm=${lv_mastered[$lv]:-0}
     local boss_mark=""
     if ((lv <= BOSS_BEATEN)); then
-      ((lv <= PLACED_THROUGH)) && boss_mark="${C}p${N}" || boss_mark="${G}+${N}"
+      ((lv <= PLACED_THROUGH)) && boss_mark="${C}p${N}" || boss_mark="${G}${_GOK}${N}"
     else boss_mark="${D}${_GDOT}${N}"; fi
     if ((lt > 0)); then
       local pct=$((lm * 100 / lt)) filled=$((lm * BAR_W / lt)); local empty=$((BAR_W - filled))
@@ -5598,7 +5602,7 @@ stats() {
       local col sym
       if ((pct >= 80)); then col=$G; sym="$_GOK"
       elif ((pct >= 40)); then col=$Y; sym="~"
-      else col=$R; sym="x"; fi
+      else col=$R; sym="$_GNO"; fi
       printf "  %s ${U}%2d${N} %-22s ${col}%s${D}%s${N} ${col}%s${N} %3d%% (%d/%d)\n" "$boss_mark" "$lv" "${LEVEL_NAMES[$lv]:-}" "$bar_f" "$bar_e" "$sym" "$pct" "$lm" "$lt"
     else
       printf "  %s ${U}%2d${N} %-22s ${D}%*s${N}\n" "$boss_mark" "$lv" "${LEVEL_NAMES[$lv]:-}" "$BAR_W" "no data"
@@ -5637,13 +5641,13 @@ _quit() {
   if ((_S_ANSWERED > 0)); then
     local _ts; printf -v _ts '%(%s)T' -1; local elapsed=$((_ts - _S_START))
     local m=$((elapsed / 60)) s=$((elapsed % 60))
-    printf '%s\n%s\n  %s    %s\n' "${U}Session Summary${N}" "${D}----------------------------------------${N}" "${U}Answered:${N}" "${B}${_S_ANSWERED}${N}"
+    printf '%s\n%s\n  %s    %s\n' "${U}Session Summary${N}" "${D}${_H40}${N}" "${U}Answered:${N}" "${B}${_S_ANSWERED}${N}"
     printf '  %s     %s' "${U}Correct:${N}" "${G}${_S_CORRECT}${N}"
     ((_S_ANSWERED > 0)) && printf ' (%d%%)' $((_S_CORRECT * 100 / _S_ANSWERED))
     printf '\n  %s %s\n' "${U}Best streak:${N}" "${W}${B}${_S_BEST_STREAK}${N}"
     ((_S_MASTERED > 0)) && printf '  %s    %s\n' "${U}Mastered:${N}" "${G}${_S_MASTERED}${N}"
-    printf '  %s        %dm %ds\n%s\n' "${U}Time:${N}" "$m" "$s" "${D}----------------------------------------${N}"
-    read -rsp "${D}Press Enter to continue...${N}"; echo
+    printf '  %s        %dm %ds\n%s\n' "${U}Time:${N}" "$m" "$s" "${D}${_H40}${N}"
+    _pause; echo
   fi
   _QUIT=1
 }
@@ -5702,7 +5706,7 @@ _wrong_show() { _wrong_feedback
   # unwrapped reveal hard-wraps and shears the frame on an 80-column VT.
   local _c; _COLS; _c=$REPLY; ((_c > 4)) || _c=80
   _wrap "$ans" "$((_c - 2))"
-  printf '%s  %s\n%s%s\n\n' "${R}x${N}" "${D}expected:${N}" "${D}${PROMPT_CHAR}${N}" "${Y}${REPLY}${N}"; }
+  printf '%s  %s\n%s%s\n\n' "${R}${_GNO}${N}" "${D}expected:${N}" "${D}${PROMPT_CHAR}${N}" "${Y}${REPLY}${N}"; }
 _sc() { [[ -n "$input" ]] && { HIST+=("$input"); HIST_IDX=${#HIST[@]}; HIST_SAVE=""; }; ((_S_ANSWERED++)); ((_S_CORRECT++)); ((_S_STREAK++)); ((_S_STREAK > _S_BEST_STREAK)) && _S_BEST_STREAK=$_S_STREAK; }
 _sw() { ((_S_ANSWERED++)); _S_STREAK=0; _wrong_show; }
 # Progress bar, scaled to $1 columns. One cell per question overflowed hard: level 30
@@ -6020,7 +6024,7 @@ _vi_normal() {
       "${D}  set show-mode-in-prompt on${N}" \
       "${D}  set keyseq-timeout 50${N}" \
       "${D}  set vi-ins-mode-string \\1\\e[97m\\2\$\\1\\e[0m\\2 ${N}" \
-      "${D}  set vi-cmd-mode-string \\1\\e[91m\\2\$\\1\\e[0m\\2 ${N}"; read -rsp "${D}Press Enter...${N}"; printf '\e[2J'; _REDRAW_HDR; draw; };;
+      "${D}  set vi-cmd-mode-string \\1\\e[91m\\2\$\\1\\e[0m\\2 ${N}"; _pause; printf '\e[2J'; _REDRAW_HDR; draw; };;
     '') ((_man_open)) && printf '%s\e7\n\e[J\e8%s' "$_SY" "$_SN"; _man_open=0; echo; return 0;;
   esac
   return 1
@@ -6297,7 +6301,7 @@ run() {
         if ((streak>=FIRE_STREAK)); then
           printf '\n%s\n' "${Y}${B}* ON FIRE${N}"
         else
-          printf '\n%s\n' "${G}${B}+${N}"
+          printf '\n%s\n' "${G}${B}${_GOK}${N}"
         fi
         ((++streak)); _sset "$prompt" "$_new_tier"
         ((streak == FIRE_STREAK)) && {
@@ -6377,7 +6381,7 @@ run() {
         ((++boss_correct)); ((_S_CORRECT++)); ((_S_STREAK++))
         ((_S_STREAK > _S_BEST_STREAK)) && _S_BEST_STREAK=$_S_STREAK
         _sset "$prompt" "$((_boss_tier<2?_boss_tier+1:2))"
-        printf '%s\n' "${G}${B}+${N}"
+        printf '%s\n' "${G}${B}${_GOK}${N}"
       else
         _S_STREAK=0; _sset "$prompt" "$((_boss_tier>=2?1:_boss_tier))"; _wrong_show
         explain "$ans"
@@ -6416,7 +6420,7 @@ run() {
       # Advance + persist session BEFORE the blocking prompt: ctrl-c here must not
       # desync profile (boss beaten) from session.json (still pre-boss level/qi)
       LVL=$((lv+1)); QI=0; save; _sflush_if_dirty
-      printf "${D}Press Enter for Level %d...${N}\n" "$((lv+1))"; read -r
+      _pause "go to Level $((lv+1))"; echo
       _NEXT_LV=$LVL _NEXT_BOSS=0; return 0
     else
       _victory
@@ -6541,7 +6545,7 @@ _gauntlet_loop() {
       ((_QUIT)) && break
       if check "$input" "$_qanswers"; then
         _sc; ((++score)); _rec+="+"; _ok=1
-        printf '%s\n' "${G}${B}+${N}"
+        printf '%s\n' "${G}${B}${_GOK}${N}"
         _pause; continue
       fi
     else
@@ -6563,7 +6567,7 @@ challenge() {
   _session_init
   printf '%s\e[2J\e[H%s\n%s\n' "$_SY" "${M}${B}${_H3} CHALLENGE ${_H3}${N}" "${D}Multi-command chains from the whole game. 30s each. One life. No manpages.${N}"
   ((BEST_CHALLENGE > 0)) && printf '%s\n' "${D}Best: ${Y}${BEST_CHALLENGE}${N}"
-  printf '%s\n' "$_SN"; read -rsp "${D}Press Enter to start...${N}"; echo
+  printf '%s\n' "$_SN"; _pause start; echo
 
   _mode_init g
   if ! _gauntlet_loop CHALLENGE; then
@@ -6621,7 +6625,7 @@ daily() {
   fi
   printf '%s\e[2J\e[H%s\n%s\n' "$_SY" "${M}${B}${_H3} DAILY ${_H3} ${W}${_label}${N}" "${D}Everyone gets this exact run today. One life. 30s each.${N}"
   ((DAILY_STREAK > 0)) && printf '%s\n' "${D}Streak: ${G}${DAILY_STREAK}${D}   Best: ${Y}${DAILY_BEST}${N}"
-  printf '%s\n' "$_SN"; read -rsp "${D}Press Enter to start...${N}"; echo
+  printf '%s\n' "$_SN"; _pause start; echo
 
   _mode_init g
   RANDOM=$((10#$_seed % 32768))  # seed AFTER setup so the whole run is reproducible
@@ -6682,7 +6686,7 @@ drill() {
       if check "$input" "$_qanswers"; then
         _sc; _show_alts "$input" "$_qanswers" "$_qdelim"
         ((_rt < 2)) && _sset "$prompt" $((_rt + 1))
-        ((++correct)); printf '\n%s\n' "${G}${B}+${N}"; _pause; break
+        ((++correct)); printf '\n%s\n' "${G}${B}${_GOK}${N}"; _pause; break
       else
         ((_S_ANSWERED++)); _S_STREAK=0; _wrong_show; explain "$ans"
         _rt=$((_rt > 0 ? _rt - 1 : 0)); _sset "$prompt" "$_rt"; _pause
@@ -6740,10 +6744,21 @@ _play_card() {
                 "${D}rm, a note 'encrypted'. they failed; every move left a mark on disk.${N}" ''
   printf '%s %s\n\n' "${Y}${B}${#_fl[@]}/${_PLAY_FLAG_TOTAL} flags${N}" "${D}each proves one technique ${_GDOT} the box grows as you clear levels${N}"
   printf '%s\n' "${W}start here:${N}"
-  printf '  %-30s %s\n'   "${C}map${N}"               "${D}the whole break-in at a glance - start here${N}"
-  printf '  %-30s %s\n'   "${C}ls -la${N}"            "${D}dotfiles are where it starts${N}"
-  printf '  %-30s %s\n'   "${C}cat .bash_history${N}" "${D}the intruder's confession - it names the rest${N}"
-  printf '  %-30s %s\n\n' "${C}learn${N}"            "${D}the syllabus: every technique, why it lasts${N}"
+  # _cell, not %-30s: that field counts bytes, so these four rows only lined up because
+  # they happened to share one ${C}...${N} pair. A different colour on any row broke it.
+  local -a _sh=(
+    "map|the whole break-in at a glance - start here"
+    "ls -la|dotfiles are where it starts"
+    "cat .bash_history|the intruder's confession - it names the rest"
+    "learn|the syllabus: every technique, why it lasts"
+  )
+  local _e _cmd _what
+  for _e in "${_sh[@]}"; do
+    _cmd=${_e%%|*}; _what=${_e#*|}
+    _cell "${C}${_cmd}${N}" 20
+    printf '  %s%s\n' "$REPLY" "${D}${_what}${N}"
+  done
+  printf '\n'
   printf '%s\n' "${D}${C}map${D} the break-in   ${C}learn${D} the syllabus   ${C}hint${D} nudge (repeat = deeper)${N}"
   printf '%s\n' "${D}${C}reset${D} restores   ${C}Tab${D} explains any command   ${C}q${D} back${N}"
   _pause
@@ -7321,7 +7336,7 @@ scenario() {
   printf '%s\n' "${D}${SC_FLAVOR[$sc_id]}${N}"
   printf '%s\n\n' "${U}${total} steps${N} ${D}- sandbox state persists between steps${N}"
   printf '%s' "$_SN"
-  read -rsp "${D}Press Enter to start...${N}"; echo
+  _pause start; echo
 
   local si _sc_snap="$DATA/sandbox.snap"
   for ((si=0; si<total; si++)); do
@@ -7344,7 +7359,7 @@ scenario() {
       [[ -z "$input" ]] && { draw; continue; }
       if check "$input" "$_qanswers"; then
         _sc; _disk_check streak; ((++correct))
-        printf '\n%s\n' "${G}${B}+${N}"
+        printf '\n%s\n' "${G}${B}${_GOK}${N}"
         _pause
         break
       elif ((_SANDBOX_REQUIRE_FAIL == 2)); then
@@ -8091,7 +8106,7 @@ _selftest() {
 # ═══ PLACEMENT ═══
 place() {
   printf '%s\e[2J\e[H%s\n%s\n%s\n\n%s' "$_SY" "${M}${B}${_H3} PLACEMENT TEST ${_H3}${N}" "${D}2 questions per level, 30s each, no manpages${N}" "${D}Miss one → that's your starting level${N}" "$_SN"
-  read -rsp "${D}Press Enter to start...${N}"; echo
+  _pause start; echo
 
   _session_init
   _mode_init place
@@ -8112,7 +8127,7 @@ place() {
       if _read_line 0 0 30; then
         ((_QUIT)) && break 2
         if check "$input" "$_qanswers"; then
-          printf '%s\n' "${G}${B}+${N}"; ((qi_ok++)); _pause
+          printf '%s\n' "${G}${B}${_GOK}${N}"; ((qi_ok++)); _pause
           continue
         fi
       else
