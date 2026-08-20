@@ -1610,6 +1610,11 @@ phase13_hostile_env() {
       'PLAYER_NAME=x; _qparse "List files|ls"; check ls "$_qanswers" && printf yes || printf no' "yes"; ((checks++))
     _he_case "env $e: draws"   "$e" \
       'PLAYER_NAME=x BOSS_BEATEN=30; o=$(_intro nopause </dev/null); [[ -n "${o//[[:space:]]/}" ]] && printf drew || printf blank' "drew"; ((checks++))
+    # The playground hands `ls` a column budget. Its narrow-terminal fallback used to be
+    # a flat 79 - wider than the screen it was falling back for. The framed screens are
+    # deliberately fixed-width art, so this is the one width that must track the terminal.
+    _he_case "env $e: ls width fits" "$e" \
+      '_COLS; _c=$REPLY; _w=$(_play_ls_width); (( _w <= _c && _w >= 8 )) && printf fits || printf "over:$_w/$_c"' "fits"; ((checks++))
   done
 
   # ── D. arguments a user or a script can hand it ──────────────────

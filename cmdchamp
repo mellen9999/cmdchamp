@@ -6780,6 +6780,15 @@ _play_card() {
 # a binary file. NUL makes bash warn on the terminal mid-frame; SO/SI and the other C0
 # controls leave the terminal in line-drawing mode or overwrite the frame with CR. Tab,
 # newline and ESC stay — colour output from ls or grep is worth keeping.
+# Column budget for the playground's `ls`. Never wider than the terminal: the fallback
+# for a narrow terminal used to be a flat 79, i.e. wider than the screen it was meant to
+# rescue. Floor of 8 so a pathological width still leaves ls something to work with.
+_play_ls_width() {
+  _COLS
+  local _w=$((REPLY - 1)); ((_w < 8)) && _w=8
+  printf '%s' "$_w"
+}
+
 _play_sanitize() { tr -d '\000-\010\013-\032\034-\037\177'; }
 
 play() {
@@ -6812,7 +6821,7 @@ play() {
   # files, a hardcoded line does not, and it shows on arrival that what you type really
   # runs. TABSIZE=0 makes ls pad its columns with spaces, not tabs.
   _COLS
-  _last="${D}\$ ls${N}"$'\n'"$(_sandbox_exec "TABSIZE=0 ls -CF -w $((REPLY > 20 ? REPLY - 1 : 79))" 5 2>&1 | _play_sanitize | head -n 8)"
+  _last="${D}\$ ls${N}"$'\n'"$(_sandbox_exec "TABSIZE=0 ls -CF -w $(_play_ls_width)" 5 2>&1 | _play_sanitize | head -n 8)"
   while true; do
     _REDRAW_HDR() {
       local _fc=${#_flags[@]} _fcol=$D; ((_fc)) && _fcol=$G; ((_PLAY_FLAG_TOTAL && _fc >= _PLAY_FLAG_TOTAL)) && _fcol="${G}${B}"
