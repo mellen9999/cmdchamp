@@ -296,7 +296,7 @@ _box() {
   printf '    %s\n' "$_rule"
 }
 
-VERSION="1.12.0"
+VERSION="1.12.1"
 SANDBOX_TIMEOUT=5      # Seconds before sandbox command times out
 BOSS_THRESHOLD=4       # Correct answers needed to beat boss (out of BOSS_TOTAL)
 BOSS_TOTAL=5           # Number of questions in boss round
@@ -2024,7 +2024,7 @@ declare -A MANPAGE=(
   [host]=$'simple DNS lookup\n  \e[2mhost example.com\e[0m'
   [column]=$'format input as table\n  \e[36m-t\e[0m        table mode             \e[36m-s\e[0m\e[33mC\e[0m       input delimiter\n  \e[2mcolumn -t file    column -t -s, file.csv    ls -l | column -t\e[0m'
   [printf]=$'formatted output\n  \e[33m%s\e[0m string  \e[33m%d\e[0m int  \e[33m%x\e[0m hex  \e[33m%f\e[0m float  \e[33m%(FMT)T\e[0m time\n  \e[36m-v\e[0m \e[33mVAR\e[0m    assign to variable (perf - no subshell)\n  \e[2mprintf \'%s\\n\' hello    printf \'%(%F)T\\n\' -1    printf -v var \'%d\' 42\e[0m'
-  [date]=$'show/set date\n  \e[36m+FMT\e[0m      format: %Y year %m month %d day %H hour %M min %S sec\n  \e[36m+%F\e[0m       YYYY-MM-DD\n  \e[2mdate    date +%F    date +%Y-%m-%d\e[0m'
+  [date]=$'show/set date\n  \e[36m+FMT\e[0m      format: %Y year %m month %d day %H hour %M min %S sec\n  \e[36m+%F\e[0m       YYYY-MM-DD \e[2m(dashes)\e[0m     \e[36m+%Y%m%d\e[0m  YYYYMMDD \e[2m(no dashes)\e[0m\n  \e[2mname a thing with it:\e[0m \e[33mmkdir $(date +%F)\e[0m  \e[33mcp f f.$(date +%Y%m%d)\e[0m'
   [strace]=$'trace system calls\n  \e[36m-p\e[0m \e[33mPID\e[0m    attach to running PID  \e[36m-f\e[0m        follow forks\n  \e[2mstrace ls    strace -fp 1234    strace -fp $(pidof prog)\e[0m'
   [timeout]=$'limit command runtime\n  \e[36m--kill-after\e[0m \e[33mT\e[0m  send KILL after T more secs\n  \e[36m-k\e[0m \e[33mT\e[0m    same as --kill-after\n  \e[2mtimeout 5 ./long-cmd    timeout -k 2 10s ./cmd\e[0m'
   [inotifywait]=$'watch filesystem events\n  \e[36m-m\e[0m        monitor (don\x27t exit)   \e[36m-r\e[0m        recursive\n  \e[2minotifywait -m -r /var/log    inotifywait -mr /var/log\e[0m'
@@ -3100,8 +3100,8 @@ gen_level9() {
   questions+=("Store count of ${Y}${term}${C} matches in ${W}${log}${C} in variable ${Y}${cvar}${C}§${cvar}=\$(grep -c ${term} ${log})§${cvar}=\$(grep --count ${term} ${log})§${cvar}=\"\$(grep -c ${term} ${log})\"§${cvar}=\"\$(grep --count ${term} ${log})\"")
   questions+=("Store first ${Y}${term}${C} line from ${W}${log}${C} in variable ${Y}${var}${C}§${var}=\$(grep ${term} ${log} | head -1)§${var}=\$(grep ${term} ${log} | head -n 1)§${var}=\$(grep -m 1 ${term} ${log})§${var}=\$(grep --max-count 1 ${term} ${log})§${var}=\$(grep --max-count=1 ${term} ${log})§${var}=\"\$(grep ${term} ${log} | head -1)\"§${var}=\"\$(grep ${term} ${log} | head -n 1)\"§${var}=\"\$(grep -m 1 ${term} ${log})\"§${var}=\"\$(grep --max-count 1 ${term} ${log})\"§${var}=\"\$(grep --max-count=1 ${term} ${log})\"")
   questions+=("Count unique lines in ${W}${txt}${C} and store in variable ${Y}${cvar}${C}§${cvar}=\$(sort ${txt} | uniq | wc -l)§${cvar}=\$(sort ${txt} | uniq | wc --lines)§${cvar}=\$(sort -u ${txt} | wc -l)§${cvar}=\$(sort -u ${txt} | wc --lines)§${cvar}=\$(sort --unique ${txt} | wc -l)§${cvar}=\$(sort --unique ${txt} | wc --lines)§${cvar}=\"\$(sort ${txt} | uniq | wc -l)\"§${cvar}=\"\$(sort ${txt} | uniq | wc --lines)\"§${cvar}=\"\$(sort -u ${txt} | wc -l)\"§${cvar}=\"\$(sort -u ${txt} | wc --lines)\"§${cvar}=\"\$(sort --unique ${txt} | wc -l)\"§${cvar}=\"\$(sort --unique ${txt} | wc --lines)\"")
-  questions+=("Backup ${W}${txt}${C} with date suffix|cp ${txt} ${txt}.\$(date +%Y%m%d)|cp ${txt} ${txt}.\`date +%Y%m%d\`|cp ${txt} ${txt}.\$(date +%Y-%m-%d)|cp ${txt} ${txt}.\$(date +%F)|cp ${txt} ${txt}.\`date +%Y-%m-%d\`|cp ${txt} ${txt}.\`date +%F\`")
-  questions+=("Create dir named with today's date|mkdir \$(date +%Y-%m-%d)|mkdir -p \$(date +%Y-%m-%d)|mkdir --parents \$(date +%Y-%m-%d)|mkdir \$(date +%F)|mkdir -p \$(date +%F)|mkdir --parents \$(date +%F)|mkdir \`date +%Y-%m-%d\`|mkdir -p \`date +%Y-%m-%d\`|mkdir --parents \`date +%Y-%m-%d\`|mkdir \`date +%F\`|mkdir -p \`date +%F\`|mkdir --parents \`date +%F\`|mkdir \$(date +%Y%m%d)|mkdir -p \$(date +%Y%m%d)|mkdir --parents \$(date +%Y%m%d)|mkdir \`date +%Y%m%d\`|mkdir -p \`date +%Y%m%d\`|mkdir --parents \`date +%Y%m%d\`")
+  questions+=("Backup ${W}${txt}${C} with a date suffix (${W}${txt}.YYYYMMDD${C})|cp ${txt} ${txt}.\$(date +%Y%m%d)|cp ${txt} ${txt}.\`date +%Y%m%d\`|cp ${txt} ${txt}.\$(date +%Y-%m-%d)|cp ${txt} ${txt}.\$(date +%F)|cp ${txt} ${txt}.\`date +%Y-%m-%d\`|cp ${txt} ${txt}.\`date +%F\`")
+  questions+=("Create dir named with today's date (${W}YYYY-MM-DD${C})|mkdir \$(date +%Y-%m-%d)|mkdir -p \$(date +%Y-%m-%d)|mkdir --parents \$(date +%Y-%m-%d)|mkdir \$(date +%F)|mkdir -p \$(date +%F)|mkdir --parents \$(date +%F)|mkdir \`date +%Y-%m-%d\`|mkdir -p \`date +%Y-%m-%d\`|mkdir --parents \`date +%Y-%m-%d\`|mkdir \`date +%F\`|mkdir -p \`date +%F\`|mkdir --parents \`date +%F\`|mkdir \$(date +%Y%m%d)|mkdir -p \$(date +%Y%m%d)|mkdir --parents \$(date +%Y%m%d)|mkdir \`date +%Y%m%d\`|mkdir -p \`date +%Y%m%d\`|mkdir --parents \`date +%Y%m%d\`")
   questions+=("Save ${Y}${term}${C} matches from ${W}${log}${C} to ${W}matches.txt${C}, echo \"Found: N\"§grep ${term} ${log} > matches.txt && echo \"Found: \$(wc -l < matches.txt)\"§grep ${term} ${log} > matches.txt && echo \"Found: \$(wc --lines < matches.txt)\"")
   questions+=("If ${W}${txt}${C} exists store its line count in variable ${Y}${cvar}${C}, else store 0§${cvar}=\$(test -e ${txt} && wc -l < ${txt} || echo 0)§${cvar}=\$([[ -e ${txt} ]] && wc -l < ${txt} || echo 0)§${cvar}=\$([ -e ${txt} ] && wc -l < ${txt} || echo 0)§${cvar}=\"\$(test -e ${txt} && wc -l < ${txt} || echo 0)\"§${cvar}=\"\$([[ -e ${txt} ]] && wc -l < ${txt} || echo 0)\"§${cvar}=\"\$([ -e ${txt} ] && wc -l < ${txt} || echo 0)\"§${cvar}=\$(test -f ${txt} && wc -l < ${txt} || echo 0)§${cvar}=\$([[ -f ${txt} ]] && wc -l < ${txt} || echo 0)§${cvar}=\$([ -f ${txt} ] && wc -l < ${txt} || echo 0)§${cvar}=\"\$(test -f ${txt} && wc -l < ${txt} || echo 0)\"§${cvar}=\"\$([[ -f ${txt} ]] && wc -l < ${txt} || echo 0)\"§${cvar}=\"\$([ -f ${txt} ] && wc -l < ${txt} || echo 0)\"")
   questions+=("Store hostname in variable ${Y}${hvar}${C}, then echo \"Host: \$${Y}${hvar}${C}\" if set§${hvar}=\$(hostname) && echo \"Host: \$${hvar}\"§${hvar}=\$HOSTNAME && echo \"Host: \$${hvar}\"§${hvar}=\"\$(hostname)\" && echo \"Host: \$${hvar}\"§${hvar}=\${HOSTNAME} && echo \"Host: \$${hvar}\"")
@@ -3302,7 +3302,7 @@ gen_level13() {
   questions+=("Identify file type of ${W}${txt}${C}|file ${txt}|file -- ${txt}")
   questions+=("Identify file type of ${W}${script}${C}|file ${script}|file -- ${script}")
   questions+=("Show detailed metadata of ${W}${txt}${C}|stat ${txt}")
-  questions+=("Show only the size of ${W}${txt}${C} in bytes|stat -c %s ${txt}|stat --format=%s ${txt}|stat --printf='%s' ${txt}|stat -c '%s' ${txt}|stat --format '%s' ${txt}")
+  questions+=("Show only the size of ${W}${txt}${C} in bytes|stat -c %s ${txt}|stat --format=%s ${txt}|stat --printf='%s' ${txt}|stat -c '%s' ${txt}|stat --format '%s' ${txt}|wc -c < ${txt}")
   questions+=("Show current umask|umask")
   questions+=("Set umask to 022 (files: 644, dirs: 755)|umask 022|umask 0022")
 }
@@ -3443,7 +3443,7 @@ gen_level16() {
   questions+=("Find IP addresses in ${W}${log}${C}|grep -oE '[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+' ${log}|rg -o '\\d+\\.\\d+\\.\\d+\\.\\d+' ${log}|rg -o '[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+' ${log}|grep -oP '\\d+\\.\\d+\\.\\d+\\.\\d+' ${log}")
   questions+=("Find email addresses|grep -rE '[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}'|rg '[\\w.+-]+@[\\w.-]+\\.[a-z]{2,}'|grep -RE '[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}'")
   questions+=("Find URLs in ${W}${log}${C}|grep -oE 'https?://[^ ]+' ${log}|grep -oP 'https?://\\S+' ${log}|rg -o 'https?://\\S+' ${log}")
-  questions+=("Find lines with numbers in ${W}${txt}${C}|grep -E '[0-9]+' ${txt}|rg '\\d+' ${txt}|rg '[0-9]+' ${txt}|grep -P '\\d+' ${txt}")
+  questions+=("Find lines with numbers in ${W}${txt}${C}|grep -E '[0-9]+' ${txt}|rg '\\d+' ${txt}|rg '[0-9]+' ${txt}|grep -P '\\d+' ${txt}|grep '[0-9]' ${txt}|grep -E '[0-9]' ${txt}|grep '[[:digit:]]' ${txt}")
   questions+=("Find hex values (0x...) in ${W}${log}${C}|grep -E '0x[0-9a-fA-F]+' ${log}|grep --extended-regexp '0x[0-9a-fA-F]+' ${log}|rg '0x[0-9a-fA-F]+' ${log}|grep -P '0x[0-9a-fA-F]+' ${log}")
   questions+=("Literal search 'func()' (no regex) in ${W}${txt}${C}|grep -F 'func()' ${txt}|grep --fixed-strings 'func()' ${txt}|rg -F 'func()' ${txt}|rg --fixed-strings 'func()' ${txt}")
   questions+=("Search for literal '[ERROR]' in ${W}${log}${C}|grep -F '[ERROR]' ${log}|grep --fixed-strings '[ERROR]' ${log}|rg -F '[ERROR]' ${log}|rg --fixed-strings '[ERROR]' ${log}")
@@ -5076,6 +5076,24 @@ declare -gA _LOPT=(
 _LOPT_OK=1  # sourcing only the functions (test harnesses) leaves the table behind
 _fnorm() {
   [[ -z "$1" ]] && { REPLY=""; return; }
+  # "Useless cat" fold: `cat FILE | filter …` feeds FILE to a filter, so grade it equal to
+  # the direct form a learner is being taught. Two folds by how that filter names its input:
+  #   trailing-file filters (grep/sort/cut/…) — no filename decoration → `filter … FILE`
+  #   stdin-only / decorating filters (tr, wc) → `filter … < FILE`  (wc from an arg prints
+  #   "N file", but from stdin prints "N" — the redirect form matches the "just the number"
+  #   canonicals and never the filename ones, so no false accept; tr takes no file arg at all)
+  # Single cat FILE, no extra pipe/redirect/list on either side.
+  if [[ "$1" =~ ^cat[[:space:]]+([^ |<>\&\;]+)[[:space:]]*\|[[:space:]]*(.+)$ ]]; then
+    local _cf1="${BASH_REMATCH[1]}" _ct1="${BASH_REMATCH[2]}"
+    if [[ "$_cf1" != -* && "$_ct1" != *'|'* && "$_ct1" != *'<'* && "$_ct1" != *'>'* && "$_ct1" != *'&'* && "$_ct1" != *';'* ]]; then
+      local _ctc1="${_ct1%% *}"
+      if [[ " grep egrep fgrep sort cut sed awk nl head tail uniq rev tac column " == *" $_ctc1 "* ]]; then
+        _fnorm "$_ct1 $_cf1"; return
+      elif [[ " tr wc " == *" $_ctc1 "* ]]; then
+        _fnorm "$_ct1 < $_cf1"; return
+      fi
+    fi
+  fi
   # Byte-order collation so flag sorting (and tar-char sorting) is identical in every
   # locale — otherwise the same command normalizes differently under C vs en_US, since
   # UTF-8 collation treats the leading hyphens of long flags as ignorable.
@@ -5262,6 +5280,27 @@ _fnorm() {
         sed:-r) flags[$_fi]="-E" ;;
       esac
     done
+  fi
+  # grep-family engine selector is a no-op on a plain-word pattern: grep w ≡ grep -E w ≡
+  # grep -F w ≡ egrep w ≡ fgrep w (every engine matches a literal identically). Fold them
+  # so a learner's -E/-F or egrep/fgrep on a literal search grades equal. Metacharacter
+  # patterns keep their engine — there -F/-E/-P genuinely differ, so leave those untouched.
+  if [[ "$_cmd" == "${parts[0]}" ]]; then
+    case "$_cmd" in
+      grep|egrep|fgrep)
+        local _gpf=0 _gf
+        for _gf in "${flags[@]}"; do case "$_gf" in -e|--regexp|-f|--file) _gpf=1 ;; esac; done
+        if ((!_gpf)) && ((${#args[@]})) && [[ "${args[0]}" =~ ^[A-Za-z0-9_]+$ ]]; then
+          local _gnf=() _gf2
+          for _gf2 in "${flags[@]}"; do
+            case "$_gf2" in
+              -E|-F|-P|-G|--extended-regexp|--fixed-strings|--perl-regexp|--basic-regexp) ;;
+              *) _gnf+=("$_gf2") ;;
+            esac
+          done
+          flags=("${_gnf[@]}"); REPLY=grep
+        fi ;;
+    esac
   fi
   local i j tmp
   for ((i=1; i<${#flags[@]}; i++)); do
@@ -7436,8 +7475,21 @@ _selftest() {
     $'flag quote strip\tawk -F\',\'\tawk -F,'
     $'redirect split\techo hi >out\techo hi > out'
     $'stderr redirect\tcmd 2>/dev/null\tcmd 2> /dev/null'
-    $'pipe\tcat f | grep x\tcat f | grep x'
-    $'pipe no space\tcat f|grep x\tcat f | grep x'
+    $'pipe\tsort f | uniq\tsort f | uniq'
+    $'pipe no space\tsort f|uniq\tsort f | uniq'
+    $'cat-fold grep\tcat f | grep x\tgrep x f'
+    $'cat-fold cut\tcat users.csv | cut -d, -f1\tcut -d, -f1 users.csv'
+    $'cat-fold sort flags\tcat todo.txt | sort -rn\tsort -n -r todo.txt'
+    $'cat-fold wc to redirect\tcat f | wc -l\twc -l < f'
+    $'cat-fold tr to redirect\tcat f | tr a b\ttr a b < f'
+    $'cat-fold wc equals redirect form\tcat users.csv | wc -l\twc -l < users.csv'
+    $'cat-fold not multipipe\tcat f | grep x | sort\tcat f | grep x | sort'
+    $'grep engine literal E\tgrep -E ERROR f\tgrep ERROR f'
+    $'grep engine literal F\tgrep -F ERROR f\tgrep ERROR f'
+    $'egrep folds to grep\tegrep ERROR f\tgrep ERROR f'
+    $'grep engine keeps -i\tgrep -iE ERROR f\tgrep -i ERROR f'
+    $'grep engine keeps metachar\tgrep -E \'[0-9]+\' f\tgrep -E [0-9]+ f'
+    $'grep -F keeps metachar\tgrep -F \'func()\' f\tgrep -F func() f'
     $'dotslash\tls ./foo\tls foo'
     $'head -N\thead -5 file\thead -n 5 file'
     $'tail -N\ttail -20 log\ttail -n 20 log'
