@@ -6180,7 +6180,7 @@ _ap_cmds() {
     # Documented-or-not is the filter: phase 8 guarantees every command an answer runs has
     # a MANPAGE or EXP entry, so this misses nothing - and `backup.sh`, `notes.txt` and
     # `WARN` stop being reported as commands the player has never learned.
-    [[ -n "${MANPAGE[$t]:-}${EXP[$t]:-}" ]] && out+="$t "
+    [[ "$t" =~ ^[A-Za-z][A-Za-z0-9_.+-]*$ && -n "${MANPAGE[$t]:-}${EXP[$t]:-}" ]] && out+="$t "
     cp=0
   done
   REPLY=$out
@@ -6417,6 +6417,94 @@ _calc_mastery() {
   done
 }
 
+# Mastery projected onto COMMANDS instead of levels. The level bars answer "how far am I",
+# which is progress; this answers "what do I not know", which is a worklist - and a level
+# is far too coarse a bucket for that (level 13 alone teaches cp, mv, ln, chmod, setfacl,
+# du, tar and diff, and one red bar cannot say which of them you keep missing).
+#
+# Built from the same scores the level bars use, reusing _ap_cmds to say which commands an
+# answer runs. Only levels the player has actually reached are walked - there is no mastery
+# to report in a level nobody has seen, and it keeps this to well under a second.
+_cmd_mastery() {
+  local -n _cmx_t=$1 _cmx_m=$2; _cmx_t=() _cmx_m=()
+  local -n _cmx_src=$3
+  local _upto=$(( BOSS_BEATEN + 1 )); ((_upto > MAX_LEVEL)) && _upto=$MAX_LEVEL
+  local lv _line _c _tier
+  local -a _q=()
+  for ((lv = 1; lv <= _upto; lv++)); do
+    _q=(); "gen_level$lv" _q
+    for _line in "${_q[@]}"; do
+      [[ -z "$_line" ]] && continue
+      _qparse "$_line"
+      _qkey "$_qprompt"
+      local _v=${_cmx_src[$REPLY]:-}
+      [[ -n "$_v" ]] || continue        # never seen: not a gap, just unvisited
+      _tier=${_v%%|*}
+      _ap_cmds "$_qans"
+      for _c in $REPLY; do
+        _cmx_t[$_c]=$(( ${_cmx_t[$_c]:-0} + 1 ))
+        [[ "$_tier" =~ ^[0-9]+$ ]] && ((10#$_tier >= 2)) && _cmx_m[$_c]=$(( ${_cmx_m[$_c]:-0} + 1 ))
+      done
+    done
+  done
+}
+
+# The grid: three cells a row, weakest first, so the top-left of the screen is the answer to
+# "what should I drill". A cell is `name  ####----  n/m` - the bar carries the ratio, the
+# glyph carries it again for a monochrome VT, and the counts carry it for anyone who wants
+# the number.
+_cmd_grid() {
+  local -n _cgx_t=$1 _cgx_m=$2
+  local -a _rows=()
+  local _c _t _m _pct
+  for _c in "${!_cgx_t[@]}"; do
+    _t=${_cgx_t[$_c]}; _m=${_cgx_m[$_c]:-0}
+    ((_t)) || continue
+    _pct=$(( _m * 100 / _t ))
+    # sort key: weakest first, then most-practised first so a 0/9 outranks a 0/1
+    _rows+=("$(printf '%03d %04d %s %d %d' "$_pct" $((9999 - _t)) "$_c" "$_m" "$_t")")
+  done
+  ((${#_rows[@]})) || { printf '  %s\n' "${D}no command data yet - play a level${N}"; return 0; }
+  mapfile -t _rows < <(printf '%s\n' "${_rows[@]}" | sort -n)
+  local _cols; _COLS; _cols=$REPLY
+  # 25 columns a cell: 11 for the name, 14 for bar + glyph + counts. Three of those is 75,
+  # which is the widest that still fits an 80-column VT with the two-space indent.
+  # shellcheck disable=SC2034  # _pct is read back out of the sort key by the read below
+  local _per=3; ((_cols < 77)) && _per=2; ((_cols < 54)) && _per=1
+  # Weakest first and capped to one screen: a worklist you have to scroll is not a worklist.
+  local _rowsfit; _LINES; _rowsfit=$((REPLY - 8)); ((_rowsfit < 4)) && _rowsfit=4
+  local _cap=$(( _rowsfit * _per )); ((_cap > ${#_rows[@]})) && _cap=${#_rows[@]}
+  local _i=0 _line="" _f _e _col _sym _bar
+  local _name _mm _tt
+  for _f in "${_rows[@]}"; do
+    ((_i >= _cap)) && break
+    read -r _pct _e _name _mm _tt <<< "$_f"
+    _pct=$((10#$_pct))
+    # A five-cell bar, not six: the widest cell content is bar + glyph + "20/54", and at
+    # six the two ran together with no gap on exactly the rows worth reading.
+    local _fill=$(( _mm * 5 / _tt )); local _empty=$(( 5 - _fill ))
+    if   ((_pct >= 80)); then _col=$G; _sym=$_GOK
+    elif ((_pct >= 40)); then _col=$Y; _sym="~"
+    else _col=$R; _sym=$_GNO; fi
+    _rep "$_RBK" "$_fill"; _bar=$REPLY; _rep "$_RSH" "$_empty"; _bar+=$REPLY
+    # Names run to 15 characters (systemd-analyze) and _cell only pads - clip first, or one
+    # long name shoves every cell on its row out of alignment.
+    _vclip "$_name" 10
+    _cell "${C}${REPLY}${N}" 11; local _cellbuf=$REPLY
+    _cell "${_col}${_bar}${N} ${_col}${_sym}${N} ${D}${_mm}/${_tt}${N}" 14
+    _line+="${_cellbuf}${REPLY}"
+    if ((++_i % _per == 0)); then printf '  %s\n' "${_line%"${_line##*[![:space:]]}"}"; _line=""; fi
+  done
+  [[ -n "$_line" ]] && printf '  %s\n' "${_line%"${_line##*[![:space:]]}"}"
+  ((${#_rows[@]} > _cap)) && {
+    # -2 for the indent: _pfmt wraps to the full width, and printing that under two spaces
+    # is how a wrapped line ends up two columns over the edge.
+    _ascii_fold "${D}the ${_cap} weakest of ${#_rows[@]} - the rest are further along${N}"
+    _wrap "$REPLY" "$((_cols - 2))"; printf '  %s\n' "${REPLY//$'\n'/$'\n'  }"
+  }
+  return 0
+}
+
 stats() {
   local -A sc; _scores_load sc
   # Every other full screen names itself; this one opened on a bare handle.
@@ -6463,6 +6551,18 @@ stats() {
         "${D}best${N}" "${Y}${DAILY_BEST}${N}" "$_bd" "${D}longest${N}" "${Y}${DAILY_MAXSTREAK}${N}"
     fi
   fi
+  # Second page. The level bars say how far you have come; this says what to drill, which is
+  # a different question and the one a player actually acts on. Kept off the first screen
+  # because thirty level rows plus a grid does not fit an 80x24 VT.
+  ((_cm_seen)) || return 0
+  printf '\n%s' "$_SN"; _pause "see it by command"
+  printf '%s\e[2J\e[H%s %s\n' "$_SY" "${M}${B}${_H3} STATS ${_H3}${N}" "${D}by command, weakest first${N}"
+  # Wrapped, not printed flat: this line is 79 columns and would shear a narrow terminal.
+  _pfmt "${D}mastery of the questions that run each command - a level is too coarse a bucket to drill from${N}"
+  printf '%s\n\n' "$REPLY"
+  local -A _bycmd_total=() _bycmd_done=(); _cmd_mastery _bycmd_total _bycmd_done sc
+  _cmd_grid _bycmd_total _bycmd_done
+  printf '\n%s' "$_SN"
 }
 
 _S_ANSWERED=0 _S_CORRECT=0 _S_STREAK=0 _S_BEST_STREAK=0 _S_MASTERED=0 _S_START=0

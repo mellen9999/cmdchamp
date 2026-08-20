@@ -1015,6 +1015,7 @@ phase10_render_smoke() {
     "help card|_help"
     "victory|_victory nopause"
     "stats|stats"
+    "stats by command|BOSS_BEATEN=8; declare -A _gt=([grep]=9 [awk]=4 [systemd-analyze]=1 [echo]=54 [cut]=2) _gm=([grep]=3 [echo]=20 [cut]=2); _cmd_grid _gt _gm"
     "main menu|_main_menu"
     "options menu|_options_menu"
     "practice menu|_practice_menu"

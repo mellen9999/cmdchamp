@@ -69,6 +69,10 @@ The menu holds continue, new game, scenarios, challenge, daily, practice, stats,
 
 **Daily** (post-ROOT) is a date-seeded gauntlet run — the seed drives both the chains and the randomized sandbox, so everyone everywhere gets byte-identical questions *and* data that day, one scored attempt, a consecutive-day streak, and a copyable score you can share. **Practice** drills any reached level (shown with its mastery %) with hints and no timer, without touching your main progress. **Playground** is a compromised box you take apart with a real shell: someone got in, used it, then tried to tidy up, and every move left a mark on disk. Commands run for real in the sandbox and nothing is graded. Up to 8 `flag{...}` tokens are planted across the tree (more unlock as you clear levels), `map` lays the break-in out phase by phase and marks where you are, `learn` is the 8-module security syllabus behind it, `hint` goes a tier deeper each time you ask, and Tab explains what you typed. The header always names the phase you're hunting and the files it left behind, so you're never staring at a prompt with nowhere to point a command — and if six commands go by with nothing found, the first hint comes to you.
 
+## Stats
+
+Two pages. The first is the thirty level bars — how far you've come. The second is the same mastery projected onto **commands**, weakest first, because a level is far too coarse a bucket to drill from: level 13 alone teaches `cp`, `mv`, `ln`, `chmod`, ACLs, `du`, `tar` and `diff`, and one red bar can't say which of them you keep missing. Only levels you've reached are counted, and the grid is capped to one screen — a worklist you have to scroll isn't a worklist.
+
 ## Levels
 
 | # | Name | Focus |
