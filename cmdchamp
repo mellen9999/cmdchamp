@@ -6273,21 +6273,25 @@ _ap_cmds() {
   REPLY=${out# }
 }
 
+# rank§label§fix. Rank breaks ties, and most of these fire once: `sort -rn` then falls back
+# to a byte compare of the whole line, which ordered them REVERSE-alphabetically by internal
+# key name and pushed `cat into grep` - the commonest antipattern there is - off the bottom
+# of a ten-row list. The separator is § and not | because half the labels ARE pipelines.
 declare -A _AP_HABIT=(
-  [catgrep]="cat into grep§grep reads files: grep PATTERN FILE"
-  [catpipe]="cat into a text tool§awk/sed/sort/cut all take a filename"
-  [grepwc]="grep piped into wc -l§grep -c counts matches itself"
-  [lsgrep]="ls piped into grep§a glob or find matches names properly"
-  [psgrep]="ps piped into grep§pgrep -f finds it without matching itself"
-  [xargs0]="find into xargs, no -print0§a filename with a space breaks it: -print0 | xargs -0"
-  [forls]="for f in \$(ls ...)§word splitting eats spaces: for f in *"
-  [chmod777]="chmod 777§world-writable is a privesc primitive, not a fix"
-  [kill9]="kill -9 first§TERM lets it clean up; KILL is the last resort"
-  [sortuniqwc]="sort | uniq | wc§sort -u | wc -l does it in one pass"
-  [echopipe]="echo piped into sed/cut§parameter expansion does it with no fork"
-  [curlsh]="curl piped into a shell§you are running code you never read"
-  [cdcd]="cd .. ; cd ..§cd ../.. - and cd - goes back"
-  [grephead]="grep | head -1§grep -m1 stops at the first match"
+  [catgrep]="03§cat into grep§grep reads files: grep PATTERN FILE"
+  [catpipe]="04§cat into a text tool§awk/sed/sort/cut all take a filename"
+  [grepwc]="08§grep piped into wc -l§grep -c counts matches itself"
+  [lsgrep]="09§ls piped into grep§a glob or find matches names properly"
+  [psgrep]="07§ps piped into grep§pgrep -f finds it without matching itself"
+  [xargs0]="05§find into xargs, no -print0§a filename with a space breaks it: -print0 | xargs -0"
+  [forls]="06§for f in \$(ls ...)§word splitting eats spaces: for f in *"
+  [chmod777]="02§chmod 777§world-writable is a privesc primitive, not a fix"
+  [kill9]="13§kill -9 first§TERM lets it clean up; KILL is the last resort"
+  [sortuniqwc]="10§sort | uniq | wc§sort -u | wc -l does it in one pass"
+  [echopipe]="12§echo piped into sed/cut§parameter expansion does it with no fork"
+  [curlsh]="01§curl piped into a shell§you are running code you never read"
+  [cdcd]="14§cd .. ; cd ..§cd ../.. - and cd - goes back"
+  [grephead]="11§grep | head -1§grep -m1 stops at the first match"
 )
 declare -A _AP_UNUSED=(
   [histexp]="history expansion§!\$ is the last argument, !! the last command"
@@ -6357,14 +6361,18 @@ autopsy() {
   # ── habits: the thing the tool already does better, with your own count beside it ──
   local -a _hits=()
   for _k in "${!_hab[@]}"; do
-    [[ -n "${_AP_HABIT[$_k]:-}" ]] && { printf -v _sk '%08d %s' "${_hab[$_k]}" "$_k"; _hits+=("$_sk"); }
+    # 99-rank so one `sort -rn` gives count descending, then rank ascending.
+    [[ -n "${_AP_HABIT[$_k]:-}" ]] && {
+      local _r=${_AP_HABIT[$_k]%%§*}
+      printf -v _sk '%08d %02d %s' "${_hab[$_k]}" $((99 - 10#$_r)) "$_k"; _hits+=("$_sk")
+    }
   done
   if ((${#_hits[@]})); then
     mapfile -t _hits < <(printf '%s\n' "${_hits[@]}" | sort -rn)
     printf '  %s\n' "${U}habits worth dropping${N}"
     for ((_i = 0; _i < ${#_hits[@]} && _i < 10; _i++)); do
-      _n=$((10#${_hits[$_i]%% *})); _k=${_hits[$_i]#* }
-      local _e=${_AP_HABIT[$_k]}
+      _n=$((10#${_hits[$_i]%% *})); _k=${_hits[$_i]##* }
+      local _e=${_AP_HABIT[$_k]#*§}          # drop the rank
       _cell "${Y}${_e%%§*}${N}" 30
       printf '    %s %s\n' "$REPLY" "${D}x${_n}${N}"
       _pfmt "${D}${_e#*§}${N}"; printf '      %s\n' "${REPLY//$'\n'/$'\n'      }"
@@ -9107,6 +9115,18 @@ _selftest() {
   for _apc1 in $REPLY; do [[ -n "${MANPAGE[$_apc1]:-}${EXP[$_apc1]:-}" ]] || _apok=0; done
   _assert "_ap_cmds: every name has a page" "$_apok" "1"
   unset -f _apc
+
+  # The habit table is data, and data rots quietly. Every entry must be rank§label§fix with a
+  # unique rank, or a tie orders by an accident of the internal key name again.
+  local _hk _hr _hbad=0 _hdup=0; local -A _hseen=()
+  for _hk in "${!_AP_HABIT[@]}"; do
+    _hr=${_AP_HABIT[$_hk]}
+    [[ "$_hr" == [0-9][0-9]§*§* ]] || _hbad=1
+    _hr=${_hr%%§*}
+    [[ -n "${_hseen[$_hr]:-}" ]] && _hdup=1; _hseen[$_hr]=1
+  done
+  _assert "_AP_HABIT: every entry is rank§label§fix" "$_hbad" "0"
+  _assert "_AP_HABIT: ranks are unique"              "$_hdup" "0"
 
   printf '%s\n' "${B}=== canonical cmd ===${N}"
   _canonical_cmd vol3;        _assert "vol3 → vol"          "$REPLY" "vol"
