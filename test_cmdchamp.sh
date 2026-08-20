@@ -1408,6 +1408,27 @@ echo "$r" | grep -q 'sc=1$' && ok "sc: no duplicate mark" || fail "sc dedup" "$r
 
 # ═════════════════════════════════════════════════════════════════════════════
 
+
+section "_nlines (fork-free line count)"
+# It replaced `grep -c ''` in the miss path, where it runs once per pipeline stage. If it
+# ever disagrees with grep the stage row reports the wrong place a pipeline died.
+# The literal is built inside the sourced snippet: passing it through $( ) here would let
+# command substitution eat the trailing newline that is the whole point of two of the cases.
+while IFS='|' read -r lit want; do
+  [[ -z "$lit" ]] && continue
+  got=$(_run "_nlines \$$lit; printf %s \"\$REPLY\"")
+  [[ "$got" == "$want" ]] && ok "_nlines($lit) = $want" || fail "_nlines($lit)" "got $got want $want"
+done <<'NLCASES'
+''|0
+'a'|1
+'a\nb'|2
+'a\nb\nc'|3
+'a\n'|1
+'\n'|1
+'a\n\nb'|3
+'  '|1
+NLCASES
+
 # ═════════════════════════════════════════════════════════════════════════════
 section "explain CLI"
 # `cmdchamp explain` is the Tab panel as a standalone tool, so it is the one surface

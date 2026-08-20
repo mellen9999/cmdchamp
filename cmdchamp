@@ -1880,13 +1880,21 @@ _tok_diff() {
 _out_line() {
   local o=$1 w=$2 n
   [[ -n "$o" ]] || { REPLY="${D}(nothing)${N}"; return 0; }
-  n=$(grep -c '' <<< "$o")
+  _nlines "$o"; n=$REPLY
   _ascii_fold "${o%%$'\n'*}"; _vclip "$REPLY" "$w"
   REPLY="${Y}${REPLY}${N}"
   ((n > 1)) && REPLY+=" ${D}(${n} lines)${N}"
   return 0
 }
 
+# Lines in a string, without forking grep or wc. The miss path calls this once per pipeline
+# stage and once per output, and a fork per call is a fork the player waits for.
+_nlines() {
+  [[ -n "$1" ]] || { REPLY=0; return; }
+  local _s=${1%$'\n'}          # one trailing newline is a terminator, not another line
+  _s=${_s//[!$'\n']/}
+  REPLY=$(( ${#_s} + 1 ))
+}
 _WD_LAB=10
 _wd_row() { _cell "${D}$1${N}" "$_WD_LAB"; printf '     %s%s\n' "$REPLY" "$2"; }
 
@@ -1958,7 +1966,7 @@ _wd_diag_stages() {
   for _p in "${_pfx[@]}"; do
     _seg=${_p#"$_prev"}; _seg=${_seg#|}; _prev=$_p
     _o=$(_sandbox_exec "$_p" "$_dto" "${_qsvc:-}" 2>/dev/null | tr -d '\000')
-    if [[ -z "$_o" ]]; then _n=0; else _n=$(grep -c '' <<< "$_o"); fi
+    if [[ -z "$_o" ]]; then _n=0; else _nlines "$_o"; _n=$REPLY; fi
     _stage_name "$_seg"; _nm=$REPLY
     if ((_n == 0)); then
       _scell+=("${R}${_nm}${N} ${D}${_GAR}${N} ${R}0${N}")
@@ -6283,7 +6291,8 @@ autopsy() {
 
   # ── what you reach for ──
   local -a _top=()
-  for _k in "${!_cmd[@]}"; do _top+=("$(printf '%08d %s' "${_cmd[$_k]}" "$_k")"); done
+  local _sk
+  for _k in "${!_cmd[@]}"; do printf -v _sk '%08d %s' "${_cmd[$_k]}" "$_k"; _top+=("$_sk"); done
   mapfile -t _top < <(printf '%s\n' "${_top[@]}" | sort -rn)
   printf '  %s\n' "${U}you reach for${N}"
   local _i _n _nm _max=0 _bar
@@ -6303,7 +6312,7 @@ autopsy() {
   # ── habits: the thing the tool already does better, with your own count beside it ──
   local -a _hits=()
   for _k in "${!_hab[@]}"; do
-    [[ -n "${_AP_HABIT[$_k]:-}" ]] && _hits+=("$(printf '%08d %s' "${_hab[$_k]}" "$_k")")
+    [[ -n "${_AP_HABIT[$_k]:-}" ]] && { printf -v _sk '%08d %s' "${_hab[$_k]}" "$_k"; _hits+=("$_sk"); }
   done
   if ((${#_hits[@]})); then
     mapfile -t _hits < <(printf '%s\n' "${_hits[@]}" | sort -rn)
@@ -6326,7 +6335,7 @@ autopsy() {
   for _cmdname in "${!_lvlof[@]}"; do
     ((_taught++))
     if [[ -n "${_seen[$_cmdname]:-}" ]]; then ((_known++))
-    else _gap+=("$(printf '%03d %s' "${_lvlof[$_cmdname]}" "$_cmdname")"); fi
+    else printf -v _sk '%03d %s' "${_lvlof[$_cmdname]}" "$_cmdname"; _gap+=("$_sk"); fi
   done
   local _pct=0; ((_taught)) && _pct=$((_known * 100 / _taught))
   printf '  %s %s\n' "${U}curriculum${N}" \
@@ -6489,13 +6498,13 @@ _cmd_mastery() {
 _cmd_grid() {
   local -n _cgx_t=$1 _cgx_m=$2
   local -a _rows=()
-  local _c _t _m _pct
+  local _c _t _m _pct _sk
   for _c in "${!_cgx_t[@]}"; do
     _t=${_cgx_t[$_c]}; _m=${_cgx_m[$_c]:-0}
     ((_t)) || continue
     _pct=$(( _m * 100 / _t ))
     # sort key: weakest first, then most-practised first so a 0/9 outranks a 0/1
-    _rows+=("$(printf '%03d %04d %s %d %d' "$_pct" $((9999 - _t)) "$_c" "$_m" "$_t")")
+    printf -v _sk '%03d %04d %s %d %d' "$_pct" $((9999 - _t)) "$_c" "$_m" "$_t"; _rows+=("$_sk")
   done
   ((${#_rows[@]})) || { printf '  %s\n' "${D}no command data yet - play a level${N}"; return 0; }
   mapfile -t _rows < <(printf '%s\n' "${_rows[@]}" | sort -n)
@@ -7925,6 +7934,8 @@ _play_cleanup() {
 #   open    - a mapped flag is planted (unlocked this session) but not yet found
 #   task    - flagless module: a tasked exercise over an artifact, always available
 #   locked:L- no mapped flag is planted yet; L = the earliest mapped flag's unlock level
+# Answers in REPLY, not on stdout: the syllabus asks this 16 times per keystroke and a
+# subshell each time is 16 forks a keypress on hardware that cannot spare them.
 _play_mod_state() {
   local -n _f=$1; local m=$2 tok best=-1 planted=0 found=0
   for tok in "${_PLAY_FLAG_ORDER[@]}"; do
@@ -7933,10 +7944,10 @@ _play_mod_state() {
     [[ " ${_PLAY_PLANTED[*]} " == *" $tok "* ]] && planted=1
     [[ -n "${_f[$tok]:-}" ]] && found=1
   done
-  if   ((best<0)); then echo task
-  elif ((found));  then echo proven
-  elif ((planted));then echo open
-  else echo "locked:$best"; fi
+  if   ((best<0)); then REPLY=task
+  elif ((found));  then REPLY=proven
+  elif ((planted));then REPLY=open
+  else REPLY="locked:$best"; fi
 }
 
 # The interactive syllabus. Reuses _sel (no new menu engine); every module is READABLE (the lesson
@@ -7944,7 +7955,7 @@ _play_mod_state() {
 # hands them the fixture. Enter -> detail, q/esc -> back to the shell.
 _play_learn() {
   local _SEL_CUR=0 i n=$PLAY_MOD_TOTAL prov=0 st
-  for ((i=1;i<=n;i++)); do [[ "$(_play_mod_state "$1" "$i")" == proven ]] && ((prov++)); done
+  for ((i=1;i<=n;i++)); do _play_mod_state "$1" "$i"; [[ "$REPLY" == proven ]] && ((prov++)); done
   # _sel redraws rows with \e[K but only full-clears on first draw, so a row wider than the
   # terminal wraps and corrupts navigation. Budget the concept column to the real width
   # (name field 30 + marks/indent ~12) - wide terminals show it whole, narrow ones truncate.
@@ -7952,7 +7963,7 @@ _play_learn() {
   while true; do
     local -a it=()
     for ((i=1;i<=n;i++)); do
-      st=$(_play_mod_state "$1" "$i"); local mark ct
+      _play_mod_state "$1" "$i"; st=$REPLY; local mark ct
       case $st in
         proven)   mark="${G}${_GOK}${N}";  ct=${PLAY_MOD_CONCEPT[$i]};;
         open)     mark="${Y}${_GDOT}${N}"; ct=${PLAY_MOD_CONCEPT[$i]};;
