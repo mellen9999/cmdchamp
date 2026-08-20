@@ -1617,10 +1617,11 @@ _gen_play_files() {
 
   # ── the boring-but-real stuff: bulk files, a big log, hostile filenames, a locked file ──
   mkdir -p "$dir/junk"
-  local _exts=(tmp bak log old swp cache) _j _e
+  local _exts=(tmp bak log old swp cache) _j _e _jn
   for ((_j=1; _j<=60; _j++)); do
     _e=${_exts[$((_j % 6))]}
-    printf 'entry %d\n' "$_j" > "$dir/junk/file$(printf '%02d' "$_j").$_e"
+    printf -v _jn '%02d' "$_j"       # printf -v, not $( ): this loop runs 60 times
+    printf 'entry %d\n' "$_j" > "$dir/junk/file${_jn}.$_e"
   done
   printf '%s\n' 'quoting is not optional' > "$dir/junk/report final (v2).txt"
   printf '%s\n' 'globs will not save you here' > "$dir/junk/-weird-name.txt"

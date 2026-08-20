@@ -11,7 +11,10 @@ CMDCHAMP="$SCRIPT_DIR/cmdchamp"
 
 # Isolate: cmdchamp computes DATA from XDG_DATA_HOME at load, so point it at a temp
 # dir — otherwise the bootstrap eval touches the user's real ~/.local/share/cmdchamp.
-export XDG_DATA_HOME; XDG_DATA_HOME="$(mktemp -d)"
+# CC_AUDIT_HOME pins the scratch dir instead of mktemp'ing one. Nothing in CI sets it; it
+# exists because chasing a phase-14 failure means reading the transcript the run left
+# behind, and a fresh mktemp every time makes that a guessing game.
+export XDG_DATA_HOME; XDG_DATA_HOME="${CC_AUDIT_HOME:-$(mktemp -d)}"
 trap 'rm -rf "$XDG_DATA_HOME"' EXIT
 
 # Extract everything before the main case statement
@@ -1835,7 +1838,11 @@ sleep() { :; }
 _sel() { printf '%s\n' "$1" "${@:2}"; REPLY=0; return 1; }
 # AD_MAX is a runaway guard, not a scenario: the gauntlet never ends for a bot that
 # never misses, so each mode gets its own budget. AD_WRONG misses on purpose.
-AD_WRONG=0 AD_MAX=4000 AD_N=0; declare -a AD_CMDS=()
+# AD_WRONGTXT is how the miss is spelled. Gibberish proves a miss costs a tier; a NEAR miss
+# - the canonical with its last word dropped - is the only way to prove the diagnosis fires,
+# because gibberish shares no token with any answer and the "closest" line correctly
+# declines to guess.
+AD_WRONG=0 AD_MAX=4000 AD_N=0 AD_WRONGTXT="nonsense not-an-answer"; declare -a AD_CMDS=()
 _ad_budget() { AD_N=0; AD_MAX=$1; AD_WRONG=${2:-0}; _QUIT=0; }
 _read_line() {
   # A queued script wins when there is one — that is how the playground, which has no
@@ -1843,7 +1850,7 @@ _read_line() {
   if ((${#AD_CMDS[@]})); then input=${AD_CMDS[0]}; AD_CMDS=("${AD_CMDS[@]:1}"); ((++AD_N)); return 0; fi
   [[ "${AD_MODE:-}" == script ]] && { _QUIT=1; input=""; return 2; }
   input="$_qans"
-  ((AD_WRONG > 0)) && { input="nonsense not-an-answer"; ((AD_WRONG--)); }
+  ((AD_WRONG > 0)) && { [[ "$AD_WRONGTXT" == @near ]] && input="${_qans% *}" || input="$AD_WRONGTXT"; ((AD_WRONG--)); }
   ((++AD_N)); ((AD_N > AD_MAX)) && { _QUIT=1; input=""; return 2; }
   return 0
 }
@@ -1924,6 +1931,41 @@ phase14_playthrough() {
       _mode_init 5; _sset "probe question" 2; _sget "probe question"; printf "@TIER-BEFORE %s\n" "$REPLY"
       run 5 0; printf "@RUN rc=%d beaten=%d\n" "$?" "$BOSS_BEATEN"'; then
     _ad_expect "wrong path completes" "@RUN rc=0" 1
+  fi
+
+  # ── 2b. a miss has to TEACH, not just reveal ─────────────────────
+  # _wrong_diag could regress to a no-op - an early return, a guard that never passes - and
+  # every other check in this phase would stay green, because nothing else asserts the
+  # diagnosis reaches a real playthrough at all. L18 is output-graded, L26 is text-matched,
+  # so between them both halves of the diagnosis have to appear.
+  # This whole phase runs with SANDBOX_MODE=0 (_ad_prepare appends it): 1,400 questions
+  # times a bwrap exec would turn a 50-second phase into minutes. So a level miss here can
+  # only reach the TEXT half of the diagnosis, which is what this drive proves.
+  if _ad_drive "miss diagnosis" '' '
+      _load_profile; _session_init; _QUIT=0; AD_WRONGTXT=@near
+      _ad_budget 60 25; _mode_init 26; run 26 0
+      printf "@DIAG done\n"'; then
+    _ad_expect "the miss diagnosis ran"        "@DIAG done" 1
+    _ad_expect "a miss names the closest form" "closest"    min:1
+    _ad_expect "a miss names the token dropped" "missing"   min:1
+  fi
+
+  # ── 2c. and the OUTPUT half, with the sandbox actually on ────────
+  # One gauntlet chain, one near-miss. Every chain is output-graded, so this is the cheapest
+  # deterministic way to prove `you got` / `wanted` reaches a real run - and it is the one
+  # drive that pays for a real bwrap exec, which is why it is a single question.
+  if ((SANDBOX_MODE)); then
+    if _ad_drive "miss diagnosis (sandbox)" '' '
+        _load_profile; _session_init; _QUIT=0
+        SANDBOX_MODE=1; _check_bwrap >/dev/null 2>&1 && _sandbox_init >/dev/null 2>&1
+        AD_WRONGTXT=@near; _ad_budget 6 1; challenge
+        printf "@SDIAG sandbox=%s\n" "$SANDBOX_MODE"'; then
+      _ad_expect "the sandbox miss ran"          "@SDIAG sandbox=1" 1
+      _ad_expect "a miss says what was wanted"   "wanted"           min:1
+      # not "you got": when stdout is empty the `error` line wins, which is the more useful
+      # of the two. `stages` is the distinctive half and a chain is always a pipeline.
+      _ad_expect "a miss dissects the pipeline"  "stages"           min:1
+    fi
   fi
 
   # ── 3. losing the boss ───────────────────────────────────────────
