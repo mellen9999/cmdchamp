@@ -245,6 +245,56 @@ _vclip() {
   REPLY=$_s
 }
 
+# Centre a line inside a field, measured in DISPLAY columns and with the colour
+# stripped first - the two things every hand-rolled `printf '%*s'` in this file used
+# to get wrong. Sets REPLY to the pad string; a line wider than the field pads to 0
+# rather than going negative (printf reads a negative width as left-justify and
+# shears whatever frame the caller was drawing).
+_center() {
+  local _w
+  _strip_ansi "$1"; _vwidth "$REPLY"
+  _w=$(( ($2 - REPLY) / 2 )); ((_w < 0)) && _w=0
+  printf -v REPLY '%*s' "$_w" ''
+}
+
+# Pad a possibly-coloured cell out to a fixed number of DISPLAY columns. printf's own
+# %-Ns counts BYTES, so any field holding a colour code silently pads short - which is
+# why the vi-key grid and the playground card only lined up by accident.
+_cell() {
+  local _w
+  _strip_ansi "$1"; _vwidth "$REPLY"
+  _w=$(( $2 - REPLY )); ((_w < 0)) && _w=0
+  printf -v REPLY '%*s' "$_w" ''
+  REPLY="${1}${REPLY}"
+}
+
+# One framed box, one implementation. Rows are padded from their VISIBLE width, so
+# colour codes and a wide handle cannot shear the frame - the intro did this correctly
+# and the victory screen hand-rolled literal runs of spaces for the same element, in a
+# different width, with a pad that went negative on a long line. $1 is the frame colour.
+BOX_IN=60          # prose columns, after the 6-column text inset
+BOX_INNER=66       # columns between the two walls
+# A row prefixed with \x02 is centred across the FULL inner width instead of sitting in
+# the prose inset - the inset is 6 columns on the left and 0 on the right, so centring a
+# display line against the prose field lands it right of the box's real centre.
+_box() {
+  local _c=$1; shift
+  local _r _pad _body _rule="${_c}${_SH70}${N}" _wall="${_c}${_SH2}${N}"
+  printf '    %s\n' "$_rule"
+  for _r in "$@"; do
+    if [[ "${_r:0:1}" == $'\x02' ]]; then
+      _r=${_r:1}; _center "$_r" "$BOX_INNER"; _body="${REPLY}${_r}"
+    else
+      _body="      ${_r}"
+    fi
+    _strip_ansi "$_body"; _vwidth "$REPLY"
+    local _w=$(( BOX_INNER - REPLY )); ((_w < 0)) && _w=0
+    printf -v _pad '%*s' "$_w" ''
+    printf '    %s%s%s%s\n' "$_wall" "$_body" "$_pad" "$_wall"
+  done
+  printf '    %s\n' "$_rule"
+}
+
 VERSION="1.11.0"
 SANDBOX_TIMEOUT=5      # Seconds before sandbox command times out
 BOSS_THRESHOLD=4       # Correct answers needed to beat boss (out of BOSS_TOTAL)
@@ -436,37 +486,54 @@ _intro() {
     "${D}Know the command, or stay where you are.${N}"
     ""
   )
-  local _r _pad
-  printf '\n    %s\n' "$_SH70"
-  for _r in "${_rows[@]}"; do
-    _strip_ansi "$_r"; _vwidth "$REPLY"; local _w=$(( 60 - REPLY )); ((_w < 0)) && _w=0
-    printf -v _pad '%*s' "$_w" ''
-    printf '    %s      %s%s%s\n' "$_SH2" "$_r" "$_pad" "$_SH2"
-  done
-  printf '    %s\n\n' "$_SH70"
+  printf '\n'; _box "" "${_rows[@]}"; printf '\n'
   [[ "${1:-}" == nopause ]] && return
-  read -rsp "                            Press Enter to continue..."
-  echo
+  _pause
 }
 
+# The controls reference. Reachable from the main menu (slot 9) as well as first run, so
+# it takes a back hint. Every key/label pair goes through _cell: the keys are colour-
+# wrapped, and a printf %-Ns field counts bytes, so the grid used to shear on the one row
+# whose key was wider than the rest ("dw cw").
 _tutorial() {
   printf '%s\e[2J\e[H\n%s' "$_SY" "$_SN"
-  cat <<EOF
-    ${U}Controls${N}
-    ${C}Tab${N}   Manpage   ${C}Enter${N}  Submit   ${C}${_GUP} ${_GDN}${N}  History   ${C}Ctrl+d${N}  Menu
+  local _r
+  printf '    %s\n' "${U}Controls${N}"
+  _r=""
+  _cell "${C}Tab${N}" 8;              _r+=$REPLY
+  _cell "Manpage" 14;                 _r+=$REPLY
+  _cell "${C}Enter${N}" 8;            _r+=$REPLY
+  _cell "Submit" 14;                  _r+=$REPLY
+  printf '    %s\n' "${_r%"${_r##*[![:space:]]}"}"
+  _r=""
+  _cell "${C}${_GUP} ${_GDN}${N}" 8;  _r+=$REPLY
+  _cell "History" 14;                 _r+=$REPLY
+  _cell "${C}Ctrl+d${N}" 8;           _r+=$REPLY
+  _cell "Menu" 14;                    _r+=$REPLY
+  printf '    %s\n\n' "${_r%"${_r##*[![:space:]]}"}"
 
-    ${U}Vi Mode${N} ${D}(toggle in Options)${N}
-    ${C}Esc${N}   Normal mode        ${C}i a${N}   Insert mode
-    ${C}h l${N}   Move cursor        ${C}w b${N}   Word jump
-    ${C}d${N}w ${C}c${N}w  Delete/change word  ${C}?${N}     Full vi help
+  printf '    %s %s\n' "${U}Vi Mode${N}" "${D}(toggle in Options)${N}"
+  local -a _vi=(
+    "${C}Esc${N}|Normal mode|${C}i a${N}|Insert mode"
+    "${C}h l${N}|Move cursor|${C}w b${N}|Word jump"
+    "${C}d${N}w ${C}c${N}w|Delete/change word|${C}?${N}|Full vi help"
+  )
+  local _line _k1 _l1 _k2 _l2
+  for _line in "${_vi[@]}"; do
+    IFS='|' read -r _k1 _l1 _k2 _l2 <<< "$_line"
+    _r=""
+    _cell "$_k1" 8; _r+=$REPLY
+    _cell "$_l1" 22; _r+=$REPLY
+    _cell "$_k2" 8; _r+=$REPLY
+    _cell "$_l2" 14; _r+=$REPLY
+    printf '    %s\n' "${_r%"${_r##*[![:space:]]}"}"
+  done
+  printf '\n'
 
-    ${U}Answers${N}
-    ${D}Text tools print to the terminal. Questions that change a file
-    on disk say ${N}${C}(in place)${N}${D}.${N}
-
-EOF
-  read -rsp "    Press Enter to continue..."
-  echo
+  printf '    %s\n' "${U}Answers${N}"
+  printf '    %s\n' "${D}Text tools print to the terminal. Questions that change a file${N}"
+  printf '    %s\n\n' "${D}on disk say ${N}${C}(in place)${N}${D}.${N}"
+  _pause "go back"
 }
 
 # ═══ BOSSES & LEVELS ═══
@@ -671,24 +738,24 @@ EOF
 
 EOF
   fi
-  printf -v s '%*s' $(( (70 - 20 - ${#PLAYER_NAME}) / 2 )) ''
-  printf '%s%s\n\n' "$s" "${G}${B}ACCESS GRANTED: ${W}${PLAYER_NAME}${N}"
-  local stat_text pad_len stat_pad
+  # Centred on the box that is actually drawn (4-column indent + BOX_IN + walls), and
+  # measured in display columns - the handle is budgeted in columns by _vclip, so a wide
+  # one used to drag this line off centre.
+  local _ag="${G}${B}ACCESS GRANTED: ${W}${PLAYER_NAME}${N}"
+  _center "$_ag" 70; printf '    %s%s\n\n' "$REPLY" "$_ag"
+  local stat_text root_line
   printf -v stat_text '%s prompts seen. %s mastered.' "$total" "$mastered"
-  pad_len=$((56 - ${#stat_text}))
-  printf -v stat_pad '%*s' "$pad_len" ''
-  local br="${D}${_SH2}${N}" edge="${D}${_SH66}${N}"
+  root_line=$'\x02'"${B}You are ROOT.${N}"
   printf '\n'
-  printf '    %s\n' "$edge"
-  printf '    %s                                                              %s\n' "$br" "$br"
-  printf '    %s      %-56s%s\n' "$br" "The daemons are silent." "$br"
-  printf '    %s                                                              %s\n' "$br" "$br"
-  printf '    %s      %-56s%s\n' "$br" "${MAX_LEVEL} bosses defeated. Every level cleared." "$br"
-  printf '    %s      %s%s%s\n' "$br" "$stat_text" "$stat_pad" "$br"
-  printf '    %s                                                              %s\n' "$br" "$br"
-  printf '    %s                      %sYou are ROOT.%s                           %s\n' "$br" "${B}" "${N}" "$br"
-  printf '    %s                                                              %s\n' "$br" "$br"
-  printf '    %s\n' "$edge"
+  _box "$D" \
+    "" \
+    "The daemons are silent." \
+    "" \
+    "${MAX_LEVEL} bosses defeated. Every level cleared." \
+    "$stat_text" \
+    "" \
+    "$root_line" \
+    ""
   echo
   # The kill list — every boss of the descent, named. Victory means all 30 fell.
   printf '    %s\n' "${U}${B}BOSSES DEFEATED${N}"
@@ -708,25 +775,26 @@ EOF
   echo
 }
 
+# `nopause` draws the same screen without clearing or waiting - that is the mode the
+# preview dump uses. The preview used to re-implement this centring against a hardcoded
+# 80, so test_terminals was measuring a splash that no player ever saw.
 _boss_splash() {
-  local lv=$1
+  local lv=$1 mode=${2:-}
   local boss="${BOSS_NAMES[$lv]}"
   local flavor="${BOSS_FLAVOR[$lv]}"
-  printf '%s\e[2J\e[H\n\n' "$_SY"
-  local s info cols; _COLS; cols=$REPLY
-  printf -v s '%*s' $(( (cols - 12) / 2 )) ''
-  printf '%s%s\n\n' "$s" "${M}${B}${_H3} BOSS ${_H3}${N}"
-  printf -v s '%*s' $(( (cols - ${#boss}) / 2 )) ''
-  printf '%s%s\n\n' "$s" "${M}${B}${boss}${N}"
-  printf -v s '%*s' $(( (cols - ${#flavor} - 2) / 2 )) ''
-  printf '%s%s\n\n' "$s" "${D}\"${flavor}\"${N}"
+  [[ "$mode" == nopause ]] || printf '%s\e[2J\e[H' "$_SY"
+  printf '\n\n'
+  local info cols line; _COLS; cols=$REPLY
+  line="${M}${B}${_H3} BOSS ${_H3}${N}";  _center "$line" "$cols"; printf '%s%s\n\n' "$REPLY" "$line"
+  line="${M}${B}${boss}${N}";             _center "$line" "$cols"; printf '%s%s\n\n' "$REPLY" "$line"
+  line="${D}\"${flavor}\"${N}";           _center "$line" "$cols"; printf '%s%s\n\n' "$REPLY" "$line"
   printf -v info 'No manpages. %d/%d to pass.' "$BOSS_THRESHOLD" "$BOSS_TOTAL"
-  printf -v s '%*s' $(( (cols - ${#info}) / 2 )) ''
-  printf '%s%s\n' "$s" "${D}${info}${N}"
+  line="${D}${info}${N}";                 _center "$line" "$cols"; printf '%s%s\n' "$REPLY" "$line"
   echo
+  [[ "$mode" == nopause ]] && return
   printf '%s' "$_SN"
-  printf -v s '%*s' $(( (cols - 26) / 2 )) ''
-  read -rsp "${s}Press Enter to continue..."
+  _center "Press Enter to continue..." "$cols"
+  read -rsp "${REPLY}Press Enter to continue..."
   echo
 }
 
@@ -6641,7 +6709,11 @@ _practice_menu() {
     for ((lv=1; lv<=_maxlv; lv++)); do
       local lt=${lv_total[$lv]:-0} lm=${lv_mastered[$lv]:-0} pct=0 _pc=$D
       ((lt > 0)) && { pct=$((lm * 100 / lt)); _pc=$R; ((pct >= 40)) && _pc=$Y; ((pct >= 80)) && _pc=$G; }
-      printf -v _row '%d %-20s %s%3d%%%s' "$lv" "${LEVEL_NAMES[$lv]}" "$_pc" "$pct" "$N"
+      # %-3s not %2d: a right-aligned number would start the row with a space and
+      # _sel's digit hotkey matches on a leading "N ", so levels 1-9 would lose theirs.
+      # This keeps "1 " for the single digits, pads "10 " to the same column, and "10"
+      # still cannot false-match hotkey 1.
+      printf -v _row '%-3s%-20s %s%3d%%%s' "$lv" "${LEVEL_NAMES[$lv]}" "$_pc" "$pct" "$N"
       it+=("$_row")
     done
     _SEL_BACK=1; _sel "${U}${_H3} PRACTICE ${_H3}${N}" "${it[@]}" || return
@@ -6666,7 +6738,7 @@ _play_card() {
                 "${D}can touch your machine. this is a frozen crime scene - take it apart.${N}" ''
   printf '%s\n' "${W}the box:${N} ${D}someone got in, used it, then tried to tidy up - history -c, an${N}" \
                 "${D}rm, a note 'encrypted'. they failed; every move left a mark on disk.${N}" ''
-  printf '%s %s\n\n' "${Y}${B}${#_fl[@]}/${_PLAY_FLAG_TOTAL} flags${N}" "${D}each proves one technique · the box grows as you clear levels${N}"
+  printf '%s %s\n\n' "${Y}${B}${#_fl[@]}/${_PLAY_FLAG_TOTAL} flags${N}" "${D}each proves one technique ${_GDOT} the box grows as you clear levels${N}"
   printf '%s\n' "${W}start here:${N}"
   printf '  %-30s %s\n'   "${C}map${N}"               "${D}the whole break-in at a glance - start here${N}"
   printf '  %-30s %s\n'   "${C}ls -la${N}"            "${D}dotfiles are where it starts${N}"
@@ -6836,8 +6908,8 @@ _play_learn() {
   for ((i=1;i<=n;i++)); do [[ "$(_play_mod_state "$1" "$i")" == proven ]] && ((prov++)); done
   # _sel redraws rows with \e[K but only full-clears on first draw, so a row wider than the
   # terminal wraps and corrupts navigation. Budget the concept column to the real width
-  # (name field 28 + marks/indent ~12) - wide terminals show it whole, narrow ones truncate.
-  _COLS; local _av=$(( REPLY - 40 )); ((_av < 16)) && _av=16
+  # (name field 30 + marks/indent ~12) - wide terminals show it whole, narrow ones truncate.
+  _COLS; local _av=$(( REPLY - 42 )); ((_av < 16)) && _av=16
   while true; do
     local -a it=()
     for ((i=1;i<=n;i++)); do
@@ -6848,12 +6920,14 @@ _play_learn() {
         task)     mark="${C}${_GDOT}${N}"; ct=${PLAY_MOD_CONCEPT[$i]};;
         locked:*) mark="${D}${_GNO}${N}";  ct="beat L${st#locked:} - lesson readable now";;
       esac
-      (( ${#ct} > _av )) && ct="${ct:0:_av-1}…"
-      local row; printf -v row '%s %-28s %s' "$mark" "${PLAY_MOD_NAME[$i]}" "${D}${ct}${N}"
+      # _vclip budgets in display columns; "..." rather than a single glyph so the
+      # marker costs the same three columns on every render tier.
+      _vwidth "$ct"; (( REPLY > _av )) && { _vclip "$ct" $((_av - 3)); ct="${REPLY}..."; }
+      local row; printf -v row '%s %-30s %s' "$mark" "${PLAY_MOD_NAME[$i]}" "${D}${ct}${N}"
       it+=("$row")
     done
     _SEL_BACK=1
-    _sel "${M}${B}${_H3} SYLLABUS ${_H3}${N} ${D}applied security · crafted drills in Scenarios${N}  ${G}${prov}/${n}${N}" "${it[@]}" || return
+    _sel "${M}${B}${_H3} SYLLABUS ${_H3}${N} ${D}applied security ${_GDOT} crafted drills in Scenarios${N}  ${G}${prov}/${n}${N}" "${it[@]}" || return
     _play_mod_detail "$1" "$((REPLY+1))"
   done
 }
@@ -6914,9 +6988,9 @@ _play_next_hint() {
     esac
     _COLS; _wrap "$_body" "$((REPLY-2))"   # fit the real width; continuation lines keep the 2-indent
     printf -v _PLAY_HINT_OUT '%s\n%s\n%s' \
-      "${Y}${B}hint${N} ${D}(module ${_mi}: ${PLAY_MOD_NAME[$_mi]}) · tier ${_lvl}/3${N}" \
+      "${Y}${B}hint${N} ${D}(module ${_mi}: ${PLAY_MOD_NAME[$_mi]}) ${_GDOT} tier ${_lvl}/3${N}" \
       "  ${W}${REPLY//$'\n'/$'\n'  }${N}" \
-      "${D}${#_f[@]}/${_PLAY_FLAG_TOTAL} found · ${_foot} · ${C}learn${D} for the syllabus${N}"
+      "${D}${#_f[@]}/${_PLAY_FLAG_TOTAL} found ${_GDOT} ${_foot} ${_GDOT} ${C}learn${D} for the syllabus${N}"
     return
   done
   printf -v _PLAY_HINT_OUT '%s' "${G}${B}all ${_PLAY_FLAG_TOTAL} flags found.${N} ${D}nothing left to hunt - ${C}learn${D} still has every lesson.${N}"
@@ -6955,7 +7029,7 @@ _play_map() {
     ((any)) || printf '    %s\n' "${D}${_GDOT} no flag - the skill is the reading${N}"
     printf '\n'
   done
-  printf '%s\n' "${D}${#_f[@]}/${_PLAY_FLAG_TOTAL} flags · ${C}learn N${D} = the technique · ${C}hint${D} = a nudge${N}"
+  printf '%s\n' "${D}${#_f[@]}/${_PLAY_FLAG_TOTAL} flags ${_GDOT} ${C}learn N${D} = the technique ${_GDOT} ${C}hint${D} = a nudge${N}"
 }
 
 
@@ -7016,20 +7090,39 @@ _sel() {
 }
 
 
+# Display order only. A scenario's ID is its identity everywhere else - SC_DONE stores raw
+# ids, dispatch is _sc_setup_<id>/_sc_steps_<id>, and PLAY_MOD_SCEN hardcodes them - so the
+# registry arrays must never be permuted; that would silently retick a different scenario in
+# every existing save. This builds an index->id map instead and leaves the arrays alone.
 _sc_sel() {
   local _SEL_CUR=0  # shadow the main menu's cursor - its index must not preselect a scenario
-  local -a it=()
-  for ((i=1;i<=SC_TOTAL;i++)); do
-    local req=${SC_UNLOCK[$i]:-$MAX_LEVEL}
-    if ((BOSS_BEATEN<req)); then it+=($'\x01'"${SC_NAMES[$i]} (beat L${req})")
-    elif _sc_is_done "$i"; then it+=("${G}${_GOK}${N} ${SC_NAMES[$i]}")
-    else it+=("${SC_NAMES[$i]}"); fi
+  local -a it=() ids=() ord=()
+  local i j key
+  # Sort by unlock level, ties by id. Derived rather than a hardcoded order array so it
+  # cannot drift when a gate is retuned - the gates are not monotonic in id (9 is L23 while
+  # 10 and 11 are L21 and L22), which made the list visibly dip mid-way down.
+  for ((i=1;i<=SC_TOTAL;i++)); do ord+=($(( ${SC_UNLOCK[$i]:-$MAX_LEVEL} * 100 + i ))); done
+  for ((i=1;i<${#ord[@]};i++)); do
+    key=${ord[$i]}
+    for ((j=i-1;j>=0 && ord[j]>key;j--)); do ord[j+1]=${ord[j]}; done
+    ord[j+1]=$key
   done
-  # Free Play - the open box - always sits last, always enabled: the applied surface every player
-  # can reach even before a crafted scenario unlocks. It owns no _sc_is_done state (special index).
-  it+=("${C}Free Play${N} - open box  ${D}learn + hunt flags${N}")
-  _SEL_BACK=1; _sel "${M}${B}${_H3} SCENARIOS ${_H3}${N} ${D}crafted missions · or free-play the box${N}" "${it[@]}" || return
-  if ((REPLY==SC_TOTAL)); then play; else scenario "$((REPLY+1))"; fi
+  # The Playground goes FIRST: it is the only door that is never locked, and nothing crafted
+  # is free (the lowest gate is L13), so a new player used to meet 13 greyed rows before the
+  # one thing they could actually press. It owns no _sc_is_done state - id 0 is its marker.
+  it+=("${C}Playground${N} - the open box  ${D}learn + hunt flags${N}"); ids+=(0)
+  local id req
+  for key in "${ord[@]}"; do
+    id=$(( key % 100 ))
+    req=${SC_UNLOCK[$id]:-$MAX_LEVEL}
+    if ((BOSS_BEATEN<req)); then it+=($'\x01'"${SC_NAMES[$id]} (beat L${req})")
+    elif _sc_is_done "$id"; then it+=("${G}${_GOK}${N} ${SC_NAMES[$id]}")
+    else it+=("  ${SC_NAMES[$id]}"); fi   # 2-column mark gutter, so every name starts in the same column
+    ids+=("$id")
+  done
+  _SEL_BACK=1; _sel "${M}${B}${_H3} SCENARIOS ${_H3}${N} ${D}crafted missions ${_GDOT} or open the box${N}" "${it[@]}" || return
+  local pick=${ids[$REPLY]}
+  if ((pick == 0)); then play; else scenario "$pick"; fi
 }
 
 
@@ -7056,8 +7149,62 @@ _main_menu() {
   while true; do
     local -a it=() act=()
     load
-    # build tagline — center under 71-char banner
-    local _tl_text _tl_w _tl_pad _tagline
+    # Fixed digit slots. The number is a literal, not a counter, and every row is always
+    # present - a row you cannot use yet renders disabled, exactly as Challenge and Daily
+    # already did. Before this, Continue was the one gated row that HID itself, so the
+    # moment you had a save every digit below it shifted by one (Options was 7, then 8)
+    # and muscle memory broke silently. Ten rows fill 0-9; _sel reads one raw byte, so
+    # ten is the ceiling and "10" could never be a hotkey.
+    local _row
+    if [[ -n "$PLAYER_NAME" ]] && ((LVL>1||QI>0)); then
+      it+=("1 Continue  ${D}Level $LVL Q$((QI+1))${N}"); act+=(cont)
+    else it+=($'\x01'"1 Continue"); act+=(x); fi
+    it+=("2 New Game"); act+=(new)
+    # Scenarios is the single gateway to all applied play - crafted missions AND the
+    # Playground (which sits at the TOP of the scenario list, the one always-open door),
+    # so it shows whenever the sandbox is up, even before the first scenario unlocks.
+    if ((SANDBOX_MODE)); then it+=("3 Scenarios  ${D}crafted missions + playground${N}"); act+=(sc)
+    else it+=($'\x01'"3 Scenarios (needs sandbox)"); act+=(x); fi
+    if ((BOSS_BEATEN>=MAX_LEVEL)); then
+      it+=("4 Challenge"); act+=(challenge)
+      local _dtag=""; [[ "$LAST_DAILY" == "$(printf '%(%Y%m%d)T' -1)" ]] && _dtag="  ${G}${_GOK}${N}"
+      it+=("5 Daily${_dtag}"); act+=(daily)
+    else
+      it+=($'\x01'"4 Challenge"); act+=(x)
+      it+=($'\x01'"5 Daily"); act+=(x)
+    fi
+    if [[ -n "$PLAYER_NAME" ]]; then it+=("6 Practice"); act+=(practice)
+    else it+=($'\x01'"6 Practice"); act+=(x); fi
+    if [[ -n "$PLAYER_NAME" ]]; then it+=("7 Stats"); act+=(stats)
+    else it+=($'\x01'"7 Stats"); act+=(x); fi
+    it+=("8 Options"); act+=(opts)
+    # The controls reference already existed - it was shown once during first run and was
+    # then unreachable for the rest of the game. Slot 9 is its permanent door.
+    it+=("9 Help  ${D}controls + vi keys${N}"); act+=(help)
+    it+=("0 Quit"); act+=(quit)
+    local _banner
+    if ((_CAP_UNI)); then
+      printf -v _banner '%s\n%s\n%s\n%s\n%s\n%s' \
+        "   ${W}${B}██████╗███╗   ███╗██████╗  ██████╗██╗  ██╗ █████╗ ███╗   ███╗██████╗${N}" \
+        "  ${W}${B}██╔════╝████╗ ████║██╔══██╗██╔════╝██║  ██║██╔══██╗████╗ ████║██╔══██╗${N}" \
+        "  ${W}${B}██║     ██╔████╔██║██║  ██║██║     ███████║███████║██╔████╔██║██████╔╝${N}" \
+        "  ${W}${B}██║     ██║╚██╔╝██║██║  ██║██║     ██╔══██║██╔══██║██║╚██╔╝██║██╔═══╝${N}" \
+        "  ${W}${B}╚██████╗██║ ╚═╝ ██║██████╔╝╚██████╗██║  ██║██║  ██║██║ ╚═╝ ██║██║${N}" \
+        "   ${W}${B}╚═════╝╚═╝     ╚═╝╚═════╝  ╚═════╝╚═╝  ╚═╝╚═╝  ╚═╝╚═╝     ╚═╝╚═╝${N}"
+    else
+      printf -v _banner '%s\n%s\n%s\n%s\n%s' \
+        "${W}${B}    ____ __  __ ____   ____ _   _    _    __  __ ____${N}" \
+        "${W}${B}   / ___|  \\/  |  _ \\ / ___| | | |  / \\  |  \\/  |  _ \\${N}" \
+        "${W}${B}  | |   | |\\/| | | | | |   | |_| | / _ \\ | |\\/| | |_) |${N}" \
+        "${W}${B}  | |___| |  | | |_| | |___|  _  |/ ___ \\| |  | |  __/${N}" \
+        "${W}${B}   \\____|_|  |_|____/ \\____|_| |_/_/   \\_\\_|  |_|_|${N}"
+    fi
+    # Widest banner row, measured - the two tiers differ (block art vs figlet) and the
+    # rows inside a tier differ too, so a hardcoded field put the tagline and the hint
+    # ~8 columns right of the legacy banner. Derived, this survives any banner edit.
+    local _bw=0 _brow
+    while IFS= read -r _brow; do _strip_ansi "$_brow"; _vwidth "$REPLY"; ((REPLY > _bw)) && _bw=$REPLY; done <<< "$_banner"
+    local _tl_text _tl_pad _tagline
     # States the truth and nothing else: how many bosses are still between you and ROOT.
     # It re-reads every level, so the banner is a progress meter, not a slogan.
     local _tl_left=$((MAX_LEVEL - BOSS_BEATEN)) _tl_col=$D _tl_mid
@@ -7066,57 +7213,12 @@ _main_menu() {
     elif ((_tl_left == 1)); then _tl_mid="1 LEVEL TO ROOT"             _tl_col=$Y
     else                         _tl_mid="${_tl_left} LEVELS TO ROOT"; ((_tl_left <= 5)) && _tl_col=$Y; fi
     _tl_text="${_tl_col}${_GSH}${_GS2}${_GS3}${_GBK}${N} ${W}${B}${_tl_mid}${N} ${_tl_col}${_GBK}${_GS3}${_GS2}${_GSH}${N}"
-    _tl_w=$(( ${#_tl_mid} + 10 ))   # 4 glyphs + space each side
-    printf -v _tl_pad '%*s' $(( (71 - _tl_w) / 2 )) ''
+    _center "$_tl_text" "$_bw"; _tl_pad=$REPLY
     _tagline="${_tl_pad}${_tl_text}"
-    # controls hint (Quit is a key, not a row), centered under the 71-wide banner
-    local _hint_pad; printf -v _hint_pad '%*s' $(( (71 - 30) / 2 )) ''
-    _tagline="${_tagline}"$'\n'"${_hint_pad}${D}j/k move · enter select · q quit${N}"
-    local _n=1
-    if [[ -n "$PLAYER_NAME" ]] && ((LVL>1||QI>0)); then
-      it+=("$((_n++)) Continue  ${D}Level $LVL Q$((QI+1))${N}"); act+=(cont)
-    fi
-    it+=("$((_n++)) New Game"); act+=(new)
-    # Scenarios is the single gateway to all applied play - crafted missions AND the free-play
-    # box (Free Play sits at the bottom of the scenario list), so it shows whenever the sandbox
-    # is up, even before the first crafted scenario unlocks.
-    if ((SANDBOX_MODE)); then it+=("$((_n++)) Scenarios  ${D}crafted missions + free play${N}"); act+=(sc)
-    else it+=($'\x01'"$((_n++)) Scenarios (needs sandbox)"); act+=(x); fi
-    if ((BOSS_BEATEN>=MAX_LEVEL)); then
-      it+=("$((_n++)) Challenge"); act+=(challenge)
-      local _dtag=""; [[ "$LAST_DAILY" == "$(printf '%(%Y%m%d)T' -1)" ]] && _dtag="  ${G}${_GOK}${N}"
-      it+=("$((_n++)) Daily${_dtag}"); act+=(daily)
-    else
-      it+=($'\x01'"$((_n++)) Challenge"); act+=(x)
-      it+=($'\x01'"$((_n++)) Daily"); act+=(x)
-    fi
-    if [[ -n "$PLAYER_NAME" ]]; then it+=("$((_n++)) Practice"); act+=(practice)
-    else it+=($'\x01'"$((_n++)) Practice"); act+=(x); fi
-    # Stats/Options continue the numbering (every row is a digit hotkey; the list is
-    # capped at 9 rows so a single read -rsn1 keypress always works). Quit is not a row —
-    # q / esc / ctrl-d exit from the top menu (hint shown under the banner).
-    if [[ -n "$PLAYER_NAME" ]]; then it+=("$((_n++)) Stats"); act+=(stats)
-    else it+=($'\x01'"$((_n++)) Stats"); act+=(x); fi
-    it+=("$((_n++)) Options"); act+=(opts)
-    local _banner
-    if ((_CAP_UNI)); then
-      printf -v _banner '%s\n%s\n%s\n%s\n%s\n%s\n\n%s' \
-        "   ${W}${B}██████╗███╗   ███╗██████╗  ██████╗██╗  ██╗ █████╗ ███╗   ███╗██████╗${N}" \
-        "  ${W}${B}██╔════╝████╗ ████║██╔══██╗██╔════╝██║  ██║██╔══██╗████╗ ████║██╔══██╗${N}" \
-        "  ${W}${B}██║     ██╔████╔██║██║  ██║██║     ███████║███████║██╔████╔██║██████╔╝${N}" \
-        "  ${W}${B}██║     ██║╚██╔╝██║██║  ██║██║     ██╔══██║██╔══██║██║╚██╔╝██║██╔═══╝${N}" \
-        "  ${W}${B}╚██████╗██║ ╚═╝ ██║██████╔╝╚██████╗██║  ██║██║  ██║██║ ╚═╝ ██║██║${N}" \
-        "   ${W}${B}╚═════╝╚═╝     ╚═╝╚═════╝  ╚═════╝╚═╝  ╚═╝╚═╝  ╚═╝╚═╝     ╚═╝╚═╝${N}" \
-        "${_tagline}"
-    else
-      printf -v _banner '%s\n%s\n%s\n%s\n%s\n\n%s' \
-        "  ${W}${B} ____ __  __ ____   ____ _   _    _    __  __ ____${N}" \
-        "  ${W}${B}/ ___|  \\/  |  _ \\ / ___| | | |  / \\  |  \\/  |  _ \\\\${N}" \
-        "  ${W}${B}| |   | |\\/| | | | | |   | |_| | / _ \\ | |\\/| | |_) |${N}" \
-        "  ${W}${B}| |___| |  | | |_| | |___|  _  |/ ___ \\| |  | |  __/${N}" \
-        "  ${W}${B} \\____|_|  |_|____/ \\____|_| |_/_/   \\_\\_|  |_|_|${N}" \
-        "${_tagline}"
-    fi
+    local _hint="${D}j/k move ${_GDOT} enter select ${_GDOT} q quit${N}" _hint_pad
+    _center "$_hint" "$_bw"; _hint_pad=$REPLY
+    _tagline="${_tagline}"$'\n'"${_hint_pad}${_hint}"
+    _banner="${_banner}"$'\n\n'"${_tagline}"
     _SEL_BACK=0; _sel "$_banner" "${it[@]}" || { _CLEANING=1; exit 0; }
     _SEL_CUR=$REPLY
     _QUIT=0
@@ -7124,7 +7226,8 @@ _main_menu() {
       cont) _run_loop;;
       daily) daily;;
       practice) _practice_menu;;
-      play) play;;
+      help) _tutorial;;
+      quit) _CLEANING=1; exit 0;;
       new) if [[ -n "$PLAYER_NAME" ]] && { ((LVL>1||QI>0||BOSS_BEATEN>0||PLACED_THROUGH>0)) || [[ -s "$DATA/scores" ]]; }; then
           printf '\n'; read -rp "  ${R}Reset all progress? [y/N]${N} " yn
           [[ "$yn" =~ ^[Yy] ]] || continue
@@ -8160,13 +8263,7 @@ case "${1:-}" in
     done
 
     printf '\n\n%s\n' "${B}${_H3} BOSS SPLASH (sample: Level 15) ${_H3}${N}"
-    local _sboss="${BOSS_NAMES[15]}" _sflavor="${BOSS_FLAVOR[15]}"
-    local s; printf -v s '%*s' $(( (80 - 12) / 2 )) ''
-    printf '\n%s%s\n\n' "$s" "${M}${B}${_H3} BOSS ${_H3}${N}"
-    printf -v s '%*s' $(( (80 - ${#_sboss}) / 2 )) ''
-    printf '%s%s\n\n' "$s" "${M}${B}${_sboss}${N}"
-    printf -v s '%*s' $(( (80 - ${#_sflavor} - 2) / 2 )) ''
-    printf '%s%s\n' "$s" "${D}\"${_sflavor}\"${N}"
+    _boss_splash 15 nopause
 
     printf '\n\n%s\n' "${B}${_H3} SCENARIOS ${_H3}${N}"
     for ((si=1; si<=SC_TOTAL; si++)); do

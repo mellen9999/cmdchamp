@@ -937,6 +937,37 @@ eval "$2"
 RUNNER
 }
 
+_strip_ansi_stream() { sed -e 's/\x1b\[[0-9;?]*[a-zA-Z]//g' -e 's/\x1b[()][A-Z0-9]//g' -e 's/\x1b[=>]//g'; }
+
+# The main menu's "<digit> <label>" map for one profile state, with the volatile bits
+# (the Continue level/question counter, the Daily done-tick) stripped so only the
+# digit->action mapping is compared.
+_render_menu_map() {
+  env COLUMNS=79 timeout 20 bash "$_RENDER_RUN" "$_RENDER_SRC" "$1; SANDBOX_MODE=1; _main_menu" 2>/dev/null </dev/null \
+    | _strip_ansi_stream \
+    | sed -n 's/^\x01\{0,1\}\([0-9]\) \([A-Za-z]*\).*/\1 \2/p' \
+    | awk '!seen[$1]++'
+}
+
+# Assert a row-list screen keeps its columns: every rendered row must put the same
+# marker in the same column. $3 is a literal to locate (empty = use the widest gap).
+_render_cols() {
+  local name=$1 code=$2 mark=$3 out cols="" c line n=0
+  out=$(env COLUMNS=79 timeout 20 bash "$_RENDER_RUN" "$_RENDER_SRC" "$code" 2>/dev/null </dev/null | _strip_ansi_stream)
+  while IFS= read -r line; do
+    [[ -z "${line//[[:space:]]/}" ]] && continue
+    [[ "$line" == *"$mark"* ]] || continue
+    [[ -n "$mark" ]] || continue
+    c=$(awk -v m="$mark" '{print index($0,m); exit}' <<< "$line")
+    ((c == 0)) && continue
+    cols+="$c "; ((n++))
+  done <<< "$out"
+  if [[ -z "$mark" ]]; then _ok; return; fi
+  ((n < 2)) && { _ok; return; }
+  if [[ $(tr ' ' '\n' <<< "$cols" | sort -u | grep -c .) == 1 ]]; then _ok
+  else _fail "render $name: '$mark' column is ragged across rows (cols: $(tr ' ' '\n' <<< "$cols" | sort -un | tr '\n' ' '))"; fi
+}
+
 # One screen. Fails loud on a non-empty stderr, a hard error exit, a timeout,
 # an over-wide line, or a screen that drew nothing at all.
 _render_check() {
@@ -949,6 +980,13 @@ _render_check() {
   ((rc > 1))    && { _fail "render $name: exit $rc"; return; }
   [[ -n "$err" ]] && { _fail "render $name: stderr — ${err%%$'\n'*}"; return; }
   [[ -n "${out//[[:space:]]/}" ]] || { _fail "render $name: drew nothing"; return; }
+  # On the ASCII tier every byte must be 7-bit. test_terminals only ever scanned `preview`,
+  # so raw UTF-8 typed straight into a screen's format string (a middot, an ellipsis) reached
+  # legacy terminals unfolded on five screens that no suite looked at. This is that guard.
+  if [[ "$tier" == CMDCHAMP_ASCII=1 ]] && LC_ALL=C grep -qP '[\x80-\xff]' <<< "$out"; then
+    _fail "render $name: non-ASCII byte on the ASCII tier — |$(LC_ALL=C grep -oP '.{0,20}[\x80-\xff].{0,20}' <<< "$out" | head -1)|"
+    return
+  fi
   while IFS= read -r line; do
     _strip_ansi "$line"
     ((${#REPLY} > 79)) && { _fail "render $name: line ${n} is ${#REPLY} cols (max 79) — |${REPLY:0:60}|"; return; }
@@ -969,6 +1007,10 @@ phase10_render_smoke() {
     "main menu|_main_menu"
     "options menu|_options_menu"
     "practice menu|_practice_menu"
+    "scenarios menu|BOSS_BEATEN=30; SC_DONE=,1,9, _sc_sel"
+    "scenarios menu locked|BOSS_BEATEN=0; SC_DONE= _sc_sel"
+    "boss splash preview|_boss_splash 15 nopause"
+    "session summary|_S_ANSWERED=8 _S_CORRECT=6 _S_BEST_STREAK=4 _S_MASTERED=2 _S_START=0; _quit"
     "playground card|_play_card _flags"
     "kill-chain map|_play_map _flags"
     "syllabus|SEL_ONCE=1 _play_learn _flags"
@@ -1027,6 +1069,35 @@ phase10_render_smoke() {
   if grep -q 'printf .*%s.*"\$_note"' "$CMDCHAMP"; then
     _fail "render: the playground header still prints its note unwrapped (use _pfmt)"
   else _ok; fi
+
+  # ─── the main menu's digits must not depend on how far you have played ───────────
+  # Every gated row renders disabled; only Continue used to hide itself, which shifted
+  # every digit below it the moment you had a save (Options was 7, then 8).
+  local _m1 _m2
+  _m1=$(_render_menu_map 'PLAYER_NAME=""; LVL=1; QI=0; BOSS_BEATEN=0')
+  _m2=$(_render_menu_map 'PLAYER_NAME=me; LVL=5; QI=2; BOSS_BEATEN=30')
+  if [[ -n "$_m1" && "$_m1" == "$_m2" ]]; then _ok
+  else _fail "render: main-menu digits move between profile states
+fresh:  $(tr '\n' ' ' <<< "$_m1")
+played: $(tr '\n' ' ' <<< "$_m2")"; fi
+  # ten slots, 0-9, one raw byte each
+  if [[ $(wc -l <<< "$_m1") == 10 ]]; then _ok; else _fail "render: main menu has $(wc -l <<< "$_m1") digit rows, expected 10"; fi
+
+  # ─── the scenario list: the always-open door first, then non-decreasing gates ─────
+  local _scord _prev=0 _bad="" _first="" _l
+  _scord=$(env COLUMNS=79 timeout 20 bash "$_RENDER_RUN" "$_RENDER_SRC" \
+    'BOSS_BEATEN=0; SC_DONE=; _sc_sel' 2>/dev/null </dev/null | _strip_ansi_stream | sed -n 's/.*(beat L\([0-9]*\)).*/\1/p')
+  _first=$(env COLUMNS=79 timeout 20 bash "$_RENDER_RUN" "$_RENDER_SRC" \
+    'BOSS_BEATEN=0; SC_DONE=; _sc_sel' 2>/dev/null </dev/null | _strip_ansi_stream | sed -n '2p')
+  [[ "$_first" == *Playground* ]] && _ok || _fail "render: scenario row 0 is not the Playground — |$_first|"
+  while IFS= read -r _l; do [[ -z "$_l" ]] && continue; ((_l < _prev)) && _bad="$_prev then $_l"; _prev=$_l; done <<< "$_scord"
+  [[ -z "$_bad" ]] && _ok || _fail "render: scenario unlock gates go backwards ($_bad)"
+
+  # ─── column alignment on the row-list screens ────────────────────────────────────
+  # Nothing but the manpage grid (phase 9) ever measured a column, which is how a %d
+  # that should have been %2d and a name field one char too narrow both shipped.
+  _render_cols "practice menu" '_practice_menu'  '%'
+  _render_cols "syllabus"      '_play_learn _flags' ''
 
   printf '  screens drawn: %d   longest prompt: %d cols   broken: %d\n' "$screens" "${#_longest}" "$((FAIL - before))"
 }
