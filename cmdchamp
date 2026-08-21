@@ -9405,6 +9405,26 @@ CC_REC
   _sc[$REPLY]="2|1|$((_now - 3456000))"  # 40d ago, tier 2
   _hash "decay test q2"
   _sc[$REPLY]="1|1|$((_now - 3024000))"  # 35d ago, tier 1 (just past 30d T1)
+  # Decay only ever had its two happy paths checked, so every branch condition here was
+  # free to be wrong: making the tier test an OR decays a question answered this morning,
+  # and making the tier-0 test a != stops stale entries being pruned, so the scores file
+  # grows forever. Each fixture below is a case where a broken condition and a correct one
+  # give different answers - a fresh entry, a stale tier 0, a clock from the future, a row
+  # with no timestamp, a row whose tier field is junk.
+  _hash "decay fresh t2"
+  _sc[$REPLY]="2|1|$((_now - 86400))"    # yesterday, tier 2 - nowhere near stale
+  _hash "decay fresh t1"
+  _sc[$REPLY]="1|1|$((_now - 86400))"    # yesterday, tier 1
+  _hash "decay stale t0"
+  _sc[$REPLY]="0|1|$((_now - 3456000))"  # 40d ago, tier 0 - must be pruned, not kept
+  _hash "decay fresh t0"
+  _sc[$REPLY]="0|1|$((_now - 86400))"    # yesterday, tier 0 - seen once, keep it
+  _hash "decay future"
+  _sc[$REPLY]="2|1|$((_now + 86400))"    # tomorrow: a skewed clock must not decay it
+  _hash "decay nots"
+  _sc[$REPLY]="2|lv3"                    # pre-timestamp row: no age, so no decay
+  _hash "decay junk"
+  _sc[$REPLY]="x|1|$((_now - 3456000))"  # junk tier: skipped, and must not crash
   _sflush
   LAST_DECAY=0
   # Run the real decay path: _mode_init reloads _sc from the flushed scores and decays it
@@ -9416,6 +9436,55 @@ CC_REC
   _hash "decay test q1"; _assert "decay tier2->1" "${_sc[$REPLY]%%|*}" "1"
   _hash "decay test q2"; _assert "decay tier1->0" "${_sc[$REPLY]%%|*}" "0"
   _assert "decay stamps LAST_DECAY" "$((LAST_DECAY >= _now))" "1"
+  _hash "decay fresh t2"; _assert "decay leaves a fresh tier 2 alone" "${_sc[$REPLY]:-gone}" "2|1|$((_now - 86400))"
+  _hash "decay fresh t1"; _assert "decay leaves a fresh tier 1 alone" "${_sc[$REPLY]:-gone}" "1|1|$((_now - 86400))"
+  _hash "decay stale t0"; _assert "a stale tier 0 is pruned, so the file cannot grow forever" "${_sc[$REPLY]:-pruned}" "pruned"
+  _hash "decay fresh t0"; _assert "a fresh tier 0 is not" "${_sc[$REPLY]:-pruned}" "0|1|$((_now - 86400))"
+  _hash "decay future";  _assert "a future timestamp is re-stamped, not decayed" "${_sc[$REPLY]%%|*}/${_sc[$REPLY]##*|}" "2/$_now"
+  _hash "decay nots";    _assert "a row with no timestamp is left as it is" "${_sc[$REPLY]:-gone}" "2|lv3"
+  _hash "decay junk";    _assert "a junk tier is skipped rather than fatal" "${_sc[$REPLY]:-gone}" "x|1|$((_now - 3456000))"
+  # Decay is a once-a-day job. Nothing checked the gate, so it was free to run on every
+  # single mode switch - which on a heavy day walks a tier 2 down to 0 in an afternoon.
+  _hash "decay second pass"
+  _sc[$REPLY]="2|1|$((_now - 3456000))"; _sflush
+  SANDBOX_MODE=0; _mode_init 1; SANDBOX_MODE=$_save_sandbox; _interactive=0
+  _hash "decay second pass"; _assert "decay does not run twice inside its interval" "${_sc[$REPLY]%%|*}" "2"
+  # ...and it must run the moment the interval is actually up. Exactly on the boundary,
+  # because that is the one input that tells >= from >.
+  LAST_DECAY=$((_now - _DECAY_INTERVAL))
+  SANDBOX_MODE=0; _mode_init 1; SANDBOX_MODE=$_save_sandbox; _interactive=0
+  _hash "decay second pass"; _assert "and it does run once the interval is exactly up" "${_sc[$REPLY]%%|*}" "1"
+  # _sget's legacy-key adoption: the positive case is checked above, but with the guard
+  # inverted it would adopt an entry that is not there, which is fatal under set -u.
+  _sget "a question no build ever asked"
+  _assert "_sget on an unknown question is tier 0, not a crash" "$REPLY" "0"
+  # The colour-stripped key and the raw key differ here, which is the case the guard is
+  # actually for; with it inverted this reads an array element that was never set, and
+  # under `set -u` that ends the process rather than the lookup.
+  _sget $'\e[36ma coloured question no build ever asked\e[0m'
+  _assert "...including one whose prompt carries colour" "$REPLY" "0"
+  # The sandbox is only ever built when it is going to be used; _mode_init is also the
+  # entry point for the text-match-only machines, where building one is pure cost.
+  local _mi_built=0
+  eval "_cc_real_sbinit() $(declare -f _sandbox_init | tail -n +2)"
+  _sandbox_init() { _mi_built=1; }
+  SANDBOX_MODE=0; _mode_init 1; _interactive=0
+  _assert "no sandbox is built when the sandbox is off" "$_mi_built" "0"
+  SANDBOX_MODE=1; _mode_init 1; _interactive=0
+  _assert "and one is built when it is on" "$_mi_built" "1"
+  SANDBOX_MODE=$_save_sandbox
+  eval "_sandbox_init() $(declare -f _cc_real_sbinit | tail -n +2)"; unset -f _cc_real_sbinit
+  # _preq_reset rebuilds the tree only after an answer that changed it. Inverted, a
+  # destructive answer leaves its damage in place for the next question to trip over.
+  local _pr_called=0
+  eval "_cc_real_reset() $(declare -f _sandbox_reset | tail -n +2)"
+  _sandbox_reset() { _pr_called=1; }
+  _SANDBOX_DESTRUCTIVE=0; SANDBOX_MODE=1; _preq_reset
+  _assert "a harmless answer does not rebuild the tree" "$_pr_called" "0"
+  _SANDBOX_DESTRUCTIVE=1; _preq_reset
+  _assert "a destructive one does" "$_pr_called/$_SANDBOX_DESTRUCTIVE" "1/0"
+  SANDBOX_MODE=$_save_sandbox
+  eval "_sandbox_reset() $(declare -f _cc_real_reset | tail -n +2)"; unset -f _cc_real_reset
   DATA="$_save_data"
   rm -rf "$_test_data"
 
