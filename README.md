@@ -71,7 +71,7 @@ The menu holds continue, new game, scenarios, challenge, daily, practice, stats,
 
 ## Stats
 
-Two pages. The first is the thirty level bars — how far you've come. The second is the same mastery projected onto **commands**, weakest first, because a level is far too coarse a bucket to drill from: level 13 alone teaches `cp`, `mv`, `ln`, `chmod`, ACLs, `du`, `tar` and `diff`, and one red bar can't say which of them you keep missing. Only levels you've reached are counted, and the grid is capped to one screen — a worklist you have to scroll isn't a worklist.
+Two pages. The first is the thirty level bars — how far you've come. The second is the same mastery projected onto **commands**, weakest first, because a level is far too coarse a bucket to drill from: level 13 alone teaches `cp`, `mv`, `ln`, `chmod`, ACLs, `du`, `tar` and `diff`, and one red bar can't say which of them you keep missing. Only levels you've reached are counted, and the grid is capped to one screen — a worklist you have to scroll isn't a worklist. Under it, the three weakest commands are named with the level that teaches each one, so the page ends where Practice starts — the level names are thematic, and `xargs 0/4` is a dead end if you have to guess that Batch Ops is where it lives.
 
 ## Levels
 

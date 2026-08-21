@@ -6551,6 +6551,10 @@ _calc_mastery() {
 _cmd_mastery() {
   local -n _cmx_t=$1 _cmx_m=$2; _cmx_t=() _cmx_m=()
   local -n _cmx_src=$3
+  # $4 (optional): command -> the earliest level that teaches it. Free here, since the walk
+  # already has the level in hand, and it is the difference between a page that names your
+  # weakest command and a page that can tell you where to go and drill it.
+  local _cmx_want_lv=0; [[ -n "${4:-}" ]] && { local -n _cmx_lv=$4; _cmx_lv=(); _cmx_want_lv=1; }
   # It walks every level through _qparse, which writes the _q* globals the run loop reads.
   # stats() is only ever a menu action today, but relying on that is a trap for whoever
   # calls this from somewhere else - so put them back.
@@ -6573,6 +6577,7 @@ _cmd_mastery() {
       for _c in $REPLY; do
         _cmx_t[$_c]=$(( ${_cmx_t[$_c]:-0} + 1 ))
         [[ "$_tier" =~ ^[0-9]+$ ]] && ((10#$_tier >= 2)) && _cmx_m[$_c]=$(( ${_cmx_m[$_c]:-0} + 1 ))
+        ((_cmx_want_lv)) && [[ -z "${_cmx_lv[$_c]:-}" ]] && _cmx_lv[$_c]=$lv
       done
     done
   done
@@ -6587,6 +6592,9 @@ _cmd_mastery() {
 # the number.
 _cmd_grid() {
   local -n _cgx_t=$1 _cgx_m=$2
+  # $3 (optional): command -> earliest level, from _cmd_mastery. Without it the grid still
+  # draws; with it the page can close its own loop.
+  local _cgx_have_lv=0; [[ -n "${3:-}" ]] && { local -n _cgx_lv=$3; _cgx_have_lv=1; }
   local -a _rows=()
   local _c _t _m _pct _sk
   for _c in "${!_cgx_t[@]}"; do
@@ -6634,6 +6642,22 @@ _cmd_grid() {
     _ascii_fold "${D}the ${_cap} weakest of ${#_rows[@]} - the rest are further along${N}"
     _wrap "$REPLY" "$((_cols - 2))"; printf '  %s\n' "${REPLY//$'\n'/$'\n'  }"
   }
+  # The page knew which command you keep missing and stopped there, leaving you to work out
+  # which chapter teaches it - and the level names are thematic ("Batch Ops"), so xargs at
+  # 0/4 was a dead end. Three weakest, with the level Practice wants.
+  ((_cgx_have_lv)) || return 0
+  local _dhead="${D}drill in Practice:${N}" _dl="" _dtry _dn=0 _dcmd _dlv
+  for _f in "${_rows[@]}"; do
+    ((_dn >= 3)) && break
+    read -r _pct _e _dcmd _mm _tt <<< "$_f"
+    _dlv=${_cgx_lv[$_dcmd]:-}; [[ -n "$_dlv" ]] || continue
+    _dtry="${_dl}${_dl:+ ${D}${_GDOT}${N} }${Y}L${_dlv}${N} ${C}${_dcmd}${N}"
+    # Names run to 15 characters and three of those overflow an 80-column line. Measure
+    # rather than assume a count fits: whichever entries fit, fit.
+    _wd_fits "  $_dhead $_dtry" "$((_cols - 2))" || break
+    _dl=$_dtry; ((_dn++))
+  done
+  ((_dn)) && printf '\n  %s %s\n' "$_dhead" "$_dl"
   return 0
 }
 
@@ -6692,8 +6716,9 @@ stats() {
   # Wrapped, not printed flat: this line is 79 columns and would shear a narrow terminal.
   _pfmt "${D}mastery of the questions that run each command - a level is too coarse a bucket to drill from${N}"
   printf '%s\n\n' "$REPLY"
-  local -A _bycmd_total=() _bycmd_done=(); _cmd_mastery _bycmd_total _bycmd_done sc
-  _cmd_grid _bycmd_total _bycmd_done
+  local -A _bycmd_total=() _bycmd_done=() _bycmd_lv=()
+  _cmd_mastery _bycmd_total _bycmd_done sc _bycmd_lv
+  _cmd_grid _bycmd_total _bycmd_done _bycmd_lv
   printf '\n%s' "$_SN"
 }
 

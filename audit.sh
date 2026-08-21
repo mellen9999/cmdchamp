@@ -1034,6 +1034,14 @@ phase10_render_smoke() {
     "victory|_victory nopause"
     "stats|stats"
     "stats by command|BOSS_BEATEN=8; declare -A _gt=([grep]=9 [awk]=4 [systemd-analyze]=1 [echo]=54 [cut]=2) _gm=([grep]=3 [echo]=20 [cut]=2); _cmd_grid _gt _gm"
+    # With the level map the grid also prints where to go and drill its three weakest. The
+    # names are the longest in the pool on purpose: that line is the one thing on the page
+    # that grows with the command name.
+    "stats by command with levels|BOSS_BEATEN=30; declare -A _gt=([systemd-analyze]=9 [journalctl]=8 [ssh-copy-id]=7 [grep]=4 [echo]=54) _gm=([grep]=3 [echo]=54) _gl=([systemd-analyze]=14 [journalctl]=21 [ssh-copy-id]=24 [grep]=5 [echo]=1); _cmd_grid _gt _gm _gl"
+    # Three names at the pool's maximum length do not fit one line, so the drill line has to
+    # drop entries rather than run over. Names this long are synthetic; the width they add
+    # is not.
+    "stats drill line overflow|BOSS_BEATEN=30; declare -A _gt=([systemd-analyze]=9 [aaaaaaaaaaaaaaa]=8 [bbbbbbbbbbbbbbb]=7 [echo]=54) _gm=([echo]=54) _gl=([systemd-analyze]=14 [aaaaaaaaaaaaaaa]=21 [bbbbbbbbbbbbbbb]=24 [echo]=1); _cmd_grid _gt _gm _gl"
     # Page 2 of stats is behind `((_cm_seen)) || return 0`, so with the empty save dir every
     # other check runs against, half of stats was never drawn. Seed one score into a private
     # DATA so the page renders — and reach it WITHOUT parsing a question first, because
