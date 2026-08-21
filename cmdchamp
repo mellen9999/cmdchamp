@@ -2787,7 +2787,7 @@ declare -A EXP=(
   [pidof]="get PID by name" [pstree]="process tree"
   [unlink]="remove exactly one file/link (safer than rm for single targets)"
   ['$$']="current shell PID" ['$?']="last exit code" ['$!']="last background PID"
-  ['$#']="argument count" ['$@']="all arguments" ['$0']="script name"
+  ['$#']="argument count" ['$@']="all arguments" ['$*']="all arguments as one word (use \"\$@\" to keep them separate)" ['$0']="script name"
   ['$USER']="the login name of the current user" ['$HOME']="the current user's home directory"
   ['$PWD']="the current directory" ['$OLDPWD']="the previous directory (cd - goes back to it)"
   ['$HOSTNAME']="this machine's hostname" ['$SHELL']="the login shell, not necessarily the running one"
@@ -3037,6 +3037,13 @@ _syn_legend() {
       _pe_key "${_s:_i+2:_j-_i-2}"
       [[ -n $_PEK ]] && _syn_add "$_PEK" "$_PEG"
       _i=$((_j+1))
+    elif ((_dq)) && [[ $_c == '$' && ${_s:_i+1:1} == ['?$!#@*0'] ]]; then
+      # Bare $?/$$/$! etc are caught as standalone tokens elsewhere in explain(),
+      # but that match is exact and quotes are part of the token to `read -a` —
+      # "$@" never equals $@. This scan sees inside the quotes instead.
+      _nm="\$${_s:_i+1:1}"
+      [[ -n ${EXP[$_nm]:-} ]] && _syn_add "$_nm" "${EXP[$_nm]}"
+      _i=$((_i+2))
     elif [[ $_c == '$' && ${_s:_i+1:1} == [A-Za-z_] ]]; then
       _j=$((_i+1)); while ((_j < _L)) && [[ ${_s:_j:1} == [A-Za-z0-9_] ]]; do ((_j++)); done
       _nm=${_s:_i:_j-_i}
@@ -3156,7 +3163,7 @@ explain() {
       # these lines an answer using $? or {} was only half explained.
       case "$tok" in
         '>'|'>>'|'<'|'<<<'|'2>'|'&>'|'2>&1'|'>&2'|'1>&2'|'|'|'|&'|'&&'|'||'|';'|'&') ;;
-        '$?'|'$$'|'$!'|'$#'|'$@'|'$0'|'!!'|'!$'|'!^'|'!*'|'{}'|'\;'|'2>/dev/null'|'/dev/null') ;;
+        '$?'|'$$'|'$!'|'$#'|'$@'|'$*'|'$0'|'!!'|'!$'|'!^'|'!*'|'{}'|'\;'|'2>/dev/null'|'/dev/null') ;;
         '--') ;;   # belongs to no manpage, and it is the point of the L29/SC12 answers
         *) continue ;;
       esac
