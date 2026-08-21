@@ -398,6 +398,13 @@ _load_profile() {
       printf '%s\n' "Refusing to overwrite it. Update cmdchamp, or move $DATA/profile aside to start over." >&2
       exit 1
     elif ((_file_ver != _PROFILE_VER)); then
+      # Same lock discipline as the CLI reset and New Game: this branch empties scores,
+      # deletes the session and overwrites the profile, and it was the one destructive
+      # path that took no lock — a second instance mid-_sflush would have written its
+      # merged scores back on top of the reset, or had its own write truncated under it.
+      local _vrfd1="" _vrfd2=""
+      { exec {_vrfd1}>"$DATA/scores.lock"; } 2>/dev/null && ((_HAVE_FLOCK)) && flock -x "$_vrfd1"
+      { exec {_vrfd2}>"$DATA/profile.lock"; } 2>/dev/null && ((_HAVE_FLOCK)) && flock -x "$_vrfd2"
       [[ -f "$DATA/profile" ]] && cp "$DATA/profile" "$DATA/profile.bak"
       [[ -f "$DATA/scores" ]] && cp "$DATA/scores" "$DATA/scores.bak"
       printf '%s\n' "Profile version mismatch (got $_file_ver, want $_PROFILE_VER) - reset. Backup in profile.bak/scores.bak" >&2
@@ -409,6 +416,7 @@ _load_profile() {
       # overwrite the good backup with the already-emptied scores on next launch.
       # Raw write: merging would resurrect fields from the incompatible old profile.
       _write_profile
+      [[ -n "$_vrfd1" ]] && exec {_vrfd1}>&-; [[ -n "$_vrfd2" ]] && exec {_vrfd2}>&-
     fi
   fi
 }
