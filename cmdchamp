@@ -939,6 +939,21 @@ declare -A _PLAY_FLAG_UNLOCK=(
 _play_gate(){ (( BOSS_BEATEN >= ${_PLAY_FLAG_UNLOCK[$1]:-0} )); }
 
 _BWRAP_FLAG="$DATA/.bwrap_blocked"
+# The kernel either has user namespaces or it does not, and nothing installable
+# adds them to one built without CONFIG_USER_NS. /proc/self/ns/user exists exactly
+# when it has them, so it is the fact to check before handing out a fix. Without
+# this both branches below give advice that cannot work on a kernel that never had
+# the option - "install bubblewrap" when no build of it could run, and "flip this
+# sysctl" when that knob does not exist - and the reader spends their evening on it.
+_userns_ok() { [[ -e /proc/self/ns/user ]]; }
+
+# Shared by both branches: there is no package and no setting, so say that and stop.
+_bwrap_no_userns() {
+  printf '%s\n' "This kernel has no user namespaces, which the sandbox needs." >&2
+  printf '%s\n\n' "cmdchamp will still match answers as text." >&2
+  printf '%s\n\n' "${D}Nothing to install - text-match is the ceiling here.${N}" >&2
+}
+
 _bwrap_notice() {
   local _kind=$1 _raw=${2:-}
   printf '\n%s\n\n' "${Y}${B}Sandbox unavailable - running in text-match mode${N}" >&2
@@ -952,6 +967,8 @@ _bwrap_notice() {
         printf '%s\n' "The sandbox needs unprivileged user namespaces, which Android does" >&2
         printf '%s\n\n' "not grant. cmdchamp will still match answers as text." >&2
         printf '%s\n\n' "${D}Nothing to install - text-match is the ceiling on this device.${N}" >&2
+      elif ! _userns_ok; then
+        _bwrap_no_userns
       else
         printf '%s\n' "${C}bubblewrap${N} (bwrap) isn't installed. cmdchamp will still match" >&2
         printf '%s\n\n' "answers as text, just without isolated execution." >&2
@@ -961,15 +978,21 @@ _bwrap_notice() {
       fi
       ;;
     blocked)
-      printf '%s\n' "Your kernel disallows unprivileged user namespaces, which the sandbox" >&2
-      printf '%s\n\n' "needs. cmdchamp will still match answers as text." >&2
-      printf '%s\n' "${C}Enable the sandbox:${N}" >&2
-      printf '  %s\n'   "${G}sudo sysctl -w kernel.unprivileged_userns_clone=1${N}" >&2
-      # 79 columns is the ceiling everywhere else in the game and this line was 83, so the
-      # one command a blocked user is meant to copy wrapped mid-path on the terminal it was
-      # printed to. The file name carries no less meaning for being shorter - the setting is
-      # a kernel one, not a cmdchamp one.
-      printf '  %s\n\n' "${G}echo kernel.unprivileged_userns_clone=1 | sudo tee /etc/sysctl.d/userns.conf${N}" >&2
+      # bwrap is here and still failed. If the kernel never had the option, the
+      # sysctl below is not merely off - it does not exist - so check first.
+      if ! _userns_ok; then
+        _bwrap_no_userns
+      else
+        printf '%s\n' "Your kernel disallows unprivileged user namespaces, which the sandbox" >&2
+        printf '%s\n\n' "needs. cmdchamp will still match answers as text." >&2
+        printf '%s\n' "${C}Enable the sandbox:${N}" >&2
+        printf '  %s\n'   "${G}sudo sysctl -w kernel.unprivileged_userns_clone=1${N}" >&2
+        # 79 columns is the ceiling everywhere else in the game and this line was 83, so the
+        # one command a blocked user is meant to copy wrapped mid-path on the terminal it was
+        # printed to. The file name carries no less meaning for being shorter - the setting is
+        # a kernel one, not a cmdchamp one.
+        printf '  %s\n\n' "${G}echo kernel.unprivileged_userns_clone=1 | sudo tee /etc/sysctl.d/userns.conf${N}" >&2
+      fi
       [[ -n "$_raw" ]] && printf '%s %s\n\n' "${D}bwrap:${N}" "${D}${_raw%%$'\n'*}${N}" >&2
       ;;
   esac
