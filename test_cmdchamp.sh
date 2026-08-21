@@ -1543,6 +1543,53 @@ env XDG_DATA_HOME="$TDIR/xdg" "$CMDCHAMP" autopsy /nonexistent/nope >/dev/null 2
 long=$(_ap "$_HB" | awk '{ gsub(/\033\[[0-9;?]*[a-zA-Z]/,""); if (length > 79) c++ } END { print c+0 }')
 [[ "$long" == 0 ]] && ok "autopsy: every line fits 79 columns" || fail "autopsy: every line fits 79 columns" "$long over"
 
+section "_days (the daily streak's calendar)"
+# The streak is decided by one subtraction: today's day number minus the last daily's.
+# Get the calendar wrong by a day anywhere - a leap year, a century that is not a leap
+# year, a month roll - and a streak someone has kept for months silently resets, or one
+# they broke silently continues. Nothing exercised this function at all.
+#
+# Checked against date(1) rather than against hand-computed numbers: _days returns an
+# offset day count, so what has to hold is that DIFFERENCES match real elapsed days.
+_delta() { _run "_days '$1'; _a=\$REPLY; _days '$2'; printf '%s' \$((_a - \$REPLY))"; }
+_want_delta() { # <name> <later> <earlier> <days>
+  local got; got=$(_delta "$2" "$3")
+  [[ "$got" == "$4" ]] && ok "_days: $1" || fail "_days: $1" "got $got, want $4"
+}
+_want_delta "consecutive days"        20260821 20260820 1
+_want_delta "month roll"              20260901 20260831 1
+_want_delta "year roll"               20270101 20261231 1
+_want_delta "leap day exists"         20240301 20240229 1
+_want_delta "february in a leap year" 20240301 20240228 2
+_want_delta "february otherwise"      20250301 20250228 1
+_want_delta "1900 was not a leap year" 19000301 19000228 1
+_want_delta "2000 was a leap year"    20000301 20000229 1
+_want_delta "a full common year"      20260101 20250101 365
+_want_delta "a full leap year"        20250101 20240101 366
+_want_delta "a gap breaks a streak"   20260825 20260820 5
+# Leading zeros must not be read as octal - 08 and 09 are a fatal arithmetic error in
+# bash, and one that poisons every later ((...)) in the session.
+_want_delta "august the 9th"          20260809 20260808 1
+_want_delta "september the 8th"       20260908 20260907 1
+_want_delta "octal-looking month"     20260901 20260831 1
+# The real elapsed days between two dates a long way apart, straight from date(1).
+_far=$(( ( $(date -u -d 2026-08-20 +%s) - $(date -u -d 1999-02-03 +%s) ) / 86400 ))
+_want_delta "27 years apart"          20260820 19990203 "$_far"
+
+section "the tty gate"
+# Every harness in every suite neuters _tty, so the one thing no test ever saw was the
+# behaviour a real non-interactive run gets. Piping into the game must refuse cleanly
+# rather than half-draw a menu it can never read a key for - and it must say why, on
+# stderr, with a nonzero status, so a script or a CI job can tell.
+_tty_err=$(printf 'q\n' | "$CMDCHAMP" 2>&1 >/dev/null); _tty_rc=$?
+((_tty_rc == 1)) && ok "piping into the game exits 1" || fail "piping into the game exits 1" "rc=$_tty_rc"
+[[ "$_tty_err" == *"interactive terminal"* ]] && ok "and says why" || fail "and says why" "stderr: |$_tty_err|"
+_tty_out=$(printf 'q\n' | "$CMDCHAMP" 2>/dev/null)
+[[ -z "$_tty_out" ]] && ok "and draws nothing to stdout" || fail "and draws nothing to stdout" "|${_tty_out:0:60}|"
+# The offline verbs are the exception: they are meant to be piped into.
+printf 'grep -rn TODO .\n' | "$CMDCHAMP" explain >/dev/null 2>&1 \
+  && ok "explain still reads a pipe" || fail "explain still reads a pipe" "rc=$?"
+
 # Summary
 # ═════════════════════════════════════════════════════════════════════════════
 printf '\n%s════════════════════════════════════════%s\n' "$B" "$N"

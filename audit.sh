@@ -983,12 +983,22 @@ _render_cols() {
 
 # One screen. Fails loud on a non-empty stderr, a hard error exit, a timeout,
 # an over-wide line, or a screen that drew nothing at all.
+# $4 = "stderr" folds stderr into the measured output instead of failing on it. A few
+# screens are diagnostics and belong on stderr by design — the sandbox notice is the first
+# thing a player without bwrap ever sees — so under the normal rule they could not be
+# listed here at all, and went unmeasured. One of them was 83 columns wide: the sysctl
+# command a blocked user is meant to copy, wrapping mid-path on the terminal it printed to.
 _render_check() {
-  local name=$1 code=$2 tier=${3:-} out err rc line n=0
+  local name=$1 code=$2 tier=${3:-} merge=${4:-} out err rc line n=0
   [[ -n "$tier" ]] && name="$name [${tier%%=*}]"
-  out=$(env COLUMNS=79 LINES=40 ${tier:+"$tier"} timeout 20 bash "$_RENDER_RUN" "$_RENDER_SRC" "$code" 2>"$XDG_DATA_HOME/render_err" </dev/null)
-  rc=$?
-  err=$(<"$XDG_DATA_HOME/render_err")
+  if [[ "$merge" == stderr ]]; then
+    out=$(env COLUMNS=79 LINES=40 ${tier:+"$tier"} timeout 20 bash "$_RENDER_RUN" "$_RENDER_SRC" "$code" 2>&1 </dev/null)
+    rc=$?; err=""
+  else
+    out=$(env COLUMNS=79 LINES=40 ${tier:+"$tier"} timeout 20 bash "$_RENDER_RUN" "$_RENDER_SRC" "$code" 2>"$XDG_DATA_HOME/render_err" </dev/null)
+    rc=$?
+    err=$(<"$XDG_DATA_HOME/render_err")
+  fi
   ((rc == 124)) && { _fail "render $name: timed out"; return; }
   ((rc > 1))    && { _fail "render $name: exit $rc"; return; }
   [[ -n "$err" ]] && { _fail "render $name: stderr — ${err%%$'\n'*}"; return; }
@@ -1030,6 +1040,13 @@ phase10_render_smoke() {
     # _cmd_mastery reads the _q* globals on entry and a cold process is the one state that
     # exposed them as unset. Both halves of that are the point of this check.
     'stats page 2 cold|BOSS_BEATEN=2; DATA=$(mktemp -d); { echo "#v1"; echo "zz|2|lv1|100"; } > "$DATA/scores"; stats; rm -rf "$DATA"'
+    "vi inputrc recipe|_vi_keymap; _vi_inputrc"
+    # The Tab panel has two renderers: inline under the prompt, and - once the panel is
+    # taller than the screen - a full-screen pager. Only the inline one was ever drawn, so
+    # the branch that legacy 80x24 terminals actually take went unmeasured. Stubs stand in
+    # for the prompt redraw the pager calls on its way out.
+    "manpage pager|_REDRAW_HDR() { :; }; draw() { :; }; _EBUF=\"\"; _mp_show grep; _mp_show awk; _mp_show find; _man_full"
+    "daily record bar|_gt_bar \"++-+-++\"; printf '%s\\n' \"\$REPLY\""
     "main menu|_main_menu"
     "options menu|_options_menu"
     "practice menu|_practice_menu"
@@ -1047,6 +1064,11 @@ phase10_render_smoke() {
     "hint tier 3|for _i in 1 2 3; do _play_next_hint _flags; done; printf '%s\n' \"\$_PLAY_HINT_OUT\""
     "hint exhausted|for _t in \"\${_PLAY_FLAG_ORDER[@]}\"; do _flags[\$_t]=1; done; _play_next_hint _flags; printf '%s\n' \"\$_PLAY_HINT_OUT\""
     "question header|hdr 30 5 10"
+    # The countdown in the timed modes: _rl_tick is the only thing that repaints the header
+    # mid-question, and it does it by saving and restoring the cursor around a redraw, so a
+    # stray newline or a \e[J in the header would eat the answer line under the player.
+    "countdown tick|_REDRAW_HDR() { hdr 30 5 10; }; printf -v _n '%(%s)T' -1; _rl_deadline=\$((_n + 17)); _rl_tick; _rl_rem; printf '\\nremaining %s\\n' \"\$REPLY\""
+    "countdown expired|printf -v _n '%(%s)T' -1; _rl_deadline=\$((_n - 99)); _rl_rem; printf 'remaining %s\\n' \"\$REPLY\""
     "question prompt|qdisp \"\$(printf 'Find every file under %s changed in the last 7 days and hand the list to tar' /sandbox/very/deep/path)\""
     "wrong answer|ans='find . -type f -newer .env -print0 | xargs -0 grep -l secret | sort -u | head -20'; _wrong_show"
     "shorter alternate|OPT_ALTS=1; _show_alts \"cat notes.txt | grep -c TODO\" \"grep -c TODO notes.txt§cat notes.txt | grep -c TODO\" \"§\""
@@ -1071,7 +1093,28 @@ phase10_render_smoke() {
     done
     for ((i=1; i<=PLAY_MOD_TOTAL; i++)); do _render_check "module $i" "_play_mod_detail _flags $i" "$t"; ((screens++)); done
     for d in "${!_DISK_DESC[@]}"; do _render_check "disk $d" "DISKS_FOUND=; _disk_found $d" "$t"; ((screens++)); done
+    # The four states of the sandbox notice. Android gets a different body because bwrap
+    # cannot exist there, so `paru -S bubblewrap` would send a phone user after a package
+    # no repo carries — asserted below, not just drawn.
+    _render_check "sandbox notice missing"         "_bwrap_notice missing" "$t" stderr
+    _render_check "sandbox notice missing android" "OSTYPE=linux-android _bwrap_notice missing" "$t" stderr
+    _render_check "sandbox notice blocked"         "_bwrap_notice blocked 'bwrap: setting up uid map: Permission denied'" "$t" stderr
+    _render_check "sandbox notice blocked android" "OSTYPE=linux-android _bwrap_notice blocked ''" "$t" stderr
+    ((screens += 4))
   done
+  # What the notice says, not just how wide it is.
+  local _bnout
+  _bnout=$(env COLUMNS=79 LINES=40 timeout 20 bash "$_RENDER_RUN" "$_RENDER_SRC" \
+    "OSTYPE=linux-android _bwrap_notice missing" 2>&1 </dev/null | _strip_ansi_stream)
+  if grep -q "paru\|apt install" <<< "$_bnout"; then
+    _fail "render sandbox notice: Android is told to install a package that cannot exist there"
+  else _ok; fi
+  if grep -q "user namespaces" <<< "$_bnout"; then _ok
+  else _fail "render sandbox notice: Android is not told why the sandbox is unavailable"; fi
+  _bnout=$(env COLUMNS=79 LINES=40 timeout 20 bash "$_RENDER_RUN" "$_RENDER_SRC" \
+    "_bwrap_notice missing" 2>&1 </dev/null | _strip_ansi_stream)
+  if grep -q "paru -S bubblewrap" <<< "$_bnout" && grep -q "apt install bubblewrap" <<< "$_bnout"; then _ok
+  else _fail "render sandbox notice: no install line for a box that could actually run bwrap"; fi
   # The four timed modes (boss, gauntlet, scenario, placement) draw their own header
   # instead of going through qdisp, and each one printed the prompt raw — so a prompt
   # past the terminal width hard-wrapped mid-word in exactly the modes with no manpage
@@ -1303,7 +1346,23 @@ phase12_line_editor() {
   _ed_case "left arrow"  0 'aXbc'      $'abc\e[D\e[DX\n'
   _ed_case "history up"  0 'second cmd' $'\e[A\n'
   _ed_case "history up2" 0 'first cmd'  $'\e[A\e[A\n'
-  cases=7
+  # ── bracketed paste ──
+  # Every one of these is a bug that shipped once. The body has to arrive as a single
+  # chunk: _paste_start disambiguates on a 50ms read, so splitting a paste across feeder
+  # writes tests the feeder, not the editor.
+  _ed_case "paste"            0 'echo hi'      $'\e[200~echo hi\e[201~\n'
+  _ed_case "paste multiline"  0 'echo a echo b' $'\e[200~echo a\necho b\e[201~\n'
+  # An escape inside the pasted text - a colour code in copied terminal output - used to end
+  # the paste, and everything after it went back to the keystroke loop: in insert mode the
+  # sequence lands in the buffer as literal text (echo [31mred), and in vi normal mode it is
+  # run as edit commands. Only \e[201~ may stop a paste; any other sequence is dropped.
+  _ed_case "paste with escapes" 0 'echo red'   $'\e[200~echo \e[31mred\e[0m\e[201~\n'
+  # F9 is \e[20~, one byte short of a paste start. The blind old read took it for one and
+  # swallowed everything the player typed next.
+  _ed_case "F9 is not a paste"  0 'echo hi'    $'\e[20~echo hi\n'
+  # Paste lands at the cursor, not at the end.
+  _ed_case "paste at cursor"    0 'aXb'        $'ab\e[D\e[200~X\e[201~\n'
+  cases=12
   # ── vi normal mode (expectations are vim's, not ours) ──
   local -a vi=(
     "x|hell|hello${E}|x"
@@ -2042,6 +2101,38 @@ phase14_playthrough() {
         printf "@SCDONE %d\n" "$(tr , "\n" <<< "$SC_DONE" | grep -c .)"'; then
       _ad_expect "13 scenarios run clean" "rc=0" "min:$SC_TOTAL"
       _ad_expect "13 scenarios recorded"  "@SCDONE $SC_TOTAL" 1
+    fi
+    # A scenario step is graded by running your command for real, so a wrong one can leave
+    # the tree in a state where the RIGHT answer no longer works - delete the file the next
+    # step reads and the mission is unwinnable until you quit out. _sc_snap_restore is what
+    # stops that, and nothing ever called it: the bot answered every step correctly, so
+    # thirteen stateful missions were driven with their rollback untouched.
+    #
+    # The wrapper fires only on a miss, which is what proves WHEN it runs; damaging the tree
+    # inside it - one file added, one removed - is what proves WHAT it puts back.
+    if _ad_drive "scenario rollback" '' '
+        SANDBOX_MODE=1; _check_bwrap; _load_profile; SC_DONE=""
+        eval "_orig_ssr() $(declare -f _sc_snap_restore | tail -n +2)"
+        _sc_snap_restore() {
+          # The victim is chosen from the SNAPSHOT, not from the live tree: the sandbox
+          # keeps scratch files of its own (.stderr) that were never in the snapshot, and
+          # restoring correctly does not bring those back. Picking one of those made this
+          # check depend on readdir order.
+          local _victim _rel _canary="$SANDBOX_DIR/CC_ROLLBACK_CANARY"
+          _rel=$(find "$_sc_snap" -maxdepth 3 -type f 2>/dev/null | grep -v "/\." | head -1)
+          _rel=${_rel#"$_sc_snap"/}
+          _victim="$SANDBOX_DIR/$_rel"
+          : > "$_canary"
+          [[ -n "$_rel" ]] && rm -f "$_victim"
+          _orig_ssr
+          printf "@ROLLBACK canary=%d victim=%d\n" \
+            "$([[ -e "$_canary" ]] && echo 1 || echo 0)" \
+            "$([[ -n "$_rel" && -e "$_victim" ]] && echo 1 || echo 0)"
+        }
+        _ad_budget 60 1
+        scenario 1; printf "@RB_RC=%d\n" "$?"'; then
+      _ad_expect "a scenario miss rolls the tree back" "@ROLLBACK canary=0 victim=1" "min:1"
+      _ad_expect "the scenario still finished"         "@RB_RC=0" 1
     fi
   else
     _warn "playthrough: no bwrap — the scenario engine was not driven"
