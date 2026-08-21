@@ -956,7 +956,7 @@ _strip_ansi_stream() { sed -e 's/\x1b\[[0-9;?]*[a-zA-Z]//g' -e 's/\x1b[()][A-Z0-
 # (the Continue level/question counter, the Daily done-tick) stripped so only the
 # digit->action mapping is compared.
 _render_menu_map() {
-  env COLUMNS=79 timeout 20 bash "$_RENDER_RUN" "$_RENDER_SRC" "$1; SANDBOX_MODE=1; _main_menu" 2>/dev/null </dev/null \
+  env COLUMNS=79 LINES=40 timeout 20 bash "$_RENDER_RUN" "$_RENDER_SRC" "$1; SANDBOX_MODE=1; _main_menu" 2>/dev/null </dev/null \
     | _strip_ansi_stream \
     | sed -n 's/^\x01\{0,1\}\([0-9]\) \([A-Za-z]*\).*/\1 \2/p' \
     | awk '!seen[$1]++'
@@ -966,7 +966,7 @@ _render_menu_map() {
 # marker in the same column. $3 is a literal to locate (empty = use the widest gap).
 _render_cols() {
   local name=$1 code=$2 mark=$3 out cols="" c line n=0
-  out=$(env COLUMNS=79 timeout 20 bash "$_RENDER_RUN" "$_RENDER_SRC" "$code" 2>/dev/null </dev/null | _strip_ansi_stream)
+  out=$(env COLUMNS=79 LINES=40 timeout 20 bash "$_RENDER_RUN" "$_RENDER_SRC" "$code" 2>/dev/null </dev/null | _strip_ansi_stream)
   while IFS= read -r line; do
     [[ -z "${line//[[:space:]]/}" ]] && continue
     [[ "$line" == *"$mark"* ]] || continue
@@ -986,7 +986,7 @@ _render_cols() {
 _render_check() {
   local name=$1 code=$2 tier=${3:-} out err rc line n=0
   [[ -n "$tier" ]] && name="$name [${tier%%=*}]"
-  out=$(env ${tier:+"$tier"} COLUMNS=79 timeout 20 bash "$_RENDER_RUN" "$_RENDER_SRC" "$code" 2>"$XDG_DATA_HOME/render_err" </dev/null)
+  out=$(env COLUMNS=79 LINES=40 ${tier:+"$tier"} timeout 20 bash "$_RENDER_RUN" "$_RENDER_SRC" "$code" 2>"$XDG_DATA_HOME/render_err" </dev/null)
   rc=$?
   err=$(<"$XDG_DATA_HOME/render_err")
   ((rc == 124)) && { _fail "render $name: timed out"; return; }
@@ -1000,11 +1000,16 @@ _render_check() {
     _fail "render $name: non-ASCII byte on the ASCII tier — |$(LC_ALL=C grep -oP '.{0,20}[\x80-\xff].{0,20}' <<< "$out" | head -1)|"
     return
   fi
+  # `\r\e[K` rewrites the line from column 0 - the field manual's pager erases its
+  # "-- more --" that way. In a captured stream both halves are still there, so measuring
+  # the raw line reports a width the terminal never showed. Keep only what survives the
+  # last erase; a bare \r is left alone (it overwrites without erasing, so the longer of
+  # the two really is what you see).
   while IFS= read -r line; do
     _strip_ansi "$line"
     ((${#REPLY} > 79)) && { _fail "render $name: line ${n} is ${#REPLY} cols (max 79) — |${REPLY:0:60}|"; return; }
     ((n++))
-  done < <(printf '%s\n' "$out" | sed -e 's/\x1b\[[0-9;?]*[a-zA-Z]//g' -e 's/\x1b[()][A-Z0-9]//g' -e 's/\x1b[=>]//g')
+  done < <(printf '%s\n' "$out" | sed -e 's/.*\r\x1b\[[KJ]//' -e 's/\x1b\[[0-9;?]*[a-zA-Z]//g' -e 's/\x1b[()][A-Z0-9]//g' -e 's/\x1b[=>]//g')
   _ok
 }
 
@@ -1052,7 +1057,12 @@ phase10_render_smoke() {
   # swaps glyphs for ASCII of a different length, so a frame that fits in one tier
   # can shear in the other — each has to be measured on its own.
   local c t
-  for t in "" "CMDCHAMP_ASCII=1"; do
+  # Three tiers. The first two are glyph sets; the third is a SHORT terminal, where the
+  # six screens that size themselves off _LINES take their other branch - the field manual
+  # pages instead of printing whole, the manpage panel opens full-screen instead of inline,
+  # the by-command grid and the syllabus clamp their row counts. At the pinned 40 lines
+  # none of that code ran.
+  for t in "" "CMDCHAMP_ASCII=1" "LINES=20"; do
     for c in "${checks[@]}"; do _render_check "${c%%|*}" "${c#*|}" "$t"; ((screens++)); done
     for ((i=1; i<=MAX_LEVEL; i++)); do
       _render_check "boss splash $i" "_boss_splash $i" "$t"
@@ -1869,7 +1879,11 @@ RUNNER
 _ad_drive() {
   local name=$1 key=$2 code=$3 nowidth=${4:-} rc wide
   : > "$_AD_ERR"
-  yes "$key" 2>/dev/null | COLUMNS=79 XDG_DATA_HOME="$_AD_DIR" timeout 300 \
+  # LINES is pinned for the same reason COLUMNS is: several screens gate their densest
+  # variant on terminal height (_wd_diag_stages wants >= 20), and _LINES falls back to
+  # `tput lines` - so without this the audit's verdict depended on the size of the pane
+  # it was launched from, and a short one silently skipped checks instead of failing them.
+  yes "$key" 2>/dev/null | COLUMNS=79 LINES=40 XDG_DATA_HOME="$_AD_DIR" timeout 300 \
     bash "$_AD_RUN" "$_AD_SRC" "$code" >"$_AD_OUT" 2>"$_AD_ERR"
   rc=${PIPESTATUS[1]}
   if ((rc == 124)); then _fail "playthrough $name: hung (300s)"; return 1; fi
@@ -1878,7 +1892,7 @@ _ad_drive() {
   # any width — `cat /proc/1/environ` is one long line in any shell. Its own frame lines
   # are measured exhaustively by phases 10 and 11 instead.
   [[ "$nowidth" == nowidth ]] && return 0
-  wide=$(sed -e 's/\x1b\[[0-9;?]*[a-zA-Z]//g' -e 's/\x1b[()][A-Z0-9]//g' -e 's/\x1b[=>78]//g' "$_AD_OUT" \
+  wide=$(sed -e 's/.*\r\x1b\[[KJ]//' -e 's/\x1b\[[0-9;?]*[a-zA-Z]//g' -e 's/\x1b[()][A-Z0-9]//g' -e 's/\x1b[=>78]//g' "$_AD_OUT" \
     | awk 'length($0) > 79 { print length($0) ": " substr($0,1,60); exit }')
   if [[ -n "$wide" ]]; then _fail "playthrough $name: line past 79 cols — $wide"; return 1; fi
   return 0
@@ -1964,9 +1978,31 @@ phase14_playthrough() {
     if _ad_drive "miss diagnosis (sandbox)" '' '
         _load_profile; _session_init; _QUIT=0
         SANDBOX_MODE=1; _check_bwrap >/dev/null 2>&1 && _sandbox_init >/dev/null 2>&1
+        # 15 of the 55 chains are a single command, and the stage dissection correctly
+        # declines on those - so which chain the shuffle happened to deal decided whether
+        # this check tested anything. Deal only from the chains the diagnosis can actually
+        # fire on, chosen with the same predicates the diagnosis itself gates on, so the
+        # filter cannot drift from the code it is selecting for.
+        declare -a _allc=() _pipec=() _stg=()
+        gen_chains _allc
+        for _cl in "${_allc[@]}"; do
+          [[ -n "$_cl" ]] || continue
+          _qparse "$_cl"
+          _is_destructive "$_qans" && continue
+          _pipe_stages "$_qans" _stg || continue
+          ((${#_stg[@]} >= 2 && ${#_stg[@]} <= 8)) || continue
+          _can_sandbox "$_qans" || continue
+          _pipec+=("$_cl")
+        done
+        printf "@SPOOL n=%s\n" "${#_pipec[@]}"
+        gen_chains() { local -n _gc_out=$1; _gc_out=("${_pipec[@]}"); }
         AD_WRONGTXT=@near; _ad_budget 6 1; challenge
         printf "@SDIAG sandbox=%s\n" "$SANDBOX_MODE"'; then
       _ad_expect "the sandbox miss ran"          "@SDIAG sandbox=1" 1
+      # An empty or near-empty filtered pool would make everything below pass on nothing.
+      local _spool; _spool=$(sed -n 's/^@SPOOL n=//p' "$_AD_OUT" | head -1)
+      if [[ "$_spool" =~ ^[0-9]+$ ]] && ((_spool >= 10)); then _ok
+      else _fail "playthrough: only ${_spool:-0} chains can carry the stage dissection"; fi
       _ad_expect "a miss says what was wanted"   "wanted"           min:1
       # not "you got": when stdout is empty the `error` line wins, which is the more useful
       # of the two. `stages` is the distinctive half and a chain is always a pipeline.
@@ -2064,6 +2100,62 @@ phase14_playthrough() {
     _warn "playthrough: no bwrap — the playground was not driven"
   fi
 
+  # ── 9. every main-menu row, entered THROUGH the menu ─────────────
+  # Everything above reaches a mode by calling it directly, so the menu's own digit→action
+  # table was the one piece of the game no suite ever executed: Help could have dispatched
+  # to stats and every check would still be green. Each row also gets its own cold process,
+  # which is the state that catches a screen reading a global nothing has assigned yet —
+  # stats page 2 shipped that way, unbound on a fresh launch, because every reader that
+  # reached it had always answered a question first.
+  #
+  # _sel is replaced with one that picks a fixed row once and then backs out, which is what
+  # a player pressing the digit and then q does. _ad_drive already fails the row on a hang,
+  # a dirty stderr, a bash error or a line past 79 columns; the markers pin WHICH screen
+  # each digit opened. Rows 0/1/2/9 open no banner of their own and are asserted below.
+  # Declining New Game must leave the save exactly where it was. It is the one row that can
+  # destroy a profile, and the confirm is all that stands between a mistyped digit and a
+  # wiped save. (`read -rp` prints no prompt on a pipe, so the confirm TEXT cannot be
+  # asserted here — phase 10 draws it; what matters on this path is that it was honoured.)
+  local _nb_before _nb_after
+  _nb_before=$(sed -n 's/^BOSS_BEATEN=//p' "$_AD_DIR/cmdchamp/profile")
+  if _ad_drive "menu new declined" '' '
+      _load_profile; load; _session_init; _ad_budget 1
+      AD_SELN=0
+      _sel() { printf "%s\n" "$1" "${@:2}"; REPLY=1; ((AD_SELN++)); ((AD_SELN>1)) && return 1; return 0; }
+      _main_menu'; then
+    _nb_after=$(sed -n 's/^BOSS_BEATEN=//p' "$_AD_DIR/cmdchamp/profile")
+    if [[ "$_nb_before" == "$_nb_after" && -s "$_AD_DIR/cmdchamp/scores" ]]; then _ok
+    else _fail "playthrough menu new declined: the save changed (BOSS_BEATEN $_nb_before→$_nb_after)"; fi
+  fi
+
+  local _mr _mrow _mmark
+  for _mr in "0|" "1|" "2|" "3|═══ CHALLENGE ═══" "4|═══ DAILY ═══" "5|═══ PRACTICE ═══" \
+             "6|═══ STATS ═══" "7|═══ OPTIONS ═══" "8|═══ HELP ═══" "9|"; do
+    _mrow=${_mr%%|*}; _mmark=${_mr#*|}
+    _ad_drive "menu row $_mrow" '' '
+        _load_profile; load; _session_init; _ad_budget 3
+        AD_SELN=0
+        _sel() { printf "%s\n" "$1" "${@:2}"; REPLY='"$_mrow"'
+                 ((AD_SELN++)); ((AD_SELN>1)) && return 1; return 0; }
+        _main_menu' || continue
+    [[ -n "$_mmark" ]] && _ad_expect "menu row $_mrow" "$_mmark" "min:1"
+  done
+  # Continue opens the run loop instead of a banner, so the proof it dispatched is that the
+  # question index moved.
+  if _ad_drive "menu continue" '' '
+      _load_profile; load; _session_init; _ad_budget 3
+      AD_SELN=0
+      # _main_menu exits the process when _sel backs out, so @QI_OUT has to be printed
+      # from inside the stub - nothing after _main_menu ever runs.
+      _sel() { printf "%s\n" "$1" "${@:2}"; REPLY=0; ((AD_SELN++))
+               ((AD_SELN>1)) && { printf "@QI_OUT=%s\n" "$QI"; return 1; }; return 0; }
+      printf "@QI_IN=%s\n" "$QI"; _main_menu'; then
+    local _qin _qout
+    _qin=$(sed -n 's/^@QI_IN=//p' "$_AD_OUT" | head -1)
+    _qout=$(sed -n 's/^@QI_OUT=//p' "$_AD_OUT" | tail -1)
+    if [[ -n "$_qin" && -n "$_qout" ]] && ((_qout > _qin)); then _ok
+    else _fail "playthrough menu continue: digit 1 did not open the run loop (QI ${_qin:-?}→${_qout:-?})"; fi
+  fi
   printf '  playthrough: %d levels + %d scenarios + playground + challenge/daily/practice/placement   broken: %d\n' \
     "$MAX_LEVEL" "$SC_TOTAL" "$((FAIL - before))"
 }
