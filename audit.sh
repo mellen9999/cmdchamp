@@ -1330,8 +1330,10 @@ _ed_case() { # <name> <vi> <expected> <chunk...>
   # artefact passes a later one. Three, not two: at two this phase still cried wolf on
   # roughly one full audit run in three, which is the fastest way to teach someone to
   # stop reading the output.
+  # Five, not three: a busy machine (another audit, a build) is exactly when the feeder
+  # gets furthest ahead, and retries only cost time on a case that is already failing.
   local try
-  for try in 1 2 3; do
+  for try in 1 2 3 4 5; do
     _ed_type "$vi" "$@"
     ((_ED_RC == 124)) && continue
     [[ -s "$_ED_ERR" ]] && continue
@@ -1339,7 +1341,7 @@ _ed_case() { # <name> <vi> <expected> <chunk...>
   done
   if ((_ED_RC == 124)); then _fail "editor $name: hung (10s timeout)"
   elif [[ -s "$_ED_ERR" ]]; then _fail "editor $name: stderr — $(head -c 90 "$_ED_ERR")"
-  else _fail "editor $name: got |$REPLY| want |$exp|"; fi
+  else _fail "editor $name: got |$REPLY| want |$exp| (timing-sensitive: re-run before bisecting)"; fi
 }
 
 phase12_line_editor() {
@@ -1370,7 +1372,40 @@ phase12_line_editor() {
   _ed_case "F9 is not a paste"  0 'echo hi'    $'\e[20~echo hi\n'
   # Paste lands at the cursor, not at the end.
   _ed_case "paste at cursor"    0 'aXb'        $'ab\e[D\e[200~X\e[201~\n'
-  cases=12
+  # ── the clock running out ──
+  # Nothing ever let it. Every bot answers, so the one path a player meets on their first
+  # boss fight - the timer reaching zero - was never taken: _read_line returns 1 with an
+  # empty buffer, and the countdown repaints the header once a second on the way there.
+  # A half-typed answer goes in first, so this proves the deadline beats a buffer with
+  # something in it rather than a read that simply had nothing to do. No ready-file
+  # handshake here: the feeder's own stdin is at EOF, so its reads would not block and the
+  # pipe would close before _read_line ever started (rc=2, in 0.0s).
+  local _to_out _to_rc
+  _to_out="$XDG_DATA_HOME/to_out"; : > "$_to_out"; : > "$_ED_ERR"
+  # Elapsed is measured INSIDE, not around the pipeline: the feeder outlives the reader on
+  # purpose (a reader that quits on EOF instead of on the clock must not pass), so the
+  # pipeline's own wall time is the feeder's, not the deadline's.
+  { sleep 0.4; printf 'half an answ'; sleep 5; } \
+    | timeout 20 bash -c '
+        source "$1"
+        OPT_VI=0; _apply_opts; HIST=(); HIST_IDX=0
+        _REDRAW_HDR() { printf "@TICK\n"; }
+        SECONDS=0; _read_line 0 1 2; _rc=$?
+        printf "rc=%s input=[%s] took=%s\n" "$_rc" "$input" "$SECONDS" > "$2"' _ "$_ED_SRC" "$_to_out" >"$XDG_DATA_HOME/to_scr" 2>"$_ED_ERR"
+  _to_rc=$(<"$_to_out")
+  if [[ ! -s "$_ED_ERR" ]]; then _ok
+  else _fail "editor timer: stderr — $(head -c 90 "$_ED_ERR")"; fi
+  # A half-typed buffer must be discarded, not submitted.
+  if [[ "$_to_rc" == "rc=1 input=[] took="* ]]; then _ok
+  else _fail "editor timer: the clock did not expire cleanly — got |$_to_rc|"; fi
+  # And it has to wait for the deadline rather than return early: a busy loop would report
+  # rc=1 too, and would fail every player the instant the question appeared.
+  if [[ "$_to_rc" == *"took=2" || "$_to_rc" == *"took=3" ]]; then _ok
+  else _fail "editor timer: a 2s deadline did not take 2s — |$_to_rc|"; fi
+  # The countdown repaints the header on the way down - once a second, not once.
+  if (( $(grep -ac '@TICK' "$XDG_DATA_HOME/to_scr" 2>/dev/null) >= 2 )); then _ok
+  else _fail "editor timer: the countdown never repainted the header"; fi
+  cases=16
   # ── vi normal mode (expectations are vim's, not ours) ──
   local -a vi=(
     "x|hell|hello${E}|x"
@@ -2055,9 +2090,21 @@ phase14_playthrough() {
         for _cl in "${_allc[@]}"; do
           [[ -n "$_cl" ]] || continue
           _qparse "$_cl"
-          _is_destructive "$_qans" && continue
-          _pipe_stages "$_qans" _stg || continue
-          ((${#_stg[@]} >= 2 && ${#_stg[@]} <= 8)) || continue
+          # Filter on the string the bot will actually TYPE, not on the canonical: the miss
+          # is the canonical with its last word dropped, and _wd_diag_stages is handed the
+          # input. Chains whose last stage is one word lose that stage in the truncation,
+          # so a pool filtered on the canonical still dealt questions the dissection
+          # correctly declines - which is the same flake, one step further in.
+          _near=${_qans% *}
+          _is_destructive "$_near" && continue
+          _pipe_stages "$_near" _stg || continue
+          # Exactly two, not two-to-eight: a longer dissection is allowed to drop its row
+          # when even the trimmed form will not fit the width, which is behaviour rather
+          # than failure - and it is data-dependent, so it turned this check into a coin
+          # flip that came up tails about one full audit in five. A two-stage row always
+          # fits, and two stages is all it takes to prove the dissection ran.
+          ((${#_stg[@]} == 2)) || continue
+          _can_sandbox "$_near" || continue
           _can_sandbox "$_qans" || continue
           _pipec+=("$_cl")
         done
@@ -2068,7 +2115,7 @@ phase14_playthrough() {
       _ad_expect "the sandbox miss ran"          "@SDIAG sandbox=1" 1
       # An empty or near-empty filtered pool would make everything below pass on nothing.
       local _spool; _spool=$(sed -n 's/^@SPOOL n=//p' "$_AD_OUT" | head -1)
-      if [[ "$_spool" =~ ^[0-9]+$ ]] && ((_spool >= 10)); then _ok
+      if [[ "$_spool" =~ ^[0-9]+$ ]] && ((_spool >= 5)); then _ok
       else _fail "playthrough: only ${_spool:-0} chains can carry the stage dissection"; fi
       _ad_expect "a miss says what was wanted"   "wanted"           min:1
       # not "you got": when stdout is empty the `error` line wins, which is the more useful

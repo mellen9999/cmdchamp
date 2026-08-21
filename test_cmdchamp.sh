@@ -1590,6 +1590,56 @@ _tty_out=$(printf 'q\n' | "$CMDCHAMP" 2>/dev/null)
 printf 'grep -rn TODO .\n' | "$CMDCHAMP" explain >/dev/null 2>&1 \
   && ok "explain still reads a pipe" || fail "explain still reads a pipe" "rc=$?"
 
+section "refusing to overwrite a newer save"
+# The one path in the loader that must NOT reset anything. Two machines share one save
+# through cc-sync; a downgrade on either of them meets a profile written by a format it
+# cannot read, and the honest move is to stop rather than to "migrate" a file whose fields
+# it does not know. Nothing exercised it - the fuzz corpus only ever produced versions the
+# loader rejects as malformed, which take the reset branch instead.
+_nv_dir="$TDIR/newer"; mkdir -p "$_nv_dir/cmdchamp"
+printf 'PLAYER_NAME=fromthefuture\nBOSS_BEATEN=30\nPROFILE_VER=999\n' > "$_nv_dir/cmdchamp/profile"
+printf '#v1\nk|2|lv1|100\n' > "$_nv_dir/cmdchamp/scores"
+# Driven through the sourced copy, not the binary: every CLI verb that loads a profile
+# takes the tty gate first, so piping into one only ever tests the gate.
+_nv_err=$(DATA="$_nv_dir/cmdchamp" bash -c "source '$SOURCE_FILE'; _load_profile" 2>&1 >/dev/null); _nv_rc=$?
+((_nv_rc == 1)) && ok "a newer profile stops the game" || fail "a newer profile stops the game" "rc=$_nv_rc"
+[[ "$_nv_err" == *"newer cmdchamp"* && "$_nv_err" == *"Refusing to overwrite"* ]] \
+  && ok "and says what happened" || fail "and says what happened" "stderr: |${_nv_err:0:120}|"
+# The save has to survive untouched: no reset, no backup shuffle, nothing emptied.
+[[ "$(cat "$_nv_dir/cmdchamp/profile")" == 'PLAYER_NAME=fromthefuture'* ]] \
+  && ok "the profile is untouched" || fail "the profile is untouched" "$(head -1 "$_nv_dir/cmdchamp/profile")"
+[[ "$(cat "$_nv_dir/cmdchamp/scores")" == '#v1'*'k|2|lv1|100'* ]] \
+  && ok "the scores are untouched" || fail "the scores are untouched" "$(head -2 "$_nv_dir/cmdchamp/scores" | tr '\n' ' ')"
+[[ ! -e "$_nv_dir/cmdchamp/profile.bak" ]] \
+  && ok "and no backup was taken - nothing was destroyed to need one" \
+  || fail "and no backup was taken" "profile.bak exists, so the reset branch ran"
+
+section "the live-service fallback"
+# #svc: questions are graded on real HTTP, and the responder is python3. The charter is
+# that nothing becomes a hard dependency: no python3 has to mean the question quietly goes
+# back to text-match, not that it errors or grades everyone wrong. Only the happy path was
+# ever run, because this box has python3.
+_svc_no=$(_run 'command() { [[ "${2:-}" == python3 ]] && return 1; builtin command "$@"; }
+                _svc_init; printf "rc=%s ok=%s py=[%s]" "$?" "$_SVC_OK" "$_SVC_PY"')
+[[ "$_svc_no" == "rc=1 ok=0 py=[]" ]] && ok "no python3: _svc_init declines" \
+  || fail "no python3: _svc_init declines" "got |$_svc_no|"
+# And it must not have left a half-written responder behind for the next run to trust.
+[[ ! -e "$DATA/svc.py" ]] && ok "and writes no responder" || fail "and writes no responder" "$DATA/svc.py exists"
+if command -v python3 >/dev/null 2>&1; then
+  _svc_yes=$(_run '_svc_init; printf "rc=%s ok=%s" "$?" "$_SVC_OK"')
+  [[ "$_svc_yes" == "rc=0 ok=1" ]] && ok "with python3: it arms" || fail "with python3: it arms" "got |$_svc_yes|"
+  # Rewritten every run on purpose - a cached responder with no version marker keeps
+  # serving last release's payloads, and the #output values stop matching for that install.
+  _run '_svc_init' >/dev/null; _svc_m1=$(stat -c %Y "$DATA/svc.py" 2>/dev/null)
+  rm -f "$DATA/svc.py"; _run '_svc_init' >/dev/null
+  [[ -s "$DATA/svc.py" ]] && ok "and rewrites the responder every run" \
+    || fail "and rewrites the responder every run" "svc.py not recreated"
+  rm -f "$DATA/svc.py"
+else
+  skip "with python3: it arms"
+  skip "and rewrites the responder every run"
+fi
+
 # Summary
 # ═════════════════════════════════════════════════════════════════════════════
 printf '\n%s════════════════════════════════════════%s\n' "$B" "$N"
