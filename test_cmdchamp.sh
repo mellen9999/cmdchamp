@@ -1614,6 +1614,101 @@ _nv_err=$(DATA="$_nv_dir/cmdchamp" bash -c "source '$SOURCE_FILE'; _load_profile
   && ok "and no backup was taken - nothing was destroyed to need one" \
   || fail "and no backup was taken" "profile.bak exists, so the reset branch ran"
 
+section "the save merge, and the loader's guards on a hand-edited file"
+# cc-sync reconciles ONE save across two devices, so _save_profile does not overwrite the
+# file, it merges: progress fields take max(disk, memory), CSV collections union, options
+# stay last-writer. That merge is the only thing stopping an evening on the phone from
+# rolling back a level beaten on the desktop - and nothing pinned it. Flipping the guard so
+# a LOWER disk value wins left the audit, the selftest and this suite all green.
+_PV=$(_run 'printf %s "$_PROFILE_VER"')
+_mg="$TDIR/merge"
+
+# (1) disk BEHIND memory: the merge must not drag progress back down.
+mkdir -p "$_mg/lower"
+printf 'BOSS_BEATEN=3\nPLACED_THROUGH=2\nBEST_CHALLENGE=10\nDAILY_BEST=5\nDAILY_MAXSTREAK=4\nPROFILE_VER=%s\n' "$_PV" > "$_mg/lower/profile"
+_mg_lo=$(DATA="$_mg/lower" bash -c "source '$SOURCE_FILE'
+  BOSS_BEATEN=9 PLACED_THROUGH=8 BEST_CHALLENGE=99 DAILY_BEST=50 DAILY_MAXSTREAK=40
+  _save_profile
+  printf '%s %s %s %s %s' \"\$BOSS_BEATEN\" \"\$PLACED_THROUGH\" \"\$BEST_CHALLENGE\" \"\$DAILY_BEST\" \"\$DAILY_MAXSTREAK\"" 2>/dev/null)
+[[ "$_mg_lo" == "9 8 99 50 40" ]] && ok "a save never lowers progress to match an older file" \
+  || fail "a save never lowers progress to match an older file" "got |$_mg_lo| want |9 8 99 50 40|"
+[[ "$(grep -c '^BOSS_BEATEN=9$' "$_mg/lower/profile")" == 1 ]] \
+  && ok "and the higher value is what lands on disk" \
+  || fail "and the higher value is what lands on disk" "$(grep '^BOSS_BEATEN=' "$_mg/lower/profile")"
+
+# (2) disk AHEAD of memory: the other device's progress has to be picked up.
+mkdir -p "$_mg/higher"
+printf 'BOSS_BEATEN=20\nPLACED_THROUGH=19\nBEST_CHALLENGE=800\nDAILY_BEST=70\nDAILY_MAXSTREAK=60\nPROFILE_VER=%s\n' "$_PV" > "$_mg/higher/profile"
+_mg_hi=$(DATA="$_mg/higher" bash -c "source '$SOURCE_FILE'
+  BOSS_BEATEN=1 PLACED_THROUGH=1 BEST_CHALLENGE=2 DAILY_BEST=3 DAILY_MAXSTREAK=4
+  _save_profile
+  printf '%s %s %s %s %s' \"\$BOSS_BEATEN\" \"\$PLACED_THROUGH\" \"\$BEST_CHALLENGE\" \"\$DAILY_BEST\" \"\$DAILY_MAXSTREAK\"" 2>/dev/null)
+[[ "$_mg_hi" == "20 19 800 70 60" ]] && ok "and it does pick up the other device's progress" \
+  || fail "and it does pick up the other device's progress" "got |$_mg_hi| want |20 19 800 70 60|"
+
+# (3) the CSV collections union rather than append: saving twice must not grow the list.
+mkdir -p "$_mg/csv"
+printf 'SC_DONE=1,2\nDISKS_FOUND=a,b\nPROFILE_VER=%s\n' "$_PV" > "$_mg/csv/profile"
+_mg_csv=$(DATA="$_mg/csv" bash -c "source '$SOURCE_FILE'
+  SC_DONE=2,3 DISKS_FOUND=b,c
+  _save_profile; _save_profile
+  printf '%s %s' \"\$(tr , '\n' <<< \"\$SC_DONE\" | sort -u | tr '\n' ' ')\" \"\$(tr , '\n' <<< \"\$SC_DONE\" | wc -l)\"" 2>/dev/null)
+[[ "$_mg_csv" == "1 2 3  3" ]] && ok "collections union, and a second save adds no duplicate" \
+  || fail "collections union, and a second save adds no duplicate" "got |$_mg_csv| want |1 2 3  3|"
+
+# (4) a file whose last line has no newline. The loader's `|| [[ -n "$key" ]]` is what
+# reads it; without that the last line vanishes, and the last line is PROFILE_VER, so the
+# whole profile reset itself with a backup on every single launch. An editor that trims the
+# trailing newline is all it takes.
+mkdir -p "$_mg/nonl"
+printf 'PLAYER_NAME=nonl\nBOSS_BEATEN=4\nPROFILE_VER=%s' "$_PV" > "$_mg/nonl/profile"
+_mg_nl=$(DATA="$_mg/nonl" bash -c "source '$SOURCE_FILE'; _load_profile; printf '%s/%s' \"\$PLAYER_NAME\" \"\$BOSS_BEATEN\"" 2>/dev/null)
+[[ "$_mg_nl" == "nonl/4" ]] && ok "a profile with no trailing newline still loads" \
+  || fail "a profile with no trailing newline still loads" "got |$_mg_nl|"
+[[ ! -e "$_mg/nonl/profile.bak" ]] && ok "and is not mistaken for a version mismatch" \
+  || fail "and is not mistaken for a version mismatch" "profile.bak exists - the reset branch ran"
+
+# (5) hand-edited junk in the scalar fields is clamped, not carried into the session.
+mkdir -p "$_mg/junk"
+printf 'OPT_BRIEF=maybe\nOPT_VI=2\nLAST_DAILY=notadate\nDAILY_BEST_DATE=2026-08-20-EXTRA\nPROFILE_VER=%s\n' "$_PV" > "$_mg/junk/profile"
+_mg_jk=$(DATA="$_mg/junk" bash -c "source '$SOURCE_FILE'; _load_profile
+  printf '%s|%s|%s|%s' \"\$OPT_BRIEF\" \"\$OPT_VI\" \"\$LAST_DAILY\" \"\$DAILY_BEST_DATE\"" 2>/dev/null)
+[[ "$_mg_jk" == "1|1||" ]] && ok "junk in the scalar fields is reset to a sane default" \
+  || fail "junk in the scalar fields is reset to a sane default" "got |$_mg_jk| want |1|1|||"
+# ...and a well-formed date is left alone, so the guard is a filter and not a wipe.
+mkdir -p "$_mg/good"
+printf 'LAST_DAILY=20260820\nDAILY_BEST_DATE=2026-08-20\nPROFILE_VER=%s\n' "$_PV" > "$_mg/good/profile"
+_mg_gd=$(DATA="$_mg/good" bash -c "source '$SOURCE_FILE'; _load_profile; printf '%s|%s' \"\$LAST_DAILY\" \"\$DAILY_BEST_DATE\"" 2>/dev/null)
+[[ "$_mg_gd" == "20260820|2026-08-20" ]] && ok "and a well-formed date survives it" \
+  || fail "and a well-formed date survives it" "got |$_mg_gd|"
+
+# (6) the reset branch must take the backup BEFORE it empties anything - that copy is the
+# player's only way back from a format the build cannot read.
+mkdir -p "$_mg/old"
+printf 'PLAYER_NAME=ancient\nBOSS_BEATEN=12\nPROFILE_VER=1\n' > "$_mg/old/profile"
+printf '#v1\nk|2|lv1|100\n' > "$_mg/old/scores"
+DATA="$_mg/old" bash -c "source '$SOURCE_FILE'; _load_profile" >/dev/null 2>&1
+[[ -s "$_mg/old/profile.bak" && "$(cat "$_mg/old/profile.bak")" == *'PLAYER_NAME=ancient'* ]] \
+  && ok "an unreadable format is backed up before the reset" \
+  || fail "an unreadable format is backed up before the reset" "profile.bak: |$(cat "$_mg/old/profile.bak" 2>&1 | head -1)|"
+[[ -s "$_mg/old/scores.bak" && "$(cat "$_mg/old/scores.bak")" == *'k|2|lv1|100'* ]] \
+  && ok "and so are the scores" || fail "and so are the scores" "scores.bak: |$(head -2 "$_mg/old/scores.bak" 2>&1 | tr '\n' ' ')|"
+[[ ! -s "$_mg/old/scores" ]] && ok "and the live scores are the ones that got emptied" \
+  || fail "and the live scores are the ones that got emptied" "$(head -2 "$_mg/old/scores" | tr '\n' ' ')"
+
+# (7) a merely OLD-but-readable format migrates in place. It must not take the reset path:
+# that would throw away a save this build understands perfectly well.
+mkdir -p "$_mg/mig"
+printf 'PLAYER_NAME=migrated\nBOSS_BEATEN=7\nPROFILE_VER=2\n' > "$_mg/mig/profile"
+_mg_mi=$(DATA="$_mg/mig" bash -c "source '$SOURCE_FILE'; _load_profile; printf '%s/%s' \"\$PLAYER_NAME\" \"\$BOSS_BEATEN\"" 2>/dev/null)
+[[ "$_mg_mi" == "migrated/7" ]] && ok "an old but readable format migrates with the save intact" \
+  || fail "an old but readable format migrates with the save intact" "got |$_mg_mi|"
+[[ ! -e "$_mg/mig/profile.bak" ]] && ok "and does not get reset on the way" \
+  || fail "and does not get reset on the way" "profile.bak exists"
+[[ "$(grep -c "^PROFILE_VER=$_PV\$" "$_mg/mig/profile")" == 1 ]] \
+  && ok "and is rewritten at the current format" \
+  || fail "and is rewritten at the current format" "$(grep '^PROFILE_VER=' "$_mg/mig/profile")"
+
 section "the live-service fallback"
 # #svc: questions are graded on real HTTP, and the responder is python3. The charter is
 # that nothing becomes a hard dependency: no python3 has to mean the question quietly goes
