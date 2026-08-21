@@ -9150,6 +9150,98 @@ CC_REC
     _sandbox_exec 'sleep 10' 1 &>/dev/null
     _assert "(k) a command that hangs is killed by the timeout" \
       "$(( SECONDS - _t0 < 6 ? 1 : 0 ))" "1"
+    # (l) the grading DECISION, as opposed to the sandbox it runs in. Everything above
+    # proves the box is sealed; these prove the verdict. Each one was mutable without a
+    # single failing check: drop the #require gate and a hardcoded result passes the
+    # question that exists to stop it; turn the #output+#state AND into an OR and half a
+    # job counts as the whole job; let 127 through and a typo'd command name scores on a
+    # question whose expected output happens to match nothing.
+    local _sv_o=$_qoutput _sv_s=$_qstate _sv_r=$_qrequire _sv_v=$_qsvc _sv_t=$_qtext
+    local _gdir; _gdir=$(mktemp -d "${TMPDIR:-/tmp}/cc-grade.XXXXXX")
+    SANDBOX_MODE=1; SANDBOX_DIR=$_gdir; _qsvc="" _qstate="" _qrequire="" _qtext=0
+    _qoutput="7"
+    # #require is the anti-cheat gate: the right number typed as a literal is not the answer
+    # to "add these with the shell". It must fail, and it must fail as 2 - right command,
+    # wrong string - because that is what tells the player which of the two they got wrong.
+    _qrequire="3+4"
+    _sandbox_validate 'echo 7' >/dev/null 2>&1
+    _assert "(l) #require: a hardcoded result is refused" "$?/$_SANDBOX_REQUIRE_FAIL" "1/2"
+    _sandbox_validate 'echo $((3+4))' >/dev/null 2>&1
+    _assert "(l) #require: the real expression passes" "$?/$_SANDBOX_REQUIRE_FAIL" "0/0"
+    _sandbox_validate 'echo 9' >/dev/null 2>&1
+    _assert "(l) #require: wrong output AND no expression is just wrong" "$?/$_SANDBOX_REQUIRE_FAIL" "1/1"
+    _qrequire=""
+    # A command that does not exist must never score. 127 has to be caught before the
+    # output comparison, or an expected output that matches the empty string passes.
+    _qoutput="~.*"
+    _sandbox_validate 'cc_no_such_command_xyz' >/dev/null 2>&1
+    _assert "(l) a command-not-found never scores" "$?" "1"
+    _sandbox_validate 'echo anything' >/dev/null 2>&1
+    _assert "(l) and a real one still does" "$?" "0"
+    # Both tags on one question mean BOTH, not either: printing the right thing without
+    # leaving the right thing on disk is half the job.
+    _qoutput="7" _qstate="exists:made"
+    rm -f "$_gdir/made"
+    _sandbox_validate 'echo 7' >/dev/null 2>&1
+    _assert "(l) #output+#state: right output, no file - refused" "$?" "1"
+    rm -f "$_gdir/made"
+    _sandbox_validate 'touch made' >/dev/null 2>&1
+    _assert "(l) #output+#state: right file, no output - refused" "$?" "1"
+    rm -f "$_gdir/made"
+    _sandbox_validate 'touch made; echo 7' >/dev/null 2>&1
+    _assert "(l) #output+#state: both - accepted" "$?" "0"
+    # The same gate on the text-match side. A box with no sandbox grades every question
+    # this way, so the anti-cheat has to hold there too or it only holds on this machine.
+    SANDBOX_MODE=0 _qtext=1 _qoutput="" _qstate="" _qrequire="3+4"
+    check 'echo 7' 'echo $((3+4))|echo 7' >/dev/null 2>&1
+    _assert "(l) text-match honours #require too" "$?" "1"
+    check 'echo $((3+4))' 'echo $((3+4))|echo 7' >/dev/null 2>&1
+    _assert "(l) and still accepts the real expression" "$?" "0"
+    # The promise the whole game rests on: a question with #output accepts ANY command that
+    # produces that output, not just the spellings someone thought to list. Only check()'s
+    # sandbox arm can do that, and nothing fast exercised it - turning its `return 0` into a
+    # `return 1`, which rejects every correct sandbox-graded answer on the machine the game
+    # is actually played on, left the selftest, the unit suite and audit phases 1-3 green.
+    # The input is deliberately absent from the accepted list, so text-match cannot save it.
+    SANDBOX_MODE=1 _qtext=0 _qstate="" _qrequire="" _qsvc=""
+    _qoutput="7"
+    check 'echo 7' "printf '7\n'" >/dev/null 2>&1
+    _assert "(l) an unlisted command with the right output passes" "$?" "0"
+    check 'echo 8' "printf '7\n'" >/dev/null 2>&1
+    _assert "(l) and the wrong output still fails" "$?" "1"
+    SANDBOX_MODE=1 _qtext=0 _qoutput="" _qstate="" _qrequire=""
+    # The panel that tells a player WHY they were wrong reads three side-effects of a graded
+    # run. Each was set by a line whose condition could be inverted with nothing complaining,
+    # which would have shown the diagnosis on the wrong answers and hidden it on the right ones.
+    _qoutput="deliberately-unmatchable-XYZ"
+    _sandbox_validate 'ls /cc-no-such-path' >/dev/null 2>&1
+    _assert "(l) the first stderr line is kept for the diagnosis" \
+      "$([[ -n "$_SB_LAST_ERR" ]] && echo kept || echo lost)" "kept"
+    _SANDBOX_DESTRUCTIVE=0; _sandbox_validate 'echo harmless' >/dev/null 2>&1
+    _assert "(l) a harmless answer is not flagged destructive" "$_SANDBOX_DESTRUCTIVE" "0"
+    _SANDBOX_DESTRUCTIVE=0; _sandbox_validate 'rm -f /sandbox/nothing' >/dev/null 2>&1
+    _assert "(l) a destructive one is" "$_SANDBOX_DESTRUCTIVE" "1"
+    # A question the sandbox declines to run must not report the anti-cheat gate as failed
+    # when the player did in fact type the expression.
+    _qrequire="3+4"
+    _sandbox_validate 'docker run $((3+4))' >/dev/null 2>&1
+    _assert "(l) a text-matched question with #require satisfied reports no gate failure" \
+      "$_SANDBOX_REQUIRE_FAIL" "0"
+    _qrequire=""
+    # #svc: questions boot a python listener inside the namespace before the answer runs, so
+    # they get 12s where everything else gets 5. Swapping the two only shows up as a service
+    # question timing out on a slow box - the sort of failure that reads as flaky. Read the
+    # budget straight off the call instead of waiting for one.
+    eval "_cc_real_sbx() $(declare -f _sandbox_exec | tail -n +2)"
+    _sandbox_exec() { printf '%s' "${2:-}" > "$_gdir/budget"; return 0; }
+    _qsvc=""; _sandbox_validate 'true' >/dev/null 2>&1
+    _assert "(l) an ordinary question gets 5s" "$(<"$_gdir/budget")" "5"
+    _qsvc="web"; _sandbox_validate 'true' >/dev/null 2>&1
+    _assert "(l) a #svc: question gets 12s" "$(<"$_gdir/budget")" "12"
+    eval "_sandbox_exec() $(declare -f _cc_real_sbx | tail -n +2)"; unset -f _cc_real_sbx
+    _qsvc=""
+    _qoutput=$_sv_o _qstate=$_sv_s _qrequire=$_sv_r _qsvc=$_sv_v _qtext=$_sv_t
+    rm -rf "$_gdir"
     SANDBOX_MODE=$_sv_mode; SANDBOX_DIR=$_sv_dir
     rm -rf "$_bxdir"
   fi
