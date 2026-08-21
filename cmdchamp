@@ -9017,11 +9017,17 @@ _selftest() {
     _assert "(a) outside-/sandbox writes never reach host" "$([[ -e /etc/cc_leak || -e /cc_leak ]] && echo LEAK || echo clean)" "clean"
     _bx=$(_sandbox_exec '[[ -e /etc/cc_leak ]] && echo persisted || echo ephemeral' 5 2>/dev/null)
     _assert "(a) outside-/sandbox writes are ephemeral" "$_bx" "ephemeral"
-    # (b) ro-bind host files + root fs are read-only
-    _bx=$(_sandbox_exec 'echo x >> /etc/passwd 2>&1; echo rc=$?' 5 2>/dev/null)
-    _assert_match "(b) /etc/passwd is read-only" "$_bx" 'rc=1'
+    # (b) ro-bind host files + root fs are read-only. Assert the KERNEL'S REASON, not the
+    # exit status: the player is not root, so a plain --bind refuses the write too, with
+    # EACCES instead of EROFS. Both spell rc=1, so the old pattern passed just as happily
+    # with /usr writably bound - swapping --ro-bind for --bind left all 381 green. Only
+    # "Read-only file system" tells the mount flag from the file mode.
+    # The braces matter: `echo x >> f 2>&1` sets up >> before 2>&1, so the redirect's own
+    # failure went to the real stderr and the probe captured an empty string.
+    _bx=$(_sandbox_exec '{ echo x >> /etc/passwd; } 2>&1; echo rc=$?' 5 2>/dev/null)
+    _assert_match "(b) /etc/passwd is read-only" "$_bx" 'Read-only file system'
     _bx=$(_sandbox_exec 'touch /usr/cc 2>&1; echo rc=$?' 5 2>/dev/null)
-    _assert_match "(b) /usr root fs is read-only" "$_bx" 'rc=1'
+    _assert_match "(b) /usr root fs is read-only" "$_bx" 'Read-only file system'
     # (c) network egress refused - literal IP (no DNS -> no hang), fails fast under --unshare-all
     _bx=$(_sandbox_exec 'timeout 3 bash -c "exec 3<>/dev/tcp/192.0.2.1/80" 2>&1; echo rc=$?' 5 2>/dev/null)
     _assert_match "(c) network egress refused" "$_bx" 'rc=[1-9]'
@@ -9102,6 +9108,48 @@ _selftest() {
     _bx=$(_sandbox_exec 'cut -d: -f1 /etc/passwd 2>/dev/null | tr "\n" ","' 5 2>/dev/null)
     _assert "(j) no synthetic identity means NO passwd, never the host's" "${_bx:-empty}" "empty"
     DATA=$_svdata; _SBX_ETC=$_svetc
+    # (k) the arg list itself. Everything above observes the sandbox from inside it, which
+    # only catches a flag whose absence changes what an unprivileged process can see or do -
+    # and several here do not. Deleting --new-session, --die-with-parent or the timeout
+    # wrapper, or downgrading --ro-bind to --bind, left every one of the checks above green.
+    # So record the argv bwrap is actually launched with and assert the boundary is in it.
+    # A recorder in place of $_BWRAP is the whole mechanism: it is resolved lazily into a
+    # variable, so a test can stand in for it without touching the call site it is proving.
+    local _rec="$_bxdir/argv" _recbin="$_bxdir/bwrap-rec"
+    cat > "$_recbin" <<CC_REC
+#!/bin/bash
+printf '%s ' "\$@" > "$_rec"
+env > "$_rec.env"
+exit 0
+CC_REC
+    chmod +x "$_recbin"
+    local _sv_bw=$_BWRAP; _BWRAP=$_recbin
+    _sandbox_exec 'true' 5 &>/dev/null
+    _BWRAP=$_sv_bw
+    local _argv="" _renv="" _kf
+    [[ -f "$_rec" ]] && _argv=" $(<"$_rec")"
+    [[ -f "$_rec.env" ]] && _renv=$(<"$_rec.env")
+    for _kf in --unshare-all --die-with-parent --new-session --clearenv --as-pid-1; do
+      _assert "(k) bwrap argv carries $_kf" \
+        "$([[ "$_argv" == *" $_kf "* ]] && echo yes || echo no)" "yes"
+    done
+    # --bind here would hand the playground the host's /usr and /bin the moment cmdchamp
+    # is run by a user who can write them.
+    for _kf in /usr /bin; do
+      _assert "(k) $_kf is bound read-only" \
+        "$([[ "$_argv" == *" --ro-bind $_kf $_kf "* ]] && echo yes || echo no)" "yes"
+    done
+    # env -i is the outer half of the environment scrub (--clearenv is the inner half, and
+    # either alone is enough - which is exactly why neither was pinned). bash invents no
+    # PATH when started without one, so its absence is proof the wrapper is still there.
+    _assert "(k) env -i leaves bwrap no PATH to inherit" "$(grep -c '^PATH=' <<< "$_renv")" "0"
+    # A command that never returns must not take the game with it. Nothing asserted this,
+    # so dropping the `timeout` wrapper - the only thing standing between the player and a
+    # frozen game after typing `cat` with no argument - was a silent change.
+    local _t0=$SECONDS
+    _sandbox_exec 'sleep 10' 1 &>/dev/null
+    _assert "(k) a command that hangs is killed by the timeout" \
+      "$(( SECONDS - _t0 < 6 ? 1 : 0 ))" "1"
     SANDBOX_MODE=$_sv_mode; SANDBOX_DIR=$_sv_dir
     rm -rf "$_bxdir"
   fi
