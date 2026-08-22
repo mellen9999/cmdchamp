@@ -7184,9 +7184,10 @@ _vi_inputrc() {
 
 _rl_rem() { local _n; printf -v _n '%(%s)T' -1; REPLY=$((_rl_deadline - _n)); ((REPLY < 0)) && REPLY=0; }
 
-# Countdown tick: only the header digits change, so never touch the prompt
-# line — save cursor, rewrite header (line-clears only, no \e[J), restore.
-# Blink-proof even where DEC 2026 isn't honored (tmux passthrough is spotty).
+# Countdown tick: header digits change every second. _qhdr ends in \e[J,
+# which clears everything below it — including the input line — so callers
+# must follow this with draw() to put the typed text back, same as the
+# resize handler does. Blink-proof even where DEC 2026 isn't honored.
 _rl_tick() { printf '\e[?25l\e7'; _REDRAW_HDR; printf '\e8\e[?25h'; }
 
 # A four-command answer draws a 50-line panel. Printed under the prompt on an
@@ -7241,13 +7242,13 @@ _read_line() {
     if ((_rl_deadline)); then
       local _now; printf -v _now '%(%s)T' -1; local _rem=$((_rl_deadline - _now))
       ((_rem <= 0)) && { printf '\e[?25h'; input=""; return 1; }
-      if ((_now != _rl_last_sec)); then _rl_last_sec=$_now; _rl_tick; fi
+      if ((_now != _rl_last_sec)); then _rl_last_sec=$_now; _rl_tick; draw; fi
       IFS= read -rsn1 -t 1 c || { _rc=$?
         # rc>128 = the 1s read timed out (normal countdown tick); rc<=128 = real EOF/error.
         ((_rc <= 128)) && { printf '\e[?25h'; _QUIT=1; input=""; return 2; }  # stdin closed: quit, don't spin to deadline
         printf -v _now '%(%s)T' -1; _rem=$((_rl_deadline - _now))
         ((_rem <= 0)) && { printf '\e[?25h'; input=""; return 1; }
-        _rl_last_sec=$_now; _rl_tick; continue
+        _rl_last_sec=$_now; _rl_tick; draw; continue
       }
     else
       IFS= read -rsn1 c || { _rc=$?
