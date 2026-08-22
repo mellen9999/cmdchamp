@@ -8403,13 +8403,13 @@ _main_menu() {
     # ten is the ceiling and "10" could never be a hotkey.
     local _row
     if [[ -n "$PLAYER_NAME" ]] && ((LVL>1||QI>0)); then
-      it+=("1 Continue  ${D}Level $LVL Q$((QI+1))${N}"); act+=(cont)
+      it+=("1 Continue"); act+=(cont)
     else it+=($'\x01'"1 Continue"); act+=(x); fi
     it+=("2 New Game"); act+=(new)
     # Scenarios is the single gateway to all applied play - crafted missions AND the
     # Playground (which sits at the TOP of the scenario list, the one always-open door),
     # so it shows whenever the sandbox is up, even before the first scenario unlocks.
-    if ((SANDBOX_MODE)); then it+=("3 Scenarios  ${D}crafted missions + playground${N}"); act+=(sc)
+    if ((SANDBOX_MODE)); then it+=("3 Scenarios"); act+=(sc)
     else it+=($'\x01'"3 Scenarios (needs sandbox)"); act+=(x); fi
     if ((BOSS_BEATEN>=MAX_LEVEL)); then
       it+=("4 Challenge"); act+=(challenge)
@@ -8426,7 +8426,7 @@ _main_menu() {
     it+=("8 Options"); act+=(opts)
     # The controls reference already existed - it was shown once during first run and was
     # then unreachable for the rest of the game. Slot 9 is its permanent door.
-    it+=("9 Help  ${D}keys, modes, scoring, grading${N}"); act+=(help)
+    it+=("9 Help"); act+=(help)
     it+=("0 Quit"); act+=(quit)
     local _banner
     if ((_CAP_UNI)); then
@@ -8461,9 +8461,6 @@ _main_menu() {
     _tl_text="${_tl_col}${_GSH}${_GS2}${_GS3}${_GBK}${N} ${W}${B}${_tl_mid}${N} ${_tl_col}${_GBK}${_GS3}${_GS2}${_GSH}${N}"
     _center "$_tl_text" "$_bw"; _tl_pad=$REPLY
     _tagline="${_tl_pad}${_tl_text}"
-    local _hint="${D}j/k move ${_GDOT} enter select ${_GDOT} q quit${N}" _hint_pad
-    _center "$_hint" "$_bw"; _hint_pad=$REPLY
-    _tagline="${_tagline}"$'\n'"${_hint_pad}${_hint}"
     _banner="${_banner}"$'\n\n'"${_tagline}"
     _SEL_BACK=0; _sel "$_banner" "${it[@]}" || { _CLEANING=1; exit 0; }
     _SEL_CUR=$REPLY
