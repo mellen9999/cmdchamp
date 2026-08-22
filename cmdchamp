@@ -1997,9 +1997,14 @@ _wrong_diag() {
   # Text-matched, or nothing ran: say which accepted answer yours is nearest and what it is
   # missing. "expected: <answer>" alone leaves the player to spot a dropped -n by eye.
   if _tok_diff "$inp" "${_qanswers:-}" "${_qdelim:-|}"; then
-    _fnorm "$inp"; local _nin=$REPLY; _fnorm "$_TD_BEST"
-    [[ "$_nin" == "$REPLY" ]] && return 0     # equivalent spelling; the miss was elsewhere
-    _ascii_fold "$_TD_BEST"; _vclip "$REPLY" "$_dw"; _wd_row "closest" "${Y}${REPLY}${N}"
+    _fnorm "$inp"; local _nin=$REPLY; _fnorm "$_TD_BEST"; local _nbest=$REPLY
+    [[ "$_nin" == "$_nbest" ]] && return 0     # equivalent spelling; the miss was elsewhere
+    # "expected:" above already shows $_qans verbatim - repeating it as "closest" teaches
+    # nothing when the nearest accepted answer IS the canonical one (the common case).
+    _fnorm "$_qans"
+    if [[ "$_nbest" != "$REPLY" ]]; then
+      _ascii_fold "$_TD_BEST"; _vclip "$REPLY" "$_dw"; _wd_row "closest" "${Y}${REPLY}${N}"
+    fi
     [[ -n "$_TD_MISS"  ]] && { _vclip "$_TD_MISS"  "$_dw"; _wd_row "missing" "${G}${REPLY}${N}"; }
     [[ -n "$_TD_EXTRA" ]] && { _vclip "$_TD_EXTRA" "$_dw"; _wd_row "extra"   "${R}${REPLY}${N}"; }
   fi
@@ -3693,7 +3698,7 @@ gen_level10() {
   questions+=("Print the current shell's PID|echo \$\$|echo \${\$}|printf '%d\\n' \$\$")
   questions+=("Print the exit status of the last command|echo \$?|echo \${?}|printf '%d\\n' \$?")
   questions+=("Print a random number|echo \$RANDOM|echo \${RANDOM}|printf '%d\\n' \$RANDOM")
-  questions+=("Show user and hostname together|echo \"\$USER@\$HOSTNAME\"|echo \"\$(whoami)@\$(hostname)\"|echo \"\$USER@\$(hostname)\"|echo \"\$(whoami)@\$HOSTNAME\"|echo \"\${USER}@\${HOSTNAME}\"|echo \"\${USER}@\$(hostname)\"|echo \"\$(whoami)@\${HOSTNAME}\"|echo \$USER@\$HOSTNAME|echo \${USER}@\${HOSTNAME}|echo \"\`whoami\`@\`hostname\`\"|echo \`whoami\`@\`hostname\`|echo \"\$USER@\`hostname\`\"|echo \"\`whoami\`@\$HOSTNAME\"|echo \"\`whoami\`@\${HOSTNAME}\"|echo \"\${USER}@\`hostname\`\"")
+  questions+=("Show user and hostname as user@hostname|echo \"\$USER@\$HOSTNAME\"|echo \"\$(whoami)@\$(hostname)\"|echo \"\$USER@\$(hostname)\"|echo \"\$(whoami)@\$HOSTNAME\"|echo \"\${USER}@\${HOSTNAME}\"|echo \"\${USER}@\$(hostname)\"|echo \"\$(whoami)@\${HOSTNAME}\"|echo \$USER@\$HOSTNAME|echo \${USER}@\${HOSTNAME}|echo \"\`whoami\`@\`hostname\`\"|echo \`whoami\`@\`hostname\`|echo \"\$USER@\`hostname\`\"|echo \"\`whoami\`@\$HOSTNAME\"|echo \"\`whoami\`@\${HOSTNAME}\"|echo \"\${USER}@\`hostname\`\"")
   questions+=("In a script, print the script's own name|echo \$0|echo \${0}|printf '%s\\n' \$0")
   questions+=("In a script, print argument count|echo \$#|echo \${#}|printf '%d\\n' \$#")
   questions+=("In a script, print all arguments|echo \"\$@\"|echo \$@|echo \"\$*\"|echo \$*|echo \"\${@}\"|echo \"\${*}\"|echo \${@}|echo \${*}")
