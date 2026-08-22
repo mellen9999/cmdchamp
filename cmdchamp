@@ -2804,6 +2804,8 @@ declare -A EXP=(
   ['>']="write stdout to file (overwrite; output leaves the terminal)" ['>>']="append stdout to file (output leaves the terminal; use tee)"
   ['2>']="redirect stderr to file" ['&>']="redirect stdout+stderr to file"
   ['/dev/null']="black hole: discards anything written to it" ['2>&1']="merge stderr into stdout" ['>&2']="send stdout to stderr" ['1>&2']="send stdout to stderr"
+  ['>/dev/null']="discard stdout: send it into the black hole" ['&>/dev/null']="discard stdout+stderr: send both into the black hole"
+  ['2>/dev/null']="discard stderr: send it into the black hole"
   ['<']="input redirect: feed FILE contents into command"
   ['<<<']="here-string: feed a STRING into command"
   ['.']="current directory" ['..']="parent directory" ['~']="home directory" ['/']="root directory (or path separator)"
@@ -3177,7 +3179,7 @@ explain() {
       # these lines an answer using $? or {} was only half explained.
       case "$tok" in
         '>'|'>>'|'<'|'<<<'|'2>'|'&>'|'2>&1'|'>&2'|'1>&2'|'|'|'|&'|'&&'|'||'|';'|'&') ;;
-        '$?'|'$$'|'$!'|'$#'|'$@'|'$*'|'$0'|'!!'|'!$'|'!^'|'!*'|'{}'|'\;'|'2>/dev/null'|'/dev/null') ;;
+        '$?'|'$$'|'$!'|'$#'|'$@'|'$*'|'$0'|'!!'|'!$'|'!^'|'!*'|'{}'|'\;'|'2>/dev/null'|'/dev/null'|'>/dev/null'|'&>/dev/null') ;;
         '--') ;;   # belongs to no manpage, and it is the point of the L29/SC12 answers
         *) continue ;;
       esac
