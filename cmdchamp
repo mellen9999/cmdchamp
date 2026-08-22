@@ -3164,6 +3164,14 @@ explain() {
       case "$tok" in '(('*|'[[') _ind=1 ;; esac
       case "$tok" in *'))'|']]') ((_ind)) && { _ind=0; continue; } ;; esac
       ((_ind)) && continue
+      # `status=$?` glues the special var onto the assignment as one token —
+      # unwrap it so the exit code still gets explained, not just "var=value".
+      case "$tok" in
+        [A-Za-z_]*=*)
+          case "${tok#*=}" in
+            '$?'|'$$'|'$!'|'$#'|'$@'|'$*'|'$0') tok=${tok#*=} ;;
+          esac ;;
+      esac
       # Redirections, pipes and shell specials belong to no manpage — without
       # these lines an answer using $? or {} was only half explained.
       case "$tok" in
@@ -3624,7 +3632,7 @@ gen_level8() {
   questions+=("Run ${W}./${script}${C}, save output to ${W}output.txt${C} or append 'failed' to ${W}errors.log${C}§./${script} > output.txt || echo 'failed' >> errors.log§./${script} > output.txt || echo \"failed\" >> errors.log§bash ${script} > output.txt || echo 'failed' >> errors.log")
   questions+=("If directory ${W}${sdir}${C} exists, list contents|test -d ${sdir} && ls ${sdir}|[[ -d ${sdir} ]] && ls ${sdir}|[ -d ${sdir} ] && ls ${sdir}|test -d ${sdir} && ls ${sdir}/|[[ -d ${sdir} ]] && ls ${sdir}/|[ -d ${sdir} ] && ls ${sdir}/")
   questions+=("List ${W}${dir}${C} or create it if missing§ls ${dir} || mkdir ${dir}§ls ${dir} || mkdir -p ${dir}§ls ${dir} || mkdir --parents ${dir}§ls ${dir}/ || mkdir ${dir}§ls ${dir}/ || mkdir -p ${dir}§ls ${dir}/ || mkdir --parents ${dir}")
-  questions+=("Create ${W}${dir}${C} and save listing to ${W}files.txt${C}§mkdir -p ${dir} && ls ${dir} > files.txt§mkdir --parents ${dir} && ls ${dir} > files.txt§mkdir ${dir} && ls ${dir} > files.txt§mkdir -p ${dir} && ls ${dir}/ > files.txt§mkdir --parents ${dir} && ls ${dir}/ > files.txt§mkdir ${dir} && ls ${dir}/ > files.txt")
+  questions+=("Create directory ${W}${dir}${C} and save listing to ${W}files.txt${C}§mkdir -p ${dir} && ls ${dir} > files.txt§mkdir --parents ${dir} && ls ${dir} > files.txt§mkdir ${dir} && ls ${dir} > files.txt§mkdir -p ${dir} && ls ${dir}/ > files.txt§mkdir --parents ${dir} && ls ${dir}/ > files.txt§mkdir ${dir} && ls ${dir}/ > files.txt")
   questions+=("If ${W}${cfg}${C} is readable, cat it; else echo 'denied'§test -r ${cfg} && cat ${cfg} || echo 'denied'§[[ -r ${cfg} ]] && cat ${cfg} || echo 'denied'§[ -r ${cfg} ] && cat ${cfg} || echo 'denied'")
   questions+=("Check if ${W}${log}${C} has ${Y}${term}${C}, show first ${n} matches§grep ${term} ${log} | head -${n}§grep -m ${n} ${term} ${log}§grep --max-count ${n} ${term} ${log}§grep -q ${term} ${log} && grep ${term} ${log} | head -${n}§grep --quiet ${term} ${log} && grep ${term} ${log} | head -${n}§grep --silent ${term} ${log} && grep ${term} ${log} | head -${n}§grep -q ${term} ${log} && grep -m ${n} ${term} ${log}§grep --quiet ${term} ${log} && grep -m ${n} ${term} ${log}§grep --silent ${term} ${log} && grep -m ${n} ${term} ${log}§grep -q ${term} ${log} && grep --max-count ${n} ${term} ${log}§grep --quiet ${term} ${log} && grep --max-count ${n} ${term} ${log}§grep --silent ${term} ${log} && grep --max-count ${n} ${term} ${log}")
   questions+=("If ${W}${txt}${C} exists, sort and save to ${W}sorted.txt${C}§test -e ${txt} && sort ${txt} > sorted.txt§[[ -e ${txt} ]] && sort ${txt} > sorted.txt§[ -e ${txt} ] && sort ${txt} > sorted.txt§test -f ${txt} && sort ${txt} > sorted.txt§[[ -f ${txt} ]] && sort ${txt} > sorted.txt§[ -f ${txt} ] && sort ${txt} > sorted.txt")
