@@ -296,7 +296,7 @@ _box() {
   printf '    %s\n' "$_rule"
 }
 
-VERSION="1.13.1"
+VERSION="1.13.2"
 SANDBOX_TIMEOUT=5      # Seconds before sandbox command times out
 BOSS_THRESHOLD=4       # Correct answers needed to beat boss (out of BOSS_TOTAL)
 BOSS_TOTAL=5           # Number of questions in boss round
