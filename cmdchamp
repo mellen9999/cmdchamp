@@ -2817,6 +2817,7 @@ declare -A EXP=(
   ["'hello'"]="literal string 'hello'"
   ['|']="pipe: cmd1 | cmd2 (stdout->stdin)" ['|&']="pipe stdout+stderr"
   ['&&']="run next only if previous succeeds" ['||']="run next only if previous fails"
+  [';']="run next regardless of previous's exit status"
   ['&']="run in background (returns immediately)"
   ['a-z']="character range: all lowercase letters" ['A-Z']="character range: all uppercase letters" ['0-9']="character range: all digits"
   # ${...} forms are rendered by _pe_key from the real expansion, not looked up here.
