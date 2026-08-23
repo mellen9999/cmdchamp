@@ -296,7 +296,7 @@ _box() {
   printf '    %s\n' "$_rule"
 }
 
-VERSION="1.13.5"
+VERSION="1.13.6"
 SANDBOX_TIMEOUT=5      # Seconds before sandbox command times out
 BOSS_THRESHOLD=4       # Correct answers needed to beat boss (out of BOSS_TOTAL)
 BOSS_TOTAL=5           # Number of questions in boss round
@@ -3401,7 +3401,7 @@ gen_level1() {
   _fphrase "details" "permissions" "long format"; questions+=("List files with ${REPLY}|ls -l|#output:~^total")
   local _dir_pat; case "$dir" in src) _dir_pat="utils" ;; data) _dir_pat="export" ;; logs) _dir_pat="access" ;; *) _dir_pat="." ;; esac
   questions+=("List files in ${W}${dir}${C} directory|ls ${dir}|ls ${dir}/|#output:~${_dir_pat}")
-  questions+=("List ${W}${dir}${C} with details|ls -l ${dir}|ls -l ${dir}/|#output:~^total")
+  questions+=("List directory ${W}${dir}${C} with details|ls -l ${dir}|ls -l ${dir}/|#output:~^total")
   questions+=("Print ${Y}hello world${C}|echo hello world|echo 'hello world'|echo \"hello world\"|#output:hello world")
   questions+=("Print ${Y}${word}${C}|echo ${word}|#output:${word}")
   questions+=("Print your username using ${Y}\$USER${C}|echo \$USER|echo \${USER}|echo \"\$USER\"|echo \"\${USER}\"|#output:sandbox")
@@ -3616,9 +3616,9 @@ gen_level8() {
   n=$((RANDOM % 5 + 3))
   _fphrase ERROR WARN INFO DEBUG; local term=$REPLY
   _fphrase src data logs backup temp config test; local sdir=$REPLY
-  questions+=("Create ${W}${dir}${C} and cd into it, only if mkdir succeeds|mkdir ${dir} && cd ${dir}|mkdir -p ${dir} && cd ${dir}|mkdir --parents ${dir} && cd ${dir}|mkdir ${dir} && cd ${dir}/|mkdir -p ${dir} && cd ${dir}/|mkdir --parents ${dir} && cd ${dir}/")
-  questions+=("Create ${W}${dir}${C}, or echo '${msg}' if it fails§mkdir ${dir} || echo '${msg}'§mkdir -p ${dir} || echo '${msg}'§mkdir --parents ${dir} || echo '${msg}'")
-  questions+=("Try cd to ${W}${dir}${C}, create it if that fails§cd ${dir} || mkdir ${dir}§cd ${dir} || mkdir -p ${dir}§cd ${dir} || mkdir --parents ${dir}§cd ${dir}/ || mkdir ${dir}§cd ${dir}/ || mkdir -p ${dir}§cd ${dir}/ || mkdir --parents ${dir}")
+  questions+=("Create directory ${W}${dir}${C} and cd into it, only if mkdir succeeds|mkdir ${dir} && cd ${dir}|mkdir -p ${dir} && cd ${dir}|mkdir --parents ${dir} && cd ${dir}|mkdir ${dir} && cd ${dir}/|mkdir -p ${dir} && cd ${dir}/|mkdir --parents ${dir} && cd ${dir}/")
+  questions+=("Create directory ${W}${dir}${C}, or echo '${msg}' if it fails§mkdir ${dir} || echo '${msg}'§mkdir -p ${dir} || echo '${msg}'§mkdir --parents ${dir} || echo '${msg}'")
+  questions+=("Try cd to directory ${W}${dir}${C}, create it if that fails§cd ${dir} || mkdir ${dir}§cd ${dir} || mkdir -p ${dir}§cd ${dir} || mkdir --parents ${dir}§cd ${dir}/ || mkdir ${dir}§cd ${dir}/ || mkdir -p ${dir}§cd ${dir}/ || mkdir --parents ${dir}")
   questions+=("If ${W}${txt}${C} exists, display it - one line|test -e ${txt} && cat ${txt}|[[ -e ${txt} ]] && cat ${txt}|[ -e ${txt} ] && cat ${txt}|if test -e ${txt}; then cat ${txt}; fi|if [[ -e ${txt} ]]; then cat ${txt}; fi|if [ -e ${txt} ]; then cat ${txt}; fi|test -f ${txt} && cat ${txt}|[[ -f ${txt} ]] && cat ${txt}|[ -f ${txt} ] && cat ${txt}|if test -f ${txt}; then cat ${txt}; fi|if [[ -f ${txt} ]]; then cat ${txt}; fi|if [ -f ${txt} ]; then cat ${txt}; fi")
   questions+=("If ${W}${log}${C} exists, show first ${n} lines|test -e ${log} && head -${n} ${log}|test -e ${log} && head -n ${n} ${log}|[[ -e ${log} ]] && head -${n} ${log}|[[ -e ${log} ]] && head -n ${n} ${log}|[ -e ${log} ] && head -${n} ${log}|[ -e ${log} ] && head -n ${n} ${log}|test -f ${log} && head -${n} ${log}|test -f ${log} && head -n ${n} ${log}|[[ -f ${log} ]] && head -${n} ${log}|[[ -f ${log} ]] && head -n ${n} ${log}|[ -f ${log} ] && head -${n} ${log}|[ -f ${log} ] && head -n ${n} ${log}")
   questions+=("If ${W}${txt}${C} exists cat it, else echo '${msg}'§test -e ${txt} && cat ${txt} || echo '${msg}'§[[ -e ${txt} ]] && cat ${txt} || echo '${msg}'§[ -e ${txt} ] && cat ${txt} || echo '${msg}'§test -f ${txt} && cat ${txt} || echo '${msg}'§[[ -f ${txt} ]] && cat ${txt} || echo '${msg}'§[ -f ${txt} ] && cat ${txt} || echo '${msg}'")
@@ -3634,7 +3634,7 @@ gen_level8() {
   questions+=("Run ${W}./${script}${C} silently, echo success or failed§./${script} &>/dev/null && echo success || echo failed§./${script} >/dev/null 2>&1 && echo success || echo failed§./${script} > /dev/null 2>&1 && echo success || echo failed§./${script} >& /dev/null && echo success || echo failed")
   questions+=("Run ${W}./${script}${C}, save output to ${W}output.txt${C} or append 'failed' to ${W}errors.log${C}§./${script} > output.txt || echo 'failed' >> errors.log§./${script} > output.txt || echo \"failed\" >> errors.log§bash ${script} > output.txt || echo 'failed' >> errors.log")
   questions+=("If directory ${W}${sdir}${C} exists, list contents|test -d ${sdir} && ls ${sdir}|[[ -d ${sdir} ]] && ls ${sdir}|[ -d ${sdir} ] && ls ${sdir}|test -d ${sdir} && ls ${sdir}/|[[ -d ${sdir} ]] && ls ${sdir}/|[ -d ${sdir} ] && ls ${sdir}/")
-  questions+=("List ${W}${dir}${C} or create it if missing§ls ${dir} || mkdir ${dir}§ls ${dir} || mkdir -p ${dir}§ls ${dir} || mkdir --parents ${dir}§ls ${dir}/ || mkdir ${dir}§ls ${dir}/ || mkdir -p ${dir}§ls ${dir}/ || mkdir --parents ${dir}")
+  questions+=("List directory ${W}${dir}${C} or create it if missing§ls ${dir} || mkdir ${dir}§ls ${dir} || mkdir -p ${dir}§ls ${dir} || mkdir --parents ${dir}§ls ${dir}/ || mkdir ${dir}§ls ${dir}/ || mkdir -p ${dir}§ls ${dir}/ || mkdir --parents ${dir}")
   questions+=("Create directory ${W}${dir}${C} and save listing to ${W}files.txt${C}§mkdir -p ${dir} && ls ${dir} > files.txt§mkdir --parents ${dir} && ls ${dir} > files.txt§mkdir ${dir} && ls ${dir} > files.txt§mkdir -p ${dir} && ls ${dir}/ > files.txt§mkdir --parents ${dir} && ls ${dir}/ > files.txt§mkdir ${dir} && ls ${dir}/ > files.txt")
   questions+=("If ${W}${cfg}${C} is readable, cat it; else echo 'denied'§test -r ${cfg} && cat ${cfg} || echo 'denied'§[[ -r ${cfg} ]] && cat ${cfg} || echo 'denied'§[ -r ${cfg} ] && cat ${cfg} || echo 'denied'")
   questions+=("Check if ${W}${log}${C} has ${Y}${term}${C}, show first ${n} matches§grep ${term} ${log} | head -${n}§grep -m ${n} ${term} ${log}§grep --max-count ${n} ${term} ${log}§grep -q ${term} ${log} && grep ${term} ${log} | head -${n}§grep --quiet ${term} ${log} && grep ${term} ${log} | head -${n}§grep --silent ${term} ${log} && grep ${term} ${log} | head -${n}§grep -q ${term} ${log} && grep -m ${n} ${term} ${log}§grep --quiet ${term} ${log} && grep -m ${n} ${term} ${log}§grep --silent ${term} ${log} && grep -m ${n} ${term} ${log}§grep -q ${term} ${log} && grep --max-count ${n} ${term} ${log}§grep --quiet ${term} ${log} && grep --max-count ${n} ${term} ${log}§grep --silent ${term} ${log} && grep --max-count ${n} ${term} ${log}")
@@ -3863,7 +3863,7 @@ gen_level13() {
   questions+=("Copy permissions from ${W}${cfg}${C} to ${W}${txt}${C}|chmod --reference=${cfg} ${txt}|chmod --reference ${cfg} ${txt}")
   questions+=("If ${W}${log}${C} exists, show lines with ${Y}${searchterm}${C}§[[ -e ${log} ]] && grep ${searchterm} ${log}§[ -e ${log} ] && grep ${searchterm} ${log}§test -e ${log} && grep ${searchterm} ${log}§[[ -f ${log} ]] && grep ${searchterm} ${log}§[ -f ${log} ] && grep ${searchterm} ${log}§test -f ${log} && grep ${searchterm} ${log}")
   questions+=("Copy ${W}${cfg}${C} to ${W}${cfg}.bak${C} and verify§cp ${cfg} ${cfg}.bak && diff ${cfg} ${cfg}.bak§cp ${cfg} ${cfg}.bak && diff ${cfg}.bak ${cfg}")
-  questions+=("Create ${W}${dir}${C}, then list its contents|mkdir -p ${dir} && ls -la ${dir}|mkdir -p ${dir} && ls -l ${dir}|mkdir -p ${dir} && ls ${dir}|mkdir --parents ${dir} && ls -la ${dir}|mkdir --parents ${dir} && ls -l ${dir}|mkdir --parents ${dir} && ls ${dir}|mkdir ${dir} && ls -la ${dir}|mkdir ${dir} && ls -l ${dir}|mkdir ${dir} && ls ${dir}")
+  questions+=("Create directory ${W}${dir}${C}, then list its contents|mkdir -p ${dir} && ls -la ${dir}|mkdir -p ${dir} && ls -l ${dir}|mkdir -p ${dir} && ls ${dir}|mkdir --parents ${dir} && ls -la ${dir}|mkdir --parents ${dir} && ls -l ${dir}|mkdir --parents ${dir} && ls ${dir}|mkdir ${dir} && ls -la ${dir}|mkdir ${dir} && ls -l ${dir}|mkdir ${dir} && ls ${dir}")
   questions+=("Count ${Y}${searchterm}${C} in ${W}${log}${C} if exists§[[ -e ${log} ]] && grep -c ${searchterm} ${log}§[ -e ${log} ] && grep -c ${searchterm} ${log}§test -e ${log} && grep -c ${searchterm} ${log}§[[ -e ${log} ]] && grep --count ${searchterm} ${log}§[ -e ${log} ] && grep --count ${searchterm} ${log}§test -e ${log} && grep --count ${searchterm} ${log}§[[ -f ${log} ]] && grep -c ${searchterm} ${log}§[ -f ${log} ] && grep -c ${searchterm} ${log}§test -f ${log} && grep -c ${searchterm} ${log}§[[ -f ${log} ]] && grep --count ${searchterm} ${log}§[ -f ${log} ] && grep --count ${searchterm} ${log}§test -f ${log} && grep --count ${searchterm} ${log}")
   questions+=("Extract ${W}${gz_archive}${C} and list contents§tar xzf ${gz_archive} && ls -la§tar -xzf ${gz_archive} && ls -la§tar xf ${gz_archive} && ls -la§tar -xf ${gz_archive} && ls -la§tar xzf ${gz_archive} && ls§tar -xzf ${gz_archive} && ls§tar xf ${gz_archive} && ls§tar -xf ${gz_archive} && ls§tar xzf ${gz_archive} && ls -l§tar -xzf ${gz_archive} && ls -l§tar xf ${gz_archive} && ls -l§tar -xf ${gz_archive} && ls -l§tar xvzf ${gz_archive}§tar -xvzf ${gz_archive}")
   questions+=("Copy ${W}${txt}${C} to ${W}${dir}${C}/ and echo done|cp ${txt} ${dir}/ && echo done|cp ${txt} ${dir} && echo done|cp ${txt} ${dir}/ && echo 'done'|cp ${txt} ${dir} && echo 'done'")
