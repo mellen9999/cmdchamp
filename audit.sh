@@ -764,6 +764,14 @@ _panel_check() {
   [[ $bare == *'>('*  ]] && { [[ "$panel" == *'>(cmd)'* ]] || _fail "$label: >( not on the panel ($ans)"; }
   [[ $bare == *'`'*   ]] && { [[ "$panel" == *'`cmd`'* ]] || _fail "$label: backtick not on the panel ($ans)"; }
   [[ $bare == *'${'*  ]] && { [[ "$panel" == *'${'* ]]    || _fail "$label: \${ not on the panel ($ans)"; }
+  # Special parameters: $1 in an answer with nothing on the panel but echo's page
+  # was a question the player could not answer. awk's $1/$0 live inside '...' and
+  # are stripped from $bare already, so this only fires on what the shell expands.
+  local sv
+  for sv in '$0' '$1' '$2' '$3' '$4' '$5' '$6' '$7' '$8' '$9' '$?' '$#' '$@' '$*' '$$' '$!'; do
+    [[ $bare == *"$sv"* ]] || continue
+    [[ "$panel" == *"$sv"* ]] || _fail "$label: $sv not on the panel ($ans)"
+  done
   local a_cp=1 a_t; local -a a_toks
   set -f; read -ra a_toks <<< "$bare"; set +f
   for a_t in "${a_toks[@]}"; do
@@ -1959,7 +1967,9 @@ _sel() { printf '%s\n' "$1" "${@:2}"; REPLY=0; return 1; }
 # AD_WRONGTXT is how the miss is spelled. Gibberish proves a miss costs a tier; a NEAR miss
 # - the canonical with its last word dropped - is the only way to prove the diagnosis fires,
 # because gibberish shares no token with any answer and the "closest" line correctly
-# declines to guess.
+# declines to guess. @nearalt near-misses the LAST accepted alternate instead: the
+# "closest" row only prints when the nearest form is NOT the canonical (which the
+# expected: line already shows), so @near can never make it fire.
 AD_WRONG=0 AD_MAX=4000 AD_N=0 AD_WRONGTXT="nonsense not-an-answer"; declare -a AD_CMDS=()
 _ad_budget() { AD_N=0; AD_MAX=$1; AD_WRONG=${2:-0}; _QUIT=0; }
 _read_line() {
@@ -1968,7 +1978,11 @@ _read_line() {
   if ((${#AD_CMDS[@]})); then input=${AD_CMDS[0]}; AD_CMDS=("${AD_CMDS[@]:1}"); ((++AD_N)); return 0; fi
   [[ "${AD_MODE:-}" == script ]] && { _QUIT=1; input=""; return 2; }
   input="$_qans"
-  ((AD_WRONG > 0)) && { [[ "$AD_WRONGTXT" == @near ]] && input="${_qans% *}" || input="$AD_WRONGTXT"; ((AD_WRONG--)); }
+  ((AD_WRONG > 0)) && { case "$AD_WRONGTXT" in
+      @near)    input="${_qans% *}" ;;
+      @nearalt) input="${_qanswers##*"$_qdelim"}"; input="${input% *}" ;;
+      *)        input="$AD_WRONGTXT" ;;
+    esac; ((AD_WRONG--)); }
   ((++AD_N)); ((AD_N > AD_MAX)) && { _QUIT=1; input=""; return 2; }
   return 0
 }
@@ -2064,12 +2078,24 @@ phase14_playthrough() {
   # times a bwrap exec would turn a 50-second phase into minutes. So a level miss here can
   # only reach the TEXT half of the diagnosis, which is what this drive proves.
   if _ad_drive "miss diagnosis" '' '
-      _load_profile; _session_init; _QUIT=0; AD_WRONGTXT=@near
+      _load_profile; _session_init; _QUIT=0; AD_WRONGTXT=@nearalt
       _ad_budget 60 25; _mode_init 26; run 26 0
       printf "@DIAG done\n"'; then
     _ad_expect "the miss diagnosis ran"        "@DIAG done" 1
-    _ad_expect "a miss names the closest form" "closest"    min:1
     _ad_expect "a miss names the token dropped" "missing"   min:1
+  fi
+
+  # The "closest" row is conditional by design - it only prints when the nearest
+  # accepted answer is NOT the canonical the expected: line already shows - so
+  # whether a shuffled level deal ever satisfies that is coin-flip. Pin the row
+  # on a fixture where the nearest form is provably the alternate.
+  if _ad_drive "closest form" '' '
+      _load_profile; _session_init; _QUIT=0
+      _qparse "Count lines§wc -l f§cat f | wc -l"
+      _wrong_diag "cat f | wc"
+      printf "@CF done\n"'; then
+    _ad_expect "the closest-form drive ran"     "@CF done" 1
+    _ad_expect "a miss names the closest form"  "closest"  min:1
   fi
 
   # ── 2c. and the OUTPUT half, with the sandbox actually on ────────
