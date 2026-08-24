@@ -2793,6 +2793,9 @@ declare -A EXP=(
   [unlink]="remove exactly one file/link (safer than rm for single targets)"
   ['$$']="current shell PID" ['$?']="last exit code" ['$!']="last background PID"
   ['$#']="argument count" ['$@']="all arguments" ['$*']="all arguments as one word (use \"\$@\" to keep them separate)" ['$0']="script name"
+  # positional params double as awk fields - both meanings, or the wrong one teaches
+  ['$1']="first argument (in awk: first field)" ['$2']="second argument (in awk: second field)"
+  ['$3']="third argument (in awk: third field)"
   ['$USER']="the login name of the current user" ['$HOME']="the current user's home directory"
   ['$PWD']="the current directory" ['$OLDPWD']="the previous directory (cd - goes back to it)"
   ['$HOSTNAME']="this machine's hostname" ['$SHELL']="the login shell, not necessarily the running one"
@@ -2864,7 +2867,7 @@ declare -A EXP=(
   ['-p-']="nmap all ports" ['-oN']="nmap normal output" ['-oG']="nmap greppable" ['-oA']="nmap all formats"
   ['{}']="filename placeholder" ['\;']="end -exec" ['-exec']="run on each" ['-delete']="delete matches"
   ['-name']="match filename" ['-size']="match size" ['-type']="match type" ['-mmin']="match time" ['-path']="match path" ['-not']="negate"
-  ['NR']="awk line number" ['NF']="awk field count" ['$1']="first field" ['$NF']="last field" ['FS']="field separator"
+  ['NR']="awk line number" ['NF']="awk field count" ['$NF']="last field" ['FS']="field separator"
   ['http-post-form']="POST login (hydra): '/path:user=^USER^&pass=^PASS^:fail_text'" ['http-get']="GET auth (hydra)"
   [paru]="AUR helper (pacman wrapper)" [env]="show/set environment variables"
   [comm]="compare two sorted files line by line" [python3]="Python 3 interpreter"
@@ -3045,7 +3048,7 @@ _syn_legend() {
       _pe_key "${_s:_i+2:_j-_i-2}"
       [[ -n $_PEK ]] && _syn_add "$_PEK" "$_PEG"
       _i=$((_j+1))
-    elif ((_dq)) && [[ $_c == '$' && ${_s:_i+1:1} == ['?$!#@*0'] ]]; then
+    elif ((_dq)) && [[ $_c == '$' && ${_s:_i+1:1} == [0-9'?$!#@*'] ]]; then
       # Bare $?/$$/$! etc are caught as standalone tokens elsewhere in explain(),
       # but that match is exact and quotes are part of the token to `read -a` —
       # "$@" never equals $@. This scan sees inside the quotes instead.
@@ -3166,20 +3169,22 @@ explain() {
       # labelling it "write stdout to file" teaches the wrong thing outright.
       case "$tok" in '(('*|'[[') _ind=1 ;; esac
       case "$tok" in *'))'|']]') ((_ind)) && { _ind=0; continue; } ;; esac
-      ((_ind)) && continue
+      # ...but $? inside [[ ]] is still the exit code, and skipping it left
+      # `[[ $? -eq 0 ]]` with nothing on the panel saying what $? is.
+      ((_ind)) && case "$tok" in '$'*) ;; *) continue ;; esac
       # `status=$?` glues the special var onto the assignment as one token —
       # unwrap it so the exit code still gets explained, not just "var=value".
       case "$tok" in
         [A-Za-z_]*=*)
           case "${tok#*=}" in
-            '$?'|'$$'|'$!'|'$#'|'$@'|'$*'|'$0') tok=${tok#*=} ;;
+            '$?'|'$$'|'$!'|'$#'|'$@'|'$*'|'$0'|'$'[1-9]) tok=${tok#*=} ;;
           esac ;;
       esac
       # Redirections, pipes and shell specials belong to no manpage — without
       # these lines an answer using $? or {} was only half explained.
       case "$tok" in
         '>'|'>>'|'<'|'<<<'|'2>'|'&>'|'2>&1'|'>&2'|'1>&2'|'|'|'|&'|'&&'|'||'|';'|'&') ;;
-        '$?'|'$$'|'$!'|'$#'|'$@'|'$*'|'$0'|'!!'|'!$'|'!^'|'!*'|'{}'|'\;'|'2>/dev/null'|'/dev/null'|'>/dev/null'|'&>/dev/null') ;;
+        '$?'|'$$'|'$!'|'$#'|'$@'|'$*'|'$0'|'$'[1-9]|'!!'|'!$'|'!^'|'!*'|'{}'|'\;'|'2>/dev/null'|'/dev/null'|'>/dev/null'|'&>/dev/null') ;;
         '--') ;;   # belongs to no manpage, and it is the point of the L29/SC12 answers
         *) continue ;;
       esac
