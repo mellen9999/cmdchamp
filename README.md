@@ -1,6 +1,6 @@
 # cmdchamp
 
-Bash CLI trainer — 30 levels from `ls` to privilege escalation.
+Unix CLI trainer — 30 levels from `ls` to privilege escalation. GNU userland, bash syntax, real sandbox.
 
 ![demo](demo.gif)
 
@@ -153,6 +153,12 @@ After the first-run tutorial, you're asked if you want to take the placement tes
 ## Data
 
 Progress saves to `${XDG_DATA_HOME:-~/.local/share}/cmdchamp/`.
+
+## Scope
+
+This teaches the GNU/bash userland you get on a normal desktop distro — coreutils with their full flag sets, plus `rg`, `fd`, `jq`, `nmap`, `tshark`, `hashcat` and the forensics tier. The shell syntax it teaches is bash's.
+
+If you want the other half — busybox applets and POSIX `ash`, the reduced command surface you actually meet in an initramfs, a container or a recovery shell — that is [xos `learn`](https://github.com/mellen9999/xos), a separate trainer built for it.
 
 ## License
 
