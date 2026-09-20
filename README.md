@@ -158,7 +158,12 @@ Progress saves to `${XDG_DATA_HOME:-~/.local/share}/cmdchamp/`.
 
 This teaches the GNU/bash userland you get on a normal desktop distro — coreutils with their full flag sets, plus `rg`, `fd`, `jq`, `nmap`, `tshark`, `hashcat` and the forensics tier. The shell syntax it teaches is bash's.
 
-If you want the other half — busybox applets and POSIX `ash`, the reduced command surface you actually meet in an initramfs, a container or a recovery shell — that is [xos `learn`](https://github.com/mellen9999/xos), a separate trainer built for it.
+If you want the other half — busybox applets and POSIX `ash`, the reduced command surface you actually meet in an initramfs, a container or a recovery shell — that is [`learn`](https://github.com/mellen9999/xos/tree/main/learn). It lives inside [xos](https://github.com/mellen9999/xos) rather than in a repo of its own, because its whole curriculum is gated against the exact busybox that build produces. Two commands put it on any Linux host, and neither builds a kernel or an image:
+
+```bash
+git clone https://github.com/mellen9999/xos && cd xos
+./build.sh fetch busybox && ./learn/install.sh
+```
 
 ## License
 
